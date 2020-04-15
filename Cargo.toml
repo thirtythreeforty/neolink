@@ -7,3 +7,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+cookie-factory = "0.3.1"
+indoc = "0.3.5"
+nom = "5.1.1"
+yaserde = "0.3.15"
+yaserde_derive = "0.3.15"
+xml-rs = "0.8.2"
