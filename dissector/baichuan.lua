@@ -49,6 +49,12 @@ function xml_encrypt(ba, offset)
   e:set_size(ba:len())
   for i=0,ba:len() - 1 do
     e:set_index(i, bit32.bxor(bit32.band(offset, 0xFF), bit32.bxor(ba:get_index(i), key:byte(((i + offset) % 8) + 1))))
+
+    -- Heuristic: XML always starts with '<', so save the work if this doesn't
+    -- appear to be XML
+    if i == 0 and e:get_index(i) ~= string.byte('<') then
+      return nil
+    end
   end
   return e
 end
@@ -92,8 +98,6 @@ function bc_protocol.dissector(buffer, pinfo, tree)
     "Baichuan IP Camera Protocol, " .. msg_type_str .. " message")
   local header = bc_subtree:add(bc_protocol, buffer(0, header_len),
     "Baichuan Message Header, length: " .. header_len)
-  local body = bc_subtree:add(bc_protocol, buffer(header_len, nil),
-    "Baichuan Message Body, " .. class .. ", length: " .. msg_len .. ", encrypted: " .. tostring(encrypted))
 
   header:add_le(magic_bytes, buffer(0, 4))
   header:add_le(message_id,  buffer(4, 4))
@@ -105,30 +109,40 @@ function bc_protocol.dissector(buffer, pinfo, tree)
   header:add_le(message_class, buffer(18, 2))
         :append_text(" (" .. class .. ")")
 
-  local body_data
+  if msg_len == 0 then
+    return
+  end
+
+  local body = bc_subtree:add(bc_protocol, buffer(header_len, nil),
+    "Baichuan Message Body, " .. class .. ", length: " .. msg_len .. ", encrypted: " .. tostring(encrypted))
+
   if class == "legacy" then
     if msg_type == 1 then
       body:add_le(username, buffer(header_len, 32))
       body:add_le(password, buffer(header_len + 32, 32))
     end
   else
-    local body_tvb = buffer(header_len, nil)
+    local body_tvb = buffer(header_len, nil):tvb()
 
-    if msg_type == 0x03 then -- video
-      --Dissector.get("rtp"):call(body_tvb, pinfo, body)
-    else -- I presume everything else is XML control messages
-      if encrypted then
-        -- Body seems to always have 0x0a at the end, not sure why but it's not part of XML
-        local ba = buffer(header_len, buffer:len() - header_len - 1):bytes()
-        local decrypted = xml_encrypt(ba, enc_offset)
+    -- Always attempt to undo the xmlEncryption, since it may be useful for
+    -- some messages that haven't been reversed yet (especially ones where the
+    -- request is XML and the reply is binary).
+    if encrypted then
+      local ba = buffer(header_len, buffer:len() - header_len):bytes()
+      local decrypted = xml_encrypt(ba, enc_offset)
+      if decrypted ~= nil then
         body_tvb = decrypted:tvb("Decrypted Body")
-      end
 
-      Dissector.get("xml"):call(body_tvb, pinfo, body)
+        -- Create a tree item that, when clicked, automatically shows the tab we just created
+        body:add(body_tvb(), "Decrypted Body")
+      end
     end
 
-    -- Create a tree item that, when clicked, automatically shows the tab we just created
-    body:add(body_tvb(), "Message Body")
+    if msg_type == 0x03 then -- video
+      Dissector.get("h265"):call(body_tvb, pinfo, tree)
+    else -- I presume everything else is XML control messages
+      Dissector.get("xml"):call(body_tvb, pinfo, body)
+    end
   end
 end
 
