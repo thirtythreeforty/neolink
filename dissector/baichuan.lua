@@ -10,6 +10,7 @@ message_len = ProtoField.int32("baichuan.msg_len", "messageLen", base.DEC)
 xml_enc_offset = ProtoField.int32("baichuan.xml_encryption_offset", "xmlEncryptionOffset", base.DEC)
 xml_enc_used = ProtoField.bool("baichuan.xml_encryption_used", "encrypted", base.NONE)
 message_class = ProtoField.int32("baichuan.msg_class", "messageClass", base.DEC)
+f_bin_offset = ProtoField.int32("baichuan.bin_offset", "binOffset", base.DEC)
 username = ProtoField.string("baichuan.username", "username", base.ASCII)
 password = ProtoField.string("baichuan.password", "password", base.ASCII)
 
@@ -20,8 +21,9 @@ bc_protocol.fields = {
   xml_enc_offset,
   xml_enc_used,
   message_class,
+  f_bin_offset,
   username,
-  password
+  password,
 }
 
 message_types = {
@@ -49,12 +51,6 @@ function xml_encrypt(ba, offset)
   e:set_size(ba:len())
   for i=0,ba:len() - 1 do
     e:set_index(i, bit32.bxor(bit32.band(offset, 0xFF), bit32.bxor(ba:get_index(i), key:byte(((i + offset) % 8) + 1))))
-
-    -- Heuristic: XML always starts with '<', so save the work if this doesn't
-    -- appear to be XML
-    if i == 0 and e:get_index(i) ~= string.byte('<') then
-      return nil
-    end
   end
   return e
 end
@@ -86,12 +82,20 @@ function bc_protocol.dissector(buffer, pinfo, tree)
   local encrypted = (msg_cls == 0x6414 or buffer(16, 1):le_uint() ~= 0)
   local class = message_classes[buffer(18, 2):le_uint()]
   local header_len = header_lengths[buffer(18, 2):le_uint()]
+
   if buffer:len() ~= msg_len + header_len then
     -- Case 1, need more bytes,
     -- from https://wiki.wireshark.org/Lua/Dissectors#TCP_reassembly
     pinfo.desegment_len = msg_len + header_len - buffer:len()
     pinfo.desegment_offset = 0
     return buffer:len()
+  end
+
+  -- bin_offset is either nil (no binary data) or nonzero
+  local bin_offset = nil
+  if header_len == 24 then
+    bin_offset = buffer(20, 4):le_uint()
+    if bin_offset == 0 then bin_offset = nil end
   end
 
   local bc_subtree = tree:add(bc_protocol, buffer(),
@@ -108,6 +112,7 @@ function bc_protocol.dissector(buffer, pinfo, tree)
   header:add_le(xml_enc_used, buffer(16, 1))
   header:add_le(message_class, buffer(18, 2))
         :append_text(" (" .. class .. ")")
+  header:add_le(f_bin_offset, buffer(20, 4))
 
   if msg_len == 0 then
     return
@@ -122,26 +127,24 @@ function bc_protocol.dissector(buffer, pinfo, tree)
       body:add_le(password, buffer(header_len + 32, 32))
     end
   else
-    local body_tvb = buffer(header_len, nil):tvb()
+    local body_tvb = buffer(header_len, bin_offset):tvb()
+    body:add(body_tvb(), "Encrypted XML")
 
-    -- Always attempt to undo the xmlEncryption, since it may be useful for
-    -- some messages that haven't been reversed yet (especially ones where the
-    -- request is XML and the reply is binary).
     if encrypted then
-      local ba = buffer(header_len, buffer:len() - header_len):bytes()
+      local ba = buffer(header_len, bin_offset):bytes()
       local decrypted = xml_encrypt(ba, enc_offset)
-      if decrypted ~= nil then
-        body_tvb = decrypted:tvb("Decrypted Body")
-
-        -- Create a tree item that, when clicked, automatically shows the tab we just created
-        body:add(body_tvb(), "Decrypted Body")
-      end
+      body_tvb = decrypted:tvb("Decrypted XML")
+      -- Create a tree item that, when clicked, automatically shows the tab we just created
+      body:add(body_tvb(), "Decrypted XML")
     end
+    Dissector.get("xml"):call(body_tvb, pinfo, body)
 
-    if msg_type == 0x03 then -- video
-      Dissector.get("h265"):call(body_tvb, pinfo, tree)
-    else -- I presume everything else is XML control messages
-      Dissector.get("xml"):call(body_tvb, pinfo, body)
+    if bin_offset ~= nil then
+      local binary_tvb = buffer(header_len + bin_offset, nil):tvb()
+      body:add(binary_tvb(), "Binary Payload")
+      if msg_type == 0x03 then -- video
+        Dissector.get("h265"):call(binary_tvb, pinfo, tree)
+      end
     end
   end
 end
