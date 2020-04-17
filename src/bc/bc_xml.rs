@@ -9,19 +9,28 @@ use yaserde::{YaDeserialize, YaSerialize};
 #[allow(pub_use_of_private_extern_crate)]
 use yaserde::log;
 
+#[cfg(test)]
+use indoc::indoc;
+
 #[derive(PartialEq, Default, Debug, YaDeserialize, YaSerialize)]
 #[yaserde(rename="body")]
-struct Body {
+pub struct Body {
     #[yaserde(rename="Encryption")]
-    encryption: Option<Encryption>,
+    pub encryption: Option<Encryption>,
     #[yaserde(rename="LoginUser")]
-    login_user: Option<LoginUser>,
+    pub login_user: Option<LoginUser>,
     #[yaserde(rename="LoginNet")]
-    login_net: Option<LoginNet>,
+    pub login_net: Option<LoginNet>,
+}
+
+impl Body {
+    pub fn try_parse(s: impl Read) -> Result<Self, String> {
+        yaserde::de::from_reader(s)
+    }
 }
 
 #[derive(PartialEq, Default, Debug, YaDeserialize, YaSerialize)]
-struct Encryption {
+pub struct Encryption {
     #[yaserde(attribute)]
     pub version: String,
     #[yaserde(rename="type")]
@@ -31,7 +40,7 @@ struct Encryption {
 
 #[derive(PartialEq, Default, Debug, YaDeserialize, YaSerialize)]
 #[yaserde(rename_all="camelCase")]
-struct LoginUser {
+pub struct LoginUser {
     #[yaserde(attribute)]
     pub version: String,
     #[yaserde(rename="userName")]
@@ -43,7 +52,7 @@ struct LoginUser {
 
 #[derive(PartialEq, Default, Debug, YaDeserialize, YaSerialize)]
 #[yaserde(rename_all="camelCase")]
-struct LoginNet {
+pub struct LoginNet {
     #[yaserde(attribute)]
     pub version: String,
     #[yaserde(rename="type")]

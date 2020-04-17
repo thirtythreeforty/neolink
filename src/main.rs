@@ -1,5 +1,4 @@
-#[cfg(test)] #[macro_use]
-extern crate indoc;
+#![allow(dead_code)] // while I'm still fleshing this out
 
 mod bc;
 
