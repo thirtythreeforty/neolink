@@ -2,12 +2,12 @@ use super::xml::Body;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
-const MSG_ID_LOGIN: u32 = 1;
-const MSG_ID_VIDEO: u32 = 3;
+pub const MSG_ID_LOGIN: u32 = 1;
+pub const MSG_ID_VIDEO: u32 = 3;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Bc {
-    pub(super) header: BcHeader,
+    pub meta: BcMeta,
     pub body: BcBody,
 }
 
@@ -17,7 +17,7 @@ pub enum BcBody {
     ModernMsg(ModernMsg),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct ModernMsg {
     pub xml: Option<Body>,
     pub binary: Option<Vec<u8>>,
@@ -33,12 +33,30 @@ pub enum LegacyMsg {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct BcHeader {
-    pub(super) body_len: u32,
-    pub(super) msg_id: u32,
-    pub(super) enc_offset: u32,
-    pub(super) encrypted: bool,
-    pub(super) class: u16,
-    pub(super) bin_offset: Option<u32>,
+    pub body_len: u32,
+    pub msg_id: u32,
+    pub enc_offset: u32,
+    pub encrypted: bool,
+    pub class: u16,
+    pub bin_offset: Option<u32>,
+}
+
+/// The components of the Baichuan TLV header that are not
+/// descriptions of the Body (the application dictates these)
+#[derive(Debug, PartialEq, Eq)]
+pub struct BcMeta {
+    pub msg_id: u32,
+    pub client_idx: u32,
+    pub class: u16,
+    pub encrypted: bool,
+}
+
+/// The components of the Baichuan header that must be filled out after the body is serialized, or
+/// is needed for the deserialization of the body (strictly part of the wire format of the message)
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct BcSendInfo {
+    pub body_len: u32,
+    pub bin_offset: Option<u32>,
 }
 
 impl BcHeader {
@@ -58,6 +76,26 @@ impl BcHeader {
 
     pub fn is_encrypted(&self) -> bool {
         self.encrypted || self.class == 0x6414
+    }
+
+    pub fn to_meta(&self) -> BcMeta {
+        BcMeta {
+            msg_id: self.msg_id,
+            client_idx: self.enc_offset,
+            class: self.class,
+            encrypted: self.encrypted,
+        }
+    }
+
+    pub fn from_meta(meta: &BcMeta, body_len: u32, bin_offset: Option<u32>) -> BcHeader {
+        BcHeader {
+            bin_offset,
+            body_len,
+            msg_id: meta.msg_id,
+            enc_offset: meta.client_idx,
+            class: meta.class,
+            encrypted: meta.encrypted,
+        }
     }
 }
 

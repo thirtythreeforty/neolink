@@ -52,7 +52,7 @@ pub struct LoginUser {
     pub user_ver: u32,
 }
 
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Debug, YaDeserialize, YaSerialize)]
 pub struct LoginNet {
     #[yaserde(attribute)]
     pub version: String,
@@ -60,6 +60,20 @@ pub struct LoginNet {
     pub type_: String,
     #[yaserde(rename="udpPort")]
     pub udp_port: u16,
+}
+
+impl Default for LoginNet {
+    fn default() -> Self {
+        LoginNet {
+            version: xml_ver(),
+            type_: "LAN".to_string(),
+            udp_port: 0,
+        }
+    }
+}
+
+pub fn xml_ver() -> String {
+    "1.1".to_string()
 }
 
 #[test]
@@ -141,7 +155,7 @@ fn test_login_ser() {
     };
 
     let b2 = Body::try_parse(sample.as_bytes()).unwrap();
-    let b3 = Body::try_parse(yaserde::ser::to_string(&b).unwrap().as_bytes()).unwrap();
+    let b3 = Body::try_parse(b.serialize(vec!()).unwrap().as_slice()).unwrap();
 
     assert_eq!(b, b2);
     assert_eq!(b, b3);
