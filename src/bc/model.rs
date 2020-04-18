@@ -5,21 +5,25 @@ pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 const MSG_ID_LOGIN: u32 = 1;
 const MSG_ID_VIDEO: u32 = 3;
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Bc {
     pub(super) header: BcHeader,
     pub body: BcBody,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum BcBody {
     LegacyMsg(LegacyMsg),
     ModernMsg(ModernMsg),
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct ModernMsg {
     pub xml: Option<Body>,
     pub binary: Option<Vec<u8>>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum LegacyMsg {
     LoginMsg {
         username: String,
@@ -27,6 +31,7 @@ pub enum LegacyMsg {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub(super) struct BcHeader {
     pub(super) body_len: u32,
     pub(super) msg_id: u32,
@@ -56,3 +61,7 @@ impl BcHeader {
     }
 }
 
+pub(super) fn has_bin_offset(class: u16) -> bool {
+    // See BcHeader::is_modern() for a description of which packets have the bin offset
+    class == 0x6414 || class == 0x0000
+}

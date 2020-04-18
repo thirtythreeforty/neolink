@@ -1,5 +1,6 @@
 mod de;
 mod model;
+mod ser;
 mod xml;
 mod xml_crypto;
 

@@ -13,3 +13,13 @@ fn test_xml_crypto() {
     let decrypted = crypt(0, &sample[..]);
     assert_eq!(decrypted, &should_be[..]);
 }
+
+#[test]
+fn test_xml_crypto_roundtrip() {
+    let zeros: [u8; 256] = [0; 256];
+
+    let decrypted = crypt(0, &zeros[..]);
+    let encrypted = crypt(0, &decrypted[..]);
+    assert_eq!(encrypted, &zeros[..]);
+}
+

@@ -4,6 +4,13 @@ use super::model::*;
 use super::xml::Body;
 use super::xml_crypto;
 
+impl Bc {
+    pub fn deserialize(buf: &[u8]) -> Result<Bc, ()> {
+        // Throw away the nom-specific return types
+        bc_msg(buf).map(|(_, bc)| bc).map_err(|_| ()) // TODO better error
+    }
+}
+
 fn bc_msg(buf: &[u8]) -> IResult<&[u8], Bc> {
     let (buf, header) = bc_header(buf)?;
     let (buf, msg) = bc_modern_msg(&header, buf)?;
@@ -61,9 +68,7 @@ fn bc_header<'a, E: ParseError<&'a [u8]>>(buf: &'a [u8]) -> IResult<&[u8], BcHea
     // A copy of the source code for the camera would be very useful.
     let encrypted = response_code != 0;
 
-    // See BcHeader::is_modern() for a description of which packets have the bin offset
-    let has_bin_offset = class == 0x6414 || class == 0x0000;
-    let (buf, bin_offset) = cond(has_bin_offset, le_u32)(buf)?;
+    let (buf, bin_offset) = cond(has_bin_offset(class), le_u32)(buf)?;
 
     Ok((buf, BcHeader {
         msg_id,
