@@ -1,6 +1,7 @@
 use err_derive::Error;
 use log::*;
 use md5;
+use std::io::Write;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs, TcpStream};
 use super::bc::{model::*, xml::*};
 
@@ -184,6 +185,50 @@ impl BcCamera {
         }
         self.logged_in = false;
         Ok(())
+    }
+
+    pub fn start_video(&mut self, data_out: &mut dyn Write) -> Result<()> {
+        let connection = self.connection.as_ref().expect("Must be connected to start video");
+
+        let start_video = Bc {
+            meta: BcMeta {
+                msg_id: MSG_ID_VIDEO,
+                client_idx: 0, // TODO
+                encrypted: true,
+                class: 0x6414, // IDK why
+            },
+            body: BcBody::ModernMsg(ModernMsg {
+                xml: Some(BcXml {
+                    preview: Some(Preview {
+                        version: xml_ver(),
+                        channel_id: 0,
+                        handle: 0,
+                        stream_type: "mainStream".to_string(),
+                    }),
+                    ..Default::default()
+                }),
+                binary: None,
+            }),
+        };
+
+        start_video.serialize(connection)?;
+
+        loop {
+            let msg = Bc::deserialize(&mut self.bc_context, connection)?;
+
+            match msg {
+                Bc { meta: BcMeta { msg_id: MSG_ID_VIDEO, .. },
+                     body: BcBody::ModernMsg(ModernMsg { binary: Some(binary), .. })
+                } => {
+                    debug!("Got {} bytes of video data", binary.len());
+                    data_out.write_all(binary.as_slice())?;
+                }
+                _ => {
+                    info!("Ignoring uninteresting message ID {}", msg.meta.msg_id);
+                    debug!("Contents: {:?}", msg);
+                }
+            }
+        }
     }
 }
 

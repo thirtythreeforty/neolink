@@ -35,6 +35,8 @@ pub struct BcXml {
     pub login_net: Option<LoginNet>,
     #[yaserde(rename="DeviceInfo")]
     pub device_info: Option<DeviceInfo>,
+    #[yaserde(rename="Preview")]
+    pub preview: Option<Preview>,
 }
 
 impl AllTopXmls {
@@ -103,6 +105,18 @@ pub struct Resolution {
     pub name: String,
     pub width: u32,
     pub height: u32,
+}
+
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct Preview {
+    #[yaserde(attribute)]
+    pub version: String,
+
+    #[yaserde(rename="channelId")]
+    pub channel_id: u32,
+    pub handle: u32,
+    #[yaserde(rename="streamType")]
+    pub stream_type: String,
 }
 
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
