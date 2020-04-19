@@ -30,12 +30,32 @@ fn bc_body<'a, 'b>(header: &'a BcHeader, buf: &'b [u8])
         let (buf, body) = bc_modern_msg(header, buf)?;
         Ok((buf, BcBody::ModernMsg(body)))
     } else {
-        unimplemented!()
+        let (buf, body) = match header.msg_id {
+            MSG_ID_LOGIN => bc_legacy_login_msg(buf)?,
+            _ => (buf, LegacyMsg::UnknownMsg),
+        };
+        Ok((buf, BcBody::LegacyMsg(body)))
     }
 }
 
-fn bc_modern_msg<'a, 'b, E: ParseError<&'b [u8]>>(header: &'a BcHeader, buf: &'b [u8])
-    -> IResult<&'b [u8], ModernMsg, E>
+fn hex32<'a>() -> impl Fn(&'a [u8]) -> IResult<&'a [u8], String> {
+    map_res(take(32usize), |slice: &'a [u8]| String::from_utf8(slice.to_vec()))
+}
+
+fn bc_legacy_login_msg<'a, 'b>(buf: &'b [u8])
+    -> IResult<&'b [u8], LegacyMsg>
+{
+    let (buf, username) = hex32()(buf)?;
+    let (buf, password) = hex32()(buf)?;
+
+    Ok((buf, LegacyMsg::LoginMsg {
+        username,
+        password,
+    }))
+}
+
+fn bc_modern_msg<'a, 'b>(header: &'a BcHeader, buf: &'b [u8])
+    -> IResult<&'b [u8], ModernMsg>
 {
     let end_of_xml = header.bin_offset.unwrap_or(buf.len() as u32);
 
@@ -107,6 +127,28 @@ fn test_bc_modern_login() {
     match body {
         BcBody::ModernMsg(ModernMsg{ xml: Some(ref xml), binary: None }) => {
             assert_eq!(xml.encryption.as_ref().unwrap().nonce, "9E6D1FCB9E69846D")
+        }
+        _ => assert!(false),
+    }
+}
+
+#[test]
+fn test_bc_legacy_login() {
+    let sample = include_bytes!("samples/model_sample_legacy_login.bin");
+
+    let (buf, header) = bc_header(&sample[..]).unwrap();
+    let (_, body) = bc_body(&header, buf).unwrap();
+    assert_eq!(header.msg_id, 1);
+    assert_eq!(header.body_len, 1836);
+    assert_eq!(header.enc_offset, 0x1000000);
+    assert_eq!(header.encrypted, true);
+    assert_eq!(header.class, 0x6514);
+    match body {
+        BcBody::LegacyMsg(LegacyMsg::LoginMsg {
+            username, password
+        }) => {
+            assert_eq!(username, "21232F297A57A5A743894A0E4A801FC\0");
+            assert_eq!(password, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
         }
         _ => assert!(false),
     }

@@ -24,9 +24,10 @@ impl Bc {
                     Some(if modern.binary.is_some() { xml_len as u32 } else { 0 })
                 } else { None };
             }
-            BcBody::LegacyMsg(..) => {
-                //bin_offset = None;
-                unimplemented!()
+            BcBody::LegacyMsg(ref legacy) => {
+                let (buf, _) = gen(bc_legacy(legacy), vec!())?;
+                body_buf = buf;
+                bin_offset = None;
             }
         }
 
@@ -64,10 +65,34 @@ fn bc_header<W: Write>(header: &BcHeader) -> impl SerializeFn<W> {
         le_u32(header.enc_offset),
         le_u8(header.encrypted as u8),
         //le_u8(header.response_code),
-        le_u8(0), // skipped byte
+        le_u8(0xdc), // skipped byte
         le_u16(header.class),
         opt(header.bin_offset, le_u32),
     ))
+}
+
+fn bc_legacy<'a, W: Write>(legacy: &'a LegacyMsg) -> impl SerializeFn<W> + 'a {
+    move |out: WriteContext<W>| {
+        use LegacyMsg::*;
+        match legacy {
+            LoginMsg { username, password } => {
+                if username.len() != 32 || password.len() != 32 {
+                    // Error handling could be improved here...
+                    return Err(GenError::CustomError(0));
+                }
+                tuple((
+                    slice(username),
+                    slice(password),
+                    // Login messages are 1836 bytes total, username/password
+                    // take up 32 chars each, 1772 zeros follow
+                    slice(&[0u8; 1772][..])
+                ))(out)
+            }
+            UnknownMsg => {
+                panic!("Cannot serialize an unknown message!");
+            }
+        }
+    }
 }
 
 /// Applies the supplied serializer with the Option's interior data if present
@@ -102,7 +127,19 @@ fn do_nothing<W>() -> impl SerializeFn<W> {
 
 
 #[test]
-fn test_login_roundtrip() {
+fn test_legacy_login_roundtrip() {
+    // I don't want to make up a sample message; just load it
+    let sample = include_bytes!("samples/model_sample_legacy_login.bin");
+    let msg = Bc::deserialize(&sample[..]).unwrap();
+
+    let ser_buf = msg.serialize(vec!()).unwrap();
+    let msg2 = Bc::deserialize(ser_buf.as_ref()).unwrap();
+    assert_eq!(msg, msg2);
+    assert_eq!(&sample[..], ser_buf.as_slice());
+}
+
+#[test]
+fn test_modern_login_roundtrip() {
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_modern_login.bin");
 
