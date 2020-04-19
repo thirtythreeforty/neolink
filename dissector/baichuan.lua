@@ -59,6 +59,13 @@ function bc_protocol.dissector(buffer, pinfo, tree)
   length = buffer:len()
   if length == 0 then return end
 
+  if buffer:len() < 20 then
+    -- Need more bytes but we don't have a header to learn how many bytes
+    pinfo.desegment_len = DESEGMENT_ONE_MORE_SEGMENT
+    pinfo.desegment_offset = 0
+    return
+  end
+
   pinfo.cols.protocol = bc_protocol.name
 
   local magic = buffer(0, 4):le_uint()
@@ -67,11 +74,6 @@ function bc_protocol.dissector(buffer, pinfo, tree)
     -- from https://wiki.wireshark.org/Lua/Dissectors#TCP_reassembly
     -- The camera always seems to emit a new TCP packet for a new message
     return 0
-  end
-
-  if buffer:len() < 20 then
-    -- Need more bytes but we don't have a header to learn how many bytes
-    return DESEGMENT_ONE_MORE_SEGMENT
   end
 
   local msg_type = buffer(4, 4):le_uint()
