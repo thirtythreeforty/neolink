@@ -5,15 +5,27 @@ use std::io::{Read, Write};
 // YaSerde is currently naming the traits and the derive macros identically
 use yaserde_derive::{YaDeserialize, YaSerialize};
 use yaserde::{ser::Config, YaDeserialize, YaSerialize};
-// YaSerde currently needs this imported
-#[allow(pub_use_of_private_extern_crate)]
-use yaserde::log;
 
 #[cfg(test)]
 use indoc::indoc;
 
+#[derive(PartialEq, Eq, Debug, YaDeserialize)]
+#[yaserde(flatten)]
+pub(super) enum AllTopXmls {
+    #[yaserde(rename="body")]
+    BcXml(BcXml),
+    Extension(Extension),
+}
+
+// Required for YaDeserialize
+impl Default for AllTopXmls {
+    fn default() -> Self {
+        AllTopXmls::BcXml(Default::default())
+    }
+}
+
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
-#[yaserde(rename="body")]
+#[yaserde(root="body")]
 pub struct BcXml {
     #[yaserde(rename="Encryption")]
     pub encryption: Option<Encryption>,
@@ -23,6 +35,12 @@ pub struct BcXml {
     pub login_net: Option<LoginNet>,
     #[yaserde(rename="DeviceInfo")]
     pub device_info: Option<DeviceInfo>,
+}
+
+impl AllTopXmls {
+    pub fn try_parse(s: impl Read) -> Result<Self, String> {
+        yaserde::de::from_reader(s)
+    }
 }
 
 impl BcXml {
@@ -87,6 +105,11 @@ pub struct Resolution {
     pub height: u32,
 }
 
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct Extension {
+    #[yaserde(rename="binaryData")]
+    pub binary_data: u32,
+}
 
 pub fn xml_ver() -> String {
     "1.1".to_string()
@@ -103,11 +126,17 @@ fn test_encryption_deser() {
         </Encryption>
         </body>"#);
     let b: BcXml = yaserde::de::from_str(sample).unwrap();
-    let enc = b.encryption.unwrap();
+    let enc = b.encryption.as_ref().unwrap();
 
     assert_eq!(enc.version, "1.1");
     assert_eq!(enc.nonce, "9E6D1FCB9E69846D");
     assert_eq!(enc.type_, "md5");
+
+    let t = AllTopXmls::try_parse(sample.as_bytes()).unwrap();
+    match t {
+        AllTopXmls::BcXml(top_b) if top_b == b => assert!(true),
+        _ => assert!(false)
+    }
 }
 
 #[test]
@@ -204,7 +233,6 @@ fn test_deviceinfo_partial_deser() {
 
     // Needs to ignore all the other crap that we don't care about
     let b = BcXml::try_parse(sample.as_bytes()).unwrap();
-    println!("{:?}", b);
     match b {
         BcXml {
             device_info: Some(DeviceInfo {
@@ -215,6 +243,23 @@ fn test_deviceinfo_partial_deser() {
                 }, ..
             }), ..
         } => assert!(true),
+        _ => assert!(false)
+    }
+}
+
+#[test]
+fn test_binary_deser() {
+    let _ = env_logger::builder().is_test(true).try_init();
+
+    let sample = indoc!(r#"
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <Extension version="1.1">
+        <binaryData>1</binaryData>
+        </Extension>
+    "#);
+    let b = AllTopXmls::try_parse(sample.as_bytes()).unwrap();
+    match b {
+        AllTopXmls::Extension(Extension { binary_data: 1 }) => assert!(true),
         _ => assert!(false)
     }
 }

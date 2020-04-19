@@ -133,24 +133,28 @@ fn do_nothing<W>() -> impl SerializeFn<W> {
 
 #[test]
 fn test_legacy_login_roundtrip() {
+    let mut context = BcContext::new();
+
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_legacy_login.bin");
-    let msg = Bc::deserialize::<&[u8]>(&sample[..]).unwrap();
+    let msg = Bc::deserialize::<&[u8]>(&mut context, &sample[..]).unwrap();
 
     let ser_buf = msg.serialize(vec!()).unwrap();
-    let msg2 = Bc::deserialize::<&[u8]>(ser_buf.as_ref()).unwrap();
+    let msg2 = Bc::deserialize::<&[u8]>(&mut context, ser_buf.as_ref()).unwrap();
     assert_eq!(msg, msg2);
     assert_eq!(&sample[..], ser_buf.as_slice());
 }
 
 #[test]
 fn test_modern_login_roundtrip() {
+    let mut context = BcContext::new();
+
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_modern_login.bin");
 
-    let msg = Bc::deserialize::<&[u8]>(&sample[..]).unwrap();
+    let msg = Bc::deserialize::<&[u8]>(&mut context, &sample[..]).unwrap();
 
     let ser_buf = msg.serialize(vec!()).unwrap();
-    let msg2 = Bc::deserialize::<&[u8]>(ser_buf.as_ref()).unwrap();
+    let msg2 = Bc::deserialize::<&[u8]>(&mut context, ser_buf.as_ref()).unwrap();
     assert_eq!(msg, msg2);
 }

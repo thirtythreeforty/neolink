@@ -9,6 +9,7 @@ use Md5Trunc::*;
 pub struct BcCamera {
     address: SocketAddr,
 
+    bc_context: BcContext,
     connection: Option<TcpStream>,
     logged_in: bool,
 }
@@ -54,6 +55,7 @@ impl BcCamera {
             address,
             connection: None,
             logged_in: false,
+            bc_context: BcContext::new(),
         })
     }
 
@@ -99,7 +101,7 @@ impl BcCamera {
 
         legacy_login.serialize(connection)?;
 
-        let legacy_reply = Bc::deserialize(connection)?;
+        let legacy_reply = Bc::deserialize(&mut self.bc_context, connection)?;
         let nonce;
         match legacy_reply.body {
             BcBody::ModernMsg(ModernMsg {
@@ -151,7 +153,7 @@ impl BcCamera {
 
         modern_login.serialize(connection)?;
 
-        let modern_reply = Bc::deserialize(connection)?;
+        let modern_reply = Bc::deserialize(&mut self.bc_context, connection)?;
         let device_info;
         match modern_reply.body {
             BcBody::ModernMsg(ModernMsg {

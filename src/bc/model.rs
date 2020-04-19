@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use super::xml::BcXml;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
@@ -60,6 +61,19 @@ pub struct BcMeta {
 pub(super) struct BcSendInfo {
     pub body_len: u32,
     pub bin_offset: Option<u32>,
+}
+
+#[derive(Debug)]
+pub struct BcContext {
+    pub(super) in_bin_mode: HashSet<u32>,
+}
+
+impl BcContext {
+    pub fn new() -> BcContext {
+        BcContext {
+            in_bin_mode: HashSet::new()
+        }
+    }
 }
 
 impl BcHeader {
