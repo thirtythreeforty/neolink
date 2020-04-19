@@ -5,6 +5,8 @@ pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 pub const MSG_ID_LOGIN: u32 = 1;
 pub const MSG_ID_VIDEO: u32 = 3;
 
+pub const EMPTY_LEGACY_PASSWORD: &str = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Bc {
     pub meta: BcMeta,

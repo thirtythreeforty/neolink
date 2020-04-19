@@ -130,7 +130,7 @@ function bc_protocol.dissector(buffer, pinfo, tree)
     end
   else
     local body_tvb = buffer(header_len, bin_offset):tvb()
-    body:add(body_tvb(), "Encrypted XML")
+    body:add(body_tvb(), "XML Payload")
 
     if encrypted then
       local ba = buffer(header_len, bin_offset):bytes()

@@ -58,14 +58,19 @@ fn bc_xml<W: Write>(enc_offset: u32, xml: &Body) -> impl SerializeFn<W>
 }
 
 fn bc_header<W: Write>(header: &BcHeader) -> impl SerializeFn<W> {
+    // TODO this is actually a u16 "response code" in modern messages
+    let (signaled_encryption, spare) = if header.class == 0x0000 {
+        (0x00, 0x00)
+    } else {
+        (header.encrypted as u8, 0xdc)
+    };
     tuple((
         le_u32(MAGIC_HEADER),
         le_u32(header.msg_id),
         le_u32(header.body_len),
         le_u32(header.enc_offset),
-        le_u8(header.encrypted as u8),
-        //le_u8(header.response_code),
-        le_u8(0xdc), // skipped byte
+        le_u8(signaled_encryption),
+        le_u8(spare), // skipped byte
         le_u16(header.class),
         opt(header.bin_offset, le_u32),
     ))
@@ -130,10 +135,10 @@ fn do_nothing<W>() -> impl SerializeFn<W> {
 fn test_legacy_login_roundtrip() {
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_legacy_login.bin");
-    let msg = Bc::deserialize(&sample[..]).unwrap();
+    let msg = Bc::deserialize::<&[u8]>(&sample[..]).unwrap();
 
     let ser_buf = msg.serialize(vec!()).unwrap();
-    let msg2 = Bc::deserialize(ser_buf.as_ref()).unwrap();
+    let msg2 = Bc::deserialize::<&[u8]>(ser_buf.as_ref()).unwrap();
     assert_eq!(msg, msg2);
     assert_eq!(&sample[..], ser_buf.as_slice());
 }
@@ -143,9 +148,9 @@ fn test_modern_login_roundtrip() {
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_modern_login.bin");
 
-    let msg = Bc::deserialize(&sample[..]).unwrap();
+    let msg = Bc::deserialize::<&[u8]>(&sample[..]).unwrap();
 
     let ser_buf = msg.serialize(vec!()).unwrap();
-    let msg2 = Bc::deserialize(ser_buf.as_ref()).unwrap();
+    let msg2 = Bc::deserialize::<&[u8]>(ser_buf.as_ref()).unwrap();
     assert_eq!(msg, msg2);
 }

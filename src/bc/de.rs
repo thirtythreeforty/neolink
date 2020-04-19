@@ -1,13 +1,58 @@
-use nom::{IResult, error::ParseError};
-use nom::{bytes::complete::take, number::complete::*, combinator::*, sequence::*};
+use err_derive::Error;
+use nom::IResult;
+use nom::{bytes::streaming::take, number::streaming::*, combinator::*, sequence::*};
+use std::io::Read;
 use super::model::*;
 use super::xml::Body;
 use super::xml_crypto;
 
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(display="Parsing error")]
+    NomError(&'static str),
+    #[error(display="I/O error")]
+    IoError(#[error(source)] std::io::Error),
+}
+
+type NomErrorTuple<'a> = (&'a [u8], nom::error::ErrorKind);
+
+impl<'a> From<nom::Err<NomErrorTuple<'a>>> for Error {
+    fn from(k: nom::Err<NomErrorTuple<'a>>) -> Self {
+        let reason = match k {
+            nom::Err::Error(_) => "Nom Error",
+            nom::Err::Failure(_) => "Nom Failure",
+            _ => "Unknown Nom error",
+        };
+        Error::NomError(reason)
+    }
+}
+
 impl Bc {
-    pub fn deserialize(buf: &[u8]) -> Result<Bc, ()> {
+    pub fn deserialize<R: Read>(r: R) -> Result<Bc, Error> {
         // Throw away the nom-specific return types
-        bc_msg(buf).map(|(_, bc)| bc).map_err(|_| ()) // TODO better error
+        read_from_reader(bc_msg, r)
+    }
+}
+
+fn read_from_reader<P, O, E, R>(parser: P, mut rdr: R) -> Result<O, E>
+    where R: Read,
+          E: for<'a> From<nom::Err<NomErrorTuple<'a>>> + From<std::io::Error>,
+          P: Fn(&[u8]) -> nom::IResult<&[u8], O>,
+{
+    let mut input: Vec<u8> = Vec::new();
+    loop {
+        let to_read = match parser(&input) {
+            Ok((_, parsed)) => return Ok(parsed),
+            Err(nom::Err::Incomplete(needed)) => {
+                match needed {
+                    nom::Needed::Unknown => 1,     // read one byte
+                    nom::Needed::Size(len) => len,
+                }
+            },
+            Err(e) => return Err(e.into()),
+        };
+
+        (&mut rdr).take(to_read as u64).read_to_end(&mut input)?;
     }
 }
 
@@ -57,7 +102,7 @@ fn bc_legacy_login_msg<'a, 'b>(buf: &'b [u8])
 fn bc_modern_msg<'a, 'b>(header: &'a BcHeader, buf: &'b [u8])
     -> IResult<&'b [u8], ModernMsg>
 {
-    let end_of_xml = header.bin_offset.unwrap_or(buf.len() as u32);
+    let end_of_xml = header.bin_offset.unwrap_or(header.body_len);
 
     let (mut buf, body_buf) = take(end_of_xml)(buf)?;
 
@@ -67,19 +112,22 @@ fn bc_modern_msg<'a, 'b>(header: &'a BcHeader, buf: &'b [u8])
         &decrypted
     };
 
-    // Apply the function, but throw away the reference to decrypted in the Ok and Err case
-    // This error-error-error thing is the same idiom Nom uses internally.
-    use nom::{Err, error::{make_error, ErrorKind}};
-    let body = Body::try_parse(processed_body_buf)
-        .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
-
     // Extract remainder of message as binary, if it exists
     let mut binary = None;
     if let Some(bin_offset) = header.bin_offset {
-        let (buf_after, payload) = map(take(header.body_len - bin_offset), |x: &[u8]| x.to_vec())(buf)?;
+        let (buf_after, payload) = map(take(header.body_len - bin_offset),
+                                       |x: &[u8]| x.to_vec())(buf)?;
         binary = Some(payload);
         buf = buf_after;
     }
+
+    // Now we'll take the buffer that Nom gave a ref to and parse it.  Do this last, so we don't
+    // parse over and over if we get Incompletes on the binary part.  Apply the XML parse function,
+    // but throw away the reference to decrypted in the Ok and Err case This error-error-error
+    // thing is the same idiom Nom uses internally.
+    use nom::{Err, error::{make_error, ErrorKind}};
+    let body = Body::try_parse(processed_body_buf)
+        .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
 
     let msg = ModernMsg {
         xml: Some(body),
@@ -148,7 +196,7 @@ fn test_bc_legacy_login() {
             username, password
         }) => {
             assert_eq!(username, "21232F297A57A5A743894A0E4A801FC\0");
-            assert_eq!(password, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+            assert_eq!(password, EMPTY_LEGACY_PASSWORD);
         }
         _ => assert!(false),
     }
