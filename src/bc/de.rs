@@ -3,7 +3,7 @@ use nom::IResult;
 use nom::{bytes::streaming::take, number::streaming::*, combinator::*, sequence::*};
 use std::io::Read;
 use super::model::*;
-use super::xml::Body;
+use super::xml::BcXml;
 use super::xml_crypto;
 
 #[derive(Debug, Error)]
@@ -132,7 +132,7 @@ fn bc_modern_msg<'a, 'b>(header: &'a BcHeader, buf: &'b [u8])
     // thing is the same idiom Nom uses internally.
     use nom::{Err, error::{make_error, ErrorKind}};
     let xml = if end_of_xml > 0 {
-        let parsed = Body::try_parse(processed_body_buf)
+        let parsed = BcXml::try_parse(processed_body_buf)
             .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
         Some(parsed)
     } else { None };

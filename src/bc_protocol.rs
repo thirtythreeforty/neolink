@@ -103,7 +103,7 @@ impl BcCamera {
         let nonce;
         match legacy_reply.body {
             BcBody::ModernMsg(ModernMsg {
-                xml: Some(Body { encryption: Some(encryption), ..  }), ..
+                xml: Some(BcXml { encryption: Some(encryption), ..  }), ..
             }) => {
                 nonce = encryption.nonce;
             }
@@ -135,7 +135,7 @@ impl BcCamera {
                 class: 0x6414,
             },
             body: BcBody::ModernMsg(ModernMsg {
-                xml: Some(Body {
+                xml: Some(BcXml {
                     login_user: Some(LoginUser {
                         version: xml_ver(),
                         user_name: md5_username,
@@ -155,7 +155,7 @@ impl BcCamera {
         let device_info;
         match modern_reply.body {
             BcBody::ModernMsg(ModernMsg {
-                xml: Some(Body { device_info: Some(info), ..  }), ..
+                xml: Some(BcXml { device_info: Some(info), ..  }), ..
             }) => {
                 // Login succeeded!
                 self.logged_in = true;

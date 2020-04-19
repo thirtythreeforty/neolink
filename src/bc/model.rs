@@ -1,4 +1,4 @@
-use super::xml::Body;
+use super::xml::BcXml;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -21,7 +21,7 @@ pub enum BcBody {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ModernMsg {
-    pub xml: Option<Body>,
+    pub xml: Option<BcXml>,
     pub binary: Option<Vec<u8>>,
 }
 

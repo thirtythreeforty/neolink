@@ -4,7 +4,7 @@ use cookie_factory::sequence::tuple;
 use cookie_factory::{GenError, SerializeFn, WriteContext};
 use std::io::Write;
 use super::model::*;
-use super::xml::Body;
+use super::xml::BcXml;
 use super::xml_crypto;
 
 pub type Error = GenError;
@@ -50,7 +50,7 @@ impl Bc {
     }
 }
 
-fn bc_xml<W: Write>(enc_offset: u32, xml: &Body) -> impl SerializeFn<W>
+fn bc_xml<W: Write>(enc_offset: u32, xml: &BcXml) -> impl SerializeFn<W>
 {
     let xml_bytes = xml.serialize(vec!()).unwrap();
     let enc_bytes = xml_crypto::crypt(enc_offset, &xml_bytes);

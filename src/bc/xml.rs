@@ -14,7 +14,7 @@ use indoc::indoc;
 
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 #[yaserde(rename="body")]
-pub struct Body {
+pub struct BcXml {
     #[yaserde(rename="Encryption")]
     pub encryption: Option<Encryption>,
     #[yaserde(rename="LoginUser")]
@@ -25,7 +25,7 @@ pub struct Body {
     pub device_info: Option<DeviceInfo>,
 }
 
-impl Body {
+impl BcXml {
     pub fn try_parse(s: impl Read) -> Result<Self, String> {
         yaserde::de::from_reader(s)
     }
@@ -102,7 +102,7 @@ fn test_encryption_deser() {
         <nonce>9E6D1FCB9E69846D</nonce>
         </Encryption>
         </body>"#);
-    let b: Body = yaserde::de::from_str(sample).unwrap();
+    let b: BcXml = yaserde::de::from_str(sample).unwrap();
     let enc = b.encryption.unwrap();
 
     assert_eq!(enc.version, "1.1");
@@ -125,7 +125,7 @@ fn test_login_deser() {
         <udpPort>0</udpPort>
         </LoginNet>
         </body>"#);
-    let b: Body = yaserde::de::from_str(sample).unwrap();
+    let b: BcXml = yaserde::de::from_str(sample).unwrap();
     let login_user = b.login_user.unwrap();
     let login_net = b.login_net.unwrap();
 
@@ -155,7 +155,7 @@ fn test_login_ser() {
         </LoginNet>
         </body>"#);
 
-    let b = Body {
+    let b = BcXml {
         login_user: Some(LoginUser {
             version: "1.1".to_string(),
             user_name: "9F07915E819A076E2E14169830769D6".to_string(),
@@ -167,11 +167,11 @@ fn test_login_ser() {
             type_: "LAN".to_string(),
             udp_port: 0,
         }),
-        ..Body::default()
+        ..BcXml::default()
     };
 
-    let b2 = Body::try_parse(sample.as_bytes()).unwrap();
-    let b3 = Body::try_parse(b.serialize(vec!()).unwrap().as_slice()).unwrap();
+    let b2 = BcXml::try_parse(sample.as_bytes()).unwrap();
+    let b3 = BcXml::try_parse(b.serialize(vec!()).unwrap().as_slice()).unwrap();
 
     assert_eq!(b, b2);
     assert_eq!(b, b3);
@@ -203,10 +203,10 @@ fn test_deviceinfo_partial_deser() {
         </body>"#);
 
     // Needs to ignore all the other crap that we don't care about
-    let b = Body::try_parse(sample.as_bytes()).unwrap();
+    let b = BcXml::try_parse(sample.as_bytes()).unwrap();
     println!("{:?}", b);
     match b {
-        Body {
+        BcXml {
             device_info: Some(DeviceInfo {
                 resolution: Resolution {
                     width: 3840,
