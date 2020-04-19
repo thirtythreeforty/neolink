@@ -115,10 +115,12 @@ fn bc_modern_msg<'a, 'b>(header: &'a BcHeader, buf: &'b [u8])
     // Extract remainder of message as binary, if it exists
     let mut binary = None;
     if let Some(bin_offset) = header.bin_offset {
-        let (buf_after, payload) = map(take(header.body_len - bin_offset),
-                                       |x: &[u8]| x.to_vec())(buf)?;
-        binary = Some(payload);
-        buf = buf_after;
+        if bin_offset > 0 {
+            let (buf_after, payload) = map(take(header.body_len - bin_offset),
+                                           |x: &[u8]| x.to_vec())(buf)?;
+            binary = Some(payload);
+            buf = buf_after;
+        }
     }
 
     // Now we'll take the buffer that Nom gave a ref to and parse it.  Do this last, so we don't
@@ -126,13 +128,13 @@ fn bc_modern_msg<'a, 'b>(header: &'a BcHeader, buf: &'b [u8])
     // but throw away the reference to decrypted in the Ok and Err case This error-error-error
     // thing is the same idiom Nom uses internally.
     use nom::{Err, error::{make_error, ErrorKind}};
-    let body = Body::try_parse(processed_body_buf)
-        .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
+    let xml = if end_of_xml > 0 {
+        let parsed = Body::try_parse(processed_body_buf)
+            .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
+        Some(parsed)
+    } else { None };
 
-    let msg = ModernMsg {
-        xml: Some(body),
-        binary,
-    };
+    let msg = ModernMsg { xml, binary, };
 
     Ok((buf, msg))
 }
@@ -197,6 +199,26 @@ fn test_bc_legacy_login() {
         }) => {
             assert_eq!(username, "21232F297A57A5A743894A0E4A801FC\0");
             assert_eq!(password, EMPTY_LEGACY_PASSWORD);
+        }
+        _ => assert!(false),
+    }
+}
+
+#[test]
+fn test_bc_modern_login_failed() {
+    let sample = include_bytes!("samples/modern_login_failed.bin");
+
+    let (buf, header) = bc_header(&sample[..]).unwrap();
+    let (_, body) = bc_body(&header, buf).unwrap();
+    assert_eq!(header.msg_id, 1);
+    assert_eq!(header.body_len, 0);
+    assert_eq!(header.enc_offset, 0x0);
+    assert_eq!(header.encrypted, true);
+    assert_eq!(header.class, 0x0000);
+    println!("{:?}", body);
+    match body {
+        BcBody::ModernMsg(ModernMsg{ xml: None, binary: None }) => {
+            assert!(true);
         }
         _ => assert!(false),
     }
