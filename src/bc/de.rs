@@ -102,7 +102,10 @@ fn bc_legacy_login_msg<'a, 'b>(buf: &'b [u8])
 fn bc_modern_msg<'a, 'b>(header: &'a BcHeader, buf: &'b [u8])
     -> IResult<&'b [u8], ModernMsg>
 {
-    let end_of_xml = header.bin_offset.unwrap_or(header.body_len);
+    let end_of_xml = match header.bin_offset {
+        Some(off) if off > 0 => off,
+        _ => header.body_len
+    };
 
     let (mut buf, body_buf) = take(end_of_xml)(buf)?;
 
@@ -215,11 +218,30 @@ fn test_bc_modern_login_failed() {
     assert_eq!(header.enc_offset, 0x0);
     assert_eq!(header.encrypted, true);
     assert_eq!(header.class, 0x0000);
-    println!("{:?}", body);
     match body {
         BcBody::ModernMsg(ModernMsg{ xml: None, binary: None }) => {
             assert!(true);
         }
+        _ => assert!(false),
+    }
+}
+
+#[test]
+fn test_bc_modern_login_success() {
+    let sample = include_bytes!("samples/modern_login_success.bin");
+
+    let (buf, header) = bc_header(&sample[..]).unwrap();
+    let (_, body) = bc_body(&header, buf).unwrap();
+    assert_eq!(header.msg_id, 1);
+    assert_eq!(header.body_len, 2949);
+    assert_eq!(header.enc_offset, 0x0);
+    assert_eq!(header.encrypted, true);
+    assert_eq!(header.class, 0x0000);
+
+    // Previously, we were not handling bin_offset == 0 (no bin offset) correctly.
+    // Test that we decoded XML and no binary.
+    match body {
+        BcBody::ModernMsg(ModernMsg{ xml: Some(_), binary: None }) => assert!(true),
         _ => assert!(false),
     }
 }

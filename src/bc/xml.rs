@@ -76,7 +76,6 @@ impl Default for LoginNet {
 
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct DeviceInfo {
-    #[yaserde(rename="Resolution")]
     pub resolution: Resolution,
 }
 
@@ -177,4 +176,45 @@ fn test_login_ser() {
     assert_eq!(b, b2);
     assert_eq!(b, b3);
     assert_eq!(b2, b3);
+}
+
+#[test]
+fn test_deviceinfo_partial_deser() {
+    let sample = indoc!(r#"
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <DeviceInfo version="1.1">
+        <ipChannel>0</ipChannel>
+        <analogChnNum>1</analogChnNum>
+        <resolution>
+        <resolutionName>3840*2160</resolutionName>
+        <width>3840</width>
+        <height>2160</height>
+        </resolution>
+        <language>English</language>
+        <sdCard>0</sdCard>
+        <ptzMode>none</ptzMode>
+        <typeInfo>IPC</typeInfo>
+        <softVer>33554880</softVer>
+        <B485>0</B485>
+        <supportAutoUpdate>0</supportAutoUpdate>
+        <userVer>1</userVer>
+        </DeviceInfo>
+        </body>"#);
+
+    // Needs to ignore all the other crap that we don't care about
+    let b = Body::try_parse(sample.as_bytes()).unwrap();
+    println!("{:?}", b);
+    match b {
+        Body {
+            device_info: Some(DeviceInfo {
+                resolution: Resolution {
+                    width: 3840,
+                    height: 2160,
+                    ..
+                }, ..
+            }), ..
+        } => assert!(true),
+        _ => assert!(false)
+    }
 }
