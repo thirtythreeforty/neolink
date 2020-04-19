@@ -4,6 +4,8 @@ use md5;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs, TcpStream};
 use super::bc::{model::*, xml::*};
 
+use Md5Trunc::*;
+
 pub struct BcCamera {
     address: SocketAddr,
 
@@ -68,8 +70,6 @@ impl BcCamera {
     }
 
     pub fn login(&mut self, username: &str, password: Option<&str>) -> Result<DeviceInfo> {
-        use Md5Trunc::*;
-
         let connection = self.connection.as_ref().expect("Must be connected to log in");
 
         // Login flow is: Send legacy login message, expect back a modern message with Encryption
@@ -185,6 +185,14 @@ impl BcCamera {
     }
 }
 
+/// The Baichuan library has a very peculiar behavior where it always zeros the last byte.  I
+/// believe this is because the MD5'ing of the user/password is a recent retrofit to the code and
+/// the original code wanted to prevent a buffer overflow with strcpy.  The modern and legacy login
+/// messages have a slightly different behavior; the legacy message has a 32-byte buffer and the
+/// modern message uses XML.  The legacy code copies all 32 bytes with memcpy, and the XML value is
+/// copied from a C-style string, so the appended null byte is dropped by the XML library - see the
+/// test below.
+/// Emulate this behavior by providing a configurable mangling of the last character.
 #[derive(PartialEq, Eq)]
 enum Md5Trunc {
     ZeroLast,
@@ -193,13 +201,13 @@ enum Md5Trunc {
 
 fn md5_string(input: &str, trunc: Md5Trunc) -> String {
     let mut md5 = format!("{:X}\0", md5::compute(input));
-    md5.replace_range(31.., if trunc == Md5Trunc::Truncate { "" } else { "\0" });
+    md5.replace_range(31.., if trunc == Truncate { "" } else { "\0" });
     md5
 }
 
 #[test]
 fn test_md5_string() {
-    use Md5Trunc::*;
+    // Note that these literals are only 31 characters long - see explanation above.
     assert_eq!(md5_string("admin", Truncate), "21232F297A57A5A743894A0E4A801FC");
     assert_eq!(md5_string("admin", ZeroLast), "21232F297A57A5A743894A0E4A801FC\0");
 }
