@@ -2,7 +2,7 @@ use err_derive::Error;
 use log::*;
 use md5;
 use std::io::Write;
-use std::net::{IpAddr, SocketAddr, ToSocketAddrs, TcpStream};
+use std::net::{SocketAddr, ToSocketAddrs, TcpStream};
 use super::bc::{model::*, xml::*};
 
 use Md5Trunc::*;
@@ -44,10 +44,6 @@ impl Drop for BcCamera {
 }
 
 impl BcCamera {
-    pub fn new_with_ip(ip_addr: IpAddr) -> Result<Self> {
-        Self::new_with_addr((ip_addr, 9000))
-    }
-
     pub fn new_with_addr<T: ToSocketAddrs>(hostname: T) -> Result<Self> {
         let address = hostname.to_socket_addrs()?.next()
             .ok_or(Error::OtherError("Address resolution failed"))?;
