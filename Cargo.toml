@@ -16,6 +16,7 @@ indoc = "0.3.5"
 md5 = "0.7.0"
 nom = "5.1.1"
 serde = { version = "1.0", features = ["derive"] }
+structopt = "0.3"
 toml = "0.5"
 yaserde = { git = "https://github.com/media-io/yaserde.git" }
 yaserde_derive = { git = "https://github.com/media-io/yaserde.git" }

@@ -1,14 +1,16 @@
 mod bc;
 mod bc_protocol;
 mod config;
+mod cmdline;
 
 use bc_protocol::BcCamera;
 use config::{Config, CameraConfig};
+use cmdline::Opt;
 use crossbeam_utils::thread;
 use err_derive::Error;
-use std::env::args;
 use std::fs;
 use std::net::TcpListener;
+use structopt::StructOpt;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -21,8 +23,8 @@ pub enum Error {
 }
 
 fn main() -> Result<(), Error> {
-    let config_path = args().nth(1).expect("A config file must be supplied on the command line");
-    let config: Config = toml::from_str(&fs::read_to_string(config_path)?)?;
+    let opt = Opt::from_args();
+    let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 
     thread::scope(|s| {
         for camera in config.cameras {
