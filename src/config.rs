@@ -40,7 +40,7 @@ impl fmt::Display for BindAddr {
 }
 
 impl ToSocketAddrs for BindAddr {
-    type Iter = std::vec::IntoIter<SocketAddr>;
+    type Iter = <(&'static str, u16) as ToSocketAddrs>::Iter;
     fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
         let host = self.host.as_deref().unwrap_or("0.0.0.0");
         (host, self.port).to_socket_addrs()
