@@ -3,14 +3,24 @@ name: CI
 on: [push]
 
 jobs:
-  build:
-    name: Neolink
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-18.04, windows-2019]
+  ubuntu:
+    name: neolink-ubuntu
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
+      - run: sudo apt update
+      - run: sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libgstreamer-plugins-good1.0-dev
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
+
+  win:
+    name: neolink-win2019
+    runs-on: windows-2019
+    steps:
+      - uses: actions/checkout@v2
+      - run: choco install gstreamer
       - uses: actions-rs/cargo@v1
         with:
           command: build
