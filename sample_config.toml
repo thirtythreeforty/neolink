@@ -1,13 +1,13 @@
+bind = "0.0.0.0"
+
 [[cameras]]
 name = "driveway"
 username = "admin"
 password = "12345678"
 address = "192.168.1.187:9000"
-serve = { port = 9900 }
 
 [[cameras]]
 name = "storage shed"
 username = "admin"
 password = "987654321"
 address = "192.168.1.245:9000"
-serve = { port = 9901 }

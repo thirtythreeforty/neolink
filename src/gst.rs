@@ -1,10 +1,14 @@
+//! This module provides an "RtspServer" abstraction that allows consumers of its API to feed it
+//! data using an ordinary std::io::Write interface.
+pub use self::maybe_app_src::MaybeAppSrc;
+
 use gstreamer::Bin;
 use gstreamer::prelude::Cast;
 use gstreamer_app::AppSrc;
+//use gstreamer_rtsp::RTSPLowerTrans;
 use gstreamer_rtsp_server::{RTSPServer as GstRTSPServer, RTSPAuth, RTSPMediaFactory};
 use gstreamer_rtsp_server::prelude::*;
 use log::debug;
-use self::maybe_app_src::MaybeAppSrc;
 use std::io;
 use std::io::Write;
 
@@ -16,27 +20,31 @@ pub struct RtspServer {
 
 impl RtspServer {
     pub fn new() -> RtspServer {
+        gstreamer::init().expect("Gstreamer should not explode");
         RtspServer {
             server: GstRTSPServer::new(),
         }
     }
 
-    pub fn add_stream(&mut self, name: &str) -> Result<impl Write> {
+    pub fn add_stream(&self, name: &str) -> Result<MaybeAppSrc> {
         let mounts = self.server.get_mount_points().expect("The server should have mountpoints");
 
         let factory = RTSPMediaFactory::new();
-        // TODO data from the camera may already be payloaded; in that case I am not sure what to
-        // create as pay0 (maybe depay/pay is an option)
-        factory.set_launch("( appsrc name=writesrc ! rtph265pay name=pay0 )");
+        //factory.set_protocols(RTSPLowerTrans::TCP);
+        factory.set_launch(concat!("( ",
+                "appsrc name=writesrc is-live=true block=true emit-signals=false max-bytes=0",
+                " ! h265parse",
+                " ! rtph265pay name=pay0",
+        " )"));
         factory.set_shared(true);
-        factory.set_stop_on_disconnect(false); // I think appsrc must be allowed to continue producing
 
-        // TODO maybe set video format, either via caps or via
+        // TODO maybe set video format via
         // https://gitlab.freedesktop.org/gstreamer/gstreamer-rs/-/blob/master/examples/src/bin/appsrc.rs#L66
 
         // Create a MaybeAppSrc: Write which we will give the caller.  When the backing AppSrc is
         // created by the factory, fish it out and give it to the waiting MaybeAppSrc via the
-        // channel it provided.
+        // channel it provided.  This callback may be called more than once by Gstreamer if it is
+        // unhappy with the pipeline, so keep updating the MaybeAppSrc.
         let (maybe_app_src, tx) = MaybeAppSrc::new_with_tx();
         factory.connect_media_configure(move |_factory, media| {
             debug!("RTSP: media was configured");
@@ -48,7 +56,7 @@ impl RtspServer {
                              .expect("write_src must be present in created bin")
                              .dynamic_cast::<AppSrc>()
                              .expect("Source element is expected to be an appsrc!");
-            tx.send(app_src).expect("No trouble expected sending the appsrc");
+            let _ = tx.send(app_src); // Receiver may be dropped, don't panic if so
         });
 
         mounts.add_factory(&format!("/{}", name), &factory);
@@ -74,23 +82,27 @@ impl RtspServer {
         Ok(())
     }
 
-    pub fn run(&mut self, bind_addr: &str) {
+    pub fn run(&self, bind_addr: &str) {
         self.server.set_address(bind_addr);
 
         // Attach server to default Glib context
         self.server.attach(None);
+
+        // Run the Glib main loop.
+        let main_loop = glib::MainLoop::new(None, false);
+        main_loop.run();
     }
 }
 
 mod maybe_app_src {
+    use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
     use super::*;
-    use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
 
     /// A Write implementation around AppSrc that also allows delaying the creation of the AppSrc
     /// until later, discarding written data until the AppSrc is provided.
-    pub enum MaybeAppSrc {
-        Receiver(Receiver<AppSrc>),
-        AppSrc(AppSrc),
+    pub struct MaybeAppSrc {
+        rx: Receiver<AppSrc>,
+        app_src: Option<AppSrc>,
     }
 
     impl MaybeAppSrc {
@@ -98,23 +110,19 @@ mod maybe_app_src {
         /// soon as one is available.  When it is received, the MaybeAppSrc will start pushing data
         /// into the AppSrc when write() is called.
         pub fn new_with_tx() -> (Self, SyncSender<AppSrc>) {
-            let (tx, rx) = sync_channel(1);
-            (MaybeAppSrc::Receiver(rx), tx)
+            let (tx, rx) = sync_channel(3); // The sender should not send very often
+            (MaybeAppSrc { rx, app_src: None, }, tx)
         }
 
         /// Attempts to retrieve the AppSrc that should be passed in by the caller of new_with_tx
         /// at some point after this struct has been created.  At that point, we swap over to
-        /// owning the AppSrc directly and drop the channel.  This function handles either case and
-        /// returns the AppSrc, or None if the caller has not yet sent one.
+        /// owning the AppSrc directly.  This function handles either case and returns the AppSrc,
+        /// or None if the caller has not yet sent one.
         fn try_get_src(&mut self) -> Option<&AppSrc> {
-            use MaybeAppSrc::*;
-            match self {
-                AppSrc(ref src) => Some(src),
-                Receiver(rx) => if let Some(src) = rx.try_recv().ok() {
-                    *self = AppSrc(src);
-                    self.try_get_src()
-                } else { None }
+            while let Some(src) = self.rx.try_recv().ok() {
+                self.app_src = Some(src);
             }
+            self.app_src.as_ref()
         }
     }
 
@@ -127,12 +135,14 @@ mod maybe_app_src {
             };
             let mut gst_buf = gstreamer::Buffer::with_size(buf.len()).unwrap();
             {
-                let mut gst_buf_data = gst_buf.get_mut().unwrap()
-                                              .map_writable().unwrap();
+                let gst_buf_mut = gst_buf.get_mut().unwrap();
+                let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
                 gst_buf_data.copy_from_slice(buf);
             }
-            app_src.push_buffer(gst_buf)
-                   .map_err(|e| io::Error::new(io::ErrorKind::Other, Box::new(e)))?;
+            let res = app_src.push_buffer(gst_buf); //.map_err(|e| io::Error::new(io::ErrorKind::Other, Box::new(e)))?;
+            if res.is_err() {
+                self.app_src = None;
+            }
             Ok(buf.len())
         }
 
