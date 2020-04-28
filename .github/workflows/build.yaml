@@ -14,6 +14,10 @@ jobs:
         with:
           command: build
           args: --release --all-features
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release
+          path: target/release/neolink
 
   win:
     name: neolink-win2019
@@ -25,3 +29,7 @@ jobs:
         with:
           command: build
           args: --release --all-features
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release
+          path: target/release/neolink.exe
