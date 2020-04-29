@@ -7,17 +7,23 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cookie-factory = "0.3.1"
+cookie-factory = "0.3"
 crossbeam-utils = "0.7"
 env_logger = "*"
-err-derive = "0.2.4"
-log = { version = "0.4.8", features = ["release_max_level_warn"] }
-indoc = "0.3.5"
-md5 = "0.7.0"
-nom = "5.1.1"
+err-derive = "0.2"
+glib = "*"
+gstreamer = "0.15"
+gstreamer-app = "0.15"
+gstreamer-player = "0.15"
+gstreamer-rtsp = "0.15"
+gstreamer-rtsp-server = "0.15"
+log = { version = "0.4", features = ["release_max_level_warn"] }
+indoc = "0.3"
+md5 = "0.7"
+nom = "5.1"
 serde = { version = "1.0", features = ["derive"] }
 structopt = "0.3"
 toml = "0.5"
-yaserde = { git = "https://github.com/media-io/yaserde.git" }
-yaserde_derive = { git = "https://github.com/media-io/yaserde.git" }
-xml-rs = "0.8.2"
+yaserde = { git = "https://github.com/media-io/yaserde.git", rev="158bf492f" }
+yaserde_derive = { git = "https://github.com/media-io/yaserde.git", rev="158bf492f" }
+xml-rs = "0.8"

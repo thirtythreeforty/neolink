@@ -1,5 +1,7 @@
 # Neolink
 
+![CI](https://github.com/thirtythreeforty/neolink/workflows/CI/badge.svg)
+
 Neolink is a small program that acts as a proxy between Reolink IP cameras and normal RTSP clients.
 Certain cameras, such as the Reolink B800, do not implement ONVIF or RTSP, but instead use a proprietary protocol only compatible with their apps and NVRs (any camera that uses "port 9000" will likely be using this protocol).
 
@@ -11,7 +13,30 @@ The Neolink project is not affiliated with Reolink in any way; everything it doe
 ## Installation
 
 In the future Neolink will be much easier to install.
-Currently you need to install Gstreamer, including gst-rtsp-server, then build this project.
+Currently you need to install Gstreamer.
+On Windows, add the following to your path:
+
+```
+%GSTREAMER_1_0_ROOT_X86_64%\bin
+```
+
+Now you can download and run an artifact [from continuous integration][ci-download].
+
+[ci-download]: https://github.com/thirtythreeforty/neolink/actions?query=branch%3Amaster
+
+Launch Neolink from a shell, passing a configuration file:
+
+```
+neolink --config my_config.toml
+```
+
+## Configuration
+
+Copy and modify the `sample_config.toml` to specify the address, username, and password for each camera (if there is no password, you can omit that line).
+Each `[[cameras]]` block creates a new camera; the `name` determines the RTSP path you should connect your client to.
+
+By default Neolink serves on all IP addresses on port 8554.
+You can modify this by changing the `bind` parameter.
 
 ## Development
 

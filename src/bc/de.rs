@@ -134,7 +134,8 @@ fn bc_modern_msg<'a, 'b, 'c>(context: &mut BcContext, header: &'a BcHeader, buf:
             .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
 
         // If this is the first message containing binary, the Extension message puts the message
-        // ID into binary mode, then the first binary is sent after the XML.
+        // ID into binary mode, then the first binary is sent after the XML.  All remaining
+        // messages for that ID are pure binary.
         match parsed {
             AllTopXmls::BcXml(x) => { xml = Some(x); }
             AllTopXmls::Extension(Extension { binary_data: _ }) => {

@@ -3,15 +3,41 @@ name: CI
 on: [push]
 
 jobs:
-  build:
-    name: Neolink
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-18.04, windows-2019]
+  ubuntu:
+    name: neolink-ubuntu
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
+      - run: sudo apt update
+      - run: sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libgstreamer-plugins-good1.0-dev
       - uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --all-features
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release-ubuntu1804
+          path: target/release/neolink
+
+  win:
+    name: neolink-win2019
+    runs-on: windows-2019
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Gstreamer
+        run: |
+          choco install -y --no-progress gstreamer
+          curl -fsSL "https://gstreamer.freedesktop.org/data/pkg/windows/1.16.2/gstreamer-1.0-devel-msvc-x86_64-1.16.2.msi" -o gstreamer-1.0-devel.msi
+          echo "Installing gstreamer-1.0-devel"
+          msiexec /i gstreamer-1.0-devel.msi /qn /norestart
+          echo "Updating Environment"
+          echo "::add-path::C:\gstreamer\1.0\x86_64\bin"
+          echo "::set-env name=GSTREAMER_1_0_ROOT_X86_64::C:\gstreamer\1.0\x86_64\"
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release-win64
+          path: target/release/neolink.exe
