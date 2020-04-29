@@ -16,7 +16,7 @@ jobs:
           args: --release --all-features
       - uses: actions/upload-artifact@v2
         with:
-          name: release
+          name: release-ubuntu1804
           path: target/release/neolink
 
   win:
@@ -39,5 +39,5 @@ jobs:
           args: --release --all-features
       - uses: actions/upload-artifact@v2
         with:
-          name: release
+          name: release-win64
           path: target/release/neolink.exe
