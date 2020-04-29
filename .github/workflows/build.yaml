@@ -24,7 +24,15 @@ jobs:
     runs-on: windows-2019
     steps:
       - uses: actions/checkout@v2
-      - run: choco install gstreamer
+      - name: Install Gstreamer
+        run: |
+          choco install -y --no-progress gstreamer
+          curl -fsSL "https://gstreamer.freedesktop.org/data/pkg/windows/1.16.2/gstreamer-1.0-devel-msvc-x86_64-1.16.2.msi" -o gstreamer-1.0-devel.msi
+          echo "Installing gstreamer-1.0-devel"
+          msiexec /i gstreamer-1.0-devel.msi /qn /norestart
+          echo "Updating Environment"
+          echo "::add-path::C:\gstreamer\1.0\x86_64\bin"
+          echo "::set-env name=GSTREAMER_1_0_ROOT_X86_64::C:\gstreamer\1.0\x86_64\"
       - uses: actions-rs/cargo@v1
         with:
           command: build
