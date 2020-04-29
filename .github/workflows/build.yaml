@@ -4,41 +4,49 @@ on: [push]
 
 jobs:
   ubuntu:
-    name: neolink-ubuntu
-    runs-on: ubuntu-18.04
+    name: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-18.04, windows-2019]
     steps:
       - uses: actions/checkout@v2
-      - run: sudo apt update
-      - run: sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libgstreamer-plugins-good1.0-dev
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --all-features
-      - uses: actions/upload-artifact@v2
-        with:
-          name: release-ubuntu1804
-          path: target/release/neolink
-
-  win:
-    name: neolink-win2019
-    runs-on: windows-2019
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Gstreamer
+      - if: runner.os == 'Linux'
+        name: apt install gstreamer
+        run: |
+          sudo apt update
+          sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libgstreamer-plugins-good1.0-dev
+      - if: runner.os == 'Windows'
+        name: Install Gstreamer
         run: |
           $curlgst = Start-Job -ScriptBlock { curl.exe -fsSL "https://gstreamer.freedesktop.org/data/pkg/windows/1.16.2/gstreamer-1.0-devel-msvc-x86_64-1.16.2.msi" -o gstreamer-1.0-devel.msi }
           choco install -y --no-progress gstreamer
           echo "Installing gstreamer-1.0-devel"
-          Wait-Job $chocogst
+          Wait-Job $curlgst
           msiexec /i gstreamer-1.0-devel.msi /qn /norestart
           echo "Updating Environment"
           echo "::add-path::C:\gstreamer\1.0\x86_64\bin"
           echo "::set-env name=GSTREAMER_1_0_ROOT_X86_64::C:\gstreamer\1.0\x86_64\"
+      - name: Cache cargo registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo index
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
       - uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --all-features
       - uses: actions/upload-artifact@v2
         with:
-          name: release-win64
-          path: target/release/neolink.exe
+          name: release-${{ matrix.os }}
+          path: "target/release/neolink*"
