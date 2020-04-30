@@ -126,27 +126,23 @@ impl BcCamera {
         let md5_username = md5_string(&concat_username, Truncate);
         let md5_password = md5_string(&concat_password, Truncate);
 
-        let modern_login = Bc {
-            meta: BcMeta {
+        let modern_login = Bc::new_from_xml(
+            BcMeta {
                 msg_id: MSG_ID_LOGIN,
                 client_idx: 0, // TODO
                 encrypted: true,
                 class: 0x6414,
             },
-            body: BcBody::ModernMsg(ModernMsg {
-                xml: Some(BcXml {
-                    login_user: Some(LoginUser {
-                        version: xml_ver(),
-                        user_name: md5_username,
-                        password: md5_password,
-                        user_ver: 1,
-                    }),
-                    login_net: Some(LoginNet::default()),
-                    ..Default::default()
+            BcXml {
+                login_user: Some(LoginUser {
+                    version: xml_ver(),
+                    user_name: md5_username,
+                    password: md5_password,
+                    user_ver: 1,
                 }),
-                binary: None,
-            }),
-        };
+                login_net: Some(LoginNet::default()),
+                ..Default::default()
+            });
 
         modern_login.serialize(connection)?;
 
@@ -186,26 +182,22 @@ impl BcCamera {
     pub fn start_video(&mut self, data_out: &mut dyn Write) -> Result<()> {
         let connection = self.connection.as_ref().expect("Must be connected to start video");
 
-        let start_video = Bc {
-            meta: BcMeta {
+        let start_video = Bc::new_from_xml(
+            BcMeta {
                 msg_id: MSG_ID_VIDEO,
                 client_idx: 0, // TODO
                 encrypted: true,
                 class: 0x6414, // IDK why
             },
-            body: BcBody::ModernMsg(ModernMsg {
-                xml: Some(BcXml {
-                    preview: Some(Preview {
-                        version: xml_ver(),
-                        channel_id: 0,
-                        handle: 0,
-                        stream_type: "mainStream".to_string(),
-                    }),
-                    ..Default::default()
+            BcXml {
+                preview: Some(Preview {
+                    version: xml_ver(),
+                    channel_id: 0,
+                    handle: 0,
+                    stream_type: "mainStream".to_string(),
                 }),
-                binary: None,
-            }),
-        };
+                ..Default::default()
+            });
 
         start_video.serialize(connection)?;
 
