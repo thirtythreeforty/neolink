@@ -6,6 +6,7 @@ mod config;
 mod cmdline;
 mod gst;
 
+use backoff::{ExponentialBackoff, Operation};
 use bc_protocol::BcCamera;
 use config::{Config, CameraConfig};
 use cmdline::Opt;
@@ -13,6 +14,7 @@ use crossbeam_utils::thread;
 use err_derive::Error;
 use gst::RtspServer;
 use std::fs;
+use std::time::Duration;
 use std::io::Write;
 use structopt::StructOpt;
 
@@ -37,7 +39,7 @@ fn main() -> Result<(), Error> {
             s.spawn(move |_| {
                 // TODO handle these errors
                 let mut output = rtsp.add_stream(&camera.name).unwrap(); // TODO
-                camera_main(&camera, &mut output)
+                camera_loop(&camera, &mut output)
             });
         }
 
@@ -47,7 +49,24 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(), Error> {
+fn camera_loop(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(), Error> {
+    let mut backoff = ExponentialBackoff {
+        initial_interval: Duration::from_secs(5),
+        max_interval: Duration::from_secs(60),
+        ..Default::default()
+    };
+    let mut op = || {
+        camera_main(camera_config, output)
+    };
+    op.retry(&mut backoff).map_err(|backoff_err| -> Error {
+        match backoff_err {
+            backoff::Error::Transient(e) |
+            backoff::Error::Permanent(e) => e.into()
+        }
+    })
+}
+
+fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(), backoff::Error<bc_protocol::Error>> {
     let mut camera = BcCamera::new_with_addr(camera_config.camera_addr)?;
 
     println!("{}: Connecting to camera at {}", camera_config.name, camera_config.camera_addr);
