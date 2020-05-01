@@ -1,41 +1,59 @@
+use crate::bc;
+use crate::bc::{model::*, xml::*};
 use err_derive::Error;
 use log::*;
 use md5;
+use self::connection::BcConnection;
 use std::io::Write;
-use std::net::{SocketAddr, ToSocketAddrs, TcpStream};
-use super::bc::{model::*, xml::*};
+use std::net::{SocketAddr, ToSocketAddrs};
+use std::time::Duration;
 
 use Md5Trunc::*;
+
+mod connection;
 
 pub struct BcCamera {
     address: SocketAddr,
 
     bc_context: BcContext,
-    connection: Option<TcpStream>,
+    connection: Option<BcConnection>,
     logged_in: bool,
 }
+
+type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(display="Communication error")]
     CommunicationError(#[error(source)] std::io::Error),
+
     #[error(display="Deserialization error")]
-    DeserializationError(#[error(source)] super::bc::de::Error),
+    DeserializationError(#[error(source)] bc::de::Error),
+
     #[error(display="Serialization error")]
-    SerializationError(#[error(source)] super::bc::ser::Error),
+    SerializationError(#[error(source)] bc::ser::Error),
+
+    #[error(display="Connection error")]
+    ConnectionError(#[error(source)] self::connection::Error),
+
     #[error(display="Communication error")]
     UnintelligibleReply {
-        request: Bc,
         reply: Bc,
         why: &'static str,
     },
+
+    #[error(display="Dropped connection")]
+    DroppedConnection(#[error(source)] std::sync::mpsc::RecvError),
+
+    #[error(display="Timeout")]
+    Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
+
     #[error(display="Credential error")]
     AuthFailed,
-    #[error(display="Other error")]
-    OtherError(&'static str),
-}
 
-type Result<T> = std::result::Result<T, Error>;
+    #[error(display="Other error")]
+    Other(&'static str),
+}
 
 impl Drop for BcCamera {
     fn drop(&mut self) {
@@ -46,7 +64,7 @@ impl Drop for BcCamera {
 impl BcCamera {
     pub fn new_with_addr<T: ToSocketAddrs>(hostname: T) -> Result<Self> {
         let address = hostname.to_socket_addrs()?.next()
-            .ok_or(Error::OtherError("Address resolution failed"))?;
+            .ok_or(Error::Other("Address resolution failed"))?;
 
         Ok(Self {
             address,
@@ -57,7 +75,7 @@ impl BcCamera {
     }
 
     pub fn connect(&mut self) -> Result<()> {
-        self.connection = Some(TcpStream::connect(self.address)?);
+        self.connection = Some(BcConnection::new(self.address)?);
         Ok(())
     }
 
@@ -70,6 +88,7 @@ impl BcCamera {
 
     pub fn login(&mut self, username: &str, password: Option<&str>) -> Result<DeviceInfo> {
         let connection = self.connection.as_ref().expect("Must be connected to log in");
+        let sub_login = connection.subscribe(MSG_ID_LOGIN)?;
 
         // Login flow is: Send legacy login message, expect back a modern message with Encryption
         // details.  Then, re-send the login as a modern login message.  Expect back a device info
@@ -96,9 +115,9 @@ impl BcCamera {
             })
         };
 
-        legacy_login.serialize(connection)?;
+        sub_login.send(legacy_login)?;
 
-        let legacy_reply = Bc::deserialize(&mut self.bc_context, connection)?;
+        let legacy_reply = sub_login.rx.recv()?;
         let nonce;
         match legacy_reply.body {
             BcBody::ModernMsg(ModernMsg {
@@ -107,7 +126,6 @@ impl BcCamera {
                 nonce = encryption.nonce;
             }
             _ => return Err(Error::UnintelligibleReply {
-                request: legacy_login,
                 reply: legacy_reply,
                 why: "Expected an Encryption message back"
             })
@@ -144,9 +162,9 @@ impl BcCamera {
                 ..Default::default()
             });
 
-        modern_login.serialize(connection)?;
+        sub_login.send(modern_login)?;
+        let modern_reply = sub_login.rx.recv()?;
 
-        let modern_reply = Bc::deserialize(&mut self.bc_context, connection)?;
         let device_info;
         match modern_reply.body {
             BcBody::ModernMsg(ModernMsg {
@@ -162,7 +180,6 @@ impl BcCamera {
                 return Err(Error::AuthFailed)
             }
             _ => return Err(Error::UnintelligibleReply {
-                request: modern_login,
                 reply: modern_reply,
                 why: "Expected a DeviceInfo message back from login"
             })
@@ -179,8 +196,9 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(&mut self, data_out: &mut dyn Write) -> Result<()> {
+    pub fn start_video(&self, data_out: &mut dyn Write) -> Result<()> {
         let connection = self.connection.as_ref().expect("Must be connected to start video");
+        let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
 
         let start_video = Bc::new_from_xml(
             BcMeta {
@@ -199,24 +217,20 @@ impl BcCamera {
                 ..Default::default()
             });
 
-        start_video.serialize(connection)?;
+        sub_video.send(start_video)?;
 
-        loop {
-            let msg = Bc::deserialize(&mut self.bc_context, connection)?;
-
-            match msg {
-                Bc { meta: BcMeta { msg_id: MSG_ID_VIDEO, .. },
-                     body: BcBody::ModernMsg(ModernMsg { binary: Some(binary), .. })
-                } => {
-                    debug!("Got {} bytes of video data", binary.len());
-                    data_out.write_all(binary.as_slice())?;
-                }
-                _ => {
-                    info!("Ignoring uninteresting message ID {}", msg.meta.msg_id);
-                    debug!("Contents: {:?}", msg);
-                }
+        for msg in sub_video.rx.iter() {
+            if let Bc { body: BcBody::ModernMsg(ModernMsg { binary: Some(binary), .. }), .. } = msg {
+                debug!("Got {} bytes of video data", binary.len());
+                data_out.write_all(binary.as_slice())?;
+            }
+            else {
+                warn!("Ignoring weird video message");
+                debug!("Contents: {:?}", msg);
             }
         }
+
+        Err(Error::Other("Video stream stopped"))
     }
 }
 
