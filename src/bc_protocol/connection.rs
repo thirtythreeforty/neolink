@@ -48,16 +48,14 @@ impl BcConnection {
             let mut context = BcContext::new();
             while let Ok(_) = BcConnection::poll(&mut context, &mut conn, &mut subs) {}
         });
+        // TODO join on drop
 
         Ok(bc_conn)
     }
 
     pub fn subscribe(&self, msg_id: u32) -> Result<BcSubscription> {
         let (tx, rx) = channel();
-        {
-            let mut locked_subs = self.subscribers.lock().unwrap();
-            locked_subs.insert(msg_id, tx);
-        }
+        self.subscribers.lock().unwrap().insert(msg_id, tx);
         Ok(BcSubscription { rx, conn: self, msg_id })
     }
 
@@ -90,6 +88,8 @@ impl BcConnection {
 
 impl<'a> BcSubscription<'a> {
     pub fn send(&self, bc: Bc) -> Result<()> {
+        assert!(bc.meta.msg_id == self.msg_id);
+
         // TODO Use channel for writing, too
         bc.serialize(&*self.conn.connection)?;
         Ok(())

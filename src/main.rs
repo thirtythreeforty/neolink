@@ -6,12 +6,13 @@ mod config;
 mod cmdline;
 mod gst;
 
-use backoff::{ExponentialBackoff, Operation};
+use backoff::{Error::*, ExponentialBackoff, Operation};
 use bc_protocol::BcCamera;
 use config::{Config, CameraConfig};
 use cmdline::Opt;
 use err_derive::Error;
 use gst::RtspServer;
+use log::error;
 use std::fs;
 use std::time::Duration;
 use std::io::Write;
@@ -60,8 +61,14 @@ fn camera_loop(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(
     };
     op.retry(&mut backoff).map_err(|backoff_err| -> Error {
         match backoff_err {
-            backoff::Error::Transient(e) |
-            backoff::Error::Permanent(e) => e.into()
+            Transient(e) => {
+                error!("Error streaming from camera {}, will retry: {}", camera_config.name, e);
+                e.into()
+            }
+            Permanent(e) => {
+                error!("Permanent error sreaming from camera {}: {}", camera_config.name, e);
+                e.into()
+            }
         }
     })
 }
@@ -72,10 +79,11 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(
     println!("{}: Connecting to camera at {}", camera_config.name, camera_config.camera_addr);
     camera.connect()?;
 
+    // Authentication failures are permanent; we retry everything else
     camera.login(&camera_config.username, camera_config.password.as_deref()).map_err(|e| {
         match e {
-            bc_protocol::Error::AuthFailed => backoff::Error::Permanent(e),
-            _ => backoff::Error::Transient(e)
+            bc_protocol::Error::AuthFailed => Permanent(e),
+            _ => Transient(e)
         }
     })?;
 
