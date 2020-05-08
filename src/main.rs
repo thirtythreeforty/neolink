@@ -71,7 +71,12 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(
     println!("{}: Connecting to camera at {}", camera_config.name, camera_config.camera_addr);
     camera.connect()?;
 
-    camera.login(&camera_config.username, camera_config.password.as_deref())?;
+    camera.login(&camera_config.username, camera_config.password.as_deref()).map_err(|e| {
+        match e {
+            bc_protocol::Error::AuthFailed => backoff::Error::Permanent(e),
+            _ => backoff::Error::Transient(e)
+        }
+    })?;
 
     println!("{}: Connected to camera, starting video stream", camera_config.name);
     camera.start_video(output)?;
