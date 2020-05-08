@@ -68,6 +68,14 @@ pub struct BcContext {
     pub(super) in_bin_mode: HashSet<u32>,
 }
 
+impl Bc {
+    /// Convenience function that constructs a modern Bc message from the given meta and XML, with
+    /// no binary payload.
+    pub fn new_from_xml(meta: BcMeta, xml: BcXml) -> Bc {
+        Bc { meta, body: BcBody::ModernMsg(ModernMsg { xml: Some(xml), binary: None }) }
+    }
+}
+
 impl BcContext {
     pub fn new() -> BcContext {
         BcContext {
