@@ -6,7 +6,6 @@ use md5;
 use self::connection::BcConnection;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::time::Duration;
 
 use Md5Trunc::*;
 
@@ -14,8 +13,6 @@ mod connection;
 
 pub struct BcCamera {
     address: SocketAddr,
-
-    bc_context: BcContext,
     connection: Option<BcConnection>,
     logged_in: bool,
 }
@@ -70,7 +67,6 @@ impl BcCamera {
             address,
             connection: None,
             logged_in: false,
-            bc_context: BcContext::new(),
         })
     }
 
