@@ -28,6 +28,7 @@ pub enum Error {
 }
 
 fn main() -> Result<(), Error> {
+    env_logger::init();
     let opt = Opt::from_args();
     let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 
