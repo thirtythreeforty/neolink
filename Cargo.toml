@@ -15,7 +15,6 @@ err-derive = "0.2"
 glib = "*"
 gstreamer = "0.15"
 gstreamer-app = "0.15"
-gstreamer-player = "0.15"
 gstreamer-rtsp = "0.15"
 gstreamer-rtsp-server = "0.15"
 log = { version = "0.4", features = ["release_max_level_info"] }

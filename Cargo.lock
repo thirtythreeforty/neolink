@@ -461,37 +461,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gstreamer-player"
-version = "0.15.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11840a08baf63d5e2b4c94cc25c023cbfccb39f02e920c75b0550b975898be3b"
-dependencies = [
- "bitflags",
- "glib",
- "glib-sys",
- "gobject-sys",
- "gstreamer",
- "gstreamer-player-sys",
- "gstreamer-sys",
- "gstreamer-video",
- "libc",
-]
-
-[[package]]
-name = "gstreamer-player-sys"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cc38a730aed3442cad1c8df589b4abe856d14671058df7099a5a030fd61413c"
-dependencies = [
- "glib-sys",
- "gobject-sys",
- "gstreamer-sys",
- "gstreamer-video-sys",
- "libc",
- "pkg-config",
-]
-
-[[package]]
 name = "gstreamer-rtsp"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -603,41 +572,6 @@ checksum = "1d18da01b97d0ab5896acd5151e4c155acefd0e6c03c3dd24dd133ba054053db"
 dependencies = [
  "glib-sys",
  "gobject-sys",
- "libc",
- "pkg-config",
-]
-
-[[package]]
-name = "gstreamer-video"
-version = "0.15.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bb63938bcd2e33285a6f195db8d719f3a13f568870d5bf168e2e3df18c1ea05"
-dependencies = [
- "bitflags",
- "futures-channel",
- "futures-util",
- "glib",
- "glib-sys",
- "gobject-sys",
- "gstreamer",
- "gstreamer-base",
- "gstreamer-base-sys",
- "gstreamer-sys",
- "gstreamer-video-sys",
- "lazy_static",
- "libc",
-]
-
-[[package]]
-name = "gstreamer-video-sys"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "615f4298f842f4b4581606e13cf52e1710e2130d989bb99161a5665aa3ccb7cc"
-dependencies = [
- "glib-sys",
- "gobject-sys",
- "gstreamer-base-sys",
- "gstreamer-sys",
  "libc",
  "pkg-config",
 ]
@@ -778,7 +712,6 @@ dependencies = [
  "glib",
  "gstreamer",
  "gstreamer-app",
- "gstreamer-player",
  "gstreamer-rtsp",
  "gstreamer-rtsp-server",
  "indoc",
