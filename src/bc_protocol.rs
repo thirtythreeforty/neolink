@@ -192,6 +192,29 @@ impl BcCamera {
         Ok(())
     }
 
+    pub fn ping(&self) -> Result<()> {
+        let connection = self.connection.as_ref().expect("Must be connected to ping");
+        let sub_ping = connection.subscribe(MSG_ID_PING)?;
+
+        let ping = Bc {
+            meta: BcMeta {
+                msg_id: MSG_ID_PING,
+                client_idx: 0,
+                encrypted: true,
+                class: 0x6414,
+            },
+            body: BcBody::ModernMsg(ModernMsg {
+                ..Default::default()
+            }),
+        };
+
+        sub_ping.send(ping)?;
+
+        sub_ping.rx.recv_timeout(self.rx_timeout)?;
+
+        Ok(())
+    }
+
     pub fn start_video(&self, data_out: &mut dyn Write) -> Result<()> {
         let connection = self.connection.as_ref().expect("Must be connected to start video");
         let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
