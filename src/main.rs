@@ -12,7 +12,7 @@ use config::{Config, CameraConfig};
 use cmdline::Opt;
 use err_derive::Error;
 use gst::RtspServer;
-use log::error;
+use log::*;
 use std::fs;
 use std::time::Duration;
 use std::io::Write;
@@ -52,29 +52,31 @@ fn main() -> Result<(), Error> {
 
 fn camera_loop(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(), Error> {
     let mut backoff = ExponentialBackoff {
-        initial_interval: Duration::from_secs(5),
-        max_interval: Duration::from_secs(60),
+        initial_interval: Duration::from_secs(1),
+        max_interval: Duration::from_secs(10),
         ..Default::default()
     };
     let mut op = || {
         camera_main(camera_config, output)
     };
-    op.retry(&mut backoff).map_err(|backoff_err| -> Error {
-        match backoff_err {
-            Transient(e) => {
-                error!("Error streaming from camera {}, will retry: {}", camera_config.name, e);
-                e.into()
-            }
-            Permanent(e) => {
-                error!("Permanent error sreaming from camera {}: {}", camera_config.name, e);
-                e.into()
-            }
-        }
-    })
+    let res = op.retry_notify(&mut backoff, |err, next: Duration| {
+        error!("Error streaming from camera {}, will retry in {}s: {}", camera_config.name, next.as_secs(), err);
+    });
+
+    let err = match res {
+        Ok(_) => unreachable!("should never return on success"),
+        Err(backoff::Error::Transient(e)) |
+        Err(backoff::Error::Permanent(e)) => e,
+    };
+
+    Err(err.into())
 }
 
 fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(), backoff::Error<bc_protocol::Error>> {
     let mut camera = BcCamera::new_with_addr(camera_config.camera_addr)?;
+    if let Some(timeout) = camera_config.timeout {
+        camera.set_rx_timeout(timeout);
+    }
 
     println!("{}: Connecting to camera at {}", camera_config.name, camera_config.camera_addr);
     camera.connect()?;

@@ -6,6 +6,7 @@ use md5;
 use self::connection::BcConnection;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::time::Duration;
 
 use Md5Trunc::*;
 
@@ -15,6 +16,7 @@ pub struct BcCamera {
     address: SocketAddr,
     connection: Option<BcConnection>,
     logged_in: bool,
+    rx_timeout: Duration,
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -67,7 +69,12 @@ impl BcCamera {
             address,
             connection: None,
             logged_in: false,
+            rx_timeout: Duration::from_secs(1),
         })
+    }
+
+    pub fn set_rx_timeout(&mut self, timeout: Duration) {
+        self.rx_timeout = timeout;
     }
 
     pub fn connect(&mut self) -> Result<()> {
@@ -113,7 +120,7 @@ impl BcCamera {
 
         sub_login.send(legacy_login)?;
 
-        let legacy_reply = sub_login.rx.recv()?;
+        let legacy_reply = sub_login.rx.recv_timeout(self.rx_timeout)?;
         let nonce;
         match legacy_reply.body {
             BcBody::ModernMsg(ModernMsg {
@@ -159,7 +166,7 @@ impl BcCamera {
             });
 
         sub_login.send(modern_login)?;
-        let modern_reply = sub_login.rx.recv()?;
+        let modern_reply = sub_login.rx.recv_timeout(self.rx_timeout)?;
 
         let device_info;
         match modern_reply.body {
@@ -238,9 +245,11 @@ impl BcCamera {
 
         sub_video.send(start_video)?;
 
-        for msg in sub_video.rx.iter() {
+        loop {
+            trace!("Getting video message...");
+            let msg = sub_video.rx.recv_timeout(self.rx_timeout)?;
             if let Bc { body: BcBody::ModernMsg(ModernMsg { binary: Some(binary), .. }), .. } = msg {
-                debug!("Got {} bytes of video data", binary.len());
+                trace!("Got {} bytes of video data", binary.len());
                 data_out.write_all(binary.as_slice())?;
             }
             else {
@@ -248,8 +257,6 @@ impl BcCamera {
                 debug!("Contents: {:?}", msg);
             }
         }
-
-        Err(Error::Other("Video stream stopped"))
     }
 }
 

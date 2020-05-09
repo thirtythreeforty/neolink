@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -18,6 +19,8 @@ pub struct CameraConfig {
 
     pub username: String,
     pub password: Option<String>,
+
+    pub timeout: Option<Duration>,
 }
 
 fn default_bind_addr() -> String {
