@@ -1,5 +1,5 @@
 use err_derive::Error;
-use log::error;
+use log::*;
 use nom::IResult;
 use nom::{bytes::streaming::take, number::streaming::*, combinator::*, sequence::*};
 use std::io::Read;
@@ -53,7 +53,10 @@ fn read_from_reader<P, O, E, R>(mut parser: P, mut rdr: R) -> Result<O, E>
             Err(e) => return Err(e.into()),
         };
 
-        (&mut rdr).take(to_read as u64).read_to_end(&mut input)?;
+        if 0 == (&mut rdr).take(to_read as u64).read_to_end(&mut input)? {
+            return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof,
+                                           "Read returned 0 bytes").into());
+        }
     }
 }
 
