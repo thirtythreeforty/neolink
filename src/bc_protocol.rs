@@ -78,7 +78,7 @@ impl BcCamera {
     }
 
     pub fn connect(&mut self) -> Result<()> {
-        self.connection = Some(BcConnection::new(self.address)?);
+        self.connection = Some(BcConnection::new(self.address, self.rx_timeout)?);
         Ok(())
     }
 
