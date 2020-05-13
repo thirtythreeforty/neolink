@@ -6,7 +6,6 @@ mod config;
 mod cmdline;
 mod gst;
 
-use backoff::{Error::*, ExponentialBackoff, Operation};
 use bc_protocol::BcCamera;
 use config::{Config, CameraConfig};
 use cmdline::Opt;
@@ -51,28 +50,26 @@ fn main() -> Result<(), Error> {
 }
 
 fn camera_loop(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(), Error> {
-    let mut backoff = ExponentialBackoff {
-        initial_interval: Duration::from_secs(1),
-        max_interval: Duration::from_secs(10),
-        ..Default::default()
-    };
-    let mut op = || {
-        camera_main(camera_config, output)
-    };
-    let res = op.retry_notify(&mut backoff, |err, next: Duration| {
-        error!("Error streaming from camera {}, will retry in {}s: {}", camera_config.name, next.as_secs(), err);
-    });
+    let mut current_backoff = Duration::from_secs(1);
+    let max_backoff = Duration::from_secs(15);
 
-    let err = match res {
-        Ok(_) => unreachable!("should never return on success"),
-        Err(backoff::Error::Transient(e)) |
-        Err(backoff::Error::Permanent(e)) => e,
-    };
+    loop {
+        match camera_main(camera_config, output) {
+            // Authentication failures are permanent; we retry everything else
+            Err(err @ bc_protocol::Error::AuthFailed) => {
+                error!("Authentication failed to camera {}, not retrying", camera_config.name);
+                return Err(err.into());
+            }
+            Ok(_) => error!("Camera {} stream stopped unexpectedly, will retry in {}s", camera_config.name, current_backoff.as_secs()),
+            Err(err) => error!("Error streaming from camera {}, will retry in {}s: {}", camera_config.name, current_backoff.as_secs(), err),
+        }
 
-    Err(err.into())
+        std::thread::sleep(current_backoff);
+        current_backoff = std::cmp::min(max_backoff, current_backoff * 2);
+	}
 }
 
-fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(), backoff::Error<bc_protocol::Error>> {
+fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(), bc_protocol::Error> {
     let mut camera = BcCamera::new_with_addr(camera_config.camera_addr)?;
     if let Some(timeout) = camera_config.timeout {
         camera.set_rx_timeout(timeout);
@@ -81,13 +78,7 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(
     println!("{}: Connecting to camera at {}", camera_config.name, camera_config.camera_addr);
     camera.connect()?;
 
-    // Authentication failures are permanent; we retry everything else
-    camera.login(&camera_config.username, camera_config.password.as_deref()).map_err(|e| {
-        match e {
-            bc_protocol::Error::AuthFailed => Permanent(e),
-            _ => Transient(e)
-        }
-    })?;
+    camera.login(&camera_config.username, camera_config.password.as_deref())?;
 
     println!("{}: Connected to camera, starting video stream", camera_config.name);
     camera.start_video(output)?;

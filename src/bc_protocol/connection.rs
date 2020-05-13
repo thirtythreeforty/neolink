@@ -2,10 +2,12 @@ use crate::bc;
 use crate::bc::model::*;
 use err_derive::Error;
 use log::*;
+use socket2::{Socket, Domain, Type};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::net::{TcpStream, Shutdown, SocketAddr};
 use std::thread::JoinHandle;
+use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Sender, Receiver};
 
@@ -44,8 +46,8 @@ pub enum Error {
 }
 
 impl BcConnection {
-    pub fn new(addr: SocketAddr) -> Result<BcConnection> {
-        let tcp_conn = TcpStream::connect(addr)?;
+    pub fn new(addr: SocketAddr, timeout: Duration) -> Result<BcConnection> {
+        let tcp_conn = connect_to(addr, timeout)?;
         let subscribers: Arc<Mutex<BTreeMap<u32, Sender<Bc>>>> = Default::default();
 
         let mut subs = subscribers.clone();
@@ -136,4 +138,23 @@ impl<'a> Drop for BcSubscription<'a> {
     fn drop(&mut self) {
         self.conn.subscribers.lock().unwrap().remove(&self.msg_id);
     }
+}
+
+/// Helper to create a TcpStream with a connect timeout
+fn connect_to(addr: SocketAddr, timeout: Duration) -> Result<TcpStream> {
+    let socket = match addr {
+        SocketAddr::V4(_) => {
+            Socket::new(Domain::ipv4(), Type::stream(), None)?
+        }
+        SocketAddr::V6(_) => {
+            let s = Socket::new(Domain::ipv6(), Type::stream(), None)?;
+            s.set_only_v6(false)?;
+            s
+        }
+    };
+
+    socket.set_keepalive(Some(timeout))?;
+    socket.connect_timeout(&addr.into(), timeout)?;
+
+    Ok(socket.into_tcp_stream())
 }
