@@ -6,6 +6,7 @@ Neolink is a small program that acts as a proxy between Reolink IP cameras and n
 Certain cameras, such as the Reolink B800, do not implement ONVIF or RTSP, but instead use a proprietary "Baichuan" protocol only compatible with their apps and NVRs (any camera that uses "port 9000" will likely be using this protocol).
 
 Neolink allows you to use NVR software such as Shinobi or Blue Iris to receive video from these cameras instead.
+The Reolink NVR is not required, and the cameras are unmodified.
 Your NVR software connects to Neolink, which forwards the video stream from the camera.
 
 The Neolink project is not affiliated with Reolink in any way; everything it does has been reverse engineered.
@@ -46,8 +47,7 @@ You can change the Neolink log level by setting the `RUST_LOG` environment varia
 
 ## Stability
 
-Neolink has had minimal testing.
-In particular it does not handle retries or errors well; please exercise restraint while integrating it into a security system.
+Neolink has had minimal testing, but it seems to be very reliable in multiple users' testing.
 
 The formats of all configuration files and APIs is subject to change as required while it is pre-1.0.
 
