@@ -11,6 +11,22 @@ Your NVR software connects to Neolink, which forwards the video stream from the 
 
 The Neolink project is not affiliated with Reolink in any way; everything it does has been reverse engineered.
 
+## Supported cameras
+
+Neolink intends to support all Reolink cameras that do not provide native RTSP.
+Currently it has been tested on the following cameras:
+
+- B800/D800
+
+It *should* support the following cameras, but this has not yet been tested.
+Please test and report if you have them:
+
+- B400/D400
+- E1
+- Lumus
+
+Neolink does not support other cameras such as the RLC-420, since they already [provide native RTSP](https://support.reolink.com/hc/en-us/articles/360007010473-How-to-Live-View-Reolink-Cameras-via-VLC-Media-Player).
+
 ## Installation
 
 In the future Neolink will be much easier to install.
