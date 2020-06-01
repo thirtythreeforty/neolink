@@ -83,6 +83,10 @@ Neolink has had minimal testing, but it seems to be very reliable in multiple us
 
 The formats of all configuration files and APIs is subject to change as required while it is pre-1.0.
 
+Note that some RTSP clients, especially VLC, have trouble handling the stream.
+Currently this seems to be related to receive buffer sizes but the exact cause remains unclear.
+Blue Iris is known to work well.
+
 ## Development
 
 Neolink is written in Rust, and binds to Gstreamer to provide RTSP server functionality.
