@@ -42,7 +42,7 @@ For now, follow these steps.
 Note that if you use Chocolatey to install Gstreamer, it does this automatically.
 
 3. Download and extract a [prebuilt binary from continuous integration][ci-download] (click on the topmost commit for the most recent build).
-4. Write a configuration file for each camera.  See the section below.
+4. Write a configuration file for your cameras.  See the section below.
 5. Launch Neolink from a shell, passing your configuration file:
 
 ```
