@@ -30,36 +30,52 @@ Neolink does not support other cameras such as the RLC-420, since they already [
 ## Installation
 
 In the future Neolink will be much easier to install.
-Currently you need to [install Gstreamer][gstreamer].
-On Windows, add the following to your path:
+For now, follow these steps.
+
+1. [Install Gstreamer][gstreamer] from the most recent MSI installer on Windows, or your package manager on Linux.
+2. If you are using Windows, add the following to your `PATH` environment variable:
 
 ```
 %GSTREAMER_1_0_ROOT_X86_64%\bin
 ```
 
-Note that Chocolatey does this automatically.
+Note that if you use Chocolatey to install Gstreamer, it does this automatically.
 
-Now you can download and run an artifact [from continuous integration][ci-download].
-
-[gstreamer]: https://gstreamer.freedesktop.org/documentation/installing/index.html
-[ci-download]: https://github.com/thirtythreeforty/neolink/actions?query=branch%3Amaster
-
-Launch Neolink from a shell, passing a configuration file:
+3. Download and extract a [prebuilt binary from continuous integration][ci-download] (click on the topmost commit for the most recent build).
+4. Write a configuration file for each camera.  See the section below.
+5. Launch Neolink from a shell, passing your configuration file:
 
 ```
 neolink --config my_config.toml
 ```
 
+6. Connect your NVR software to Neolink's RTSP server.
+   The default URL is `rtsp://127.0.0.1:8554/your_camera_name` if you're running it on the same computer.
+   If you run it on a different server, you may need to open firewall ports.
+
+[gstreamer]: https://gstreamer.freedesktop.org/documentation/installing/index.html
+[ci-download]: https://github.com/thirtythreeforty/neolink/actions?query=branch%3Amaster
+
 ## Configuration
 
 Copy and modify the `sample_config.toml` to specify the address, username, and password for each camera (if there is no password, you can omit that line).
 Each `[[cameras]]` block creates a new camera; the `name` determines the RTSP path you should connect your client to.
-Currently Neolink cannot auto-detect cameras like the official clients do; you must specify the IP address directly.
+Currently Neolink cannot auto-detect cameras like the official clients do; you must specify their IP addresses directly.
 
 By default Neolink serves on all IP addresses on port 8554.
 You can modify this by changing the `bind` parameter.
 
-You can change the Neolink log level by setting the `RUST_LOG` environment variable (not in the configuration file) to one of `error`, `warn`, `info`, `debug`, or `verbose`.
+You can change the Neolink log level by setting the `RUST_LOG` environment variable (not in the configuration file) to one of `error`, `warn`, `info`, `debug`, or `trace`:
+
+```
+set RUST_LOG=debug
+```
+
+On Linux:
+
+```
+export RUST_LOG=debug
+```
 
 ## Stability
 
