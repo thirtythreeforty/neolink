@@ -19,6 +19,8 @@ pub struct BcCamera {
     rx_timeout: Duration,
 }
 
+use crate::Never;
+
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
@@ -240,7 +242,7 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(&self, data_out: &mut dyn Write) -> Result<()> {
+    pub fn start_video(&self, data_out: &mut dyn Write) -> Result<Never> {
         let connection = self
             .connection
             .as_ref()

@@ -2,6 +2,7 @@ use err_derive::Error;
 use log::*;
 use neolink::bc_protocol::BcCamera;
 use neolink::gst::RtspServer;
+use neolink::Never;
 use std::fs;
 use std::io::Write;
 use std::time::Duration;
@@ -46,39 +47,31 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn camera_loop(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(), Error> {
+fn camera_loop(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<Never, Error> {
     let min_backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(15);
     let mut current_backoff = min_backoff;
 
     loop {
-        match camera_main(camera_config, output) {
-            // Authentication failures are permanent; we retry everything else
-            Ok(_) => error!(
-                "Camera {} stream stopped unexpectedly, will retry in {}s",
-                camera_config.name,
-                current_backoff.as_secs()
-            ),
-            Err(cam_err) => {
-                if cam_err.connected {
-                    current_backoff = min_backoff;
-                }
-                match cam_err.err {
-                    neolink::Error::AuthFailed => {
-                        error!(
-                            "Authentication failed to camera {}, not retrying",
-                            camera_config.name
-                        );
-                        return Err(cam_err.err.into());
-                    }
-                    _ => error!(
-                        "Error streaming from camera {}, will retry in {}s: {}",
-                        camera_config.name,
-                        current_backoff.as_secs(),
-                        cam_err.err
-                    ),
-                }
+        let cam_err = camera_main(camera_config, output).unwrap_err();
+        // Authentication failures are permanent; we retry everything else
+        if cam_err.connected {
+            current_backoff = min_backoff;
+        }
+        match cam_err.err {
+            neolink::Error::AuthFailed => {
+                error!(
+                    "Authentication failed to camera {}, not retrying",
+                    camera_config.name
+                );
+                return Err(cam_err.err.into());
             }
+            _ => error!(
+                "Error streaming from camera {}, will retry in {}s: {}",
+                camera_config.name,
+                current_backoff.as_secs(),
+                cam_err.err
+            ),
         }
 
         std::thread::sleep(current_backoff);
@@ -86,7 +79,7 @@ fn camera_loop(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(
     }
 }
 
-fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(), CameraErr> {
+fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<Never, CameraErr> {
     let mut camera =
         BcCamera::new_with_addr(camera_config.camera_addr).map_err(CameraErr::before_connect)?;
     if let Some(timeout) = camera_config.timeout {
@@ -107,11 +100,7 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(
         "{}: Connected to camera, starting video stream",
         camera_config.name
     );
-    camera
-        .start_video(output)
-        .map_err(CameraErr::after_connect)?;
-
-    unreachable!()
+    camera.start_video(output).map_err(CameraErr::after_connect)
 }
 
 struct CameraErr {
