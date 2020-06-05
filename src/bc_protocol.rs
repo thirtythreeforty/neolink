@@ -248,7 +248,7 @@ impl BcCamera {
         loop {
             trace!("Getting video message...");
             let msg = sub_video.rx.recv_timeout(self.rx_timeout)?;
-            if let Bc { body: BcBody::ModernMsg(ModernMsg { binary: Some(binary), .. }), .. } = msg {
+            if let BcBody::ModernMsg(ModernMsg { binary: Some(binary), .. }) = msg.body {
                 trace!("Got {} bytes of video data", binary.len());
                 data_out.write_all(binary.as_slice())?;
             }

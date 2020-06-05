@@ -1,28 +1,24 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-mod bc;
-mod bc_protocol;
-mod config;
-mod cmdline;
-mod gst;
-
-use bc_protocol::BcCamera;
-use config::{Config, CameraConfig};
-use cmdline::Opt;
+use neolink::bc_protocol::BcCamera;
+use neolink::gst::RtspServer;
 use err_derive::Error;
-use gst::RtspServer;
 use log::*;
 use std::fs;
 use std::time::Duration;
 use std::io::Write;
 use structopt::StructOpt;
 
+mod cmdline;
+mod config;
+
+use config::{Config, CameraConfig};
+use cmdline::Opt;
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(display="Configuration parsing error")]
     ConfigError(#[error(source)] toml::de::Error),
     #[error(display="Communication error")]
-    ProtocolError(#[error(source)] bc_protocol::Error),
+    ProtocolError(#[error(source)] neolink::Error),
     #[error(display="I/O error")]
     IoError(#[error(source)] std::io::Error),
 }
@@ -64,7 +60,7 @@ fn camera_loop(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(
                     current_backoff = min_backoff;
                 }
                 match cam_err.err {
-                    bc_protocol::Error::AuthFailed => {
+                    neolink::Error::AuthFailed => {
                         error!("Authentication failed to camera {}, not retrying", camera_config.name);
                         return Err(cam_err.err.into());
                     }
@@ -98,14 +94,14 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<(
 
 struct CameraErr {
     connected: bool,
-    err: bc_protocol::Error,
+    err: neolink::Error,
 }
 
 impl CameraErr {
-    fn before_connect<E: Into<bc_protocol::Error>>(e: E) -> Self {
+    fn before_connect<E: Into<neolink::Error>>(e: E) -> Self {
         CameraErr { connected: false, err: e.into() }
     }
-    fn after_connect<E: Into<bc_protocol::Error>>(e: E) -> Self {
+    fn after_connect<E: Into<neolink::Error>>(e: E) -> Self {
         CameraErr { connected: true, err: e.into() }
     }
 }
