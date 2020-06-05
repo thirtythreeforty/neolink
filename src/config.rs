@@ -6,7 +6,7 @@ use std::time::Duration;
 pub struct Config {
     pub cameras: Vec<CameraConfig>,
 
-    #[serde(rename="bind", default="default_bind_addr")]
+    #[serde(rename = "bind", default = "default_bind_addr")]
     pub bind_addr: String,
 }
 
@@ -14,7 +14,7 @@ pub struct Config {
 pub struct CameraConfig {
     pub name: String,
 
-    #[serde(rename="address")]
+    #[serde(rename = "address")]
     pub camera_addr: SocketAddr,
 
     pub username: String,

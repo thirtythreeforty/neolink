@@ -2,7 +2,10 @@ const XML_KEY: [u8; 8] = [0x1F, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, 0x78, 0xFF];
 
 pub fn crypt(offset: u32, buf: &[u8]) -> Vec<u8> {
     let key_iter = XML_KEY.iter().cycle().skip(offset as usize % 8);
-    key_iter.zip(buf).map(|(key, i)| *i ^ key ^ (offset as u8)).collect()
+    key_iter
+        .zip(buf)
+        .map(|(key, i)| *i ^ key ^ (offset as u8))
+        .collect()
 }
 
 #[test]
@@ -22,4 +25,3 @@ fn test_xml_crypto_roundtrip() {
     let encrypted = crypt(0, &decrypted[..]);
     assert_eq!(encrypted, &zeros[..]);
 }
-

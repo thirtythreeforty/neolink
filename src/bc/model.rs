@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use super::xml::BcXml;
+use std::collections::HashSet;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -7,7 +7,8 @@ pub const MSG_ID_LOGIN: u32 = 1;
 pub const MSG_ID_VIDEO: u32 = 3;
 pub const MSG_ID_PING: u32 = 93;
 
-pub const EMPTY_LEGACY_PASSWORD: &str = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+pub const EMPTY_LEGACY_PASSWORD: &str =
+    "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Bc {
@@ -29,10 +30,7 @@ pub struct ModernMsg {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum LegacyMsg {
-    LoginMsg {
-        username: String,
-        password: String,
-    },
+    LoginMsg { username: String, password: String },
     UnknownMsg,
 }
 
@@ -73,14 +71,20 @@ impl Bc {
     /// Convenience function that constructs a modern Bc message from the given meta and XML, with
     /// no binary payload.
     pub fn new_from_xml(meta: BcMeta, xml: BcXml) -> Bc {
-        Bc { meta, body: BcBody::ModernMsg(ModernMsg { xml: Some(xml), binary: None }) }
+        Bc {
+            meta,
+            body: BcBody::ModernMsg(ModernMsg {
+                xml: Some(xml),
+                binary: None,
+            }),
+        }
     }
 }
 
 impl BcContext {
     pub fn new() -> BcContext {
         BcContext {
-            in_bin_mode: HashSet::new()
+            in_bin_mode: HashSet::new(),
         }
     }
 }

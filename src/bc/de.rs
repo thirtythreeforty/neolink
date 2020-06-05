@@ -1,17 +1,17 @@
+use super::model::*;
+use super::xml::{AllTopXmls, Extension};
+use super::xml_crypto;
 use err_derive::Error;
 use log::*;
 use nom::IResult;
-use nom::{bytes::streaming::take, number::streaming::*, combinator::*, sequence::*};
+use nom::{bytes::streaming::take, combinator::*, number::streaming::*, sequence::*};
 use std::io::Read;
-use super::model::*;
-use super::xml::{Extension, AllTopXmls};
-use super::xml_crypto;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error(display="Parsing error")]
+    #[error(display = "Parsing error")]
     NomError(&'static str),
-    #[error(display="I/O error")]
+    #[error(display = "I/O error")]
     IoError(#[error(source)] std::io::Error),
 }
 
@@ -36,9 +36,10 @@ impl Bc {
 }
 
 fn read_from_reader<P, O, E, R>(mut parser: P, mut rdr: R) -> Result<O, E>
-    where R: Read,
-          E: for<'a> From<nom::Err<NomErrorTuple<'a>>> + From<std::io::Error>,
-          P: FnMut(&[u8]) -> nom::IResult<&[u8], O>,
+where
+    R: Read,
+    E: for<'a> From<nom::Err<NomErrorTuple<'a>>> + From<std::io::Error>,
+    P: FnMut(&[u8]) -> nom::IResult<&[u8], O>,
 {
     let mut input: Vec<u8> = Vec::new();
     loop {
@@ -46,16 +47,19 @@ fn read_from_reader<P, O, E, R>(mut parser: P, mut rdr: R) -> Result<O, E>
             Ok((_, parsed)) => return Ok(parsed),
             Err(nom::Err::Incomplete(needed)) => {
                 match needed {
-                    nom::Needed::Unknown => 1,     // read one byte
+                    nom::Needed::Unknown => 1, // read one byte
                     nom::Needed::Size(len) => len,
                 }
-            },
+            }
             Err(e) => return Err(e.into()),
         };
 
         if 0 == (&mut rdr).take(to_read as u64).read_to_end(&mut input)? {
-            return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof,
-                                           "Read returned 0 bytes").into());
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "Read returned 0 bytes",
+            )
+            .into());
         }
     }
 }
@@ -72,9 +76,11 @@ fn bc_msg<'a, 'b>(context: &'a mut BcContext, buf: &'b [u8]) -> IResult<&'b [u8]
     Ok((buf, bc))
 }
 
-fn bc_body<'a, 'b, 'c>(context: &'c mut BcContext, header: &'a BcHeader, buf: &'b [u8])
-    -> IResult<&'b [u8], BcBody>
-{
+fn bc_body<'a, 'b, 'c>(
+    context: &'c mut BcContext,
+    header: &'a BcHeader,
+    buf: &'b [u8],
+) -> IResult<&'b [u8], BcBody> {
     if header.is_modern() {
         let (buf, body) = bc_modern_msg(context, header, buf)?;
         Ok((buf, BcBody::ModernMsg(body)))
@@ -88,41 +94,47 @@ fn bc_body<'a, 'b, 'c>(context: &'c mut BcContext, header: &'a BcHeader, buf: &'
 }
 
 fn hex32<'a>() -> impl Fn(&'a [u8]) -> IResult<&'a [u8], String> {
-    map_res(take(32usize), |slice: &'a [u8]| String::from_utf8(slice.to_vec()))
+    map_res(take(32usize), |slice: &'a [u8]| {
+        String::from_utf8(slice.to_vec())
+    })
 }
 
-fn bc_legacy_login_msg<'a, 'b>(buf: &'b [u8])
-    -> IResult<&'b [u8], LegacyMsg>
-{
+fn bc_legacy_login_msg<'a, 'b>(buf: &'b [u8]) -> IResult<&'b [u8], LegacyMsg> {
     let (buf, username) = hex32()(buf)?;
     let (buf, password) = hex32()(buf)?;
 
-    Ok((buf, LegacyMsg::LoginMsg {
-        username,
-        password,
-    }))
+    Ok((buf, LegacyMsg::LoginMsg { username, password }))
 }
 
-fn bc_modern_msg<'a, 'b, 'c>(context: &mut BcContext, header: &'a BcHeader, buf: &'b [u8])
-    -> IResult<&'b [u8], ModernMsg>
-{
-    use nom::{Err, error::{make_error, ErrorKind}};
+fn bc_modern_msg<'a, 'b, 'c>(
+    context: &mut BcContext,
+    header: &'a BcHeader,
+    buf: &'b [u8],
+) -> IResult<&'b [u8], ModernMsg> {
+    use nom::{
+        error::{make_error, ErrorKind},
+        Err,
+    };
 
     let mut in_bin_mode = context.in_bin_mode.contains(&header.msg_id);
 
     // We'd like to know where the XML stops, but we haven't parsed the XML yet to see if the
     // binaryData offset in the header is valid
-    let end_of_xml = if in_bin_mode { 0 } else {
+    let end_of_xml = if in_bin_mode {
+        0
+    } else {
         match header.bin_offset {
             Some(off) if off > 0 => off,
-            _ => header.body_len
+            _ => header.body_len,
         }
     };
 
     let (mut buf, body_buf) = take(end_of_xml)(buf)?;
 
     let decrypted;
-    let processed_body_buf = if !header.is_encrypted() { buf } else {
+    let processed_body_buf = if !header.is_encrypted() {
+        buf
+    } else {
         decrypted = xml_crypto::crypt(header.enc_offset, body_buf);
         &decrypted
     };
@@ -140,7 +152,9 @@ fn bc_modern_msg<'a, 'b, 'c>(context: &mut BcContext, header: &'a BcHeader, buf:
         // ID into binary mode, then the first binary is sent after the XML.  All remaining
         // messages for that ID are pure binary.
         match parsed {
-            AllTopXmls::BcXml(x) => { xml = Some(x); }
+            AllTopXmls::BcXml(x) => {
+                xml = Some(x);
+            }
             AllTopXmls::Extension(Extension { binary_data: _ }) => {
                 in_bin_mode = true;
             }
@@ -151,8 +165,8 @@ fn bc_modern_msg<'a, 'b, 'c>(context: &mut BcContext, header: &'a BcHeader, buf:
     if in_bin_mode {
         if let Some(bin_offset) = header.bin_offset {
             // Extract remainder of message as binary, if it exists
-            let (buf_after, payload) = map(take(header.body_len - bin_offset),
-                                           |x: &[u8]| x.to_vec())(buf)?;
+            let (buf_after, payload) =
+                map(take(header.body_len - bin_offset), |x: &[u8]| x.to_vec())(buf)?;
 
             // Since the parser operates in streaming mode, must wait until after we successfully
             // receive enough bytes before modifying the context (otherwise we'll alter the
@@ -186,14 +200,17 @@ fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
 
     let (buf, bin_offset) = cond(has_bin_offset(class), le_u32)(buf)?;
 
-    Ok((buf, BcHeader {
-        msg_id,
-        body_len,
-        enc_offset,
-        encrypted,
-        class,
-        bin_offset,
-    }))
+    Ok((
+        buf,
+        BcHeader {
+            msg_id,
+            body_len,
+            enc_offset,
+            encrypted,
+            class,
+            bin_offset,
+        },
+    ))
 }
 
 #[test]
@@ -210,9 +227,10 @@ fn test_bc_modern_login() {
     assert_eq!(header.encrypted, true);
     assert_eq!(header.class, 0x6614);
     match body {
-        BcBody::ModernMsg(ModernMsg{ xml: Some(ref xml), binary: None }) => {
-            assert_eq!(xml.encryption.as_ref().unwrap().nonce, "9E6D1FCB9E69846D")
-        }
+        BcBody::ModernMsg(ModernMsg {
+            xml: Some(ref xml),
+            binary: None,
+        }) => assert_eq!(xml.encryption.as_ref().unwrap().nonce, "9E6D1FCB9E69846D"),
         _ => assert!(false),
     }
 }
@@ -231,9 +249,7 @@ fn test_bc_legacy_login() {
     assert_eq!(header.encrypted, true);
     assert_eq!(header.class, 0x6514);
     match body {
-        BcBody::LegacyMsg(LegacyMsg::LoginMsg {
-            username, password
-        }) => {
+        BcBody::LegacyMsg(LegacyMsg::LoginMsg { username, password }) => {
             assert_eq!(username, "21232F297A57A5A743894A0E4A801FC\0");
             assert_eq!(password, EMPTY_LEGACY_PASSWORD);
         }
@@ -255,7 +271,10 @@ fn test_bc_modern_login_failed() {
     assert_eq!(header.encrypted, true);
     assert_eq!(header.class, 0x0000);
     match body {
-        BcBody::ModernMsg(ModernMsg{ xml: None, binary: None }) => {
+        BcBody::ModernMsg(ModernMsg {
+            xml: None,
+            binary: None,
+        }) => {
             assert!(true);
         }
         _ => assert!(false),
@@ -279,7 +298,10 @@ fn test_bc_modern_login_success() {
     // Previously, we were not handling bin_offset == 0 (no bin offset) correctly.
     // Test that we decoded XML and no binary.
     match body {
-        BcBody::ModernMsg(ModernMsg{ xml: Some(_), binary: None }) => assert!(true),
+        BcBody::ModernMsg(ModernMsg {
+            xml: Some(_),
+            binary: None,
+        }) => assert!(true),
         _ => assert!(false),
     }
 }
@@ -294,13 +316,19 @@ fn test_bc_binary_mode() {
     let msg1 = Bc::deserialize(&mut context, &sample1[..]).unwrap();
     let msg2 = Bc::deserialize(&mut context, &sample2[..]).unwrap();
     match msg1.body {
-        BcBody::ModernMsg(ModernMsg{ xml: None, binary: Some(bin) }) => {
+        BcBody::ModernMsg(ModernMsg {
+            xml: None,
+            binary: Some(bin),
+        }) => {
             assert_eq!(bin.len(), 32);
         }
         _ => assert!(false),
     }
     match msg2.body {
-        BcBody::ModernMsg(ModernMsg{ xml: None, binary: Some(bin) }) => {
+        BcBody::ModernMsg(ModernMsg {
+            xml: None,
+            binary: Some(bin),
+        }) => {
             assert_eq!(bin.len(), 30344);
         }
         _ => assert!(false),

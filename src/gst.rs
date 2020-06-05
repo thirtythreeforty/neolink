@@ -2,12 +2,12 @@
 //! data using an ordinary std::io::Write interface.
 pub use self::maybe_app_src::MaybeAppSrc;
 
-use gstreamer::Bin;
 use gstreamer::prelude::Cast;
+use gstreamer::Bin;
 use gstreamer_app::AppSrc;
 //use gstreamer_rtsp::RTSPLowerTrans;
-use gstreamer_rtsp_server::{RTSPServer as GstRTSPServer, RTSPAuth, RTSPMediaFactory};
 use gstreamer_rtsp_server::prelude::*;
+use gstreamer_rtsp_server::{RTSPAuth, RTSPMediaFactory, RTSPServer as GstRTSPServer};
 use log::debug;
 use std::io;
 use std::io::Write;
@@ -27,15 +27,20 @@ impl RtspServer {
     }
 
     pub fn add_stream(&self, name: &str) -> Result<MaybeAppSrc> {
-        let mounts = self.server.get_mount_points().expect("The server should have mountpoints");
+        let mounts = self
+            .server
+            .get_mount_points()
+            .expect("The server should have mountpoints");
 
         let factory = RTSPMediaFactory::new();
         //factory.set_protocols(RTSPLowerTrans::TCP);
-        factory.set_launch(concat!("( ",
-                "appsrc name=writesrc is-live=true block=true emit-signals=false max-bytes=0",
-                " ! h265parse",
-                " ! rtph265pay name=pay0",
-        " )"));
+        factory.set_launch(concat!(
+            "( ",
+            "appsrc name=writesrc is-live=true block=true emit-signals=false max-bytes=0",
+            " ! h265parse",
+            " ! rtph265pay name=pay0",
+            " )"
+        ));
         factory.set_shared(true);
 
         // TODO maybe set video format via
@@ -48,14 +53,16 @@ impl RtspServer {
         let (maybe_app_src, tx) = MaybeAppSrc::new_with_tx();
         factory.connect_media_configure(move |_factory, media| {
             debug!("RTSP: media was configured");
-            let bin = media.get_element()
-                           .expect("Media should have an element")
-                           .dynamic_cast::<Bin>()
-                           .expect("Media source's element should be a bin");
-            let app_src = bin.get_by_name_recurse_up("writesrc")
-                             .expect("write_src must be present in created bin")
-                             .dynamic_cast::<AppSrc>()
-                             .expect("Source element is expected to be an appsrc!");
+            let bin = media
+                .get_element()
+                .expect("Media should have an element")
+                .dynamic_cast::<Bin>()
+                .expect("Media source's element should be a bin");
+            let app_src = bin
+                .get_by_name_recurse_up("writesrc")
+                .expect("write_src must be present in created bin")
+                .dynamic_cast::<AppSrc>()
+                .expect("Source element is expected to be an appsrc!");
             let _ = tx.send(app_src); // Receiver may be dropped, don't panic if so
         });
 
@@ -95,8 +102,8 @@ impl RtspServer {
 }
 
 mod maybe_app_src {
-    use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
     use super::*;
+    use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
     /// A Write implementation around AppSrc that also allows delaying the creation of the AppSrc
     /// until later, discarding written data until the AppSrc is provided.
@@ -111,7 +118,7 @@ mod maybe_app_src {
         /// into the AppSrc when write() is called.
         pub fn new_with_tx() -> (Self, SyncSender<AppSrc>) {
             let (tx, rx) = sync_channel(3); // The sender should not send very often
-            (MaybeAppSrc { rx, app_src: None, }, tx)
+            (MaybeAppSrc { rx, app_src: None }, tx)
         }
 
         /// Attempts to retrieve the AppSrc that should be passed in by the caller of new_with_tx

@@ -1,9 +1,9 @@
+use self::connection::BcConnection;
 use crate::bc;
 use crate::bc::{model::*, xml::*};
 use err_derive::Error;
 use log::*;
 use md5;
-use self::connection::BcConnection;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
@@ -23,34 +23,31 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error(display="Communication error")]
+    #[error(display = "Communication error")]
     CommunicationError(#[error(source)] std::io::Error),
 
-    #[error(display="Deserialization error")]
+    #[error(display = "Deserialization error")]
     DeserializationError(#[error(source)] bc::de::Error),
 
-    #[error(display="Serialization error")]
+    #[error(display = "Serialization error")]
     SerializationError(#[error(source)] bc::ser::Error),
 
-    #[error(display="Connection error")]
+    #[error(display = "Connection error")]
     ConnectionError(#[error(source)] self::connection::Error),
 
-    #[error(display="Communication error")]
-    UnintelligibleReply {
-        reply: Bc,
-        why: &'static str,
-    },
+    #[error(display = "Communication error")]
+    UnintelligibleReply { reply: Bc, why: &'static str },
 
-    #[error(display="Dropped connection")]
+    #[error(display = "Dropped connection")]
     DroppedConnection(#[error(source)] std::sync::mpsc::RecvError),
 
-    #[error(display="Timeout")]
+    #[error(display = "Timeout")]
     Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
 
-    #[error(display="Credential error")]
+    #[error(display = "Credential error")]
     AuthFailed,
 
-    #[error(display="Other error")]
+    #[error(display = "Other error")]
     Other(&'static str),
 }
 
@@ -62,7 +59,9 @@ impl Drop for BcCamera {
 
 impl BcCamera {
     pub fn new_with_addr<T: ToSocketAddrs>(hostname: T) -> Result<Self> {
-        let address = hostname.to_socket_addrs()?.next()
+        let address = hostname
+            .to_socket_addrs()?
+            .next()
             .ok_or(Error::Other("Address resolution failed"))?;
 
         Ok(Self {
@@ -90,7 +89,10 @@ impl BcCamera {
     }
 
     pub fn login(&mut self, username: &str, password: Option<&str>) -> Result<DeviceInfo> {
-        let connection = self.connection.as_ref().expect("Must be connected to log in");
+        let connection = self
+            .connection
+            .as_ref()
+            .expect("Must be connected to log in");
         let sub_login = connection.subscribe(MSG_ID_LOGIN)?;
 
         // Login flow is: Send legacy login message, expect back a modern message with Encryption
@@ -103,7 +105,9 @@ impl BcCamera {
         // Baichuan library, these strings are capped at 32 bytes with a null terminator.  This
         // could also be a mistake in the library, the effect being it only compares 31 chars, not 32.
         let md5_username = md5_string(username, ZeroLast);
-        let md5_password = password.map(|p| md5_string(p, ZeroLast)).unwrap_or(EMPTY_LEGACY_PASSWORD.to_owned());
+        let md5_password = password
+            .map(|p| md5_string(p, ZeroLast))
+            .unwrap_or(EMPTY_LEGACY_PASSWORD.to_owned());
 
         let legacy_login = Bc {
             meta: BcMeta {
@@ -115,7 +119,7 @@ impl BcCamera {
             body: BcBody::LegacyMsg(LegacyMsg::LoginMsg {
                 username: md5_username,
                 password: md5_password,
-            })
+            }),
         };
 
         sub_login.send(legacy_login)?;
@@ -124,14 +128,21 @@ impl BcCamera {
         let nonce;
         match legacy_reply.body {
             BcBody::ModernMsg(ModernMsg {
-                xml: Some(BcXml { encryption: Some(encryption), ..  }), ..
+                xml:
+                    Some(BcXml {
+                        encryption: Some(encryption),
+                        ..
+                    }),
+                ..
             }) => {
                 nonce = encryption.nonce;
             }
-            _ => return Err(Error::UnintelligibleReply {
-                reply: legacy_reply,
-                why: "Expected an Encryption message back"
-            })
+            _ => {
+                return Err(Error::UnintelligibleReply {
+                    reply: legacy_reply,
+                    why: "Expected an Encryption message back",
+                })
+            }
         }
 
         // In the modern login flow, the username/password are concat'd with the server's nonce
@@ -163,7 +174,8 @@ impl BcCamera {
                 }),
                 login_net: Some(LoginNet::default()),
                 ..Default::default()
-            });
+            },
+        );
 
         sub_login.send(modern_login)?;
         let modern_reply = sub_login.rx.recv_timeout(self.rx_timeout)?;
@@ -171,21 +183,27 @@ impl BcCamera {
         let device_info;
         match modern_reply.body {
             BcBody::ModernMsg(ModernMsg {
-                xml: Some(BcXml { device_info: Some(info), ..  }), ..
+                xml:
+                    Some(BcXml {
+                        device_info: Some(info),
+                        ..
+                    }),
+                ..
             }) => {
                 // Login succeeded!
                 self.logged_in = true;
                 device_info = info;
             }
             BcBody::ModernMsg(ModernMsg {
-                xml: None, binary: None,
-            }) => {
-                return Err(Error::AuthFailed)
+                xml: None,
+                binary: None,
+            }) => return Err(Error::AuthFailed),
+            _ => {
+                return Err(Error::UnintelligibleReply {
+                    reply: modern_reply,
+                    why: "Expected a DeviceInfo message back from login",
+                })
             }
-            _ => return Err(Error::UnintelligibleReply {
-                reply: modern_reply,
-                why: "Expected a DeviceInfo message back from login"
-            })
         }
 
         Ok(device_info)
@@ -223,7 +241,10 @@ impl BcCamera {
     }
 
     pub fn start_video(&self, data_out: &mut dyn Write) -> Result<()> {
-        let connection = self.connection.as_ref().expect("Must be connected to start video");
+        let connection = self
+            .connection
+            .as_ref()
+            .expect("Must be connected to start video");
         let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
 
         let start_video = Bc::new_from_xml(
@@ -241,18 +262,22 @@ impl BcCamera {
                     stream_type: "mainStream".to_string(),
                 }),
                 ..Default::default()
-            });
+            },
+        );
 
         sub_video.send(start_video)?;
 
         loop {
             trace!("Getting video message...");
             let msg = sub_video.rx.recv_timeout(self.rx_timeout)?;
-            if let BcBody::ModernMsg(ModernMsg { binary: Some(binary), .. }) = msg.body {
+            if let BcBody::ModernMsg(ModernMsg {
+                binary: Some(binary),
+                ..
+            }) = msg.body
+            {
                 trace!("Got {} bytes of video data", binary.len());
                 data_out.write_all(binary.as_slice())?;
-            }
-            else {
+            } else {
                 warn!("Ignoring weird video message");
                 debug!("Contents: {:?}", msg);
             }
@@ -271,7 +296,7 @@ impl BcCamera {
 #[derive(PartialEq, Eq)]
 enum Md5Trunc {
     ZeroLast,
-    Truncate
+    Truncate,
 }
 
 fn md5_string(input: &str, trunc: Md5Trunc) -> String {
@@ -283,6 +308,12 @@ fn md5_string(input: &str, trunc: Md5Trunc) -> String {
 #[test]
 fn test_md5_string() {
     // Note that these literals are only 31 characters long - see explanation above.
-    assert_eq!(md5_string("admin", Truncate), "21232F297A57A5A743894A0E4A801FC");
-    assert_eq!(md5_string("admin", ZeroLast), "21232F297A57A5A743894A0E4A801FC\0");
+    assert_eq!(
+        md5_string("admin", Truncate),
+        "21232F297A57A5A743894A0E4A801FC"
+    );
+    assert_eq!(
+        md5_string("admin", ZeroLast),
+        "21232F297A57A5A743894A0E4A801FC\0"
+    );
 }

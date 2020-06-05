@@ -1,11 +1,11 @@
-use cookie_factory::bytes::*;
-use cookie_factory::{gen, combinator::*};
-use cookie_factory::sequence::tuple;
-use cookie_factory::{GenError, SerializeFn, WriteContext};
-use std::io::Write;
 use super::model::*;
 use super::xml::BcXml;
 use super::xml_crypto;
+use cookie_factory::bytes::*;
+use cookie_factory::sequence::tuple;
+use cookie_factory::{combinator::*, gen};
+use cookie_factory::{GenError, SerializeFn, WriteContext};
+use std::io::Write;
 
 pub type Error = GenError;
 
@@ -17,15 +17,24 @@ impl Bc {
         let bin_offset;
         match &self.body {
             BcBody::ModernMsg(ref modern) => {
-                let (buf, xml_len) = gen(opt_ref(&modern.xml, |xml| bc_xml(self.meta.client_idx, xml)), vec!())?;
+                let (buf, xml_len) = gen(
+                    opt_ref(&modern.xml, |xml| bc_xml(self.meta.client_idx, xml)),
+                    vec![],
+                )?;
                 body_buf = buf;
                 bin_offset = if has_bin_offset(self.meta.class) {
                     // If we're required to put binary length, put 0 if we have no binary
-                    Some(if modern.binary.is_some() { xml_len as u32 } else { 0 })
-                } else { None };
+                    Some(if modern.binary.is_some() {
+                        xml_len as u32
+                    } else {
+                        0
+                    })
+                } else {
+                    None
+                };
             }
             BcBody::LegacyMsg(ref legacy) => {
-                let (buf, _) = gen(bc_legacy(legacy), vec!())?;
+                let (buf, _) = gen(bc_legacy(legacy), vec![])?;
                 body_buf = buf;
                 bin_offset = None;
             }
@@ -34,14 +43,14 @@ impl Bc {
         // Now have enough info to create the header
         let header = BcHeader::from_meta(&self.meta, body_buf.len() as u32, bin_offset);
 
-        let (mut buf, _n) = gen(
-            tuple((
-                bc_header(&header),
-                slice(body_buf),
-            )), buf)?;
+        let (mut buf, _n) = gen(tuple((bc_header(&header), slice(body_buf))), buf)?;
 
         // Put the binary part of the body, TODO this is poorly written
-        if let BcBody::ModernMsg(ModernMsg { binary: Some(ref binary), .. }) = self.body {
+        if let BcBody::ModernMsg(ModernMsg {
+            binary: Some(ref binary),
+            ..
+        }) = self.body
+        {
             let (buf2, _) = gen(slice(binary), buf)?;
             buf = buf2
         }
@@ -50,9 +59,8 @@ impl Bc {
     }
 }
 
-fn bc_xml<W: Write>(enc_offset: u32, xml: &BcXml) -> impl SerializeFn<W>
-{
-    let xml_bytes = xml.serialize(vec!()).unwrap();
+fn bc_xml<W: Write>(enc_offset: u32, xml: &BcXml) -> impl SerializeFn<W> {
+    let xml_bytes = xml.serialize(vec![]).unwrap();
     let enc_bytes = xml_crypto::crypt(enc_offset, &xml_bytes);
     slice(enc_bytes)
 }
@@ -90,7 +98,7 @@ fn bc_legacy<'a, W: Write>(legacy: &'a LegacyMsg) -> impl SerializeFn<W> + 'a {
                     slice(password),
                     // Login messages are 1836 bytes total, username/password
                     // take up 32 chars each, 1772 zeros follow
-                    slice(&[0u8; 1772][..])
+                    slice(&[0u8; 1772][..]),
                 ))(out)
             }
             UnknownMsg => {
@@ -102,7 +110,10 @@ fn bc_legacy<'a, W: Write>(legacy: &'a LegacyMsg) -> impl SerializeFn<W> + 'a {
 
 /// Applies the supplied serializer with the Option's interior data if present
 fn opt<W, T, F>(opt: Option<T>, ser: impl Fn(T) -> F) -> impl SerializeFn<W>
-    where F: SerializeFn<W>, T: Copy, W: Write
+where
+    F: SerializeFn<W>,
+    T: Copy,
+    W: Write,
 {
     move |buf: WriteContext<W>| {
         if let Some(val) = opt {
@@ -114,7 +125,10 @@ fn opt<W, T, F>(opt: Option<T>, ser: impl Fn(T) -> F) -> impl SerializeFn<W>
 }
 
 fn opt_ref<'a, W, T, F, S>(opt: &'a Option<T>, ser: S) -> impl SerializeFn<W> + 'a
-    where F: SerializeFn<W>, W: Write, S: Fn(&'a T) -> F + 'a
+where
+    F: SerializeFn<W>,
+    W: Write,
+    S: Fn(&'a T) -> F + 'a,
 {
     move |buf: WriteContext<W>| {
         if let Some(ref val) = opt {
@@ -130,7 +144,6 @@ fn do_nothing<W>() -> impl SerializeFn<W> {
     move |out: WriteContext<W>| Ok(out)
 }
 
-
 #[test]
 fn test_legacy_login_roundtrip() {
     let mut context = BcContext::new();
@@ -139,7 +152,7 @@ fn test_legacy_login_roundtrip() {
     let sample = include_bytes!("samples/model_sample_legacy_login.bin");
     let msg = Bc::deserialize::<&[u8]>(&mut context, &sample[..]).unwrap();
 
-    let ser_buf = msg.serialize(vec!()).unwrap();
+    let ser_buf = msg.serialize(vec![]).unwrap();
     let msg2 = Bc::deserialize::<&[u8]>(&mut context, ser_buf.as_ref()).unwrap();
     assert_eq!(msg, msg2);
     assert_eq!(&sample[..], ser_buf.as_slice());
@@ -154,7 +167,7 @@ fn test_modern_login_roundtrip() {
 
     let msg = Bc::deserialize::<&[u8]>(&mut context, &sample[..]).unwrap();
 
-    let ser_buf = msg.serialize(vec!()).unwrap();
+    let ser_buf = msg.serialize(vec![]).unwrap();
     let msg2 = Bc::deserialize::<&[u8]>(&mut context, ser_buf.as_ref()).unwrap();
     assert_eq!(msg, msg2);
 }

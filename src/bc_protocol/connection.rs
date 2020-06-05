@@ -2,14 +2,14 @@ use crate::bc;
 use crate::bc::model::*;
 use err_derive::Error;
 use log::*;
-use socket2::{Socket, Domain, Type};
-use std::collections::BTreeMap;
+use socket2::{Domain, Socket, Type};
 use std::collections::btree_map::Entry;
-use std::net::{TcpStream, Shutdown, SocketAddr};
+use std::collections::BTreeMap;
+use std::net::{Shutdown, SocketAddr, TcpStream};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{channel, Sender, Receiver};
 
 /// A shareable connection to a camera.  Handles serialization of messages.  To send/receive, call
 /// .subscribe() with a message ID.  You can use the BcSubscription to send or receive only
@@ -32,16 +32,16 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error(display="Communication error")]
+    #[error(display = "Communication error")]
     CommunicationError(#[error(source)] std::io::Error),
 
-    #[error(display="Deserialization error")]
+    #[error(display = "Deserialization error")]
     DeserializationError(#[error(source)] bc::de::Error),
 
-    #[error(display="Serialization error")]
+    #[error(display = "Serialization error")]
     SerializationError(#[error(source)] bc::ser::Error),
 
-    #[error(display="Simultaneous subscription")]
+    #[error(display = "Simultaneous subscription")]
     SimultaneousSubscription { msg_id: u32 },
 }
 
@@ -71,23 +71,26 @@ impl BcConnection {
             Entry::Vacant(vac_entry) => vac_entry.insert(tx),
             Entry::Occupied(_) => return Err(Error::SimultaneousSubscription { msg_id }),
         };
-        Ok(BcSubscription { rx, conn: self, msg_id })
+        Ok(BcSubscription {
+            rx,
+            conn: self,
+            msg_id,
+        })
     }
 
     fn poll(
         context: &mut BcContext,
         connection: &TcpStream,
-        subscribers: &mut Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>
+        subscribers: &mut Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
     ) -> Result<()> {
         // Don't hold the lock during deserialization so we don't poison the subscribers mutex if
         // something goes wrong
 
-        let response = Bc::deserialize(context, connection)
-            .map_err(|err| {
-                // If the connection hangs up, hang up on all subscribers
-                subscribers.lock().unwrap().clear();
-                err
-            })?;
+        let response = Bc::deserialize(context, connection).map_err(|err| {
+            // If the connection hangs up, hang up on all subscribers
+            subscribers.lock().unwrap().clear();
+            err
+        })?;
         let msg_id = response.meta.msg_id;
 
         let mut locked_subs = subscribers.lock().unwrap();
@@ -113,10 +116,15 @@ impl Drop for BcConnection {
     fn drop(&mut self) {
         debug!("Shutting down BcConnection...");
         let _ = self.connection.lock().unwrap().shutdown(Shutdown::Both);
-        match self.rx_thread.take().expect("rx_thread join handle should always exist").join() {
+        match self
+            .rx_thread
+            .take()
+            .expect("rx_thread join handle should always exist")
+            .join()
+        {
             Ok(_) => {
                 debug!("Shutdown finished OK");
-            },
+            }
             Err(e) => {
                 error!("Receiving thread panicked: {:?}", e);
             }
@@ -143,9 +151,7 @@ impl<'a> Drop for BcSubscription<'a> {
 /// Helper to create a TcpStream with a connect timeout
 fn connect_to(addr: SocketAddr, timeout: Duration) -> Result<TcpStream> {
     let socket = match addr {
-        SocketAddr::V4(_) => {
-            Socket::new(Domain::ipv4(), Type::stream(), None)?
-        }
+        SocketAddr::V4(_) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
         SocketAddr::V6(_) => {
             let s = Socket::new(Domain::ipv6(), Type::stream(), None)?;
             s.set_only_v6(false)?;
