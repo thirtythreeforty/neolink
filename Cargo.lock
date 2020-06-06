@@ -665,7 +665,7 @@ checksum = "0419348c027fa7be448d2ae7ea0e4e04c2334c31dc4e74ab29f00a2a7ca69204"
 
 [[package]]
 name = "neolink"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cookie-factory",
  "crossbeam",
