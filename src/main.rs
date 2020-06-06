@@ -26,6 +26,13 @@ pub enum Error {
 
 fn main() -> Result<(), Error> {
     env_logger::init();
+
+    info!(
+        "Neolink {} {}",
+        env!("NEOLINK_VERSION"),
+        env!("NEOLINK_PROFILE")
+    );
+
     let opt = Opt::from_args();
     let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 
@@ -87,8 +94,7 @@ struct CameraErr {
 fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<Never, CameraErr> {
     let mut connected = false;
     (|| {
-        let mut camera =
-            BcCamera::new_with_addr(camera_config.camera_addr)?;
+        let mut camera = BcCamera::new_with_addr(camera_config.camera_addr)?;
         if let Some(timeout) = camera_config.timeout {
             camera.set_rx_timeout(timeout);
         }
@@ -101,13 +107,13 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<N
 
         connected = true;
 
-        camera
-            .login(&camera_config.username, camera_config.password.as_deref())?;
+        camera.login(&camera_config.username, camera_config.password.as_deref())?;
 
         println!(
             "{}: Connected to camera, starting video stream",
             camera_config.name
         );
         camera.start_video(output)
-    })().map_err(|err| CameraErr { connected, err })
+    })()
+    .map_err(|err| CameraErr { connected, err })
 }
