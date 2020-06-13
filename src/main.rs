@@ -105,9 +105,9 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<N
         );
         camera.connect()?;
 
-        connected = true;
-
         camera.login(&camera_config.username, camera_config.password.as_deref())?;
+
+        connected = true;
 
         println!(
             "{}: Connected to camera, starting video stream",
