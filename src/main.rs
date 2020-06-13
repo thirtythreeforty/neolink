@@ -1,3 +1,4 @@
+use env_logger::Env;
 use err_derive::Error;
 use log::*;
 use neolink::bc_protocol::BcCamera;
@@ -25,7 +26,7 @@ pub enum Error {
 }
 
 fn main() -> Result<(), Error> {
-    env_logger::init();
+    env_logger::from_env(Env::default().default_filter_or("info")).init();
 
     info!(
         "Neolink {} {}",
