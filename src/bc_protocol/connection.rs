@@ -160,6 +160,8 @@ fn connect_to(addr: SocketAddr, timeout: Duration) -> Result<TcpStream> {
     };
 
     socket.set_keepalive(Some(timeout))?;
+    socket.set_read_timeout(Some(timeout))?;
+    socket.set_write_timeout(Some(timeout))?;
     socket.connect_timeout(&addr.into(), timeout)?;
 
     Ok(socket.into_tcp_stream())
