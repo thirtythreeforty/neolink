@@ -100,7 +100,7 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<N
             camera.set_rx_timeout(timeout);
         }
 
-        println!(
+        info!(
             "{}: Connecting to camera at {}",
             camera_config.name, camera_config.camera_addr
         );
@@ -110,7 +110,7 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<N
 
         connected = true;
 
-        println!(
+        info!(
             "{}: Connected to camera, starting video stream",
             camera_config.name
         );
