@@ -103,8 +103,8 @@ impl BcConnection {
                 }
             }
             Entry::Vacant(_) => {
-                info!("Ignoring uninteresting message ID {}", msg_id);
-                debug!("Contents: {:?}", response);
+                debug!("Ignoring uninteresting message ID {}", msg_id);
+                trace!("Contents: {:?}", response);
             }
         }
 
