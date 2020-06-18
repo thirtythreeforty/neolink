@@ -124,7 +124,8 @@ mod maybe_app_src {
         /// Flushes data to Gstreamer on a problem communicating with the underlying video source.
         pub fn on_stream_error(&mut self) {
             if let Some(src) = self.try_get_src() {
-                src.end_of_stream().unwrap();
+                // Ignore "errors" from Gstreamer such as FLUSHING, which are not really errors.
+                let _ = src.end_of_stream();
             }
         }
 
