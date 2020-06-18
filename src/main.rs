@@ -2,7 +2,7 @@ use env_logger::Env;
 use err_derive::Error;
 use log::*;
 use neolink::bc_protocol::BcCamera;
-use neolink::gst::RtspServer;
+use neolink::gst::{MaybeAppSrc, RtspServer};
 use neolink::Never;
 use std::fs;
 use std::io::Write;
@@ -43,7 +43,7 @@ fn main() -> Result<(), Error> {
         for camera in config.cameras {
             s.spawn(move |_| {
                 // TODO handle these errors
-                let mut output = rtsp.add_stream(&camera.name).unwrap(); // TODO
+                let mut output = rtsp.add_stream(&camera.name).unwrap();
                 camera_loop(&camera, &mut output)
             });
         }
@@ -55,13 +55,14 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn camera_loop(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<Never, Error> {
+fn camera_loop(camera_config: &CameraConfig, output: &mut MaybeAppSrc) -> Result<Never, Error> {
     let min_backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(15);
     let mut current_backoff = min_backoff;
 
     loop {
         let cam_err = camera_main(camera_config, output).unwrap_err();
+        output.on_stream_error();
         // Authentication failures are permanent; we retry everything else
         if cam_err.connected {
             current_backoff = min_backoff;

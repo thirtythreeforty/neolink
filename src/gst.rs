@@ -121,6 +121,13 @@ mod maybe_app_src {
             (MaybeAppSrc { rx, app_src: None }, tx)
         }
 
+        /// Flushes data to Gstreamer on a problem communicating with the underlying video source.
+        pub fn on_stream_error(&mut self) {
+            if let Some(src) = self.try_get_src() {
+                src.end_of_stream().unwrap();
+            }
+        }
+
         /// Attempts to retrieve the AppSrc that should be passed in by the caller of new_with_tx
         /// at some point after this struct has been created.  At that point, we swap over to
         /// owning the AppSrc directly.  This function handles either case and returns the AppSrc,
