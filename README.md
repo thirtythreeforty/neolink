@@ -19,7 +19,7 @@ Currently it has been tested on the following cameras:
 - B800/D800
 
 It *should* support the following cameras, but this has not yet been tested.
-Please test and report if you have them:
+Please test if you have them, and [open an issue](https://github.com/thirtythreeforty/neolink/issues/new/choose) if you encounter problems:
 
 - B400/D400
 - E1
