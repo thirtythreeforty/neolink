@@ -52,6 +52,7 @@ neolink --config my_config.toml
 6. Connect your NVR software to Neolink's RTSP server.
    The default URL is `rtsp://127.0.0.1:8554/your_camera_name` if you're running it on the same computer.
    If you run it on a different server, you may need to open firewall ports.
+   See the "Viewing" section below for more troubleshooting.
 
 [gstreamer]: https://gstreamer.freedesktop.org/documentation/installing/index.html
 [ci-download]: https://github.com/thirtythreeforty/neolink/actions?query=branch%3Amaster
@@ -77,15 +78,23 @@ On Linux:
 export RUST_LOG=debug
 ```
 
+## Viewing
+
+Connect your RTSP client to the stream with the name you provided in the configuration file.
+Again, the default URL is `rtsp://127.0.0.1:8554/your_camera_name` if you're running it on the same computer as the client.
+
+4K cameras send large video "key frames" once every few seconds and the client must have a receive buffer large enough to store the entire frame.
+If your client's buffer size is configurable (like Blue Iris), ensure it's set to 20MB, which should ensure plenty of headroom.
+
+Note that some RTSP clients, especially VLC, have trouble handling the stream.
+Currently this seems to be related to receive buffer sizes but the exact cause remains unclear.
+Blue Iris is known to work well.
+
 ## Stability
 
 Neolink has had minimal testing, but it seems to be very reliable in multiple users' testing.
 
 The formats of all configuration files and APIs is subject to change as required while it is pre-1.0.
-
-Note that some RTSP clients, especially VLC, have trouble handling the stream.
-Currently this seems to be related to receive buffer sizes but the exact cause remains unclear.
-Blue Iris is known to work well.
 
 ## Development
 
