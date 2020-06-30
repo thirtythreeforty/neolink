@@ -21,8 +21,15 @@ pub struct CameraConfig {
     pub password: Option<String>,
 
     pub timeout: Option<Duration>,
+
+    #[serde(default = "default_format")]
+    pub format: String,
 }
 
 fn default_bind_addr() -> String {
     "0.0.0.0".to_string()
+}
+
+fn default_format() -> String {
+    "h265".to_string()
 }
