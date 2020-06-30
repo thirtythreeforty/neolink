@@ -36,7 +36,7 @@ impl RtspServer {
         //factory.set_protocols(RTSPLowerTrans::TCP);
         factory.set_launch(&format!("{}{}{}{}",
             "( ",
-            "appsrc name=writesrc is-live=true block=true emit-signals=false max-bytes=0 ",
+            "appsrc name=writesrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
             launch,
             " )"
         ));
