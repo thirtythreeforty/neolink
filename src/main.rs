@@ -127,7 +127,7 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<N
             "{}: Connected to camera, starting video stream",
             camera_config.name
         );
-        camera.start_video(output)
+        camera.start_video(output, &camera_config.stream)
     })()
     .map_err(|err| CameraErr { connected, err })
 }

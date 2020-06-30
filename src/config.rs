@@ -24,6 +24,9 @@ pub struct CameraConfig {
 
     #[serde(default = "default_format")]
     pub format: String,
+
+    #[serde(default = "default_stream")]
+    pub stream: String,
 }
 
 fn default_bind_addr() -> String {
@@ -32,4 +35,8 @@ fn default_bind_addr() -> String {
 
 fn default_format() -> String {
     "h265".to_string()
+}
+
+fn default_stream() -> String {
+    "mainStream".to_string()
 }
