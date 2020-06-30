@@ -124,8 +124,8 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<N
         connected = true;
 
         info!(
-            "{}: Connected to camera, starting video stream",
-            camera_config.name
+            "{}: Connected to camera, starting video stream {}",
+            camera_config.name, camera_config.stream
         );
         camera.start_video(output, &camera_config.stream)
     })()
