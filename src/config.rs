@@ -9,12 +9,16 @@ lazy_static! {
     static ref RE_STREAM_SRC: Regex = Regex::new(r"^(mainStream|subStream)$").unwrap();
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct Config {
     pub cameras: Vec<CameraConfig>,
 
     #[serde(rename = "bind", default = "default_bind_addr")]
     pub bind_addr: String,
+
+    #[validate(range(min = 0, max = 65535, message = "Invalid port", code = "bind_port"))]
+    #[serde(default = "default_bind_port")]
+    pub bind_port: u16,
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -40,6 +44,10 @@ pub struct CameraConfig {
 
 fn default_bind_addr() -> String {
     "0.0.0.0".to_string()
+}
+
+fn default_bind_port() -> u16 {
+    8554
 }
 
 fn default_format() -> String {

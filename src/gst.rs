@@ -100,9 +100,9 @@ impl RtspServer {
         Ok(())
     }
 
-    pub fn run(&self, bind_addr: &str) {
+    pub fn run(&self, bind_addr: &str, bind_port: u16) {
         self.server.set_address(bind_addr);
-
+        self.server.set_service(&format!("{}", bind_port));
         // Attach server to default Glib context
         self.server.attach(None);
 

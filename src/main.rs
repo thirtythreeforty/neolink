@@ -43,6 +43,10 @@ fn main() -> Result<(), Error> {
     let opt = Opt::from_args();
     let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 
+    match config.validate() {
+        Ok(_) => (),
+        Err(e) => return Err(Error::ValidationError(e)),
+    };
     for camera in &config.cameras {
         match camera.validate() {
             Ok(_) => (),
@@ -67,7 +71,7 @@ fn main() -> Result<(), Error> {
             });
         }
 
-        rtsp.run(&config.bind_addr);
+        rtsp.run(&config.bind_addr, config.bind_port);
     })
     .unwrap();
 
