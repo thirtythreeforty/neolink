@@ -18,6 +18,12 @@ pub struct RtspServer {
     server: GstRTSPServer,
 }
 
+pub enum StreamFormat {
+    H264,
+    H265,
+    Custom(String)
+}
+
 impl RtspServer {
     pub fn new() -> RtspServer {
         gstreamer::init().expect("Gstreamer should not explode");
@@ -26,18 +32,24 @@ impl RtspServer {
         }
     }
 
-    pub fn add_stream(&self, name: &str, launch: &str) -> Result<MaybeAppSrc> {
+    pub fn add_stream(&self, name: &str, stream_format: &StreamFormat) -> Result<MaybeAppSrc> {
         let mounts = self
             .server
             .get_mount_points()
             .expect("The server should have mountpoints");
+
+        let launch_str = match stream_format {
+            StreamFormat::H264 => "! h264parse ! rtph264pay name=pay0",
+            StreamFormat::H265 => "! h265parse ! rtph265pay name=pay0",
+            StreamFormat::Custom(custom_format) => custom_format,
+        };
 
         let factory = RTSPMediaFactory::new();
         //factory.set_protocols(RTSPLowerTrans::TCP);
         factory.set_launch(&format!("{}{}{}{}",
             "( ",
             "appsrc name=writesrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
-            launch,
+            launch_str,
             " )"
         ));
         factory.set_shared(true);

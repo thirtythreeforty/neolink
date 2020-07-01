@@ -56,19 +56,13 @@ fn main() -> Result<(), Error> {
         for camera in config.cameras {
             s.spawn(move |_| {
                 // TODO handle these errors
-                let mut format :&str = &camera.format;
-                if format == "h265" {
-                    format = "! h265parse ! rtph265pay name=pay0";
-                } else if format == "h264" {
-                    format = "! h264parse ! rtph264pay name=pay0";
-                } else {
-                    if format.trim().starts_with("!") {
-                        warn!("Using custom format: {}.", format);
-                    } else {
-                        error!("Unrecognised format: {}.", format);
-                    }
-                }
-                let mut output = rtsp.add_stream(&camera.name, &format).unwrap();
+                let cam_format :&str = &camera.format;
+                let stream_format = match cam_format {
+                    "h264"|"H264" => StreamFormat::H264,
+                    "h265"|"H265" => StreamFormat::H265,
+                    custom_format @ _ => StreamFormat::Custom(custom_format.to_string())
+                };
+                let mut output = rtsp.add_stream(&camera.name, &stream_format).unwrap();
                 camera_loop(&camera, &mut output)
             });
         }
