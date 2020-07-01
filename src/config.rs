@@ -1,15 +1,16 @@
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::time::Duration;
+use std::clone::Clone;
 use validator::Validate;
 use regex::Regex;
 
 lazy_static! {
     static ref RE_STREAM_FORM: Regex = Regex::new(r"^([hH]26[45]|[ \t]*[!].*)$").unwrap();
-    static ref RE_STREAM_SRC: Regex = Regex::new(r"^(mainStream|subStream)$").unwrap();
+    static ref RE_STREAM_SRC: Regex = Regex::new(r"^(mainStream|subStream|both)$").unwrap();
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, Clone)]
 pub struct Config {
     pub cameras: Vec<CameraConfig>,
 
@@ -21,7 +22,7 @@ pub struct Config {
     pub bind_port: u16,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, Clone)]
 pub struct CameraConfig {
     pub name: String,
 
@@ -55,5 +56,5 @@ fn default_format() -> String {
 }
 
 fn default_stream() -> String {
-    "mainStream".to_string()
+    "both".to_string()
 }

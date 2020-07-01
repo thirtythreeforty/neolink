@@ -41,7 +41,7 @@ fn main() -> Result<(), Error> {
     );
 
     let opt = Opt::from_args();
-    let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
+    let mut config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 
     match config.validate() {
         Ok(_) => (),
@@ -53,6 +53,32 @@ fn main() -> Result<(), Error> {
             Err(e) => return Err(Error::ValidationError(e)),
         };
     }
+
+    // Setup auto sub streams, we do this by looping the cameras
+    // If the stream type is both we clone the config
+    // On one of the clones we set stream_source to "mainStream" on the other "subStream"
+    // We also change the mount name by appending "/mainStream" or "/subStream"
+    // On the original uncloned config we change the stream from "both" to "mainStream" and leave the mount name unchanged
+    let mut new_cam_configs = vec![];
+
+    for camera_config in &mut config.cameras {
+        if camera_config.stream == "both" {
+            let mut main_camera_config = camera_config.clone();
+            let mut sub_camera_config = camera_config.clone();
+
+            camera_config.stream = "mainStream".to_string();
+
+            main_camera_config.stream = "mainStream".to_string();
+            main_camera_config.name = format!("{}/{}", main_camera_config.name, main_camera_config.stream);
+            new_cam_configs.push(main_camera_config);
+
+            sub_camera_config.stream = "subStream".to_string();
+            sub_camera_config.name = format!("{}/{}", sub_camera_config.name, sub_camera_config.stream);
+            sub_camera_config.format = "h264".to_string(); // Assuming always H264 on subStream: TODO: Autodetect
+            new_cam_configs.push(sub_camera_config);
+        }
+    }
+    config.cameras.append(&mut new_cam_configs);
 
     let rtsp = &RtspServer::new();
 
