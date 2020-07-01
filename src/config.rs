@@ -1,6 +1,13 @@
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::time::Duration;
+use validator::Validate;
+use regex::Regex;
+
+lazy_static! {
+    static ref RE_STREAM_FORM: Regex = Regex::new(r"^([hH]26[45]|[ \t]*[!].*)$").unwrap();
+    static ref RE_STREAM_SRC: Regex = Regex::new(r"^(mainStream|subStream)$").unwrap();
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -10,7 +17,7 @@ pub struct Config {
     pub bind_addr: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct CameraConfig {
     pub name: String,
 
@@ -22,9 +29,11 @@ pub struct CameraConfig {
 
     pub timeout: Option<Duration>,
 
+    #[validate(regex(path = "RE_STREAM_FORM", message = "Incorrect stream format", code = "format"))]
     #[serde(default = "default_format")]
     pub format: String,
 
+    #[validate(regex(path = "RE_STREAM_SRC", message = "Incorrect stream source", code = "stream"))]
     #[serde(default = "default_stream")]
     pub stream: String,
 }
