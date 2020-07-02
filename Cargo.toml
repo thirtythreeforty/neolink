@@ -13,10 +13,11 @@ crossbeam = "0.7"
 env_logger = "*"
 err-derive = "0.2"
 glib = "*"
+gio = "0.8"
 gstreamer = "0.15"
 gstreamer-app = "0.15"
 gstreamer-rtsp = "0.15"
-gstreamer-rtsp-server = "0.15"
+gstreamer-rtsp-server = { version = "0.15", features = ["v1_12"]}
 lazy_static = "1.4"
 log = { version = "0.4" }
 indoc = "0.3"

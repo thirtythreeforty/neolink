@@ -12,6 +12,7 @@ use std::io::Write;
 use std::time::Duration;
 use structopt::StructOpt;
 use validator::Validate;
+use gio::TlsAuthenticationMode;
 
 mod cmdline;
 mod config;
@@ -76,12 +77,21 @@ fn main() -> Result<(), Error> {
 
     let rtsp = &RtspServer::new();
 
+    if ! config.certificate.is_empty() {
+        let tls_client_auth = match &config.tls_client_auth as &str {
+            "request" => TlsAuthenticationMode::Requested,
+            "require" => TlsAuthenticationMode::Required,
+            "none"|_ => TlsAuthenticationMode::None,
+        };
+        rtsp.set_tls(&config.certificate, tls_client_auth).expect("Failed to set up TLS");
+    }
+    
+
     crossbeam::scope(|s| {
         for camera in config.cameras {
             s.spawn(move |_| {
                 // TODO handle these errors
-                let cam_format :&str = &camera.format;
-                let stream_format = match cam_format {
+                let stream_format = match &camera.format as &str {
                     "h264"|"H264" => StreamFormat::H264,
                     "h265"|"H265" => StreamFormat::H265,
                     custom_format @ _ => StreamFormat::Custom(custom_format.to_string())

@@ -7,10 +7,13 @@ use gstreamer::Bin;
 use gstreamer_app::AppSrc;
 //use gstreamer_rtsp::RTSPLowerTrans;
 use gstreamer_rtsp_server::prelude::*;
+use gstreamer_rtsp::RTSPAuthMethod;
 use gstreamer_rtsp_server::{RTSPAuth, RTSPMediaFactory, RTSPServer as GstRTSPServer};
-use log::debug;
+use log::{debug, info};
 use std::io;
 use std::io::Write;
+use std::fs;
+use gio::{TlsCertificate,TlsAuthenticationMode};
 
 type Result<T> = std::result::Result<T, ()>;
 
@@ -96,7 +99,23 @@ impl RtspServer {
         });
 
         self.server.set_auth(auth.as_ref());
+        Ok(())
+    }
 
+    pub fn set_tls(&self, cert_file: &str, client_auth: TlsAuthenticationMode) -> Result<()> {
+        info!("Setting up TLS using {}", cert_file);
+        let auth = match self.server.get_auth() {
+            Some(x) => x,
+            None =>  RTSPAuth::new(),
+        };
+
+        let cert = TlsCertificate::new_from_pem(&fs::read_to_string(cert_file).expect("TLS file not found")).expect("Not a valid TLS certificate");
+        auth.set_tls_certificate(Some(&cert));
+        auth.set_tls_authentication_mode(client_auth);
+        auth.set_supported_methods(RTSPAuthMethod::None);
+
+
+        self.server.set_auth(Some(&auth));
         Ok(())
     }
 
