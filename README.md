@@ -17,12 +17,12 @@ Neolink intends to support all Reolink cameras that do not provide native RTSP.
 Currently it has been tested on the following cameras:
 
 - B800/D800
+- E1
 
 It *should* support the following cameras, but this has not yet been tested.
 Please test if you have them, and [open an issue](https://github.com/thirtythreeforty/neolink/issues/new/choose) if you encounter problems:
 
 - B400/D400
-- E1
 - Lumus
 
 Neolink does not support other cameras such as the RLC-420, since they already [provide native RTSP](https://support.reolink.com/hc/en-us/articles/360007010473-How-to-Live-View-Reolink-Cameras-via-VLC-Media-Player).
@@ -89,13 +89,10 @@ export RUST_LOG=debug
 
 Connect your RTSP client to the stream with the name you provided in the configuration file.
 Again, the default URL is `rtsp://127.0.0.1:8554/your_camera_name` if you're running it on the same computer as the client.
+The smaller SD video is `rtsp://127.0.0.1:8554/your_camera_name/subStream`.
 
 4K cameras send large video "key frames" once every few seconds and the client must have a receive buffer large enough to store the entire frame.
 If your client's buffer size is configurable (like Blue Iris), ensure it's set to 20MB, which should ensure plenty of headroom.
-
-Note that some RTSP clients, especially VLC, have trouble handling the stream.
-Currently this seems to be related to receive buffer sizes but the exact cause remains unclear.
-Blue Iris is known to work well.
 
 ## Stability
 
