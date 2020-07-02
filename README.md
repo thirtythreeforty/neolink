@@ -65,7 +65,7 @@ Currently Neolink cannot auto-detect cameras like the official clients do; you m
 
 By default the h265 streaming format is used. Some cameras, for example E1, provide h264 streams, to use these you must specify `format = "h264"` in the `[[cameras]]` config.
 
-By default the HD stream is used. To swap to the SD stream add `stream = "subStream"` to the `[[cameras]]` config. You may also need to use `h264` format while using the SD stream.
+By default the HD stream is mounted at `name` and at `name/mainStream` and the SD stream is mounted at `name/subStream`. You can specify mounting only one by adding `stream = "subStream"` to the `[[cameras]]` config. You may also need to use `h264` format while using the SD stream.
 
 By default Neolink serves on all IP addresses on port 8554.
 You can modify this by changing the `bind` and the `bind_port` parameter.
