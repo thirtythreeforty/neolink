@@ -18,6 +18,12 @@ pub struct RtspServer {
     server: GstRTSPServer,
 }
 
+pub enum StreamFormat {
+    H264,
+    H265,
+    Custom(String)
+}
+
 impl RtspServer {
     pub fn new() -> RtspServer {
         gstreamer::init().expect("Gstreamer should not explode");
@@ -26,19 +32,24 @@ impl RtspServer {
         }
     }
 
-    pub fn add_stream(&self, name: &str) -> Result<MaybeAppSrc> {
+    pub fn add_stream(&self, names: &[&str], stream_format: &StreamFormat) -> Result<MaybeAppSrc> {
         let mounts = self
             .server
             .get_mount_points()
             .expect("The server should have mountpoints");
 
+        let launch_str = match stream_format {
+            StreamFormat::H264 => "! h264parse ! rtph264pay name=pay0",
+            StreamFormat::H265 => "! h265parse ! rtph265pay name=pay0",
+            StreamFormat::Custom(custom_format) => custom_format,
+        };
+
         let factory = RTSPMediaFactory::new();
         //factory.set_protocols(RTSPLowerTrans::TCP);
-        factory.set_launch(concat!(
+        factory.set_launch(&format!("{}{}{}{}",
             "( ",
-            "appsrc name=writesrc is-live=true block=true emit-signals=false max-bytes=0",
-            " ! h265parse",
-            " ! rtph265pay name=pay0",
+            "appsrc name=writesrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
+            launch_str,
             " )"
         ));
         factory.set_shared(true);
@@ -66,7 +77,9 @@ impl RtspServer {
             let _ = tx.send(app_src); // Receiver may be dropped, don't panic if so
         });
 
-        mounts.add_factory(&format!("/{}", name), &factory);
+        for name in names {
+            mounts.add_factory(&format!("/{}", name), &factory);
+        }
 
         Ok(maybe_app_src)
     }
@@ -89,9 +102,9 @@ impl RtspServer {
         Ok(())
     }
 
-    pub fn run(&self, bind_addr: &str) {
+    pub fn run(&self, bind_addr: &str, bind_port: u16) {
         self.server.set_address(bind_addr);
-
+        self.server.set_service(&format!("{}", bind_port));
         // Attach server to default Glib context
         self.server.attach(None);
 

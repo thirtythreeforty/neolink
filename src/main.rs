@@ -1,13 +1,18 @@
+#[macro_use] extern crate validator_derive;
+#[macro_use] extern crate lazy_static;
+
 use env_logger::Env;
 use err_derive::Error;
 use log::*;
 use neolink::bc_protocol::BcCamera;
-use neolink::gst::{MaybeAppSrc, RtspServer};
+use neolink::gst::{MaybeAppSrc, RtspServer, StreamFormat};
 use neolink::Never;
 use std::fs;
 use std::io::Write;
+use std::sync::Arc;
 use std::time::Duration;
 use structopt::StructOpt;
+use validator::Validate;
 
 mod cmdline;
 mod config;
@@ -23,6 +28,8 @@ pub enum Error {
     ProtocolError(#[error(source)] neolink::Error),
     #[error(display = "I/O error")]
     IoError(#[error(source)] std::io::Error),
+    #[error(display = "Validation error")]
+    ValidationError(#[error(source)] validator::ValidationErrors),
 }
 
 fn main() -> Result<(), Error> {
@@ -37,18 +44,45 @@ fn main() -> Result<(), Error> {
     let opt = Opt::from_args();
     let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 
+    match config.validate() {
+        Ok(_) => (),
+        Err(e) => return Err(Error::ValidationError(e)),
+    };
+
     let rtsp = &RtspServer::new();
 
     crossbeam::scope(|s| {
         for camera in config.cameras {
-            s.spawn(move |_| {
-                // TODO handle these errors
-                let mut output = rtsp.add_stream(&camera.name).unwrap();
-                camera_loop(&camera, &mut output)
-            });
+            let stream_format = match &*camera.format {
+                "h264"|"H264" => StreamFormat::H264,
+                "h265"|"H265" => StreamFormat::H265,
+                custom_format @ _ => StreamFormat::Custom(custom_format.to_string())
+            };
+
+            // Let subthreads share the camera object; in principle I think they could share
+            // the object as it sits in the config.cameras block, but I have not figured out the
+            // syntax for that.
+            let arc_cam = Arc::new(camera);
+
+            // Set up each main and substream according to all the RTSP mount paths we support
+            if arc_cam.stream == "both" || arc_cam.stream == "mainStream" {
+                let paths = &[
+                    &arc_cam.name,
+                    &*format!("{}/mainStream", arc_cam.name),
+                ];
+                let mut output = rtsp.add_stream(paths, &stream_format).unwrap();
+                let main_camera = arc_cam.clone();
+                s.spawn(move |_| camera_loop(&*main_camera, &mut output));
+            }
+            if arc_cam.stream == "both" || arc_cam.stream == "subStream" {
+                let paths = &[&*format!("{}/subStream", arc_cam.name)];
+                let mut output = rtsp.add_stream(paths, &stream_format).unwrap();
+                let sub_camera = arc_cam.clone();
+                s.spawn(move |_| camera_loop(&*sub_camera, &mut output));
+            }
         }
 
-        rtsp.run(&config.bind_addr);
+        rtsp.run(&config.bind_addr, config.bind_port);
     })
     .unwrap();
 
@@ -112,10 +146,10 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<N
         connected = true;
 
         info!(
-            "{}: Connected to camera, starting video stream",
-            camera_config.name
+            "{}: Connected to camera, starting video stream {}",
+            camera_config.name, camera_config.stream
         );
-        camera.start_video(output)
+        camera.start_video(output, &camera_config.stream)
     })()
     .map_err(|err| CameraErr { connected, err })
 }

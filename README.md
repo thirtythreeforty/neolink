@@ -63,8 +63,15 @@ Copy and modify the `sample_config.toml` to specify the address, username, and p
 Each `[[cameras]]` block creates a new camera; the `name` determines the RTSP path you should connect your client to.
 Currently Neolink cannot auto-detect cameras like the official clients do; you must specify their IP addresses directly.
 
+By default the H265 video format is used. Some cameras, for example E1, provide H264 streams. To use these you must specify `format = "h264"` in the `[[cameras]]` config.
+Soon this will be auto-detected, and you will not have to know or care about the format.
+
+By default, the HD stream is available at the RTSP path `/name` or `/name/mainStream`, and the SD stream is available at `/name/subStream`.
+You can disable the HD stream by adding `stream = "subStream"` to the `[[cameras]]` config.
+You may also need to use `h264` format while using the SD stream.
+
 By default Neolink serves on all IP addresses on port 8554.
-You can modify this by changing the `bind` parameter.
+You can modify this by changing the `bind` and the `bind_port` parameter.
 
 You can change the Neolink log level by setting the `RUST_LOG` environment variable (not in the configuration file) to one of `error`, `warn`, `info`, `debug`, or `trace`:
 
