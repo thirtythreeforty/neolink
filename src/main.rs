@@ -47,12 +47,6 @@ fn main() -> Result<(), Error> {
         Ok(_) => (),
         Err(e) => return Err(Error::ValidationError(e)),
     };
-    for camera in &config.cameras {
-        match camera.validate() {
-            Ok(_) => (),
-            Err(e) => return Err(Error::ValidationError(e)),
-        };
-    }
 
     // Setup auto sub streams, we do this by looping the cameras
     // If the stream type is both we clone the config
