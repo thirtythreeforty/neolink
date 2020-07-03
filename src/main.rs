@@ -1,5 +1,7 @@
-#[macro_use] extern crate validator_derive;
-#[macro_use] extern crate lazy_static;
+#[macro_use]
+extern crate validator_derive;
+#[macro_use]
+extern crate lazy_static;
 
 use env_logger::Env;
 use err_derive::Error;
@@ -54,15 +56,15 @@ fn main() -> Result<(), Error> {
     crossbeam::scope(|s| {
         for camera in config.cameras {
             let stream_format = match &*camera.format {
-                "h264"|"H264" => StreamFormat::H264,
-                "h265"|"H265" => StreamFormat::H265,
-                custom_format @ _ => StreamFormat::Custom(custom_format.to_string())
+                "h264" | "H264" => StreamFormat::H264,
+                "h265" | "H265" => StreamFormat::H265,
+                custom_format @ _ => StreamFormat::Custom(custom_format.to_string()),
             };
 
             // The substream always seems to be H264, even on B800 cameras
             let substream_format = match &*camera.format {
-                "h264"|"H264"|"h265"|"H265" => StreamFormat::H264,
-                custom_format @ _ => StreamFormat::Custom(custom_format.to_string())
+                "h264" | "H264" | "h265" | "H265" => StreamFormat::H264,
+                custom_format @ _ => StreamFormat::Custom(custom_format.to_string()),
             };
 
             // Let subthreads share the camera object; in principle I think they could share
@@ -72,10 +74,7 @@ fn main() -> Result<(), Error> {
 
             // Set up each main and substream according to all the RTSP mount paths we support
             if arc_cam.stream == "both" || arc_cam.stream == "mainStream" {
-                let paths = &[
-                    &arc_cam.name,
-                    &*format!("{}/mainStream", arc_cam.name),
-                ];
+                let paths = &[&arc_cam.name, &*format!("{}/mainStream", arc_cam.name)];
                 let mut output = rtsp.add_stream(paths, &stream_format).unwrap();
                 let main_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output));
@@ -95,7 +94,11 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn camera_loop(camera_config: &CameraConfig, stream_name: &str, output: &mut MaybeAppSrc) -> Result<Never, Error> {
+fn camera_loop(
+    camera_config: &CameraConfig,
+    stream_name: &str,
+    output: &mut MaybeAppSrc,
+) -> Result<Never, Error> {
     let min_backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(15);
     let mut current_backoff = min_backoff;
@@ -133,7 +136,11 @@ struct CameraErr {
     err: neolink::Error,
 }
 
-fn camera_main(camera_config: &CameraConfig, stream_name: &str, output: &mut dyn Write) -> Result<Never, CameraErr> {
+fn camera_main(
+    camera_config: &CameraConfig,
+    stream_name: &str,
+    output: &mut dyn Write,
+) -> Result<Never, CameraErr> {
     let mut connected = false;
     (|| {
         let mut camera = BcCamera::new_with_addr(camera_config.camera_addr)?;

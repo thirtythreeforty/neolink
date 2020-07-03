@@ -21,7 +21,7 @@ pub struct RtspServer {
 pub enum StreamFormat {
     H264,
     H265,
-    Custom(String)
+    Custom(String),
 }
 
 impl RtspServer {
