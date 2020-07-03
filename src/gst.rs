@@ -12,6 +12,7 @@ use gstreamer_rtsp_server::{RTSPAuth, RTSPToken, RTSPMediaFactory, RTSP_TOKEN_ME
 use log::debug;
 use std::io;
 use std::io::Write;
+use std::fs;
 use gio::{TlsCertificate,TlsAuthenticationMode};
 
 type Result<T> = std::result::Result<T, ()>;
@@ -124,7 +125,9 @@ impl RtspServer {
         debug!("Setting up TLS using {}", cert_file);
         let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
 
-        let cert = TlsCertificate::new_from_file(&cert_file).expect("Not a valid TLS certificate or not found.");
+        // We seperate reading the file and changing to a PEM so that we get different error messages.
+        let cert_contents = fs::read_to_string(cert_file).expect("TLS file not found");
+        let cert = TlsCertificate::new_from_pem(&cert_contents).expect("Not a valid TLS certificate");
         auth.set_tls_certificate(Some(&cert));
         auth.set_tls_authentication_mode(client_auth);
         auth.set_supported_methods(RTSPAuthMethod::None);
