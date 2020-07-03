@@ -75,7 +75,16 @@ You can modify this by changing the `bind` and the `bind_port` parameter.
 
 Use can enable `rtsps` (TLS) by adding a `certificate = "/path/to/pem"` to the config. This pem should contain by the certificate and the key used for the server. If TLS is enabled all connections must use `rtsps`. You can also control client side TLS with the config option `tls_client_auth = "none|request|require"`, in this case the client should present a certificate signed by the server's CA, this is disabled by default.
 
-Use can enable basic authentication by adding the configuration option `username = "someone"` and `password = "somepass"`. Both username and password must be set for this to work.
+Use can enable basic authentication by adding users to the configuration file as:
+```
+[[users]]
+name: someone
+pass: somepass
+```
+you also need to add the allowed users into each camera by adding the following to `[[cameras]]`.
+```
+permitted_users = ["someone", "someoneelse"]
+```
 
 You can change the Neolink log level by setting the `RUST_LOG` environment variable (not in the configuration file) to one of `error`, `warn`, `info`, `debug`, or `trace`:
 
