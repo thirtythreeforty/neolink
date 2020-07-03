@@ -26,15 +26,12 @@ pub struct Config {
     #[serde(default = "default_certificate")]
     pub certificate: String,
 
-    #[serde(default = "default_username")]
-    pub username: String,
-
-    #[serde(default = "default_password")]
-    pub password: String,
-
     #[validate(regex(path = "RE_TLS_CLIENT_AUTH", message = "Incorrect stream format", code = "format"))]
     #[serde(default = "default_tls_client_auth")]
     pub tls_client_auth: String,
+
+    #[validate]
+    pub users: Vec<UserConfig>,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -56,6 +53,18 @@ pub struct CameraConfig {
     #[validate(regex(path = "RE_STREAM_SRC", message = "Incorrect stream source", code = "stream"))]
     #[serde(default = "default_stream")]
     pub stream: String,
+
+    #[serde(default = "default_permitted_users")]
+    pub permitted_users: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Validate, Clone)]
+pub struct UserConfig {
+    #[serde(alias = "username")]
+    pub name: String,
+
+    #[serde(alias = "password")]
+    pub pass: String,
 }
 
 fn default_bind_addr() -> String {
@@ -82,10 +91,6 @@ fn default_tls_client_auth() -> String {
     "none".to_string()
 }
 
-fn default_username() -> String {
-    "".to_string()
-}
-
-fn default_password() -> String {
-    "".to_string()
+fn default_permitted_users() -> Vec<String> {
+    vec!["anyone".to_string()]
 }
