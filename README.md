@@ -70,6 +70,10 @@ By default the HD stream is mounted at `name` and at `name/mainStream` and the S
 By default Neolink serves on all IP addresses on port 8554.
 You can modify this by changing the `bind` and the `bind_port` parameter.
 
+Use can enable `rtsps` (TLS) by adding a `certificate = "/path/to/pem"` to the config. This pem should contain by the certificate and the key used for the server. If TLS is enabled all connections must use `rtsps`. Use can also control client side TLS with the config option `tls_client_auth = "none|request|require"`, in this case the client should present a certificate signed by the server's CA, this is disabled by default.
+
+Use can enable basic authentication by adding the configuration option `username = "someone"` and `password = "somepass"`. Both username and password must be set for this to work.
+
 You can change the Neolink log level by setting the `RUST_LOG` environment variable (not in the configuration file) to one of `error`, `warn`, `info`, `debug`, or `trace`:
 
 ```
