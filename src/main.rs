@@ -60,7 +60,13 @@ fn main() -> Result<(), Error> {
     };
     rtsp.set_tls(&config.certificate, tls_client_auth).expect("Failed to set up TLS");
 
-    rtsp.set_credentials(&config.username, &config.password).expect("Failed to set up users.");
+    let name = &config.username;
+    let pass = &config.password;
+    let user_pass = match (name, pass)  {
+        (Some(name), Some(pass)) => Some((&name as &str, &pass as &str)),
+        _ => None,
+    };
+    rtsp.set_credentials(user_pass).expect("Failed to set up users.");
 
 
     crossbeam::scope(|s| {

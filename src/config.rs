@@ -27,10 +27,10 @@ pub struct Config {
     pub certificate: String,
 
     #[serde(default = "default_username")]
-    pub username: String,
+    pub username: Option<String>,
 
     #[serde(default = "default_password")]
-    pub password: String,
+    pub password: Option<String>,
 
     #[validate(regex(path = "RE_TLS_CLIENT_AUTH", message = "Incorrect stream format", code = "format"))]
     #[serde(default = "default_tls_client_auth")]
@@ -82,10 +82,10 @@ fn default_tls_client_auth() -> String {
     "none".to_string()
 }
 
-fn default_username() -> String {
-    "".to_string()
+fn default_username() -> Option<String> {
+    None
 }
 
-fn default_password() -> String {
-    "".to_string()
+fn default_password() -> Option<String> {
+    None
 }

@@ -12,7 +12,6 @@ use gstreamer_rtsp_server::{RTSPAuth, RTSPToken, RTSPMediaFactory, RTSP_TOKEN_ME
 use log::debug;
 use std::io;
 use std::io::Write;
-use std::fs;
 use gio::{TlsCertificate,TlsAuthenticationMode};
 
 type Result<T> = std::result::Result<T, ()>;
@@ -98,23 +97,26 @@ impl RtspServer {
         Ok(maybe_app_src)
     }
 
-    pub fn set_credentials(&self, user :&str, pass :&str) -> Result<()> {
-        let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new());
+    pub fn set_credentials(&self, user_pass: Option<(&str, &str)>) -> Result<()> {
+        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
 
-        if ! user.is_empty() && ! pass.is_empty() {
-            debug!("Setting credentials for user {}", user);
-            debug!("Password is {}", pass);
-            let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"watcher")]);
-            let basic = RTSPAuth::make_basic(user, pass);
-            auth.set_supported_methods(RTSPAuthMethod::Basic);
-            auth.add_basic(basic.as_str(), &token);
+        match user_pass {
+            Some((user, pass)) => {
+                    debug!("Setting credentials for user {}", user);
+                    debug!("Password is {}", pass);
+                    let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"watcher")]);
+                    let basic = RTSPAuth::make_basic(user, pass);
+                    auth.set_supported_methods(RTSPAuthMethod::Basic);
+                    auth.add_basic(basic.as_str(), &token);
 
-            // Now we have basic auth we stop others from watching
-            let mut token = RTSPToken::new_empty();
-            auth.set_default_token(Some(&mut token));
-        } else {
-            let mut token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"watcher")]);
-            auth.set_default_token(Some(&mut token)); //By default anyone can watch if we don't turn on basic
+                    // Now we have basic auth we stop others from watching
+                    let mut token = RTSPToken::new_empty();
+                    auth.set_default_token(Some(&mut token));
+            },
+            None => {
+                let mut token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"watcher")]);
+                auth.set_default_token(Some(&mut token)); //By default anyone can watch if we don't turn on basic
+            }
         }
 
         self.server.set_auth(Some(&auth));
@@ -124,7 +126,7 @@ impl RtspServer {
     pub fn set_tls(&self, cert_file: &str, client_auth: TlsAuthenticationMode) -> Result<()> {
         if ! cert_file.is_empty() {
             debug!("Setting up TLS using {}", cert_file);
-            let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new());
+            let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
 
             let cert = TlsCertificate::new_from_file(cert_file).expect("Not a valid TLS certificate or not found.");
             auth.set_tls_certificate(Some(&cert));
