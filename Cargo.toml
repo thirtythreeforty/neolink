@@ -17,7 +17,7 @@ gio = "0.8"
 gstreamer = "0.15"
 gstreamer-app = "0.15"
 gstreamer-rtsp = "0.15"
-gstreamer-rtsp-server = { version = "0.15", features = ["v1_12"]}
+gstreamer-rtsp-server = { version = "0.15", features = ["v1_12", "v1_14"]}
 lazy_static = "1.4"
 log = { version = "0.4" }
 indoc = "0.3"

@@ -3,12 +3,12 @@
 pub use self::maybe_app_src::MaybeAppSrc;
 
 use gstreamer::prelude::Cast;
-use gstreamer::Bin;
+use gstreamer::{Bin,Structure};
 use gstreamer_app::AppSrc;
 //use gstreamer_rtsp::RTSPLowerTrans;
 use gstreamer_rtsp_server::prelude::*;
 use gstreamer_rtsp::RTSPAuthMethod;
-use gstreamer_rtsp_server::{RTSPAuth, RTSPMediaFactory, RTSPServer as GstRTSPServer};
+use gstreamer_rtsp_server::{RTSPAuth, RTSPToken, RTSPMediaFactory, RTSP_TOKEN_MEDIA_FACTORY_ROLE, RTSP_PERM_MEDIA_FACTORY_ACCESS, RTSP_PERM_MEDIA_FACTORY_CONSTRUCT, RTSPServer as GstRTSPServer};
 use log::{debug, info};
 use std::io;
 use std::io::Write;
@@ -48,6 +48,17 @@ impl RtspServer {
         };
 
         let factory = RTSPMediaFactory::new();
+
+        factory.add_role_from_structure(
+            &Structure::new(
+                "watcher",
+                &[
+                    (*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true),
+                    (*RTSP_PERM_MEDIA_FACTORY_CONSTRUCT, &true),
+                 ]
+            )
+        );
+
         //factory.set_protocols(RTSPLowerTrans::TCP);
         factory.set_launch(&format!("{}{}{}{}",
             "( ",
@@ -85,37 +96,47 @@ impl RtspServer {
         Ok(maybe_app_src)
     }
 
-    pub fn set_credentials(&mut self, user_pass: Option<(&str, &str)>) -> Result<()> {
-        let auth = user_pass.map(|(user, pass)| {
-            let auth = RTSPAuth::new();
-            /*
-            let perm = RTSPToken::new(
-                ...
-            );
-            auth.add_basic(RTSPAuth::make_basic(user, pass).as_str(), &perm);
-            */
-            // TODO TLS https://thiblahute.github.io/GStreamer-doc/gst-rtsp-server-1.0/rtsp-server.html?gi-language=c
-            auth
-        });
-
-        self.server.set_auth(auth.as_ref());
-        Ok(())
-    }
-
-    pub fn set_tls(&self, cert_file: &str, client_auth: TlsAuthenticationMode) -> Result<()> {
-        info!("Setting up TLS using {}", cert_file);
+    pub fn set_credentials(&self, user :&str, pass :&str) -> Result<()> {
         let auth = match self.server.get_auth() {
             Some(x) => x,
             None =>  RTSPAuth::new(),
         };
 
-        let cert = TlsCertificate::new_from_pem(&fs::read_to_string(cert_file).expect("TLS file not found")).expect("Not a valid TLS certificate");
-        auth.set_tls_certificate(Some(&cert));
-        auth.set_tls_authentication_mode(client_auth);
-        auth.set_supported_methods(RTSPAuthMethod::None);
+        if ! user.is_empty() && ! pass.is_empty() {
+            info!("Setting credentials for user {}", user);
+            debug!("Password is {}", pass);
+            let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"watcher")]);
+            let basic = RTSPAuth::make_basic(user, pass);
+            auth.set_supported_methods(RTSPAuthMethod::Basic);
+            auth.add_basic(basic.as_str(), &token);
 
+            // Now we have basic auth we stop others from watching
+            let mut token = RTSPToken::new_empty();
+            auth.set_default_token(Some(&mut token));
+        } else {
+            let mut token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"watcher")]);
+            auth.set_default_token(Some(&mut token)); //By default anyone can watch if we don't turn on basic
+        }
 
         self.server.set_auth(Some(&auth));
+        Ok(())
+    }
+
+    pub fn set_tls(&self, cert_file: &str, client_auth: TlsAuthenticationMode) -> Result<()> {
+        if ! cert_file.is_empty() {
+            info!("Setting up TLS using {}", cert_file);
+            let auth = match self.server.get_auth() {
+                Some(x) => x,
+                None =>  RTSPAuth::new(),
+            };
+
+            let cert = TlsCertificate::new_from_pem(&fs::read_to_string(cert_file).expect("TLS file not found")).expect("Not a valid TLS certificate");
+            auth.set_tls_certificate(Some(&cert));
+            auth.set_tls_authentication_mode(client_auth);
+            auth.set_supported_methods(RTSPAuthMethod::None);
+
+            self.server.set_auth(Some(&auth));
+        }
         Ok(())
     }
 

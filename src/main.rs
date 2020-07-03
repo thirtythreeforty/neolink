@@ -77,15 +77,15 @@ fn main() -> Result<(), Error> {
 
     let rtsp = &RtspServer::new();
 
-    if ! config.certificate.is_empty() {
-        let tls_client_auth = match &config.tls_client_auth as &str {
-            "request" => TlsAuthenticationMode::Requested,
-            "require" => TlsAuthenticationMode::Required,
-            "none"|_ => TlsAuthenticationMode::None,
-        };
-        rtsp.set_tls(&config.certificate, tls_client_auth).expect("Failed to set up TLS");
-    }
-    
+    let tls_client_auth = match &config.tls_client_auth as &str {
+        "request" => TlsAuthenticationMode::Requested,
+        "require" => TlsAuthenticationMode::Required,
+        "none"|_ => TlsAuthenticationMode::None,
+    };
+    rtsp.set_tls(&config.certificate, tls_client_auth).expect("Failed to set up TLS");
+
+    rtsp.set_credentials(&config.username, &config.password).expect("Failed to set up users.");
+
 
     crossbeam::scope(|s| {
         for camera in config.cameras {
