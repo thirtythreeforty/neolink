@@ -105,7 +105,7 @@ impl RtspServer {
         };
 
         if ! user.is_empty() && ! pass.is_empty() {
-            info!("Setting credentials for user {}", user);
+            debug!("Setting credentials for user {}", user);
             debug!("Password is {}", pass);
             let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"watcher")]);
             let basic = RTSPAuth::make_basic(user, pass);
