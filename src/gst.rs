@@ -99,10 +99,7 @@ impl RtspServer {
     }
 
     pub fn set_credentials(&self, user :&str, pass :&str) -> Result<()> {
-        let auth = match self.server.get_auth() {
-            Some(x) => x,
-            None =>  RTSPAuth::new(),
-        };
+        let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new());
 
         if ! user.is_empty() && ! pass.is_empty() {
             debug!("Setting credentials for user {}", user);
@@ -127,10 +124,7 @@ impl RtspServer {
     pub fn set_tls(&self, cert_file: &str, client_auth: TlsAuthenticationMode) -> Result<()> {
         if ! cert_file.is_empty() {
             info!("Setting up TLS using {}", cert_file);
-            let auth = match self.server.get_auth() {
-                Some(x) => x,
-                None =>  RTSPAuth::new(),
-            };
+            let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new());
 
             let cert = TlsCertificate::new_from_pem(&fs::read_to_string(cert_file).expect("TLS file not found")).expect("Not a valid TLS certificate");
             auth.set_tls_certificate(Some(&cert));
