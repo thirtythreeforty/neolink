@@ -100,23 +100,20 @@ impl RtspServer {
     pub fn set_credentials(&self, user_pass: Option<(&str, &str)>) -> Result<()> {
         let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
 
-        match user_pass {
-            Some((user, pass)) => {
-                    debug!("Setting credentials for user {}", user);
-                    debug!("Password is {}", pass);
-                    let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"watcher")]);
-                    let basic = RTSPAuth::make_basic(user, pass);
-                    auth.set_supported_methods(RTSPAuthMethod::Basic);
-                    auth.add_basic(basic.as_str(), &token);
+        if let Some((user, pass)) = user_pass {
+            debug!("Setting credentials for user {}", user);
+            debug!("Password is {}", pass);
+            let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"watcher")]);
+            let basic = RTSPAuth::make_basic(user, pass);
+            auth.set_supported_methods(RTSPAuthMethod::Basic);
+            auth.add_basic(basic.as_str(), &token);
 
-                    // Now we have basic auth we stop others from watching
-                    let mut token = RTSPToken::new_empty();
-                    auth.set_default_token(Some(&mut token));
-            },
-            None => {
-                let mut token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"watcher")]);
-                auth.set_default_token(Some(&mut token)); //By default anyone can watch if we don't turn on basic
-            }
+            // Now we have basic auth we stop others from watching
+            let mut token = RTSPToken::new_empty();
+            auth.set_default_token(Some(&mut token));
+        } else {
+            let mut token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"watcher")]);
+            auth.set_default_token(Some(&mut token)); //By default anyone can watch if we don't turn on basic
         }
 
         self.server.set_auth(Some(&auth));
