@@ -32,6 +32,8 @@ Neolink does not support other cameras such as the RLC-420, since they already [
 In the future Neolink will be much easier to install.
 For now, follow these steps.
 
+### Windows/Linux
+
 1. [Install Gstreamer][gstreamer] from the most recent MSI installer on Windows, or your package manager on Linux.
 2. If you are using Windows, add the following to your `PATH` environment variable:
 
@@ -56,6 +58,24 @@ neolink --config my_config.toml
 
 [gstreamer]: https://gstreamer.freedesktop.org/documentation/installing/index.html
 [ci-download]: https://github.com/thirtythreeforty/neolink/actions?query=branch%3Amaster
+
+### Docker
+
+A Docker image is also available containing Neolink and all its dependencies.
+The image is `thirtythreeforty/neolink`.
+Port 8554 is exposed, which is the default listen port.
+You must mount a configuration file (see below) into the container at `/etc/neolink.toml`.
+
+Here is a sample launch commmand:
+
+```
+docker run \
+  --restart=on-failure \
+  --volume=$PWD/config.toml:/etc/neolink.toml \
+  thirtythreeforty/neolink
+```
+
+The Docker image is "best effort" and intended for advanced users; questions about running Docker are outside the scope of Neolink.
 
 ## Configuration
 
