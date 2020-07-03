@@ -1,6 +1,6 @@
 # A single-shot build-n-pack on Alpine Linux
 name: Publish Docker image
-on: [push]
+on: [tags]
 
 jobs:
   push_to_registry:
