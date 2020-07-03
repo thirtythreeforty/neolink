@@ -9,6 +9,7 @@ use neolink::gst::{MaybeAppSrc, RtspServer, StreamFormat};
 use neolink::Never;
 use std::fs;
 use std::io::Write;
+use std::sync::Arc;
 use std::time::Duration;
 use structopt::StructOpt;
 use validator::Validate;
@@ -42,38 +43,12 @@ fn main() -> Result<(), Error> {
     );
 
     let opt = Opt::from_args();
-    let mut config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
+    let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 
     match config.validate() {
         Ok(_) => (),
         Err(e) => return Err(Error::ValidationError(e)),
     };
-
-    // Setup auto sub streams, we do this by looping the cameras
-    // If the stream type is both we clone the config
-    // On one of the clones we set stream_source to "mainStream" on the other "subStream"
-    // We also change the mount name by appending "/mainStream" or "/subStream"
-    // On the original uncloned config we change the stream from "both" to "mainStream" and leave the mount name unchanged
-    let mut new_cam_configs = vec![];
-
-    for camera_config in &mut config.cameras {
-        if camera_config.stream == "both" {
-            let mut main_camera_config = camera_config.clone();
-            let mut sub_camera_config = camera_config.clone();
-
-            camera_config.stream = "mainStream".to_string();
-
-            main_camera_config.stream = "mainStream".to_string();
-            main_camera_config.name = format!("{}/{}", main_camera_config.name, main_camera_config.stream);
-            new_cam_configs.push(main_camera_config);
-
-            sub_camera_config.stream = "subStream".to_string();
-            sub_camera_config.name = format!("{}/{}", sub_camera_config.name, sub_camera_config.stream);
-            sub_camera_config.format = "h264".to_string(); // Assuming always H264 on subStream: TODO: Autodetect
-            new_cam_configs.push(sub_camera_config);
-        }
-    }
-    config.cameras.append(&mut new_cam_configs);
 
     let rtsp = &RtspServer::new();
 
@@ -89,16 +64,33 @@ fn main() -> Result<(), Error> {
 
     crossbeam::scope(|s| {
         for camera in config.cameras {
-            s.spawn(move |_| {
-                // TODO handle these errors
-                let stream_format = match &camera.format as &str {
-                    "h264"|"H264" => StreamFormat::H264,
-                    "h265"|"H265" => StreamFormat::H265,
-                    custom_format @ _ => StreamFormat::Custom(custom_format.to_string())
-                };
-                let mut output = rtsp.add_stream(&camera.name, &stream_format).unwrap();
-                camera_loop(&camera, &mut output)
-            });
+            let stream_format = match &*camera.format {
+                "h264"|"H264" => StreamFormat::H264,
+                "h265"|"H265" => StreamFormat::H265,
+                custom_format @ _ => StreamFormat::Custom(custom_format.to_string())
+            };
+
+            // Let subthreads share the camera object; in principle I think they could share
+            // the object as it sits in the config.cameras block, but I have not figured out the
+            // syntax for that.
+            let arc_cam = Arc::new(camera);
+
+            // Set up each main and substream according to all the RTSP mount paths we support
+            if arc_cam.stream == "both" || arc_cam.stream == "mainStream" {
+                let paths = &[
+                    &arc_cam.name,
+                    &*format!("{}/mainStream", arc_cam.name),
+                ];
+                let mut output = rtsp.add_stream(paths, &stream_format).unwrap();
+                let main_camera = arc_cam.clone();
+                s.spawn(move |_| camera_loop(&*main_camera, &mut output));
+            }
+            if arc_cam.stream == "both" || arc_cam.stream == "subStream" {
+                let paths = &[&*format!("{}/subStream", arc_cam.name)];
+                let mut output = rtsp.add_stream(paths, &stream_format).unwrap();
+                let sub_camera = arc_cam.clone();
+                s.spawn(move |_| camera_loop(&*sub_camera, &mut output));
+            }
         }
 
         rtsp.run(&config.bind_addr, config.bind_port);
