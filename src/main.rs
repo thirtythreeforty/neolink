@@ -59,6 +59,12 @@ fn main() -> Result<(), Error> {
                 custom_format @ _ => StreamFormat::Custom(custom_format.to_string())
             };
 
+            // The substream always seems to be H264, even on B800 cameras
+            let substream_format = match &*camera.format {
+                "h264"|"H264"|"h265"|"H265" => StreamFormat::H264,
+                custom_format @ _ => StreamFormat::Custom(custom_format.to_string())
+            };
+
             // Let subthreads share the camera object; in principle I think they could share
             // the object as it sits in the config.cameras block, but I have not figured out the
             // syntax for that.
@@ -72,13 +78,13 @@ fn main() -> Result<(), Error> {
                 ];
                 let mut output = rtsp.add_stream(paths, &stream_format).unwrap();
                 let main_camera = arc_cam.clone();
-                s.spawn(move |_| camera_loop(&*main_camera, &mut output));
+                s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output));
             }
             if arc_cam.stream == "both" || arc_cam.stream == "subStream" {
                 let paths = &[&*format!("{}/subStream", arc_cam.name)];
-                let mut output = rtsp.add_stream(paths, &stream_format).unwrap();
+                let mut output = rtsp.add_stream(paths, &substream_format).unwrap();
                 let sub_camera = arc_cam.clone();
-                s.spawn(move |_| camera_loop(&*sub_camera, &mut output));
+                s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut output));
             }
         }
 
@@ -89,13 +95,13 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn camera_loop(camera_config: &CameraConfig, output: &mut MaybeAppSrc) -> Result<Never, Error> {
+fn camera_loop(camera_config: &CameraConfig, stream_name: &str, output: &mut MaybeAppSrc) -> Result<Never, Error> {
     let min_backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(15);
     let mut current_backoff = min_backoff;
 
     loop {
-        let cam_err = camera_main(camera_config, output).unwrap_err();
+        let cam_err = camera_main(camera_config, stream_name, output).unwrap_err();
         output.on_stream_error();
         // Authentication failures are permanent; we retry everything else
         if cam_err.connected {
@@ -127,7 +133,7 @@ struct CameraErr {
     err: neolink::Error,
 }
 
-fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<Never, CameraErr> {
+fn camera_main(camera_config: &CameraConfig, stream_name: &str, output: &mut dyn Write) -> Result<Never, CameraErr> {
     let mut connected = false;
     (|| {
         let mut camera = BcCamera::new_with_addr(camera_config.camera_addr)?;
@@ -147,9 +153,9 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<N
 
         info!(
             "{}: Connected to camera, starting video stream {}",
-            camera_config.name, camera_config.stream
+            camera_config.name, stream_name
         );
-        camera.start_video(output, &camera_config.stream)
+        camera.start_video(output, stream_name)
     })()
     .map_err(|err| CameraErr { connected, err })
 }
