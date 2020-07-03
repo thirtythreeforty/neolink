@@ -58,7 +58,10 @@ fn main() -> Result<(), Error> {
         "none" => TlsAuthenticationMode::None,
         _ => unreachable!(),
     };
-    rtsp.set_tls(&config.certificate, tls_client_auth).expect("Failed to set up TLS");
+
+    if let Some(cert_path) = &config.certificate {
+        rtsp.set_tls(&cert_path, tls_client_auth).expect("Failed to set up TLS");
+    }
 
     let name = &config.username;
     let pass = &config.password;

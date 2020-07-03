@@ -124,17 +124,15 @@ impl RtspServer {
     }
 
     pub fn set_tls(&self, cert_file: &str, client_auth: TlsAuthenticationMode) -> Result<()> {
-        if ! cert_file.is_empty() {
-            debug!("Setting up TLS using {}", cert_file);
-            let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
+        debug!("Setting up TLS using {}", cert_file);
+        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
 
-            let cert = TlsCertificate::new_from_file(cert_file).expect("Not a valid TLS certificate or not found.");
-            auth.set_tls_certificate(Some(&cert));
-            auth.set_tls_authentication_mode(client_auth);
-            auth.set_supported_methods(RTSPAuthMethod::None);
+        let cert = TlsCertificate::new_from_file(&cert_file).expect("Not a valid TLS certificate or not found.");
+        auth.set_tls_certificate(Some(&cert));
+        auth.set_tls_authentication_mode(client_auth);
+        auth.set_supported_methods(RTSPAuthMethod::None);
 
-            self.server.set_auth(Some(&auth));
-        }
+        self.server.set_auth(Some(&auth));
         Ok(())
     }
 

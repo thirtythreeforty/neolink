@@ -24,7 +24,7 @@ pub struct Config {
     pub bind_port: u16,
 
     #[serde(default = "default_certificate")]
-    pub certificate: String,
+    pub certificate: Option<String>,
 
     #[serde(default = "default_username")]
     pub username: Option<String>,
@@ -74,8 +74,8 @@ fn default_stream() -> String {
     "both".to_string()
 }
 
-fn default_certificate() -> String {
-    "".to_string()
+fn default_certificate() -> Option<String> {
+    None
 }
 
 fn default_tls_client_auth() -> String {
