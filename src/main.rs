@@ -162,8 +162,8 @@ fn set_up_users(users: &Vec<UserConfig>, rtsp: &RtspServer) {
 
 fn get_permitted_users(users: &Vec<UserConfig>, current_permitted_users: &Vec<String>) -> Vec<String> {
     // This is required to handle the special case of "anyone"
-    // Special set up of "anyone"
-    // If in the camera config there is the user anyone
+    // ===Special set up of "anyone"===
+    // If in the camera config there is the user "anyone"
     // Then we add all users to the cameras config. including unauth
     let mut new_permitted_users = vec![];
     if current_permitted_users.contains(&"anyone".to_string()) {
@@ -176,6 +176,7 @@ fn get_permitted_users(users: &Vec<UserConfig>, current_permitted_users: &Vec<St
     } else {
         new_permitted_users.append(&mut current_permitted_users.clone());
     }
+    // We also drop duplicated user names
     new_permitted_users.sort();
     new_permitted_users.dedup();
 
