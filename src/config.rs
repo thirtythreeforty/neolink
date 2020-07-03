@@ -24,7 +24,7 @@ pub struct Config {
     pub bind_port: u16,
 
     #[serde(default = "default_certificate")]
-    pub certificate: String,
+    pub certificate: Option<String>,
 
     #[validate(regex(path = "RE_TLS_CLIENT_AUTH", message = "Incorrect stream format", code = "format"))]
     #[serde(default = "default_tls_client_auth")]
@@ -60,11 +60,13 @@ pub struct CameraConfig {
 
 #[derive(Debug, Deserialize, Validate, Clone)]
 pub struct UserConfig {
+    #[validate(required)]
     #[serde(alias = "username")]
-    pub name: String,
+    pub name: Option<String>,
 
+    #[validate(required)]
     #[serde(alias = "password")]
-    pub pass: String,
+    pub pass: Option<String>,
 }
 
 fn default_bind_addr() -> String {
@@ -83,8 +85,8 @@ fn default_stream() -> String {
     "both".to_string()
 }
 
-fn default_certificate() -> String {
-    "".to_string()
+fn default_certificate() -> Option<String> {
+    None
 }
 
 fn default_tls_client_auth() -> String {

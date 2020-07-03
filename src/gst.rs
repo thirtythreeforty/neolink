@@ -9,7 +9,7 @@ use gstreamer_app::AppSrc;
 use gstreamer_rtsp_server::prelude::*;
 use gstreamer_rtsp::RTSPAuthMethod;
 use gstreamer_rtsp_server::{RTSPAuth, RTSPToken, RTSPMediaFactory, RTSP_TOKEN_MEDIA_FACTORY_ROLE, RTSP_PERM_MEDIA_FACTORY_ACCESS, RTSP_PERM_MEDIA_FACTORY_CONSTRUCT, RTSPServer as GstRTSPServer};
-use log::{debug, info};
+use log::debug;
 use std::io;
 use std::io::Write;
 use std::fs;
@@ -100,26 +100,18 @@ impl RtspServer {
         Ok(maybe_app_src)
     }
 
-    pub fn set_credentials(&self, credentials :&Vec<(&String, &String)>) -> Result<()> {
-        let auth = match self.server.get_auth() {
-            Some(x) => x,
-            None =>  RTSPAuth::new(),
-        };
+    pub fn set_credentials(&self, credentials :&Vec<Option<(&str, &str)>>) -> Result<()> {
+        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
 
         auth.set_supported_methods(RTSPAuthMethod::Basic);
 
-        for credentials in credentials {
-            let (user, pass) = credentials;
-            if ! user.is_empty() && ! pass.is_empty() {
-                info!("Setting credentials for user {}", user);
+        for credential in credentials {
+            if let Some((user, pass)) = credential {
+                debug!("Setting credentials for user {}", user);
                 debug!("Password is {}", pass);
                 let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, user)]);
                 let basic = RTSPAuth::make_basic(user, pass);
                 auth.add_basic(basic.as_str(), &token);
-
-                // Now we have basic auth we stop others from watching
-                let mut token = RTSPToken::new_empty();
-                auth.set_default_token(Some(&mut token));
             }
         }
         let mut un_authtoken = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"unauth")]);
@@ -130,20 +122,17 @@ impl RtspServer {
     }
 
     pub fn set_tls(&self, cert_file: &str, client_auth: TlsAuthenticationMode) -> Result<()> {
-        if ! cert_file.is_empty() {
-            info!("Setting up TLS using {}", cert_file);
-            let auth = match self.server.get_auth() {
-                Some(x) => x,
-                None =>  RTSPAuth::new(),
-            };
+        debug!("Setting up TLS using {}", cert_file);
+        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
 
-            let cert = TlsCertificate::new_from_pem(&fs::read_to_string(cert_file).expect("TLS file not found")).expect("Not a valid TLS certificate");
-            auth.set_tls_certificate(Some(&cert));
-            auth.set_tls_authentication_mode(client_auth);
-            auth.set_supported_methods(RTSPAuthMethod::None);
+        // We seperate reading the file and changing to a PEM so that we get different error messages.
+        let cert_contents = fs::read_to_string(cert_file).expect("TLS file not found");
+        let cert = TlsCertificate::new_from_pem(&cert_contents).expect("Not a valid TLS certificate");
+        auth.set_tls_certificate(Some(&cert));
+        auth.set_tls_authentication_mode(client_auth);
+        auth.set_supported_methods(RTSPAuthMethod::None);
 
-            self.server.set_auth(Some(&auth));
-        }
+        self.server.set_auth(Some(&auth));
         Ok(())
     }
 

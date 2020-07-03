@@ -137,16 +137,25 @@ fn set_up_tls(config: &Config, rtsp: &RtspServer) {
     let tls_client_auth = match &config.tls_client_auth as &str {
         "request" => TlsAuthenticationMode::Requested,
         "require" => TlsAuthenticationMode::Required,
-        "none"|_ => TlsAuthenticationMode::None,
+        "none" => TlsAuthenticationMode::None,
+        _ => unreachable!(),
     };
-    rtsp.set_tls(&config.certificate, tls_client_auth).expect("Failed to set up TLS");
+    if let Some(cert_path) = &config.certificate {
+        rtsp.set_tls(&cert_path, tls_client_auth).expect("Failed to set up TLS");
+    }
 }
 
 fn set_up_users(users: &Vec<UserConfig>, rtsp: &RtspServer) {
     // Setting up users
     let mut credentials = vec![];
     for user in users {
-        credentials.push((&user.name, &user.pass));
+        let name = &user.name;
+        let pass = &user.pass;
+        let user_pass = match (name, pass)  {
+            (Some(name), Some(pass)) => Some((&name as &str, &pass as &str)),
+            _ => None,
+        };
+        credentials.push(user_pass);
     }
     rtsp.set_credentials(&credentials).expect("Failed to set up users.");
 }
@@ -159,8 +168,9 @@ fn get_permitted_users(users: &Vec<UserConfig>, current_permitted_users: &Vec<St
     let mut new_permitted_users = vec![];
     if current_permitted_users.contains(&"anyone".to_string()) {
         for credentials in users {
-            let user: &str = &credentials.name;
-            new_permitted_users.push(user.to_string());
+            if let Some(user) = &credentials.name {
+                new_permitted_users.push(user.to_string());
+            }
         }
         new_permitted_users.push("unauth".to_string());
     } else {
