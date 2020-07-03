@@ -55,7 +55,8 @@ fn main() -> Result<(), Error> {
     let tls_client_auth = match &config.tls_client_auth as &str {
         "request" => TlsAuthenticationMode::Requested,
         "require" => TlsAuthenticationMode::Required,
-        "none"|_ => TlsAuthenticationMode::None,
+        "none" => TlsAuthenticationMode::None,
+        _ => unreachable!(),
     };
     rtsp.set_tls(&config.certificate, tls_client_auth).expect("Failed to set up TLS");
 
