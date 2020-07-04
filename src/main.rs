@@ -1,8 +1,3 @@
-#[macro_use]
-extern crate validator_derive;
-#[macro_use]
-extern crate lazy_static;
-
 use env_logger::Env;
 use err_derive::Error;
 use log::*;
@@ -46,10 +41,7 @@ fn main() -> Result<(), Error> {
     let opt = Opt::from_args();
     let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 
-    match config.validate() {
-        Ok(_) => (),
-        Err(e) => return Err(Error::ValidationError(e)),
-    };
+    config.validate()?;
 
     let rtsp = &RtspServer::new();
 
@@ -73,7 +65,7 @@ fn main() -> Result<(), Error> {
             let arc_cam = Arc::new(camera);
 
             // Set up each main and substream according to all the RTSP mount paths we support
-            if arc_cam.stream == "both" || arc_cam.stream == "mainStream" {
+            if ["both", "mainStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[
                     &*format!("/{}", arc_cam.name),
                     &*format!("/{}/mainStream", arc_cam.name),
@@ -82,7 +74,7 @@ fn main() -> Result<(), Error> {
                 let main_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output));
             }
-            if arc_cam.stream == "both" || arc_cam.stream == "subStream" {
+            if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
                 let mut output = rtsp.add_stream(paths, &substream_format).unwrap();
                 let sub_camera = arc_cam.clone();
