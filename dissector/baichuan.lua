@@ -28,7 +28,15 @@ bc_protocol.fields = {
 
 message_types = {
   [1]="login",
-  [3]="video",
+  [3]="<Preview> (video)",
+  [58]="<AbilitySupport>",
+  [78]="<VideoInput>",
+  [79]="<Serial>",
+  [80]="<VersionInfo>",
+  [114]="<Uid>",
+  [146]="<StreamInfoList>",
+  [151]="<AbilityInfo>",
+  [230]="<cropSnap>",
 }
 
 message_classes = {
