@@ -102,6 +102,7 @@ function bc_protocol.dissector(buffer, pinfo, tree)
   end
 
   -- bin_offset is either nil (no binary data) or nonzero
+  -- TODO: bin_offset is actually stateful!
   local bin_offset = nil
   if header_len == 24 then
     bin_offset = buffer(20, 4):le_uint()
@@ -112,6 +113,8 @@ function bc_protocol.dissector(buffer, pinfo, tree)
     "Baichuan IP Camera Protocol, " .. msg_type_str .. " message")
   local header = bc_subtree:add(bc_protocol, buffer(0, header_len),
     "Baichuan Message Header, length: " .. header_len)
+
+  pinfo.cols['info'] = msg_type_str .. ", type " .. msg_type .. ", " .. msg_len .. " bytes"
 
   header:add_le(magic_bytes, buffer(0, 4))
   header:add_le(message_id,  buffer(4, 4))
