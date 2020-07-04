@@ -74,13 +74,16 @@ fn main() -> Result<(), Error> {
 
             // Set up each main and substream according to all the RTSP mount paths we support
             if arc_cam.stream == "both" || arc_cam.stream == "mainStream" {
-                let paths = &[&arc_cam.name, &*format!("{}/mainStream", arc_cam.name)];
+                let paths = &[
+                    &*format!("/{}", arc_cam.name),
+                    &*format!("/{}/mainStream", arc_cam.name),
+                ];
                 let mut output = rtsp.add_stream(paths, &stream_format).unwrap();
                 let main_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output));
             }
             if arc_cam.stream == "both" || arc_cam.stream == "subStream" {
-                let paths = &[&*format!("{}/subStream", arc_cam.name)];
+                let paths = &[&*format!("/{}/subStream", arc_cam.name)];
                 let mut output = rtsp.add_stream(paths, &substream_format).unwrap();
                 let sub_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut output));
