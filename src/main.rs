@@ -79,17 +79,13 @@ fn main() -> Result<(), Error> {
                     &*format!("/{}", arc_cam.name),
                     &*format!("/{}/mainStream", arc_cam.name),
                 ];
-                let mut output = rtsp
-                    .add_stream(paths, &stream_format, &permitted_users)
-                    .unwrap();
+                let mut output = rtsp.add_stream(paths, stream_format, &permitted_users).unwrap();
                 let main_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output));
             }
             if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
-                let mut output = rtsp
-                    .add_stream(paths, &substream_format, &permitted_users)
-                    .unwrap();
+                let mut output = rtsp.add_stream(paths, substream_format, &permitted_users).unwrap();
                 let sub_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut output));
             }

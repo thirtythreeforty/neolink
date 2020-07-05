@@ -44,7 +44,7 @@ impl RtspServer {
     pub fn add_stream(
         &self,
         paths: &[&str],
-        stream_format: &StreamFormat,
+        stream_format: StreamFormat,
         permitted_users: &HashSet<&str>,
     ) -> Result<MaybeAppSrc> {
         let mounts = self
@@ -55,7 +55,7 @@ impl RtspServer {
         let launch_str = match stream_format {
             StreamFormat::H264 => "! h264parse ! rtph264pay name=pay0",
             StreamFormat::H265 => "! h265parse ! rtph265pay name=pay0",
-            StreamFormat::Custom(custom_format) => custom_format,
+            StreamFormat::Custom(ref custom_format) => custom_format,
         };
 
         let factory = RTSPMediaFactory::new();
