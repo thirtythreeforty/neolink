@@ -3,7 +3,7 @@
 pub use self::maybe_app_src::MaybeAppSrc;
 
 use gstreamer::prelude::Cast;
-use gstreamer::{Bin,Structure};
+use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
 //use gstreamer_rtsp::RTSPLowerTrans;
 use gstreamer_rtsp_server::prelude::*;
@@ -50,15 +50,19 @@ impl RtspServer {
         let factory = RTSPMediaFactory::new();
 
         for permitted_user in permitted_users {
-            factory.add_role_from_structure(
-                &Structure::new(
-                    &permitted_user,
-                    &[
-                        (*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true),
-                        (*RTSP_PERM_MEDIA_FACTORY_CONSTRUCT, &true),
-                     ]
-                )
-            );
+            debug!("Permitting {} to access {}", permitted_user, names.join(", "));
+            self.add_watcher_role(&factory, &permitted_user)
+        }
+        // During auth, first it binds anonymously. At this point it checks
+        // RTSP_PERM_MEDIA_FACTORY_ACCESS to see if anyone can connect
+        // This is done before the auth token is loaded, possibliy an upstream bug there
+        // After checking RTSP_PERM_MEDIA_FACTORY_ACCESS anonymously
+        // It loads the auth token of the user and checks that users
+        // RTSP_PERM_MEDIA_FACTORY_CONSTRUCT allowing them to play
+        // As a result of this we must ensure that if anonymous is not granted watcher
+        // access that anon has at least RTSP_PERM_MEDIA_FACTORY_ACCESS 
+        if ! permitted_users.contains(&"anonymous".to_string()) {
+            self.add_check_role(&factory, "anonymous");
         }
 
         //factory.set_protocols(RTSPLowerTrans::TCP);
@@ -100,10 +104,35 @@ impl RtspServer {
         Ok(maybe_app_src)
     }
 
-    pub fn set_credentials(&self, credentials :&Vec<Option<(&str, &str)>>) -> Result<()> {
-        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
+    pub fn add_watcher_role(&self, factory: &RTSPMediaFactory, role: &str) {
+        factory.add_role_from_structure(
+            &Structure::new(
+                &role,
+                &[
+                    (*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true),
+                    (*RTSP_PERM_MEDIA_FACTORY_CONSTRUCT, &true),
+                 ]
+            )
+        );
+    }
 
+    pub fn add_check_role(&self, factory: &RTSPMediaFactory, role: &str) {
+        factory.add_role_from_structure(
+            &Structure::new(
+                &role,
+                &[
+                    (*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true),
+                 ]
+            )
+        );
+    }
+
+    pub fn set_credentials(&self, credentials: &Vec<Option<(&str, &str)>>) -> Result<()> {
+        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
         auth.set_supported_methods(RTSPAuthMethod::Basic);
+
+        let mut un_authtoken = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"anonymous")]);
+        auth.set_default_token(Some(&mut un_authtoken));
 
         for credential in credentials {
             if let Some((user, pass)) = credential {
@@ -114,8 +143,6 @@ impl RtspServer {
                 auth.add_basic(basic.as_str(), &token);
             }
         }
-        let mut un_authtoken = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"unauth")]);
-        auth.set_default_token(Some(&mut un_authtoken));
 
         self.server.set_auth(Some(&auth));
         Ok(())
@@ -130,6 +157,7 @@ impl RtspServer {
         let cert = TlsCertificate::new_from_pem(&cert_contents).expect("Not a valid TLS certificate");
         auth.set_tls_certificate(Some(&cert));
         auth.set_tls_authentication_mode(client_auth);
+        // We set to none here, when set up credentials is called it will change it to the appropiate value
         auth.set_supported_methods(RTSPAuthMethod::None);
 
         self.server.set_auth(Some(&auth));

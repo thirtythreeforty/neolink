@@ -153,6 +153,15 @@ fn set_up_users(users: &Vec<UserConfig>, rtsp: &RtspServer) {
         let pass = &user.pass;
         let user_pass = match (name, pass)  {
             (Some(name), Some(pass)) => Some((&name as &str, &pass as &str)),
+            (Some(name), None) => {
+                warn!("One of the users has no password, skipping this user");
+                debug!("The skipped user was {}", name);
+                None
+            }
+            (None, Some(_pass)) => {
+                warn!("One of the users has a password but no name, skipping this user");
+                None
+            }
             _ => None,
         };
         credentials.push(user_pass);
@@ -172,7 +181,7 @@ fn get_permitted_users(users: &Vec<UserConfig>, current_permitted_users: &Vec<St
                 new_permitted_users.push(user.to_string());
             }
         }
-        new_permitted_users.push("unauth".to_string());
+        new_permitted_users.push("anonymous".to_string());
     } else {
         new_permitted_users.append(&mut current_permitted_users.clone());
     }
