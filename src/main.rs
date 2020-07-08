@@ -148,20 +148,29 @@ fn set_up_tls(config: &Config, rtsp: &RtspServer) {
 fn set_up_users(users: &Vec<UserConfig>, rtsp: &RtspServer) {
     // Setting up users
     let mut credentials = vec![];
+    let reserved_names = vec!(String::from("anyone"), String::from("anonymous"));
     for user in users {
+        if let Some(name) = &user.name {
+            if reserved_names.contains(name) {
+                warn!("{} is a reserved username, skipping this user", name);
+                continue;
+            }
+        }
         let name = &user.name;
         let pass = &user.pass;
         let user_pass = match (name, pass)  {
-            (Some(name), Some(pass)) => Some((&name as &str, &pass as &str)),
+            (Some(name), Some(pass)) => {
+                Some((&name as &str, &pass as &str))
+            }
             (Some(name), None) => {
                 warn!("One of the users has no password, skipping this user");
                 debug!("The skipped user was {}", name);
                 None
-            }
+            },
             (None, Some(_pass)) => {
                 warn!("One of the users has a password but no name, skipping this user");
                 None
-            }
+            },
             _ => None,
         };
         credentials.push(user_pass);
