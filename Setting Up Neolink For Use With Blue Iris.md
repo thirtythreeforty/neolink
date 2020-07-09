@@ -166,33 +166,7 @@ Note: the config file's file extension _**must**_ be `.toml` to work properly.
         neolink --config config.toml
 
 You should get login messages that look something like this:
-![Login Messages](https://drive.google.com/file/d/1cSTwTU2RdOEHzWa3oX2cibKAH6skr6zG/view?usp=sharing)
+![Login Messages]()
 
 
 
-
-
-
-
-j
-j
-j
-j
-j
-j
-j
-
-
-
-
-
-
-
-
-j
-j
-j
-j
-j
-j
-j
