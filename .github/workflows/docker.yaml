@@ -1,0 +1,19 @@
+# A single-shot build-n-pack on Alpine Linux
+name: Publish Docker image
+on: [push]
+
+jobs:
+  push_to_registry:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2
+      - name: Push to Docker Hub
+        uses: docker/build-push-action@v1
+        with:
+          username: thirtythreeforty
+          password: ${{ secrets.DOCKER_TOKEN }}
+          registry: docker.io
+          repository: thirtythreeforty/neolink
+          tag_with_ref: true

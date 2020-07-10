@@ -1,6 +1,3 @@
-#[macro_use] extern crate validator_derive;
-#[macro_use] extern crate lazy_static;
-
 use env_logger::Env;
 use err_derive::Error;
 use log::*;
@@ -45,10 +42,7 @@ fn main() -> Result<(), Error> {
     let opt = Opt::from_args();
     let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 
-    match config.validate() {
-        Ok(_) => (),
-        Err(e) => return Err(Error::ValidationError(e)),
-    };
+    config.validate()?;
 
     let rtsp = &RtspServer::new();
 
@@ -59,9 +53,15 @@ fn main() -> Result<(), Error> {
     crossbeam::scope(|s| {
         for camera in config.cameras {
             let stream_format = match &*camera.format {
-                "h264"|"H264" => StreamFormat::H264,
-                "h265"|"H265" => StreamFormat::H265,
-                custom_format @ _ => StreamFormat::Custom(custom_format.to_string())
+                "h264" | "H264" => StreamFormat::H264,
+                "h265" | "H265" => StreamFormat::H265,
+                custom_format @ _ => StreamFormat::Custom(custom_format.to_string()),
+            };
+
+            // The substream always seems to be H264, even on B800 cameras
+            let substream_format = match &*camera.format {
+                "h264" | "H264" | "h265" | "H265" => StreamFormat::H264,
+                custom_format @ _ => StreamFormat::Custom(custom_format.to_string()),
             };
             let permitted_user = get_permitted_users(&config.users, &camera.permitted_users);
 
@@ -71,20 +71,20 @@ fn main() -> Result<(), Error> {
             let arc_cam = Arc::new(camera);
 
             // Set up each main and substream according to all the RTSP mount paths we support
-            if arc_cam.stream == "both" || arc_cam.stream == "mainStream" {
+            if ["both", "mainStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[
-                    &arc_cam.name,
-                    &*format!("{}/mainStream", arc_cam.name),
+                    &*format!("/{}", arc_cam.name),
+                    &*format!("/{}/mainStream", arc_cam.name),
                 ];
                 let mut output = rtsp.add_stream(paths, &stream_format, &permitted_user).unwrap();
                 let main_camera = arc_cam.clone();
-                s.spawn(move |_| camera_loop(&*main_camera, &mut output));
+                s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output));
             }
-            if arc_cam.stream == "both" || arc_cam.stream == "subStream" {
-                let paths = &[&*format!("{}/subStream", arc_cam.name)];
-                let mut output = rtsp.add_stream(paths, &stream_format, &permitted_user).unwrap();
+            if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
+                let paths = &[&*format!("/{}/subStream", arc_cam.name)];
+                let mut output = rtsp.add_stream(paths, &substream_format, &permitted_user).unwrap();
                 let sub_camera = arc_cam.clone();
-                s.spawn(move |_| camera_loop(&*sub_camera, &mut output));
+                s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut output));
             }
         }
 
@@ -95,13 +95,17 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn camera_loop(camera_config: &CameraConfig, output: &mut MaybeAppSrc) -> Result<Never, Error> {
+fn camera_loop(
+    camera_config: &CameraConfig,
+    stream_name: &str,
+    output: &mut MaybeAppSrc,
+) -> Result<Never, Error> {
     let min_backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(15);
     let mut current_backoff = min_backoff;
 
     loop {
-        let cam_err = camera_main(camera_config, output).unwrap_err();
+        let cam_err = camera_main(camera_config, stream_name, output).unwrap_err();
         output.on_stream_error();
         // Authentication failures are permanent; we retry everything else
         if cam_err.connected {
@@ -201,7 +205,11 @@ fn get_permitted_users(users: &Vec<UserConfig>, current_permitted_users: &Vec<St
     new_permitted_users
 }
 
-fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<Never, CameraErr> {
+fn camera_main(
+    camera_config: &CameraConfig,
+    stream_name: &str,
+    output: &mut dyn Write,
+) -> Result<Never, CameraErr> {
     let mut connected = false;
     (|| {
         let mut camera = BcCamera::new_with_addr(camera_config.camera_addr)?;
@@ -221,9 +229,9 @@ fn camera_main(camera_config: &CameraConfig, output: &mut dyn Write) -> Result<N
 
         info!(
             "{}: Connected to camera, starting video stream {}",
-            camera_config.name, camera_config.stream
+            camera_config.name, stream_name
         );
-        camera.start_video(output, &camera_config.stream)
+        camera.start_video(output, stream_name)
     })()
     .map_err(|err| CameraErr { connected, err })
 }

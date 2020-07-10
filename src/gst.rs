@@ -24,7 +24,7 @@ pub struct RtspServer {
 pub enum StreamFormat {
     H264,
     H265,
-    Custom(String)
+    Custom(String),
 }
 
 impl RtspServer {
@@ -35,7 +35,7 @@ impl RtspServer {
         }
     }
 
-    pub fn add_stream(&self, names: &[&str], stream_format: &StreamFormat, permitted_users: &Vec<String>) -> Result<MaybeAppSrc> {
+    pub fn add_stream(&self, paths: &[&str], stream_format: &StreamFormat, permitted_users: &Vec<String>) -> Result<MaybeAppSrc> {
         let mounts = self
             .server
             .get_mount_points()
@@ -97,8 +97,8 @@ impl RtspServer {
             let _ = tx.send(app_src); // Receiver may be dropped, don't panic if so
         });
 
-        for name in names {
-            mounts.add_factory(&format!("/{}", name), &factory);
+        for path in paths {
+            mounts.add_factory(path, &factory);
         }
 
         Ok(maybe_app_src)
