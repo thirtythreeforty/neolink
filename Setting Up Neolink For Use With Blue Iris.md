@@ -82,5 +82,6 @@ Note: the config file's file extension _**must**_ be `.toml` to work properly.
         neolink --config config.toml
 
 You should get login messages that look something like this:
-![Login Messages]("C:\Users\henry\Desktop\neolink\Screenshots\Login Messages")
+
+![Login Messages](C:\Users\henry\Desktop\neolink\Screenshots\messages.jpg)
 
