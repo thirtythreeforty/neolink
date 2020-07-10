@@ -21,8 +21,13 @@ RUN cargo build --release
 # Create the release container. Match the base OS used to build
 FROM docker.io/alpine:latest
 
-RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing gst-rtsp-server
-RUN apk add libgcc
+RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing libgcc \
+  gstreamer \
+  gst-plugins-base \
+  gst-plugins-good \
+  gst-plugins-bad \
+  gst-plugins-ugly \
+  gst-rtsp-server
 
 COPY --from=build \
   /usr/local/src/neolink/target/release/neolink \
