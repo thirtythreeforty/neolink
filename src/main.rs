@@ -165,14 +165,9 @@ fn set_up_users(users: &Vec<UserConfig>, rtsp: &RtspServer) {
         let user_pass = match (name, pass)  {
             (Some(name), Some(pass)) => {
                 Some((&name as &str, &pass as &str))
-            }
-            (Some(name), None) => {
-                warn!("One of the users has no password, skipping this user");
-                debug!("The skipped user was {}", name);
-                None
             },
-            (None, Some(_pass)) => {
-                warn!("One of the users has a password but no name, skipping this user");
+            (Some(_), None) | (None, Some(_)) => {
+                warn!("Username and password must be supplied together - ignoring [[users]] entry");
                 None
             },
             _ => None,

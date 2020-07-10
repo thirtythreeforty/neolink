@@ -50,7 +50,7 @@ impl RtspServer {
         let factory = RTSPMediaFactory::new();
 
         for permitted_user in permitted_users {
-            debug!("Permitting {} to access {}", permitted_user, names.join(", "));
+            debug!("Permitting {} to access {}", permitted_user, paths.join(", "));
             self.add_watcher_role(&factory, &permitted_user)
         }
         // During auth, first it binds anonymously. At this point it checks
@@ -60,7 +60,7 @@ impl RtspServer {
         // It loads the auth token of the user and checks that users
         // RTSP_PERM_MEDIA_FACTORY_CONSTRUCT allowing them to play
         // As a result of this we must ensure that if anonymous is not granted watcher
-        // access that anon has at least RTSP_PERM_MEDIA_FACTORY_ACCESS 
+        // access that anon has at least RTSP_PERM_MEDIA_FACTORY_ACCESS
         if ! permitted_users.contains(&"anonymous".to_string()) {
             self.add_check_role(&factory, "anonymous");
         }
