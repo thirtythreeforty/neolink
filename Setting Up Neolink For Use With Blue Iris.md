@@ -83,5 +83,5 @@ Note: the config file's file extension _**must**_ be `.toml` to work properly.
 
 You should get login messages that look something like this:
 
-![Login Messages](login_messages.jpg)
+![Login Messages](login_messages.JPG)
 
