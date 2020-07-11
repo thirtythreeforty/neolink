@@ -21,8 +21,8 @@ _The cameras have software bugs too, and Reolink is constantly working to fix th
 ### 2. Assign a static IP address to your cameras
 _This is the most reliable setup since Neolink cannot autodetect when a camera's IP address changes._
 1. In the Reolink PC app, login to your camera.
-2. Click "Device Settings" (the gear) -> "Network General"
-3. Change "Connection Type" from "DHCP" to "Static".
+2. Click "Device Settings" (the gear) -> "Network General."
+3. Change "Connection Type" from "DHCP" to "Static."
 4. Enter a static IP address compatible with your network (i.e. `192.168.1.15`)
 
 _You will have to reconnect to the camera once you have changed the IP address_
@@ -30,20 +30,20 @@ _You will have to reconnect to the camera once you have changed the IP address_
 ### 3. Set the camera's time to your local network time.
 _If the camera's time is not set, Neolink will recursively "time out" every one second and will not stream video._
 1. In the Reolink PC app, login to your camera.
-2. Click "Device Settings" -> "System General" -> "Synchronize Local Time".
-3. Click "Ok".
+2. Click "Device Settings" -> "System General" -> "Synchronize Local Time."
+3. Click "Ok."
 
 ### 4. Disable Auto Reboot
 _When a camera reboots, it loses its date and time settings, causing Neolink to time out._
 1. In the Reolink PC app, login to your camera.
-2. Click "Device Settings" -> "Maintenance".
-3. Uncheck "Enable Auto Reboot".
+2. Click "Device Settings" -> "Maintenance."
+3. Uncheck "Enable Auto Reboot."
 
 ### 5. Set a Password
 _It's recommended that you set a password for each of your cameras. If you want to use the Reolink Mobile App, it makes you set a password for each camera anyway._
 1. In the Reolink PC app, login to your camera.
-2. Click "Device Settings" -> "Manage User"
-3. Click "Modify Password"
+2. Click "Device Settings" -> "Manage User."
+3. Click "Modify Password."
 
 **Now you've set up your cameras!**
 
@@ -70,7 +70,7 @@ Note: the config file's file extension _**must**_ be `.toml` to work properly.
 4. Replace `password` with the password you set on the camera. If you chose to not use a password, remove this line from the config file. Again, leave the quotes.
 5. Replace `192.168.1.10:9000` with the IP address you set for your camera. 
     Note: The port, `:9000`, should remain at the end of your IP address. This is the proprietary "media port" that Reolink uses.
-6. The `stream` line allows you to choose which stream type to use. Neolink supports streaming two streams, the main-stream, and the sub-stream. It can stream either one, or both. If you wish to stream both streams, leave this line as is. If you wish to stream _only_ the main-stream, change `both` to `mainStream`. If you wish to stream only the substream, change `both` to `subStream`.
+6. The `stream` line allows you to choose which stream type to use. Neolink supports streaming two streams, the main-stream, and the sub-stream. It can stream either one, or both. If you wish to stream both streams, leave this line as is. If you wish to stream _only_ the main-stream, change `both` to `mainStream`. If you wish to stream only the sub-stream, change `both` to `subStream`.
 7. For multiple cameras, copy and paste the entire `[[cameras]]` block below the first. Each camera entry must begin with `[[cameras]]`.
 
 * The timeout line is commented out since the default 1 second is generally fine and should be left alone, but it is there to show the syntax in case it needs to be changed.
@@ -83,5 +83,46 @@ Note: the config file's file extension _**must**_ be `.toml` to work properly.
 
 You should get login messages that look something like this:
 
-![Login Messages](login_messages.JPG)
+![Login Messages](screenshots\login_messages.JPG)
 
+Note: Neolink hosts all streams on localhost port 8554. Each camera has a designated path that for the sub-stream and the main-stream. Neolink gets the name of the path from the name of the camera you set in the config file. So the path to the sample camera's main-stream would be `127.0.0.1:8554/cameraname/mainStream` and the path to the sample camera's sub-stream would be `127.0.0.1:8554/cameraname/subStream`. The main-stream is also served on the root path to the camera.
+
+**Now you have Neolink up and running!**
+
+
+## Step Three: Setting up Blue Iris
+_There are a few tricks to getting Blue Iris to work properly with Neolink's RTSP streams._
+
+### 1. Add a new Camera
+1. Click "Main Menu" -> "add new camera."
+
+2. Give your camera a full name and a short name.
+3. Uncheck "Enable Motion Detector."
+4. Enable "Direct to disc recording."
+
+![New Camera Window](screenshots\new_camera.JPG)
+
+5. Click "OK."
+
+### 2. Configure the Camera
+
+_Once you click "OK" on the "New Camera" window, Blue Iris should dump you directly into the camera configuration._
+
+1. Leave protocol set to "http://."
+
+   _Although we are using RTSP streams, Blue Iris does not allow the use of sub-streams if you set the protocol to RTSP._
+
+2. In the address bar, enter `127.0.0.1:8554`. This will be the same for all cameras.
+3. Clear the password field.
+4. Set the "Main stream" path to `/cameraname/mainStream`, changing `cameraname` to the name of the camera you set in Neolink's config file.
+5. Set the "Sub stream" path to `/cameraname/subStream`, also changing `cameraname` to the name of your camera.
+
+6. Under "Network Options," set "Receive Buffer" to 20MB.
+
+   _This is because the 4k cameras' key frames are so large._
+
+7. Click "OK."
+
+![](screenshots\new_camera_config.JPG)
+
+**Congrats, you have set up your first camera!**
