@@ -83,7 +83,7 @@ Note: the config file's file extension _**must**_ be `.toml` to work properly.
 
 You should get login messages that look something like this:
 
-![Login Messages](screenshots\login_messages.JPG)
+![Login Messages](screenshots/login_messages.JPG)
 
 Note: Neolink hosts all streams on localhost port 8554. Each camera has a designated path that for the sub-stream and the main-stream. Neolink gets the name of the path from the name of the camera you set in the config file. So the path to the sample camera's main-stream would be `127.0.0.1:8554/cameraname/mainStream` and the path to the sample camera's sub-stream would be `127.0.0.1:8554/cameraname/subStream`. The main-stream is also served on the root path to the camera.
 
@@ -100,7 +100,7 @@ _There are a few tricks to getting Blue Iris to work properly with Neolink's RTS
 3. Uncheck "Enable Motion Detector."
 4. Enable "Direct to disc recording."
 
-![New Camera Window](screenshots\new_camera.JPG)
+![New Camera Window](screenshots/new_camera.JPG)
 
 5. Click "OK."
 
@@ -123,6 +123,6 @@ _Once you click "OK" on the "New Camera" window, Blue Iris should dump you direc
 
 7. Click "OK."
 
-![](screenshots\new_camera_config.JPG)
+![](screenshots/new_camera_config.JPG)
 
 **Congrats, you have set up your first camera!**
