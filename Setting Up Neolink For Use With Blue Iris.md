@@ -63,8 +63,7 @@ Note: the config file's file extension _**must**_ be `.toml` to work properly.
         password = "password"
         address = "192.168.1.10:9000"
         stream = "both"
-        #timeout = { secs = 5, nanos = 0 }
-
+    
 2. Change `cameraname` to a legible, phonetic name that describes your camera. Leave the quotes around the name.
 3. The default username is `admin`; leave this unless you've created another user.
 4. Replace `password` with the password you set on the camera. If you chose to not use a password, remove this line from the config file. Again, leave the quotes.
@@ -72,8 +71,6 @@ Note: the config file's file extension _**must**_ be `.toml` to work properly.
     Note: The port, `:9000`, should remain at the end of your IP address. This is the proprietary "media port" that Reolink uses.
 6. The `stream` line allows you to choose which stream type to use. Neolink supports streaming two streams, the main-stream, and the sub-stream. It can stream either one, or both. If you wish to stream both streams, leave this line as is. If you wish to stream _only_ the main-stream, change `both` to `mainStream`. If you wish to stream only the sub-stream, change `both` to `subStream`.
 7. For multiple cameras, copy and paste the entire `[[cameras]]` block below the first. Each camera entry must begin with `[[cameras]]`.
-
-* The timeout line is commented out since the default 1 second is generally fine and should be left alone, but it is there to show the syntax in case it needs to be changed.
 
 ### 3. Start Neolink
 1. Open a command prompt in the directory that contains Neolink and your config file.
