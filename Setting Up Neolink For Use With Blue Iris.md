@@ -85,7 +85,7 @@ You should get login messages that look something like this:
 
 ![Login Messages](screenshots/login_messages.JPG)
 
-Note: Neolink hosts all streams on localhost port 8554. Each camera has a designated path that for the sub-stream and the main-stream. Neolink gets the name of the path from the name of the camera you set in the config file. So the path to the sample camera's main-stream would be `127.0.0.1:8554/cameraname/mainStream` and the path to the sample camera's sub-stream would be `127.0.0.1:8554/cameraname/subStream`. The main-stream is also served on the root path to the camera.
+Note: Neolink hosts all streams on localhost port 8554. Each camera has a designated path for the sub-stream and the main-stream. Neolink gets the name of the path from the name of the camera you set in the config file. So the path to the sample camera's main-stream would be `127.0.0.1:8554/cameraname/mainStream` and the path to the sample camera's sub-stream would be `127.0.0.1:8554/cameraname/subStream`. The main-stream is also served on the root path to the camera.
 
 **Now you have Neolink up and running!**
 
