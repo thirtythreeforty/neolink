@@ -93,9 +93,11 @@ You may also need to use `h264` format while using the SD stream.
 By default Neolink serves on all IP addresses on port 8554.
 You can modify this by changing the `bind` and the `bind_port` parameter.
 
-Use can enable `rtsps` (TLS) by adding a `certificate = "/path/to/pem"` to the config. This pem should contain by the certificate and the key used for the server. If TLS is enabled all connections must use `rtsps`. You can also control client side TLS with the config option `tls_client_auth = "none|request|require"`, in this case the client should present a certificate signed by the server's CA, this is disabled by default.
+You can enable `rtsps` (TLS) by adding a `certificate = "/path/to/pem"` to the top section of the config file. This PEM should contain by the certificate and the key used for the server. If TLS is enabled all connections must use `rtsps`. You can also control client side TLS with the config option `tls_client_auth = "none|request|require"`; in this case the client should present a certificate signed by the server's CA.
 
-Use can enable basic authentication by adding users to the configuration file as:
+TLS is disabled by default.
+
+You can password-protect the Neolink server by adding `[[users]]`` sections to the configuration file:
 ```
 [[users]]
 name: someone
