@@ -1,13 +1,43 @@
+# A bind value of 0.0.0.0 means any network this computer can access
+# You can chage this to a specfic network e.g. "192.168.1.101" here
+# Or to no networks e.g. this computer only "127.0.0.1"
 bind = "0.0.0.0"
+# Default port is 8554 but you can change it by uncommenting the following
+# bind_port = 8554
+
+# Uncomment the following and supply a path to a valid PEM
+# to activate TLS encryption.
+# The PEM should contain the certificate and the private key
+# If TLS is activated you must connect with "rtsps://" and not "rtsp://"
+# certificate = "/path/to/pem/with/cert/and/key"
+
+# You can password protect the rtsp server mount points by adding users
+# like the following me and someone. If you do not add [[users]]
+# then anyone can connect without a password or username
+# To access such a stream try using a url such as "rtsp://me:mepass@192.168.1.101/driveway"
+[[users]]
+name = "me"
+pass = "mepass"
+
+[[users]]
+name = "someone"
+pass = "someonepass"
+
 
 [[cameras]]
 name = "driveway"
 username = "admin"
 password = "12345678"
 address = "192.168.1.187:9000"
+# By default any of the users can connect (or anyone at all if no users are specfied)
+# You can uncomment the following to permit only specfic users
+# permitted_users = [ "me" ]
 
 [[cameras]]
 name = "storage shed"
 username = "admin"
 password = "987654321"
 address = "192.168.1.245:9000"
+# By default the camera is assumed to be in H.265 format
+# Some camera's e.g. E1 use H.264. You can use the following to change this
+# format = "h264"
