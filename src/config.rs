@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::clone::Clone;
 use std::net::SocketAddr;
 use std::time::Duration;
-use validator::Validate;
+use validator::{Validate, ValidationError};
 use validator_derive::Validate;
 
 lazy_static! {
@@ -71,7 +71,7 @@ pub struct CameraConfig {
 
 #[derive(Debug, Deserialize, Validate, Clone)]
 pub struct UserConfig {
-    #[validate(required)]
+    #[validate(required, custom = "validate_username")]
     #[serde(alias = "username")]
     pub name: Option<String>,
 
@@ -110,4 +110,12 @@ fn default_permitted_users() -> Vec<String> {
 
 fn default_users() -> Vec<UserConfig> {
     vec![]
+}
+
+fn validate_username(name: &str)  -> Result<(), ValidationError> {
+    let reserved_names = vec!("anyone", "anonymous");
+    if reserved_names.contains(&name) {
+        return Err(ValidationError::new("This is a reserved username"));
+    }
+    Ok(())
 }
