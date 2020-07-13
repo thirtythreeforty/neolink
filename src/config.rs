@@ -28,7 +28,11 @@ pub struct Config {
     #[serde(default = "default_certificate")]
     pub certificate: Option<String>,
 
-    #[validate(regex(path = "RE_TLS_CLIENT_AUTH", message = "Incorrect stream format", code = "format"))]
+    #[validate(regex(
+        path = "RE_TLS_CLIENT_AUTH",
+        message = "Incorrect stream format",
+        code = "format"
+    ))]
     #[serde(default = "default_tls_client_auth")]
     pub tls_client_auth: String,
 
@@ -112,8 +116,8 @@ fn default_users() -> Vec<UserConfig> {
     vec![]
 }
 
-fn validate_username(name: &str)  -> Result<(), ValidationError> {
-    let reserved_names = vec!("anyone", "anonymous");
+fn validate_username(name: &str) -> Result<(), ValidationError> {
+    let reserved_names = vec!["anyone", "anonymous"];
     if reserved_names.contains(&name) {
         return Err(ValidationError::new("This is a reserved username"));
     }

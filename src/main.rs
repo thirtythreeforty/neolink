@@ -1,23 +1,23 @@
 use env_logger::Env;
 use err_derive::Error;
+use gio::TlsAuthenticationMode;
 use log::*;
 use neolink::bc_protocol::BcCamera;
 use neolink::gst::{MaybeAppSrc, RtspServer, StreamFormat};
 use neolink::Never;
+use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
-use std::collections::HashSet;
 use structopt::StructOpt;
 use validator::Validate;
-use gio::TlsAuthenticationMode;
 
 mod cmdline;
 mod config;
 
 use cmdline::Opt;
-use config::{UserConfig, CameraConfig, Config};
+use config::{CameraConfig, Config, UserConfig};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -77,13 +77,17 @@ fn main() -> Result<(), Error> {
                     &*format!("/{}", arc_cam.name),
                     &*format!("/{}/mainStream", arc_cam.name),
                 ];
-                let mut output = rtsp.add_stream(paths, &stream_format, &permitted_user).unwrap();
+                let mut output = rtsp
+                    .add_stream(paths, &stream_format, &permitted_user)
+                    .unwrap();
                 let main_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output));
             }
             if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
-                let mut output = rtsp.add_stream(paths, &substream_format, &permitted_user).unwrap();
+                let mut output = rtsp
+                    .add_stream(paths, &substream_format, &permitted_user)
+                    .unwrap();
                 let sub_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut output));
             }
@@ -146,7 +150,8 @@ fn set_up_tls(config: &Config, rtsp: &RtspServer) {
         _ => unreachable!(),
     };
     if let Some(cert_path) = &config.certificate {
-        rtsp.set_tls(&cert_path, tls_client_auth).expect("Failed to set up TLS");
+        rtsp.set_tls(&cert_path, tls_client_auth)
+            .expect("Failed to set up TLS");
     }
 }
 
@@ -156,22 +161,24 @@ fn set_up_users(users: &Vec<UserConfig>, rtsp: &RtspServer) {
     for user in users {
         let name = &user.name;
         let pass = &user.pass;
-        let user_pass = match (name, pass)  {
-            (Some(name), Some(pass)) => {
-                Some((&name as &str, &pass as &str))
-            },
+        let user_pass = match (name, pass) {
+            (Some(name), Some(pass)) => Some((&name as &str, &pass as &str)),
             (Some(_), None) | (None, Some(_)) => {
                 warn!("Username and password must be supplied together - ignoring [[users]] entry");
                 None
-            },
+            }
             _ => None,
         };
         credentials.push(user_pass);
     }
-    rtsp.set_credentials(&credentials).expect("Failed to set up users.");
+    rtsp.set_credentials(&credentials)
+        .expect("Failed to set up users.");
 }
 
-fn get_permitted_users(users: &Vec<UserConfig>, current_permitted_users: &Vec<String>) -> Vec<String> {
+fn get_permitted_users(
+    users: &Vec<UserConfig>,
+    current_permitted_users: &Vec<String>,
+) -> Vec<String> {
     // This is required to handle the special case of "anyone"
     // ===Special set up of "anyone"===
     // If in the camera config there is the user "anyone"
