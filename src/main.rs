@@ -8,6 +8,7 @@ use std::fs;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
+use std::collections::HashSet;
 use structopt::StructOpt;
 use validator::Validate;
 use gio::TlsAuthenticationMode;
@@ -182,22 +183,23 @@ fn get_permitted_users(users: &Vec<UserConfig>, current_permitted_users: &Vec<St
     // ===Special set up of "anyone"===
     // If in the camera config there is the user "anyone"
     // Then we add all users to the cameras config. including unauth
-    let mut new_permitted_users = vec![];
+    let mut new_permitted_users = HashSet::new();
     if current_permitted_users.contains(&"anyone".to_string()) {
         for credentials in users {
             if let Some(user) = &credentials.name {
-                new_permitted_users.push(user.to_string());
+                new_permitted_users.insert(user.to_string());
             }
         }
-        new_permitted_users.push("anonymous".to_string());
     } else {
-        new_permitted_users.append(&mut current_permitted_users.clone());
+        for user in current_permitted_users {
+            new_permitted_users.insert(user.to_string());
+        }
     }
-    // We also drop duplicated user names
-    new_permitted_users.sort();
-    new_permitted_users.dedup();
-
-    new_permitted_users
+    let mut result = vec![];
+    for user in new_permitted_users {
+        result.push(user);
+    }
+    result
 }
 
 fn camera_main(
