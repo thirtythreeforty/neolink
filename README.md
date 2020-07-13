@@ -108,6 +108,10 @@ you also need to add the allowed users into each camera by adding the following 
 permitted_users = ["someone", "someoneelse"]
 ```
 
+Anywhere a username is accepted it can take any username or one of the following special values.
+- `anyone` means any user with a valid user/pass
+- `anonymous` means no user/pass required
+
 You can change the Neolink log level by setting the `RUST_LOG` environment variable (not in the configuration file) to one of `error`, `warn`, `info`, `debug`, or `trace`:
 
 ```
