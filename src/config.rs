@@ -70,7 +70,7 @@ pub struct CameraConfig {
     pub stream: String,
 
     #[serde(default = "default_permitted_users")]
-    pub permitted_users: Vec<String>,
+    pub permitted_users: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -108,8 +108,8 @@ fn default_tls_client_auth() -> String {
     "none".to_string()
 }
 
-fn default_permitted_users() -> Vec<String> {
-    vec!["anonymous".to_string()]
+fn default_permitted_users() -> Option<Vec<String>> {
+    None
 }
 
 fn default_users() -> Vec<UserConfig> {

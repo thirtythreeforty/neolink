@@ -112,7 +112,9 @@ Anywhere a username is accepted it can take any username or one of the following
 - `anyone` means any user with a valid user/pass
 - `anonymous` means no user/pass required
 
-The default `permitted_users` list is `[ "anonymous" ]` meaning no authentication required. If you want to use authenitcation then after adding your users through `[[users]]` please ensure you update the `permittted_users` for each camera.
+The default `permitted_users` list is:
+- `[ "anonymous"]` if no `[[users]]` were given in the config meaning no authentication required to connect.
+- `[ "anyone" ]` if `[[users]]` were provided meaning any authourised users can connect.
 
 You can change the Neolink log level by setting the `RUST_LOG` environment variable (not in the configuration file) to one of `error`, `warn`, `info`, `debug`, or `trace`:
 

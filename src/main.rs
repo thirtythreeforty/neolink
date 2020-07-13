@@ -177,8 +177,22 @@ fn set_up_users(users: &Vec<UserConfig>, rtsp: &RtspServer) {
 
 fn get_permitted_users(
     users: &Vec<UserConfig>,
-    current_permitted_users: &Vec<String>,
+    permitted_users: &Option<Vec<String>>,
 ) -> Vec<String> {
+    let current_permitted_users = match permitted_users {
+        Some(permitted_users) => permitted_users.clone().to_owned(),
+        None => {
+            // If None then the users didn't specify permitted_users
+            // In this case we do either
+            // - Any authourised user if [[users]] was specified
+            // - Any connecting user if [[users]] was not added
+            if users.len() > 0 {
+                vec!("anyone".to_string())
+            } else {
+                vec!("anonymous".to_string())
+            }
+        }
+    };
     // This is required to handle the special case of "anyone"
     // ===Special set up of "anyone"===
     // If in the camera config there is the user "anyone"
