@@ -35,7 +35,7 @@ impl RtspServer {
         }
     }
 
-    pub fn add_stream(&self, paths: &[&str], stream_format: &StreamFormat, permitted_users: &Vec<String>) -> Result<MaybeAppSrc> {
+    pub fn add_stream(&self, paths: &[&str], stream_format: &StreamFormat, permitted_users: &[String]) -> Result<MaybeAppSrc> {
         let mounts = self
             .server
             .get_mount_points()
@@ -91,7 +91,7 @@ impl RtspServer {
         Ok(maybe_app_src)
     }
 
-    pub fn add_permitted_roles(&self, factory: &RTSPMediaFactory, permitted_roles: &Vec<String>) {
+    pub fn add_permitted_roles(&self, factory: &RTSPMediaFactory, permitted_roles: &[String]) {
         for permitted_role in permitted_roles {
             factory.add_role_from_structure(
                 &Structure::new(
