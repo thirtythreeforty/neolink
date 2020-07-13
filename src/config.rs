@@ -105,7 +105,7 @@ fn default_tls_client_auth() -> String {
 }
 
 fn default_permitted_users() -> Vec<String> {
-    vec!["anyone".to_string()]
+    vec!["anonymous".to_string()]
 }
 
 fn default_users() -> Vec<UserConfig> {
