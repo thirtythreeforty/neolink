@@ -1,7 +1,5 @@
 # Setting Up Neolink For Use With Blue Iris
 
-![CI](https://github.com/thirtythreeforty/neolink/workflows/CI/badge.svg)
-
 Stock Reolink cameras do not support use with non-proprietary surveillance software such as Blue Iris. Neolink enables you to use your unsupported cameras with Blue Iris and other viewers/recorders. In this guide, you will learn how to configure your Reolink cameras and Neolink for use with Blue Iris software.
 
 **This guide applies to the following camera models:**
@@ -10,7 +8,7 @@ Stock Reolink cameras do not support use with non-proprietary surveillance softw
 
 
 ## Step One: Configuring Your Cameras
-The first thing to do to make video recording run smoothly is tweak the settings on your Reolink Cameras so that they do not conflict with Neolink.
+The first thing to do to make video recording run smoothly is tweak the settings on your cameras to work around known Neolink problems, and to set them up as a part of your network.
 
 ### 1. Update your Camera's firmware.
 _The cameras have software bugs too, and Reolink is constantly working to fix them. Cameras ship with older versions which have **known bugs.** It's best to eliminate any unknown parameters when setting up your cameras._
@@ -21,25 +19,28 @@ _The cameras have software bugs too, and Reolink is constantly working to fix th
 ### 2. Assign a static IP address to your cameras
 _This is the most reliable setup since Neolink cannot autodetect when a camera's IP address changes._
 1. In the Reolink PC app, login to your camera.
+
 2. Click "Device Settings" (the gear) -> "Network General."
+
 3. Change "Connection Type" from "DHCP" to "Static."
-4. Enter a static IP address compatible with your network (i.e. `192.168.1.15`)
+
+4. Enter a static IP address compatible with your network (i.e. `192.168.1.15`).
+
+   Note: Here is a [good article](https://www.lifewire.com/using-static-ip-address-on-private-computer-818404#:~:text=Static%20IP%20Address%20Assignment%20on%20Home%20Networks.%201,addresses%20in%20the%2010.x.x.x%20private%20range%20...%20) about how to select an IP address that is compatible with your network. If you accidentally lose access to your camera by setting an incompatible IP address, you will have to manually reset the camera with its physical reset button.
 
 _You will have to reconnect to the camera once you have changed the IP address_
 
-### 3. Set the camera's time to your local network time.
-_If the camera's time is not set, Neolink will recursively "time out" every one second and will not stream video._
+### 3. Set the camera's time to your local network time and disable Auto Reboot
+_When a camera reboots, it loses its date and time settings. If the camera's time is not set, Neolink will recursively "time out" every one second and will not stream video.  Setting the time and disabling auto reboot on the camera is a workaround for [issue #14](https://github.com/thirtythreeforty/neolink/issues/14)._ 
 1. In the Reolink PC app, login to your camera.
 2. Click "Device Settings" -> "System General" -> "Synchronize Local Time."
 3. Click "Ok."
 
-### 4. Disable Auto Reboot
-_When a camera reboots, it loses its date and time settings, causing Neolink to time out._
-1. In the Reolink PC app, login to your camera.
-2. Click "Device Settings" -> "Maintenance."
-3. Uncheck "Enable Auto Reboot."
+4. Click "Device Settings" -> "Maintenance."
 
-### 5. Set a Password
+5. Uncheck "Enable Auto Reboot."
+
+### 4. Set a Password
 _It's recommended that you set a password for each of your cameras. If you want to use the Reolink Mobile App, it makes you set a password for each camera anyway._
 1. In the Reolink PC app, login to your camera.
 2. Click "Device Settings" -> "Manage User."
@@ -47,12 +48,11 @@ _It's recommended that you set a password for each of your cameras. If you want 
 
 **Now you've set up your cameras!**
 
-## Setting Up Neolink
+## Step Two: Setting Up Neolink
 ### 1. Installation
 Refer to [Neolink's README](https://github.com/thirtythreeforty/neolink/blob/master/README.md) for instructions on installing.
 ### 2. Create your config file.
 The config file tells Neolink how to connect to your camera and serve the video streams.
-Note: the config file's file extension _**must**_ be `.toml` to work properly.
 1. Create a simple text file (i.g. `config.toml`) in the same directory you have unpacked Neolink with the following format:
 
         bind = "0.0.0.0"
@@ -80,7 +80,7 @@ Note: the config file's file extension _**must**_ be `.toml` to work properly.
 
 You should get login messages that look something like this:
 
-![Login Messages](screenshots/login_messages.JPG)
+![Login Messages](docs/screenshots/login_messages.JPG)
 
 Note: Neolink hosts all streams on localhost port 8554. Each camera has a designated path for the sub-stream and the main-stream. Neolink gets the name of the path from the name of the camera you set in the config file. So the path to the sample camera's main-stream would be `127.0.0.1:8554/cameraname/mainStream` and the path to the sample camera's sub-stream would be `127.0.0.1:8554/cameraname/subStream`.
 
@@ -97,7 +97,7 @@ _There are a few tricks to getting Blue Iris to work properly with Neolink's RTS
 3. Uncheck "Enable Motion Detector."
 4. Enable "Direct to disc recording."
 
-![New Camera Window](screenshots/new_camera.JPG)
+![New Camera Window](docs/screenshots/new_camera.JPG)
 
 5. Click "OK."
 
@@ -120,6 +120,6 @@ _Once you click "OK" on the "New Camera" window, Blue Iris should dump you direc
 
 7. Click "OK."
 
-![](screenshots/new_camera_config.JPG)
+![](docs/screenshots/new_camera_config.JPG)
 
 **Congrats, you have set up your first camera!**
