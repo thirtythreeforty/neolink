@@ -21,6 +21,7 @@ gstreamer-rtsp-server = { version = "0.15", features = ["v1_12", "v1_14"]}
 lazy_static = "1.4"
 log = { version = "0.4" }
 indoc = "0.3"
+itertools = "0.9"
 md5 = "0.7"
 nom = "5.1"
 regex = "1"

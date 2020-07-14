@@ -15,9 +15,11 @@ use gstreamer_rtsp_server::{
     RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::debug;
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::io::Write;
+use itertools::Itertools;
 
 type Result<T> = std::result::Result<T, ()>;
 
@@ -43,7 +45,7 @@ impl RtspServer {
         &self,
         paths: &[&str],
         stream_format: &StreamFormat,
-        permitted_users: &[String],
+        permitted_users: &HashSet<String>,
     ) -> Result<MaybeAppSrc> {
         let mounts = self
             .server
@@ -60,7 +62,8 @@ impl RtspServer {
 
         debug!(
             "Permitting {} to access {}",
-            permitted_users.join(", "),
+            // This is hashmap or (iter) equivalent of join, it requres itertools
+            permitted_users.iter().cloned().intersperse(", ".to_string()).collect::<String>(),
             paths.join(", ")
         );
         self.add_permitted_roles(&factory, permitted_users);
@@ -104,7 +107,7 @@ impl RtspServer {
         Ok(maybe_app_src)
     }
 
-    pub fn add_permitted_roles(&self, factory: &RTSPMediaFactory, permitted_roles: &[String]) {
+    pub fn add_permitted_roles(&self, factory: &RTSPMediaFactory, permitted_roles: &HashSet<String>) {
         for permitted_role in permitted_roles {
             factory.add_role_from_structure(&Structure::new(
                 permitted_role.as_str(),

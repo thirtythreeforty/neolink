@@ -178,7 +178,7 @@ fn set_up_users(users: &Vec<UserConfig>, rtsp: &RtspServer) {
 fn get_permitted_users(
     users: &Vec<UserConfig>,
     permitted_users: &Option<Vec<String>>,
-) -> Vec<String> {
+) -> HashSet<String> {
     let current_permitted_users = match permitted_users {
         Some(permitted_users) => permitted_users.clone().to_owned(),
         None => {
@@ -209,11 +209,7 @@ fn get_permitted_users(
             new_permitted_users.insert(user.to_string());
         }
     }
-    let mut result = vec![];
-    for user in new_permitted_users {
-        result.push(user);
-    }
-    result
+    new_permitted_users
 }
 
 fn camera_main(
