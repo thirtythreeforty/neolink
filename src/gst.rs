@@ -149,7 +149,6 @@ impl RtspServer {
         for credential in credentials {
             if let Some((user, pass)) = credential {
                 debug!("Setting credentials for user {}", user);
-                debug!("Password is {}", pass);
                 let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, user)]);
                 let basic = RTSPAuth::make_basic(user, pass);
                 auth.add_basic(basic.as_str(), &token);
