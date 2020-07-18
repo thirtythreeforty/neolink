@@ -51,6 +51,10 @@ fn main() -> Result<(), Error> {
 
     set_up_users(&config.users, &rtsp);
 
+    if config.certificate == None && !config.users.is_empty() {
+        warn!("Without a server certificate, usernames and passwords will be exchanged in plaintext!")
+    }
+
     crossbeam::scope(|s| {
         for camera in config.cameras {
             let stream_format = match &*camera.format {
