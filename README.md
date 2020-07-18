@@ -17,13 +17,11 @@ Neolink intends to support all Reolink cameras that do not provide native RTSP.
 Currently it has been tested on the following cameras:
 
 - B800/D800
+- B400/D400
 - E1
 
-It *should* support the following cameras, but this has not yet been tested.
-Please test if you have them, and [open an issue](https://github.com/thirtythreeforty/neolink/issues/new/choose) if you encounter problems:
-
-- B400/D400
-- Lumus
+It *should* support the Lumus as well, but this has not yet been tested.
+Please test if you have one, and [open an issue](https://github.com/thirtythreeforty/neolink/issues/new/choose) if you encounter problems:
 
 Neolink does not support other cameras such as the RLC-420, since they already [provide native RTSP](https://support.reolink.com/hc/en-us/articles/360007010473-How-to-Live-View-Reolink-Cameras-via-VLC-Media-Player).
 
@@ -70,6 +68,7 @@ Here is a sample launch commmand:
 
 ```
 docker run \
+  -p 8554:8554 \
   --restart=on-failure \
   --volume=$PWD/config.toml:/etc/neolink.toml \
   thirtythreeforty/neolink
@@ -79,6 +78,10 @@ The Docker image is "best effort" and intended for advanced users; questions abo
 
 ## Configuration
 
+**Note**: for a more comprehensive setup tutorial, refer to the [Blue Iris setup walkthrough in `docs/`][blue-iris-setup] (which is probably also helpful even with other NVR software).
+
+[blue-iris-setup]: docs/Setting%20Up%20Neolink%20For%20Use%20With%20Blue%20Iris.md
+
 Copy and modify the `sample_config.toml` to specify the address, username, and password for each camera (if there is no password, you can omit that line).
 Each `[[cameras]]` block creates a new camera; the `name` determines the RTSP path you should connect your client to.
 Currently Neolink cannot auto-detect cameras like the official clients do; you must specify their IP addresses directly.
@@ -87,11 +90,13 @@ By default the H265 video format is used. Some cameras, for example E1, provide 
 Soon this will be auto-detected, and you will not have to know or care about the format.
 
 By default, the HD stream is available at the RTSP path `/name` or `/name/mainStream`, and the SD stream is available at `/name/subStream`.
-You can disable the HD stream by adding `stream = "subStream"` to the `[[cameras]]` config.
-You may also need to use `h264` format while using the SD stream.
+You can use only the HD stream by adding `stream = "mainStream"` to the `[[cameras]]` config, or only the SD stream with `stream = "subStream"`.
+
+**Note**: The B400/D400 models only support a single stream at a time, so you must add this line to sections for those cameras.
 
 By default Neolink serves on all IP addresses on port 8554.
 You can modify this by changing the `bind` and the `bind_port` parameter.
+You only need one `bind`/`bind_port` setting at the top of the config file.
 
 You can change the Neolink log level by setting the `RUST_LOG` environment variable (not in the configuration file) to one of `error`, `warn`, `info`, `debug`, or `trace`:
 
