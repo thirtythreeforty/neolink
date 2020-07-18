@@ -37,7 +37,7 @@ pub struct Config {
     pub tls_client_auth: String,
 
     #[validate]
-    #[serde(default = "default_users")]
+    #[serde(default)]
     pub users: Vec<UserConfig>,
 }
 
@@ -69,7 +69,6 @@ pub struct CameraConfig {
     #[serde(default = "default_stream")]
     pub stream: String,
 
-    #[serde(default = "default_permitted_users")]
     pub permitted_users: Option<Vec<String>>,
 }
 
@@ -106,14 +105,6 @@ fn default_certificate() -> Option<String> {
 
 fn default_tls_client_auth() -> String {
     "none".to_string()
-}
-
-fn default_permitted_users() -> Option<Vec<String>> {
-    None
-}
-
-fn default_users() -> Vec<UserConfig> {
-    vec![]
 }
 
 fn validate_username(name: &str) -> Result<(), ValidationError> {
