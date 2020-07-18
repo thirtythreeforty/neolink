@@ -55,7 +55,7 @@ neolink --config my_config.toml
    See the "Viewing" section below for more troubleshooting.
 
 [gstreamer]: https://gstreamer.freedesktop.org/documentation/installing/index.html
-[ci-download]: https://github.com/thirtythreeforty/neolink/actions?query=branch%3Amaster
+[ci-download]: https://github.com/thirtythreeforty/neolink/actions?query=workflow%3ACI+branch%3Amaster+
 
 ### Docker
 
