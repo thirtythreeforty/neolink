@@ -15,13 +15,14 @@ bind = "0.0.0.0"
 # like the following me and someone. If you do not add [[users]]
 # then anyone can connect without a password or username
 # To access such a stream try using a url such as "rtsp://me:mepass@192.168.1.101/driveway"
-[[users]]
-name = "me"
-pass = "mepass"
 
-[[users]]
-name = "someone"
-pass = "someonepass"
+# [[users]]
+# name = "me"
+# pass = "mepass"
+#
+# [[users]]
+# name = "someone"
+# pass = "someonepass"
 
 
 [[cameras]]
