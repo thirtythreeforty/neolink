@@ -59,17 +59,19 @@ fn main() -> Result<(), Error> {
                 custom_format @ _ => StreamFormat::Custom(custom_format.to_string()),
             };
 
-            // The substream always seems to be H264, even on B800 cameras
-            let substream_format = match &*camera.format {
-                "h264" | "H264" | "h265" | "H265" => StreamFormat::H264,
-                custom_format @ _ => StreamFormat::Custom(custom_format.to_string()),
-            };
-            let permitted_user = get_permitted_users(&config.users, &camera.permitted_users);
-
             // Let subthreads share the camera object; in principle I think they could share
             // the object as it sits in the config.cameras block, but I have not figured out the
             // syntax for that.
             let arc_cam = Arc::new(camera);
+
+            // The substream always seems to be H264, even on B800 cameras
+            let substream_format = match &*arc_cam.format {
+                "h264" | "H264" | "h265" | "H265" => StreamFormat::H264,
+                custom_format @ _ => StreamFormat::Custom(custom_format.to_string()),
+            };
+            let permitted_users = get_permitted_users(
+                config.users.as_slice(),
+                &arc_cam.permitted_users);
 
             // Set up each main and substream according to all the RTSP mount paths we support
             if ["both", "mainStream"].iter().any(|&e| e == arc_cam.stream) {
@@ -78,7 +80,7 @@ fn main() -> Result<(), Error> {
                     &*format!("/{}/mainStream", arc_cam.name),
                 ];
                 let mut output = rtsp
-                    .add_stream(paths, &stream_format, &permitted_user)
+                    .add_stream(paths, &stream_format, &permitted_users)
                     .unwrap();
                 let main_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output));
@@ -86,7 +88,7 @@ fn main() -> Result<(), Error> {
             if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
                 let mut output = rtsp
-                    .add_stream(paths, &substream_format, &permitted_user)
+                    .add_stream(paths, &substream_format, &permitted_users)
                     .unwrap();
                 let sub_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut output));
@@ -155,61 +157,34 @@ fn set_up_tls(config: &Config, rtsp: &RtspServer) {
     }
 }
 
-fn set_up_users(users: &Vec<UserConfig>, rtsp: &RtspServer) {
+fn set_up_users(users: &[UserConfig], rtsp: &RtspServer) {
     // Setting up users
-    let mut credentials = vec![];
-    for user in users {
-        let name = &user.name;
-        let pass = &user.pass;
-        let user_pass = match (name, pass) {
-            (Some(name), Some(pass)) => Some((&name as &str, &pass as &str)),
-            (Some(_), None) | (None, Some(_)) => {
-                warn!("Username and password must be supplied together - ignoring [[users]] entry");
-                None
-            }
-            _ => None,
-        };
-        credentials.push(user_pass);
-    }
-    rtsp.set_credentials(&credentials)
-        .expect("Failed to set up users.");
+    let credentials: Vec<_> = users.iter().map(|user| (&*user.name, &*user.pass)).collect();
+    rtsp.set_credentials(&credentials).expect("Failed to set up users");
 }
 
-fn get_permitted_users(
-    users: &Vec<UserConfig>,
-    permitted_users: &Option<Vec<String>>,
-) -> HashSet<String> {
-    let current_permitted_users = match permitted_users {
-        Some(permitted_users) => permitted_users.clone().to_owned(),
-        None => {
-            // If None then the users didn't specify permitted_users
-            // In this case we do either
-            // - Any authourised user if [[users]] was specified
-            // - Any connecting user if [[users]] was not added
-            if users.len() > 0 {
-                vec!("anyone".to_string())
-            } else {
-                vec!("anonymous".to_string())
-            }
-        }
+fn get_permitted_users<'a>(
+    users: &'a [UserConfig],
+    // not idiomatic as a function argument, but this fn translates the config struct directly:
+    permitted_users: &'a Option<Vec<String>>,
+) -> HashSet<&'a str> {
+    // Helper to build hashset of all users in `users`:
+    let all_users_hash = || {
+        users.iter().map(|u| u.name.as_str()).collect()
     };
-    // This is required to handle the special case of "anyone"
-    // ===Special set up of "anyone"===
-    // If in the camera config there is the user "anyone"
-    // Then we add all users to the cameras config. including unauth
-    let mut new_permitted_users = HashSet::new();
-    if current_permitted_users.contains(&"anyone".to_string()) {
-        for credentials in users {
-            if let Some(user) = &credentials.name {
-                new_permitted_users.insert(user.to_string());
-            }
-        }
-    } else {
-        for user in current_permitted_users {
-            new_permitted_users.insert(user.to_string());
-        }
+
+    match permitted_users {
+        // If in the camera config there is the user "anyone", or if none is specified but users
+        // are defined at all, then we add all users to the camera's allowed list.
+        Some(p) if p.iter().any(|u| u == "anyone") => all_users_hash(),
+        None if !users.is_empty() => all_users_hash(),
+
+        // The user specified permitted_users
+        Some(p) => p.iter().map(String::as_str).collect(),
+
+        // The user didn't specify permitted_users, and there are none defined anyway
+        None => ["anonymous"].iter().cloned().collect(),
     }
-    new_permitted_users
 }
 
 fn camera_main(

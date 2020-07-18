@@ -74,13 +74,12 @@ pub struct CameraConfig {
 
 #[derive(Debug, Deserialize, Validate, Clone)]
 pub struct UserConfig {
-    #[validate(required, custom = "validate_username")]
+    #[validate(custom = "validate_username")]
     #[serde(alias = "username")]
-    pub name: Option<String>,
+    pub name: String,
 
-    #[validate(required)]
     #[serde(alias = "password")]
-    pub pass: Option<String>,
+    pub pass: String,
 }
 
 fn default_bind_addr() -> String {
@@ -107,9 +106,12 @@ fn default_tls_client_auth() -> String {
     "none".to_string()
 }
 
+pub static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];
 fn validate_username(name: &str) -> Result<(), ValidationError> {
-    let reserved_names = vec!["anyone", "anonymous"];
-    if reserved_names.contains(&name) {
+    if name.trim().is_empty() {
+        return Err(ValidationError::new("username cannot be empty"))
+    }
+    if RESERVED_NAMES.contains(&name) {
         return Err(ValidationError::new("This is a reserved username"));
     }
     Ok(())

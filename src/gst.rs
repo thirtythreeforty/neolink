@@ -14,7 +14,7 @@ use gstreamer_rtsp_server::{
     RTSP_PERM_MEDIA_FACTORY_ACCESS, RTSP_PERM_MEDIA_FACTORY_CONSTRUCT,
     RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
-use log::debug;
+use log::*;
 use std::collections::HashSet;
 use std::fs;
 use std::io;
@@ -45,7 +45,7 @@ impl RtspServer {
         &self,
         paths: &[&str],
         stream_format: &StreamFormat,
-        permitted_users: &HashSet<String>,
+        permitted_users: &HashSet<&str>,
     ) -> Result<MaybeAppSrc> {
         let mounts = self
             .server
@@ -63,7 +63,7 @@ impl RtspServer {
         debug!(
             "Permitting {} to access {}",
             // This is hashmap or (iter) equivalent of join, it requres itertools
-            permitted_users.iter().cloned().intersperse(", ".to_string()).collect::<String>(),
+            permitted_users.iter().cloned().intersperse(", ").collect::<String>(),
             paths.join(", ")
         );
         self.add_permitted_roles(&factory, permitted_users);
@@ -107,10 +107,10 @@ impl RtspServer {
         Ok(maybe_app_src)
     }
 
-    pub fn add_permitted_roles(&self, factory: &RTSPMediaFactory, permitted_roles: &HashSet<String>) {
+    pub fn add_permitted_roles(&self, factory: &RTSPMediaFactory, permitted_roles: &HashSet<&str>) {
         for permitted_role in permitted_roles {
             factory.add_role_from_structure(&Structure::new(
-                permitted_role.as_str(),
+                permitted_role,
                 &[
                     (*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true),
                     (*RTSP_PERM_MEDIA_FACTORY_CONSTRUCT, &true),
@@ -131,7 +131,7 @@ impl RtspServer {
         // FYI: If no RTSP_PERM_MEDIA_FACTORY_ACCESS then server returns 404 not found
         //      If yes RTSP_PERM_MEDIA_FACTORY_ACCESS but no RTSP_PERM_MEDIA_FACTORY_CONSTRUCT
         //        server returns 401 not authourised
-        if !permitted_roles.contains(&"anonymous".to_string()) {
+        if !permitted_roles.contains(&"anonymous") {
             factory.add_role_from_structure(&Structure::new(
                 "anonymous",
                 &[(*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true)],
@@ -139,7 +139,7 @@ impl RtspServer {
         }
     }
 
-    pub fn set_credentials(&self, credentials: &Vec<Option<(&str, &str)>>) -> Result<()> {
+    pub fn set_credentials(&self, credentials: &[(&str, &str)]) -> Result<()> {
         let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
         auth.set_supported_methods(RTSPAuthMethod::Basic);
 
@@ -147,12 +147,11 @@ impl RtspServer {
         auth.set_default_token(Some(&mut un_authtoken));
 
         for credential in credentials {
-            if let Some((user, pass)) = credential {
-                debug!("Setting credentials for user {}", user);
-                let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, user)]);
-                let basic = RTSPAuth::make_basic(user, pass);
-                auth.add_basic(basic.as_str(), &token);
-            }
+            let (user, pass) = credential;
+            trace!("Setting credentials for user {}", user);
+            let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, user)]);
+            let basic = RTSPAuth::make_basic(user, pass);
+            auth.add_basic(basic.as_str(), &token);
         }
 
         self.server.set_auth(Some(&auth));
