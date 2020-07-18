@@ -3,14 +3,23 @@
 pub use self::maybe_app_src::MaybeAppSrc;
 
 use gstreamer::prelude::Cast;
-use gstreamer::Bin;
+use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
 //use gstreamer_rtsp::RTSPLowerTrans;
+use gio::{TlsAuthenticationMode, TlsCertificate};
+use gstreamer_rtsp::RTSPAuthMethod;
 use gstreamer_rtsp_server::prelude::*;
-use gstreamer_rtsp_server::{RTSPAuth, RTSPMediaFactory, RTSPServer as GstRTSPServer};
+use gstreamer_rtsp_server::{
+    RTSPAuth, RTSPMediaFactory, RTSPServer as GstRTSPServer, RTSPToken,
+    RTSP_PERM_MEDIA_FACTORY_ACCESS, RTSP_PERM_MEDIA_FACTORY_CONSTRUCT,
+    RTSP_TOKEN_MEDIA_FACTORY_ROLE,
+};
 use log::debug;
+use std::collections::HashSet;
+use std::fs;
 use std::io;
 use std::io::Write;
+use itertools::Itertools;
 
 type Result<T> = std::result::Result<T, ()>;
 
@@ -32,7 +41,12 @@ impl RtspServer {
         }
     }
 
-    pub fn add_stream(&self, paths: &[&str], stream_format: &StreamFormat) -> Result<MaybeAppSrc> {
+    pub fn add_stream(
+        &self,
+        paths: &[&str],
+        stream_format: &StreamFormat,
+        permitted_users: &HashSet<String>,
+    ) -> Result<MaybeAppSrc> {
         let mounts = self
             .server
             .get_mount_points()
@@ -45,6 +59,15 @@ impl RtspServer {
         };
 
         let factory = RTSPMediaFactory::new();
+
+        debug!(
+            "Permitting {} to access {}",
+            // This is hashmap or (iter) equivalent of join, it requres itertools
+            permitted_users.iter().cloned().intersperse(", ".to_string()).collect::<String>(),
+            paths.join(", ")
+        );
+        self.add_permitted_roles(&factory, permitted_users);
+
         //factory.set_protocols(RTSPLowerTrans::TCP);
         factory.set_launch(&format!("{}{}{}{}",
             "( ",
@@ -84,21 +107,70 @@ impl RtspServer {
         Ok(maybe_app_src)
     }
 
-    pub fn set_credentials(&mut self, user_pass: Option<(&str, &str)>) -> Result<()> {
-        let auth = user_pass.map(|(user, pass)| {
-            let auth = RTSPAuth::new();
-            /*
-            let perm = RTSPToken::new(
-                ...
-            );
-            auth.add_basic(RTSPAuth::make_basic(user, pass).as_str(), &perm);
-            */
-            // TODO TLS https://thiblahute.github.io/GStreamer-doc/gst-rtsp-server-1.0/rtsp-server.html?gi-language=c
-            auth
-        });
+    pub fn add_permitted_roles(&self, factory: &RTSPMediaFactory, permitted_roles: &HashSet<String>) {
+        for permitted_role in permitted_roles {
+            factory.add_role_from_structure(&Structure::new(
+                permitted_role.as_str(),
+                &[
+                    (*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true),
+                    (*RTSP_PERM_MEDIA_FACTORY_CONSTRUCT, &true),
+                ],
+            ));
+        }
+        // During auth, first it binds anonymously. At this point it checks
+        // RTSP_PERM_MEDIA_FACTORY_ACCESS to see if anyone can connect
+        // This is done before the auth token is loaded, possibliy an upstream bug there
+        // After checking RTSP_PERM_MEDIA_FACTORY_ACCESS anonymously
+        // It loads the auth token of the user and checks that users
+        // RTSP_PERM_MEDIA_FACTORY_CONSTRUCT allowing them to play
+        // As a result of this we must ensure that if anonymous is not granted RTSP_PERM_MEDIA_FACTORY_ACCESS
+        // As a part of permitted users then we must allow it to access
+        // at least RTSP_PERM_MEDIA_FACTORY_ACCESS but not RTSP_PERM_MEDIA_FACTORY_CONSTRUCT
+        // Watching Actually happens during RTSP_PERM_MEDIA_FACTORY_CONSTRUCT
+        // So this should be OK to do.
+        // FYI: If no RTSP_PERM_MEDIA_FACTORY_ACCESS then server returns 404 not found
+        //      If yes RTSP_PERM_MEDIA_FACTORY_ACCESS but no RTSP_PERM_MEDIA_FACTORY_CONSTRUCT
+        //        server returns 401 not authourised
+        if !permitted_roles.contains(&"anonymous".to_string()) {
+            factory.add_role_from_structure(&Structure::new(
+                "anonymous",
+                &[(*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true)],
+            ));
+        }
+    }
 
-        self.server.set_auth(auth.as_ref());
+    pub fn set_credentials(&self, credentials: &Vec<Option<(&str, &str)>>) -> Result<()> {
+        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
+        auth.set_supported_methods(RTSPAuthMethod::Basic);
 
+        let mut un_authtoken = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"anonymous")]);
+        auth.set_default_token(Some(&mut un_authtoken));
+
+        for credential in credentials {
+            if let Some((user, pass)) = credential {
+                debug!("Setting credentials for user {}", user);
+                let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, user)]);
+                let basic = RTSPAuth::make_basic(user, pass);
+                auth.add_basic(basic.as_str(), &token);
+            }
+        }
+
+        self.server.set_auth(Some(&auth));
+        Ok(())
+    }
+
+    pub fn set_tls(&self, cert_file: &str, client_auth: TlsAuthenticationMode) -> Result<()> {
+        debug!("Setting up TLS using {}", cert_file);
+        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
+
+        // We seperate reading the file and changing to a PEM so that we get different error messages.
+        let cert_contents = fs::read_to_string(cert_file).expect("TLS file not found");
+        let cert =
+            TlsCertificate::new_from_pem(&cert_contents).expect("Not a valid TLS certificate");
+        auth.set_tls_certificate(Some(&cert));
+        auth.set_tls_authentication_mode(client_auth);
+
+        self.server.set_auth(Some(&auth));
         Ok(())
     }
 

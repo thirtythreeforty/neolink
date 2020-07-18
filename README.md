@@ -98,6 +98,29 @@ By default Neolink serves on all IP addresses on port 8554.
 You can modify this by changing the `bind` and the `bind_port` parameter.
 You only need one `bind`/`bind_port` setting at the top of the config file.
 
+You can enable `rtsps` (TLS) by adding a `certificate = "/path/to/pem"` to the top section of the config file. This PEM should contain by the certificate and the key used for the server. If TLS is enabled all connections must use `rtsps`. You can also control client side TLS with the config option `tls_client_auth = "none|request|require"`; in this case the client should present a certificate signed by the server's CA.
+
+TLS is disabled by default.
+
+You can password-protect the Neolink server by adding `[[users]]`` sections to the configuration file:
+```
+[[users]]
+name: someone
+pass: somepass
+```
+you also need to add the allowed users into each camera by adding the following to `[[cameras]]`.
+```
+permitted_users = ["someone", "someoneelse"]
+```
+
+Anywhere a username is accepted it can take any username or one of the following special values.
+- `anyone` means any user with a valid user/pass
+- `anonymous` means no user/pass required
+
+The default `permitted_users` list is:
+- `[ "anonymous"]` if no `[[users]]` were given in the config meaning no authentication required to connect.
+- `[ "anyone" ]` if `[[users]]` were provided meaning any authourised users can connect.
+
 You can change the Neolink log level by setting the `RUST_LOG` environment variable (not in the configuration file) to one of `error`, `warn`, `info`, `debug`, or `trace`:
 
 ```

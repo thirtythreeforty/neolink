@@ -4,12 +4,13 @@ use serde::Deserialize;
 use std::clone::Clone;
 use std::net::SocketAddr;
 use std::time::Duration;
-use validator::Validate;
+use validator::{Validate, ValidationError};
 use validator_derive::Validate;
 
 lazy_static! {
     static ref RE_STREAM_FORM: Regex = Regex::new(r"^([hH]26[45]|[ \t]*[!].*)$").unwrap();
     static ref RE_STREAM_SRC: Regex = Regex::new(r"^(mainStream|subStream|both)$").unwrap();
+    static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -23,6 +24,21 @@ pub struct Config {
     #[validate(range(min = 0, max = 65535, message = "Invalid port", code = "bind_port"))]
     #[serde(default = "default_bind_port")]
     pub bind_port: u16,
+
+    #[serde(default = "default_certificate")]
+    pub certificate: Option<String>,
+
+    #[validate(regex(
+        path = "RE_TLS_CLIENT_AUTH",
+        message = "Incorrect tls auth",
+        code = "tls_client_auth"
+    ))]
+    #[serde(default = "default_tls_client_auth")]
+    pub tls_client_auth: String,
+
+    #[validate]
+    #[serde(default = "default_users")]
+    pub users: Vec<UserConfig>,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -52,6 +68,20 @@ pub struct CameraConfig {
     ))]
     #[serde(default = "default_stream")]
     pub stream: String,
+
+    #[serde(default = "default_permitted_users")]
+    pub permitted_users: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Validate, Clone)]
+pub struct UserConfig {
+    #[validate(required, custom = "validate_username")]
+    #[serde(alias = "username")]
+    pub name: Option<String>,
+
+    #[validate(required)]
+    #[serde(alias = "password")]
+    pub pass: Option<String>,
 }
 
 fn default_bind_addr() -> String {
@@ -68,4 +98,28 @@ fn default_format() -> String {
 
 fn default_stream() -> String {
     "both".to_string()
+}
+
+fn default_certificate() -> Option<String> {
+    None
+}
+
+fn default_tls_client_auth() -> String {
+    "none".to_string()
+}
+
+fn default_permitted_users() -> Option<Vec<String>> {
+    None
+}
+
+fn default_users() -> Vec<UserConfig> {
+    vec![]
+}
+
+fn validate_username(name: &str) -> Result<(), ValidationError> {
+    let reserved_names = vec!["anyone", "anonymous"];
+    if reserved_names.contains(&name) {
+        return Err(ValidationError::new("This is a reserved username"));
+    }
+    Ok(())
 }

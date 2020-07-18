@@ -1,9 +1,11 @@
 use env_logger::Env;
 use err_derive::Error;
+use gio::TlsAuthenticationMode;
 use log::*;
 use neolink::bc_protocol::BcCamera;
 use neolink::gst::{MaybeAppSrc, RtspServer, StreamFormat};
 use neolink::Never;
+use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 use std::sync::Arc;
@@ -15,7 +17,7 @@ mod cmdline;
 mod config;
 
 use cmdline::Opt;
-use config::{CameraConfig, Config};
+use config::{CameraConfig, Config, UserConfig};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -45,6 +47,10 @@ fn main() -> Result<(), Error> {
 
     let rtsp = &RtspServer::new();
 
+    set_up_tls(&config, &rtsp);
+
+    set_up_users(&config.users, &rtsp);
+
     crossbeam::scope(|s| {
         for camera in config.cameras {
             let stream_format = match &*camera.format {
@@ -58,6 +64,7 @@ fn main() -> Result<(), Error> {
                 "h264" | "H264" | "h265" | "H265" => StreamFormat::H264,
                 custom_format @ _ => StreamFormat::Custom(custom_format.to_string()),
             };
+            let permitted_user = get_permitted_users(&config.users, &camera.permitted_users);
 
             // Let subthreads share the camera object; in principle I think they could share
             // the object as it sits in the config.cameras block, but I have not figured out the
@@ -70,13 +77,17 @@ fn main() -> Result<(), Error> {
                     &*format!("/{}", arc_cam.name),
                     &*format!("/{}/mainStream", arc_cam.name),
                 ];
-                let mut output = rtsp.add_stream(paths, &stream_format).unwrap();
+                let mut output = rtsp
+                    .add_stream(paths, &stream_format, &permitted_user)
+                    .unwrap();
                 let main_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output));
             }
             if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
-                let mut output = rtsp.add_stream(paths, &substream_format).unwrap();
+                let mut output = rtsp
+                    .add_stream(paths, &substream_format, &permitted_user)
+                    .unwrap();
                 let sub_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut output));
             }
@@ -129,6 +140,76 @@ fn camera_loop(
 struct CameraErr {
     connected: bool,
     err: neolink::Error,
+}
+
+fn set_up_tls(config: &Config, rtsp: &RtspServer) {
+    let tls_client_auth = match &config.tls_client_auth as &str {
+        "request" => TlsAuthenticationMode::Requested,
+        "require" => TlsAuthenticationMode::Required,
+        "none" => TlsAuthenticationMode::None,
+        _ => unreachable!(),
+    };
+    if let Some(cert_path) = &config.certificate {
+        rtsp.set_tls(&cert_path, tls_client_auth)
+            .expect("Failed to set up TLS");
+    }
+}
+
+fn set_up_users(users: &Vec<UserConfig>, rtsp: &RtspServer) {
+    // Setting up users
+    let mut credentials = vec![];
+    for user in users {
+        let name = &user.name;
+        let pass = &user.pass;
+        let user_pass = match (name, pass) {
+            (Some(name), Some(pass)) => Some((&name as &str, &pass as &str)),
+            (Some(_), None) | (None, Some(_)) => {
+                warn!("Username and password must be supplied together - ignoring [[users]] entry");
+                None
+            }
+            _ => None,
+        };
+        credentials.push(user_pass);
+    }
+    rtsp.set_credentials(&credentials)
+        .expect("Failed to set up users.");
+}
+
+fn get_permitted_users(
+    users: &Vec<UserConfig>,
+    permitted_users: &Option<Vec<String>>,
+) -> HashSet<String> {
+    let current_permitted_users = match permitted_users {
+        Some(permitted_users) => permitted_users.clone().to_owned(),
+        None => {
+            // If None then the users didn't specify permitted_users
+            // In this case we do either
+            // - Any authourised user if [[users]] was specified
+            // - Any connecting user if [[users]] was not added
+            if users.len() > 0 {
+                vec!("anyone".to_string())
+            } else {
+                vec!("anonymous".to_string())
+            }
+        }
+    };
+    // This is required to handle the special case of "anyone"
+    // ===Special set up of "anyone"===
+    // If in the camera config there is the user "anyone"
+    // Then we add all users to the cameras config. including unauth
+    let mut new_permitted_users = HashSet::new();
+    if current_permitted_users.contains(&"anyone".to_string()) {
+        for credentials in users {
+            if let Some(user) = &credentials.name {
+                new_permitted_users.insert(user.to_string());
+            }
+        }
+    } else {
+        for user in current_permitted_users {
+            new_permitted_users.insert(user.to_string());
+        }
+    }
+    new_permitted_users
 }
 
 fn camera_main(
