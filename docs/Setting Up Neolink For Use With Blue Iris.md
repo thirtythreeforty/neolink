@@ -4,6 +4,7 @@ Stock Reolink cameras do not support use with non-proprietary surveillance softw
 
 **This guide applies to the following camera models:**
 - B800/D800
+- B400/D400
 - E1
 
 
@@ -78,6 +79,8 @@ The config file tells Neolink how to connect to your camera and serve the video 
     Note: Reolink D400/B400 Cameras **_do not support serving both streams at once_**, so you must manually choose which stream type to use. For best quality, choose the main stream.
 
 7. For multiple cameras, copy and paste the entire `[[cameras]]` block below the first. Each camera entry must begin with `[[cameras]]`.
+
+Note: For **E1 Cameras**, refer to [the readme](https://github.com/thirtythreeforty/neolink/#configuration) for instructions on adding the `format =` line. This configuration will be done automatically in the future.
 
 ### 3. Start Neolink
 1. Open a command prompt in the directory that contains Neolink and your config file.
