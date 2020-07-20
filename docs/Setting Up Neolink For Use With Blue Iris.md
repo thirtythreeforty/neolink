@@ -90,7 +90,7 @@ Note: For **E1 Cameras**, refer to [the readme](https://github.com/thirtythreefo
 
 You should get login messages that look something like this:
 
-![Login Messages](docs/screenshots/login_messages.JPG)
+![Login Messages](screenshots/login_messages.JPG)
 
 Note: Neolink hosts all streams on localhost port 8554. Each camera has a designated path for the sub-stream and the main-stream. Neolink gets the name of the path from the name of the camera you set in the config file. So the path to the sample camera's main-stream would be `127.0.0.1:8554/cameraname/mainStream` and the path to the sample camera's sub-stream would be `127.0.0.1:8554/cameraname/subStream`.
 
@@ -107,7 +107,7 @@ _There are a few tricks to getting Blue Iris to work properly with Neolink's RTS
 3. Uncheck "Enable Motion Detector."
 4. Enable "Direct to disc recording."
 
-![New Camera Window](docs/screenshots/new_camera.JPG)
+![New Camera Window](screenshots/new_camera.JPG)
 
 5. Click "OK."
 
@@ -130,7 +130,7 @@ _Once you click "OK" on the "New Camera" window, Blue Iris should dump you direc
 
 7. Click "OK."
 
-![](docs/screenshots/new_camera_config.JPG)
+![](screenshots/new_camera_config.JPG)
 
 **Congrats, you have set up your first camera!**
 
@@ -188,7 +188,7 @@ _The best way to have Neolink run at startup is create a Scheduled Task that sta
 
       _Your Finish windows should look something like this:_
 
-      ![](/docs/screenshots/taskfinishwindow.JPG)
+      ![](screenshots/taskfinishwindow.JPG)
 
    8. In the "Properties" window, in the "General" tab, select "Run whether or not the User is logged on."
 
@@ -204,7 +204,7 @@ _The best way to have Neolink run at startup is create a Scheduled Task that sta
 
        _The Settings tab should look something like this:_
 
-       ![](/docs/screenshots/tasksettingstab.JPG)
+       ![](screenshots/tasksettingstab.JPG)
 
    14. In the "Conditions" tab, you may want to uncheck "Start the task only if the computer is on AC Power."
    15. You may also want to check "Start only if the following network connection is available." This may prevent Neolink from retrying to connect many times if your computer takes a long time to connect to its network.
