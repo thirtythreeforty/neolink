@@ -301,11 +301,11 @@ impl BcCamera {
                     },
                     MAGIC_IFRAME => {
                         trace!("IFrame magic type");
-                        data_out.write_all(&binary.as_slice()[8..])?;
+                        data_out.write_all(binary.as_slice())?;
                     },
                     MAGIC_PFRAME => {
                         trace!("PFrame magic type");
-                        data_out.write_all(&binary.as_slice()[8..])?;
+                        data_out.write_all(binary.as_slice())?;
                     }
                     _ => {
                         trace!("Unknown magic type"); // When large video is chunked it goes here
