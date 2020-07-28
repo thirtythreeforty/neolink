@@ -269,6 +269,12 @@ impl BcCamera {
 
         sub_video.send(start_video)?;
 
+        const MAGIC_HEADER: &[u8] = &[0x31, 0x30, 0x30, 0x31];
+        const MAGIC_AAC: &[u8] = &[0x30, 0x35, 0x77, 0x62];
+        const MAGIC_ADPCM: &[u8] = &[0x30, 0x31, 0x77, 0x62];
+        const MAGIC_IFRAME:  &[u8] = &[0x30, 0x30, 0x64, 0x63];
+        const MAGIC_PFRAME:  &[u8] = &[0x30, 0x31, 0x64, 0x63];
+
         loop {
             trace!("Getting video message...");
             let msg = sub_video.rx.recv_timeout(self.rx_timeout)?;
@@ -278,7 +284,36 @@ impl BcCamera {
             }) = msg.body
             {
                 trace!("Got {} bytes of video data", binary.len());
-                data_out.write_all(binary.as_slice())?;
+                let magic = &binary.as_slice()[..4];
+                trace!("Magic is: {:x?}", &magic);
+                match magic {
+                    MAGIC_HEADER => {
+                        trace!("Header magic type");
+                        ();
+                    },
+                    MAGIC_AAC => {
+                        trace!("AAC magic type");
+                        //data_out.write_all(&binary.as_slice()[4..])?;
+                    },
+                    MAGIC_ADPCM => {
+                        trace!("ADPCM magic type");
+                        ();
+                    },
+                    MAGIC_IFRAME => {
+                        trace!("IFrame magic type");
+                        data_out.write_all(&binary.as_slice()[8..])?;
+                    },
+                    MAGIC_PFRAME => {
+                        trace!("PFrame magic type");
+                        data_out.write_all(&binary.as_slice()[8..])?;
+                    }
+                    _ => {
+                        trace!("Unknown magic type"); // When large video is chunked it goes here
+                        data_out.write_all(binary.as_slice())?;
+                        ();
+                    }
+                }
+
             } else {
                 warn!("Ignoring weird video message");
                 debug!("Contents: {:?}", msg);
