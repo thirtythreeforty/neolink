@@ -22,10 +22,58 @@ pub enum BcBody {
     ModernMsg(ModernMsg),
 }
 
+pub const MAGIC_VIDEO_INFO: &[u8] = &[0x31, 0x30, 0x30, 0x31];
+pub const MAGIC_AAC: &[u8] = &[0x30, 0x35, 0x77, 0x62];
+pub const MAGIC_ADPCM: &[u8] = &[0x30, 0x31, 0x77, 0x62];
+pub const MAGIC_IFRAME:  &[u8] = &[0x30, 0x30, 0x64, 0x63];
+pub const MAGIC_PFRAME:  &[u8] = &[0x30, 0x31, 0x64, 0x63];
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum BinaryData {
+    VideoData(Vec<u8>),
+    AudioData(Vec<u8>),
+    InfoData(Vec<u8>),
+    Unknown(Vec<u8>),
+}
+
+impl std::convert::AsRef<[u8]> for BinaryData {
+    fn as_ref(&self) -> &[u8] {
+        let binary = match self {
+            BinaryData::VideoData(binary) => binary,
+            BinaryData::AudioData(binary) => binary,
+            BinaryData::InfoData(binary) => binary,
+            BinaryData::Unknown(binary) => binary,
+        };
+        binary.as_slice()
+    }
+}
+
+impl BinaryData {
+    pub fn len(&self) -> usize {
+        let binary = match self {
+            BinaryData::VideoData(binary) => binary,
+            BinaryData::AudioData(binary) => binary,
+            BinaryData::InfoData(binary) => binary,
+            BinaryData::Unknown(binary) => binary,
+        };
+        binary.len()
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        let binary = match self {
+            BinaryData::VideoData(binary) => binary,
+            BinaryData::AudioData(binary) => binary,
+            BinaryData::InfoData(binary) => binary,
+            BinaryData::Unknown(binary) => binary,
+        };
+        binary.as_slice()
+    }
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ModernMsg {
     pub xml: Option<BcXml>,
-    pub binary: Option<Vec<u8>>,
+    pub binary: Option<BinaryData>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

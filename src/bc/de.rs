@@ -174,7 +174,35 @@ fn bc_modern_msg<'a, 'b, 'c>(
             // message).
             context.in_bin_mode.insert(header.msg_id);
 
-            binary = Some(payload);
+            let magic = &payload.as_slice()[..4];
+            trace!("Magic is: {:x?}", &magic);
+            binary = match magic {
+                MAGIC_VIDEO_INFO => {
+                    trace!("Video info magic type");
+                    Some(BinaryData::InfoData(payload))
+                },
+                MAGIC_AAC => {
+                    trace!("AAC magic type");
+                    Some(BinaryData::AudioData(payload))
+                },
+                MAGIC_ADPCM => {
+                    trace!("ADPCM magic type");
+                    Some(BinaryData::AudioData(payload))
+                },
+                MAGIC_IFRAME => {
+                    trace!("IFrame magic type");
+                    Some(BinaryData::VideoData(payload))
+                },
+                MAGIC_PFRAME => {
+                    trace!("PFrame magic type");
+                    Some(BinaryData::VideoData(payload))
+                }
+                _ => {
+                    trace!("Unknown magic type"); // When large video is chunked it goes here
+                    Some(BinaryData::Unknown(payload))
+                }
+            };
+
             buf = buf_after;
         } else {
             // Seriously, Nom, what even is this

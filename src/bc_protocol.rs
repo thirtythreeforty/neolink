@@ -269,11 +269,6 @@ impl BcCamera {
 
         sub_video.send(start_video)?;
 
-        const MAGIC_HEADER: &[u8] = &[0x31, 0x30, 0x30, 0x31];
-        const MAGIC_AAC: &[u8] = &[0x30, 0x35, 0x77, 0x62];
-        const MAGIC_ADPCM: &[u8] = &[0x30, 0x31, 0x77, 0x62];
-        const MAGIC_IFRAME:  &[u8] = &[0x30, 0x30, 0x64, 0x63];
-        const MAGIC_PFRAME:  &[u8] = &[0x30, 0x31, 0x64, 0x63];
 
         loop {
             trace!("Getting video message...");
@@ -284,34 +279,19 @@ impl BcCamera {
             }) = msg.body
             {
                 trace!("Got {} bytes of video data", binary.len());
-                let magic = &binary.as_slice()[..4];
-                trace!("Magic is: {:x?}", &magic);
-                match magic {
-                    MAGIC_HEADER => {
-                        trace!("Header magic type");
-                        ();
+                match binary {
+                    BinaryData::VideoData(binary) => {
+                        data_out.write_all(binary.as_slice())?
                     },
-                    MAGIC_AAC => {
-                        trace!("AAC magic type");
-                        //data_out.write_all(&binary.as_slice()[4..])?;
+                    BinaryData::AudioData(binary) => {
+                        ()
                     },
-                    MAGIC_ADPCM => {
-                        trace!("ADPCM magic type");
-                        ();
+                    BinaryData::InfoData(binary) => {
+                        ()
                     },
-                    MAGIC_IFRAME => {
-                        trace!("IFrame magic type");
-                        data_out.write_all(binary.as_slice())?;
+                    BinaryData::Unknown(binary) => {
+                        data_out.write_all(binary.as_slice())?
                     },
-                    MAGIC_PFRAME => {
-                        trace!("PFrame magic type");
-                        data_out.write_all(binary.as_slice())?;
-                    }
-                    _ => {
-                        trace!("Unknown magic type"); // When large video is chunked it goes here
-                        data_out.write_all(binary.as_slice())?;
-                        ();
-                    }
                 }
 
             } else {
