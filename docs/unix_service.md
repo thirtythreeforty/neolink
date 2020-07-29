@@ -18,6 +18,13 @@ For this I will use the username neolinker. Any unused name would be fine.
 sudo adduser --system --no-create-home --shell /bin/false neolinker
 ```
 
+Depending on your flavour of linux `adduser` may have also created
+a group of the same name. If it did not, you can create a group with:
+
+```
+sudo addgroup --system neolinker
+```
+
 ## Setting up neolink
 
 For this we will put neolink in `/usr/local/bin` and the config in `/usr/local/etc` but any directory readable by the `neolinker` user would be fine.
