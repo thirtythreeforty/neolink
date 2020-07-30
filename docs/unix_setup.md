@@ -263,7 +263,7 @@ If the mainStream fails but the subStream succeeds you may need to add
     the good and bad set of plugins. Please repeat the `Installing the Dependencies`
     section of this guide.
 
-  - Advanced debugging: Missing plugins
+  - Advanced debugging: Incorrect video format
 
     If while running the advanced debugging you get the message:
 
