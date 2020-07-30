@@ -191,11 +191,13 @@ fn bc_modern_msg<'a, 'b, 'c>(
                 },
                 MAGIC_IFRAME => {
                     trace!("IFrame magic type");
-                    Some(BinaryData::VideoData(payload))
+                    let frame = VideoFrame::IFrame(VideoIFrame::from_binary(&payload));
+                    Some(BinaryData::VideoData(frame))
                 },
                 MAGIC_PFRAME => {
                     trace!("PFrame magic type");
-                    Some(BinaryData::VideoData(payload))
+                    let frame = VideoFrame::PFrame(VideoPFrame::from_binary(&payload));
+                    Some(BinaryData::VideoData(frame))
                 }
                 _ => {
                     trace!("Unknown magic type"); // When large video is chunked it goes here

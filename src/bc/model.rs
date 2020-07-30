@@ -29,44 +29,150 @@ pub const MAGIC_IFRAME:  &[u8] = &[0x30, 0x30, 0x64, 0x63];
 pub const MAGIC_PFRAME:  &[u8] = &[0x30, 0x31, 0x64, 0x63];
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct VideoIFrame {
+    pub magic: Vec<u8>,
+    pub video_type: Vec<u8>,
+    pub data_size: Vec<u8>,
+    pub unknowna: Vec<u8>,
+    pub timestamp: Vec<u8>,
+    pub unknownb: Vec<u8>,
+    pub clocktime: Vec<u8>,
+    pub unknownc: Vec<u8>,
+    pub video_data: Vec<u8>,
+}
+
+impl VideoIFrame {
+    pub fn from_binary(binary: &[u8]) -> VideoIFrame {
+        VideoIFrame {
+            magic: binary[0..4].to_vec(),
+            video_type: binary[4..8].to_vec(),
+            data_size: binary[8..12].to_vec(),
+            unknowna: binary[12..16].to_vec(),
+            timestamp: binary[16..20].to_vec(),
+            unknownb: binary[20..24].to_vec(),
+            clocktime: binary[24..28].to_vec(),
+            unknownc: binary[28..32].to_vec(),
+            video_data: binary[32..].to_vec(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.video_data.len() + 32
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        let mut result = self.magic.clone();
+        result.extend(&self.video_type);
+        result.extend(&self.data_size);
+        result.extend(&self.unknowna);
+        result.extend(&self.timestamp);
+        result.extend(&self.unknownb);
+        result.extend(&self.clocktime);
+        result.extend(&self.unknownc);
+        result.extend(&self.video_data);
+        result.as_slice()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct VideoPFrame {
+    pub magic: Vec<u8>,
+    pub video_type: Vec<u8>,
+    pub data_size: Vec<u8>,
+    pub unknowna: Vec<u8>,
+    pub timestamp: Vec<u8>,
+    pub unknownb: Vec<u8>,
+    pub video_data: Vec<u8>,
+}
+
+impl VideoPFrame {
+    pub fn from_binary(binary: &[u8]) -> VideoPFrame {
+        VideoPFrame {
+            magic: binary[0..4].to_vec(),
+            video_type: binary[4..8].to_vec(),
+            data_size: binary[8..12].to_vec(),
+            unknowna: binary[12..16].to_vec(),
+            timestamp: binary[16..20].to_vec(),
+            unknownb: binary[20..24].to_vec(),
+            video_data: binary[24..].to_vec(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.video_data.len() + 24
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        let mut result = self.magic.clone();
+        result.extend(&self.video_type);
+        result.extend(&self.data_size);
+        result.extend(&self.unknowna);
+        result.extend(&self.timestamp);
+        result.extend(&self.unknownb);
+        result.extend(&self.video_data);
+        result.as_slice()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum VideoFrame {
+    IFrame(VideoIFrame),
+    PFrame(VideoPFrame),
+}
+
+impl VideoFrame {
+    pub fn len(&self) -> usize {
+        match self {
+            VideoFrame::IFrame(binary) => binary.len(),
+            VideoFrame::PFrame(binary) => binary.len(),
+        }
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        match self {
+            VideoFrame::IFrame(binary) => binary.as_slice(),
+            VideoFrame::PFrame(binary) => binary.as_slice(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum BinaryData {
-    VideoData(Vec<u8>),
+    VideoData(VideoFrame),
     AudioData(Vec<u8>),
     InfoData(Vec<u8>),
     Unknown(Vec<u8>),
 }
 
+// Used during serlisation to create the binary data
 impl std::convert::AsRef<[u8]> for BinaryData {
     fn as_ref(&self) -> &[u8] {
-        let binary = match self {
-            BinaryData::VideoData(binary) => binary,
-            BinaryData::AudioData(binary) => binary,
-            BinaryData::InfoData(binary) => binary,
-            BinaryData::Unknown(binary) => binary,
-        };
-        binary.as_slice()
+        match self {
+            BinaryData::VideoData(binary) => binary.as_slice(),
+            BinaryData::AudioData(binary) => binary.as_slice(),
+            BinaryData::InfoData(binary) => binary.as_slice(),
+            BinaryData::Unknown(binary) => binary.as_slice(),
+        }
     }
 }
 
 impl BinaryData {
     pub fn len(&self) -> usize {
-        let binary = match self {
-            BinaryData::VideoData(binary) => binary,
-            BinaryData::AudioData(binary) => binary,
-            BinaryData::InfoData(binary) => binary,
-            BinaryData::Unknown(binary) => binary,
-        };
-        binary.len()
+        match self {
+            BinaryData::VideoData(binary) => binary.len(),
+            BinaryData::AudioData(binary) => binary.len(),
+            BinaryData::InfoData(binary) => binary.len(),
+            BinaryData::Unknown(binary) => binary.len(),
+        }
     }
 
     pub fn as_slice(&self) -> &[u8] {
-        let binary = match self {
-            BinaryData::VideoData(binary) => binary,
-            BinaryData::AudioData(binary) => binary,
-            BinaryData::InfoData(binary) => binary,
-            BinaryData::Unknown(binary) => binary,
-        };
-        binary.as_slice()
+        match self {
+            BinaryData::VideoData(binary) => binary.as_slice(),
+            BinaryData::AudioData(binary) => binary.as_slice(),
+            BinaryData::InfoData(binary) => binary.as_slice(),
+            BinaryData::Unknown(binary) => binary.as_slice(),
+        }
     }
 }
 
