@@ -294,7 +294,7 @@ impl BcCamera {
                                     trace!("Expected {} bytes in video package", expected_bytes);
                                     trace!("Actual {} bytes in video package", actual_size);
                                     trace!("Remaining bytes {}", (expected_bytes - actual_size));
-                                    data_out.write_all(frame.as_slice())?
+                                    data_out.write_all(frame.as_slice())?;
                                 },
                                 VideoFrame::PFrame(frame) => {
                                     let expected_bytes = frame.data_size();
@@ -305,7 +305,7 @@ impl BcCamera {
                                     trace!("Expected {} bytes in video package", expected_bytes);
                                     trace!("Actual {} bytes in video package", actual_size);
                                     trace!("Remaining bytes {}", (expected_bytes - actual_size));
-                                    data_out.write_all(frame.as_slice())?
+                                    data_out.write_all(frame.as_slice())?;
                                 }
                             };
                         },
@@ -324,22 +324,22 @@ impl BcCamera {
                         BinaryData::VideoData(binary) => {
                             trace!("Video magic detected but expected video data for chunked frame {}", self.byte_debt);
                             self.byte_debt -= binary.len();
-                            data_out.write_all(binary.as_slice())?
+                            data_out.write_all(binary.as_slice())?;
                         },
                         BinaryData::AudioData(binary) => {
                             trace!("Audio magic detected but expected video data for chunked frame {}", self.byte_debt);
                             self.byte_debt -= binary.len();
-                            data_out.write_all(binary.as_slice())?
+                            data_out.write_all(binary.as_slice())?;
                         },
                         BinaryData::InfoData(binary) => {
                             trace!("Info magic detected but expected video data for chunked frame {}", self.byte_debt);
                             self.byte_debt -= binary.len();
-                            data_out.write_all(binary.as_slice())?
+                            data_out.write_all(binary.as_slice())?;
                         },
                         BinaryData::Unknown(binary) => {
                             trace!("Fulfilling expected video data for chunked frame {}", self.byte_debt);
                             self.byte_debt -= binary.len();
-                            data_out.write_all(binary.as_slice())?
+                            data_out.write_all(binary.as_slice())?;
                         },
                     };
                     trace!("Remaning data expected for chunked frame {}", self.byte_debt);

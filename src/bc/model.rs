@@ -58,7 +58,7 @@ impl VideoIFrame {
     }
 
     pub fn data_size(&self) -> usize {
-        u32::from_be_bytes(self.raw[8..12].try_into().expect("slice with incorrect length")).try_into().expect("u32 won't fit into usize")
+        u32::from_le_bytes(self.raw[8..12].try_into().expect("slice with incorrect length")).try_into().expect("u32 won't fit into usize")
     }
 
     pub fn unknowna(&self) -> &[u8] {
@@ -115,7 +115,7 @@ impl VideoPFrame {
     }
 
     pub fn data_size(&self) -> usize {
-        u32::from_be_bytes(self.raw[8..12].try_into().expect("slice with incorrect length")).try_into().expect("u32 won't fit into usize")
+        u32::from_le_bytes(self.raw[8..12].try_into().expect("slice with incorrect length")).try_into().expect("u32 won't fit into usize")
     }
 
     pub fn unknowna(&self) -> &[u8] {
