@@ -30,87 +30,107 @@ pub const MAGIC_PFRAME:  &[u8] = &[0x30, 0x31, 0x64, 0x63];
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct VideoIFrame {
-    pub magic: Vec<u8>,
-    pub video_type: Vec<u8>,
-    pub data_size: Vec<u8>,
-    pub unknowna: Vec<u8>,
-    pub timestamp: Vec<u8>,
-    pub unknownb: Vec<u8>,
-    pub clocktime: Vec<u8>,
-    pub unknownc: Vec<u8>,
-    pub video_data: Vec<u8>,
+    pub raw: Vec<u8>
 }
 
 impl VideoIFrame {
     pub fn from_binary(binary: &[u8]) -> VideoIFrame {
         VideoIFrame {
-            magic: binary[0..4].to_vec(),
-            video_type: binary[4..8].to_vec(),
-            data_size: binary[8..12].to_vec(),
-            unknowna: binary[12..16].to_vec(),
-            timestamp: binary[16..20].to_vec(),
-            unknownb: binary[20..24].to_vec(),
-            clocktime: binary[24..28].to_vec(),
-            unknownc: binary[28..32].to_vec(),
-            video_data: binary[32..].to_vec(),
+            raw: binary.to_vec(),
         }
     }
 
     pub fn len(&self) -> usize {
-        self.video_data.len() + 32
+        self.raw.len()
     }
 
     pub fn as_slice(&self) -> &[u8] {
-        let mut result = self.magic.clone();
-        result.extend(&self.video_type);
-        result.extend(&self.data_size);
-        result.extend(&self.unknowna);
-        result.extend(&self.timestamp);
-        result.extend(&self.unknownb);
-        result.extend(&self.clocktime);
-        result.extend(&self.unknownc);
-        result.extend(&self.video_data);
-        result.as_slice()
+        self.raw.as_slice()
+    }
+
+    pub fn magic(&self) -> &[u8] {
+        &self.raw[0..4]
+    }
+
+    pub fn video_type(&self) -> &[u8] {
+        &self.raw[4..8]
+    }
+
+    pub fn data_size(&self) -> &[u8] {
+        &self.raw[8..12]
+    }
+
+    pub fn unknowna(&self) -> &[u8] {
+        &self.raw[12..16]
+    }
+
+    pub fn timestamp(&self) -> &[u8] {
+        &self.raw[16..20]
+    }
+
+    pub fn unknownb(&self) -> &[u8] {
+        &self.raw[20..24]
+    }
+
+    pub fn clocktime(&self) -> &[u8] {
+        &self.raw[24..28]
+    }
+
+    pub fn unknownc(&self) -> &[u8] {
+        &self.raw[28..32]
+    }
+
+    pub fn video_data(&self) -> &[u8] {
+        &self.raw[32..]
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct VideoPFrame {
-    pub magic: Vec<u8>,
-    pub video_type: Vec<u8>,
-    pub data_size: Vec<u8>,
-    pub unknowna: Vec<u8>,
-    pub timestamp: Vec<u8>,
-    pub unknownb: Vec<u8>,
-    pub video_data: Vec<u8>,
+    pub raw: Vec<u8>
 }
 
 impl VideoPFrame {
     pub fn from_binary(binary: &[u8]) -> VideoPFrame {
         VideoPFrame {
-            magic: binary[0..4].to_vec(),
-            video_type: binary[4..8].to_vec(),
-            data_size: binary[8..12].to_vec(),
-            unknowna: binary[12..16].to_vec(),
-            timestamp: binary[16..20].to_vec(),
-            unknownb: binary[20..24].to_vec(),
-            video_data: binary[24..].to_vec(),
+            raw: binary.to_vec(),
         }
     }
 
     pub fn len(&self) -> usize {
-        self.video_data.len() + 24
+        self.raw.len()
     }
 
     pub fn as_slice(&self) -> &[u8] {
-        let mut result = self.magic.clone();
-        result.extend(&self.video_type);
-        result.extend(&self.data_size);
-        result.extend(&self.unknowna);
-        result.extend(&self.timestamp);
-        result.extend(&self.unknownb);
-        result.extend(&self.video_data);
-        result.as_slice()
+        self.raw.as_slice()
+    }
+
+    pub fn magic(&self) -> &[u8] {
+        &self.raw[0..4]
+    }
+
+    pub fn video_type(&self) -> &[u8] {
+        &self.raw[4..8]
+    }
+
+    pub fn data_size(&self) -> &[u8] {
+        &self.raw[8..12]
+    }
+
+    pub fn unknowna(&self) -> &[u8] {
+        &self.raw[12..16]
+    }
+
+    pub fn timestamp(&self) -> &[u8] {
+        &self.raw[16..20]
+    }
+
+    pub fn unknownb(&self) -> &[u8] {
+        &self.raw[20..24]
+    }
+
+    pub fn video_data(&self) -> &[u8] {
+        &self.raw[24..]
     }
 }
 
