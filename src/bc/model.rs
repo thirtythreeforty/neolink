@@ -1,5 +1,6 @@
 use super::xml::BcXml;
 use std::collections::HashSet;
+use std::convert::TryInto;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -56,8 +57,8 @@ impl VideoIFrame {
         &self.raw[4..8]
     }
 
-    pub fn data_size(&self) -> &[u8] {
-        &self.raw[8..12]
+    pub fn data_size(&self) -> usize {
+        u32::from_be_bytes(self.raw[8..12].try_into().expect("slice with incorrect length")).try_into().expect("u32 won't fit into usize")
     }
 
     pub fn unknowna(&self) -> &[u8] {
@@ -113,8 +114,8 @@ impl VideoPFrame {
         &self.raw[4..8]
     }
 
-    pub fn data_size(&self) -> &[u8] {
-        &self.raw[8..12]
+    pub fn data_size(&self) -> usize {
+        u32::from_be_bytes(self.raw[8..12].try_into().expect("slice with incorrect length")).try_into().expect("u32 won't fit into usize")
     }
 
     pub fn unknowna(&self) -> &[u8] {

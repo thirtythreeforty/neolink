@@ -17,6 +17,7 @@ pub struct BcCamera {
     connection: Option<BcConnection>,
     logged_in: bool,
     rx_timeout: Duration,
+    byte_debt: usize,
 }
 
 use crate::Never;
@@ -71,6 +72,7 @@ impl BcCamera {
             connection: None,
             logged_in: false,
             rx_timeout: Duration::from_secs(1),
+            byte_debt: 0,
         })
     }
 
@@ -242,7 +244,7 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(&self, data_out: &mut dyn Write, stream_name: &str) -> Result<Never> {
+    pub fn start_video(&mut self, data_out: &mut dyn Write, stream_name: &str) -> Result<Never> {
         let connection = self
             .connection
             .as_ref()
@@ -279,19 +281,68 @@ impl BcCamera {
             }) = msg.body
             {
                 trace!("Got {} bytes of video data", binary.len());
-                match binary {
-                    BinaryData::VideoData(binary) => {
-                        data_out.write_all(binary.as_slice())?
-                    },
-                    BinaryData::AudioData(binary) => {
-                        ()
-                    },
-                    BinaryData::InfoData(binary) => {
-                        ()
-                    },
-                    BinaryData::Unknown(binary) => {
-                        data_out.write_all(binary.as_slice())?
-                    },
+                if self.byte_debt <= 0 {
+                    match binary {
+                        BinaryData::VideoData(binary) => {
+                            match binary {
+                                VideoFrame::IFrame(frame) => {
+                                    let expected_bytes = frame.data_size();
+                                    let actual_size = frame.video_data().len();
+                                    if expected_bytes > actual_size {
+                                        self.byte_debt = expected_bytes - actual_size;
+                                    }
+                                    trace!("Expected {} bytes in video package", expected_bytes);
+                                    trace!("Actual {} bytes in video package", actual_size);
+                                    trace!("Remaining bytes {}", (expected_bytes - actual_size));
+                                    data_out.write_all(frame.as_slice())?
+                                },
+                                VideoFrame::PFrame(frame) => {
+                                    let expected_bytes = frame.data_size();
+                                    let actual_size = frame.video_data().len();
+                                    if expected_bytes > actual_size {
+                                        self.byte_debt = expected_bytes - actual_size;
+                                    }
+                                    trace!("Expected {} bytes in video package", expected_bytes);
+                                    trace!("Actual {} bytes in video package", actual_size);
+                                    trace!("Remaining bytes {}", (expected_bytes - actual_size));
+                                    data_out.write_all(frame.as_slice())?
+                                }
+                            };
+                        },
+                        BinaryData::AudioData(binary) => {
+                            ()
+                        },
+                        BinaryData::InfoData(binary) => {
+                            ()
+                        },
+                        BinaryData::Unknown(binary) => {
+                            ()
+                        },
+                    };
+                } else {
+                    match binary {
+                        BinaryData::VideoData(binary) => {
+                            trace!("Video magic detected but expected video data for chunked frame {}", self.byte_debt);
+                            self.byte_debt -= binary.len();
+                            data_out.write_all(binary.as_slice())?
+                        },
+                        BinaryData::AudioData(binary) => {
+                            trace!("Audio magic detected but expected video data for chunked frame {}", self.byte_debt);
+                            self.byte_debt -= binary.len();
+                            data_out.write_all(binary.as_slice())?
+                        },
+                        BinaryData::InfoData(binary) => {
+                            trace!("Info magic detected but expected video data for chunked frame {}", self.byte_debt);
+                            self.byte_debt -= binary.len();
+                            data_out.write_all(binary.as_slice())?
+                        },
+                        BinaryData::Unknown(binary) => {
+                            trace!("Fulfilling expected video data for chunked frame {}", self.byte_debt);
+                            self.byte_debt -= binary.len();
+                            data_out.write_all(binary.as_slice())?
+                        },
+                    };
+                    trace!("Remaning data expected for chunked frame {}", self.byte_debt);
                 }
 
             } else {
