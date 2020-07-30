@@ -53,7 +53,8 @@ Here are some examples for command packages that work on some distros
     gst-plugins-bad \
     gst-plugins-good \
 
-  # You will need this from aur, install yay first
+  # You will need this from AUR, and therefore need to install
+  # yay first (see below if you haven't done this yet)
   sudo yay -S \
     gst-rtsp-server
   ```
@@ -166,7 +167,7 @@ You should see a message such as:
 Neolink should now be running :)
 
 
-## Testing in ffprobe
+## Testing with ffprobe
 
 To test neolink we will use `ffprobe`.
 
@@ -260,8 +261,8 @@ If the mainStream fails but the subStream succeeds you may need to add
     ```
 
     This means that you are missing the gstreamer plugins. You must have both
-    the good and bad set of plugins. Please repeat the `Installing the Dependencies`
-    section of this guide.
+    the good and the bad set of plugins. Please repeat the
+    `Installing the Dependencies` section of this guide.
 
   - Advanced debugging: Incorrect video format
 
@@ -282,7 +283,7 @@ If the mainStream fails but the subStream succeeds you may need to add
 
 - Something else
 
-  If you still have problems open an issue on githip and attach the
+  If you still have problems open an issue on github and attach the
   neolink log. You can save the log to file with the following command:
 
   ```bash
