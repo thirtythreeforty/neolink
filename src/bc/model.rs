@@ -1,6 +1,6 @@
 use super::xml::BcXml;
 use log::trace;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::convert::TryInto;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
@@ -149,7 +149,9 @@ impl BinaryData {
                 BinaryDataKind::VideoDataPframe
             }
             _ => {
-                trace!("Unknown magic type"); // When large data is chunked it goes here
+                // When large data is chunked it goes here
+                // We work out whether or not it is a continued chunked in the deserialization
+                trace!("Unknown magic type");
                 BinaryDataKind::Unknown
             }
         }
@@ -212,9 +214,8 @@ pub(super) struct BcSendInfo {
 
 #[derive(Debug)]
 pub struct BcContext {
-    pub(super) in_bin_mode: HashSet<u32>,
-    pub(super) last_binary_kind: Option<BinaryDataKind>,
-    pub(super) remaining_binary_bytes: usize,
+    pub(super) last_binary_kind: HashMap<u32, Option<BinaryDataKind>>,
+    pub(super) remaining_binary_bytes: HashMap<u32, usize>,
 }
 
 impl Bc {
@@ -234,9 +235,8 @@ impl Bc {
 impl BcContext {
     pub fn new() -> BcContext {
         BcContext {
-            in_bin_mode: HashSet::new(),
-            last_binary_kind: None,
-            remaining_binary_bytes: 0,
+            last_binary_kind: HashMap::new(),
+            remaining_binary_bytes: HashMap::new(),
         }
     }
 }
