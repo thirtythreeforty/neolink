@@ -1,4 +1,4 @@
-use super::{BcCamera, Error, Result};
+use super::{BcCamera, Error, Result, RX_TIMEOUT};
 use crate::bc::{model::*, xml::*};
 use time::{date, Date, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
 
@@ -20,7 +20,7 @@ impl BcCamera {
         };
 
         sub_get_general.send(get)?;
-        let msg = sub_get_general.rx.recv_timeout(self.rx_timeout)?;
+        let msg = sub_get_general.rx.recv_timeout(RX_TIMEOUT)?;
 
         if let BcBody::ModernMsg(ModernMsg {
             xml:
@@ -105,7 +105,7 @@ impl BcCamera {
         );
 
         sub_set_general.send(set)?;
-        let msg = sub_set_general.rx.recv_timeout(self.rx_timeout)?;
+        let msg = sub_set_general.rx.recv_timeout(RX_TIMEOUT)?;
 
         Ok(())
     }
