@@ -26,7 +26,7 @@ pub enum BcBody {
     ModernMsg(ModernMsg),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum BinaryDataKind {
     VideoDataIframe,
     VideoDataPframe,
@@ -42,7 +42,7 @@ pub enum BinaryDataKind {
 #[derive(Debug, PartialEq, Eq)]
 pub struct BinaryData {
     pub data: Vec<u8>,
-    continuation_of: Option<BinaryDataKind>,
+    pub continuation_of: Option<BinaryDataKind>,
 }
 
 impl BinaryData {
@@ -110,19 +110,19 @@ impl BinaryData {
         const MAGIC_IFRAME: &[u8] = &[0x30, 0x30, 0x64, 0x63];
         const MAGIC_PFRAME: &[u8] = &[0x30, 0x31, 0x64, 0x63];
 
-        if let Some(continuation_of) = self.continuation_of {
-            match continuation_of {
+        if let Some(continuation_of) = &self.continuation_of {
+            return match continuation_of {
                 BinaryDataKind::VideoDataIframe
                 | BinaryDataKind::VideoDataPframe
-                | BinaryDataKind::VideoCont => BinaryData::VideoCont,
+                | BinaryDataKind::VideoCont => BinaryDataKind::VideoCont,
                 BinaryDataKind::AudioDataAac
                 | BinaryDataKind::AudioDataAdpcm
-                | BinaryDataKind::AudioCont => BinaryData::AudioCont,
+                | BinaryDataKind::AudioCont => BinaryDataKind::AudioCont,
                 BinaryDataKind::InfoData | BinaryDataKind::InfoDataCont => {
                     BinaryDataKind::InfoDataCont
                 }
                 BinaryDataKind::Unknown => BinaryDataKind::Unknown,
-            }
+            };
         }
 
         let magic = &self.data[..4];

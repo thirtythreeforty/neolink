@@ -174,7 +174,7 @@ fn bc_modern_msg<'a, 'b, 'c>(
             // message).
             context.in_bin_mode.insert(header.msg_id);
 
-            let binary_data = BinaryData {
+            let mut binary_data = BinaryData {
                 data: payload,
                 continuation_of: None,
             };
@@ -191,13 +191,13 @@ fn bc_modern_msg<'a, 'b, 'c>(
                 && context.remaining_binary_bytes >= body_size
             {
                 if body_size == CHUNK_SIZE {
-                    binaryData.continuation_of = Some(context.last_binary_kind);
+                    binary_data.continuation_of = context.last_binary_kind;
                     context.remaining_binary_bytes -= body_size;
                 } else {
                     // Reset but suggest that this might be an unknown magic code
                     trace!(
                         "Possibly new magic code: {:x?}",
-                        binary_data.body()[..std::cmp::min(body_size, 32)]
+                        &binary_data.body()[..std::cmp::min(body_size, 32)]
                     );
                     context.remaining_binary_bytes = 0;
                     context.last_binary_kind = None;
