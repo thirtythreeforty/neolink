@@ -11,6 +11,7 @@ use std::time::Duration;
 use Md5Trunc::*;
 
 mod connection;
+mod time;
 
 pub struct BcCamera {
     address: SocketAddr,
