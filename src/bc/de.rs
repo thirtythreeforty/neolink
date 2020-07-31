@@ -174,10 +174,39 @@ fn bc_modern_msg<'a, 'b, 'c>(
             // message).
             context.in_bin_mode.insert(header.msg_id);
 
-            let binary_data = BinaryData{
-                data: payload
+            let binary_data = BinaryData {
+                data: payload,
+                continuation_of: None,
             };
-            context.binary_kind.insert(binary_data.kind());
+            let binary_kind = binary_data.kind();
+            let body_size = binary_data.body_size();
+            let data_size = binary_data.data_size();
+
+            // Handle continuation
+            if binary_kind != BinaryDataKind::Unknown && data_size > CHUNK_SIZE {
+                context.remaining_binary_bytes = data_size - body_size;
+                context.last_binary_kind = Some(binary_kind);
+            } else if binary_kind == BinaryDataKind::Unknown
+                && context.remaining_binary_bytes > 0
+                && context.remaining_binary_bytes >= body_size
+            {
+                if body_size == CHUNK_SIZE {
+                    binaryData.continuation_of = Some(context.last_binary_kind);
+                    context.remaining_binary_bytes -= body_size;
+                } else {
+                    // Reset but suggest that this might be an unknown magic code
+                    trace!(
+                        "Possibly new magic code: {:x?}",
+                        binary_data.body()[..std::cmp::min(body_size, 32)]
+                    );
+                    context.remaining_binary_bytes = 0;
+                    context.last_binary_kind = None;
+                }
+            } else {
+                // Reset
+                context.remaining_binary_bytes = 0;
+                context.last_binary_kind = None;
+            }
 
             binary = Some(binary_data);
             buf = buf_after;

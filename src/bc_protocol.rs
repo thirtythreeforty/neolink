@@ -242,7 +242,7 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(&mut self, data_out: &mut dyn Write, stream_name: &str) -> Result<Never> {
+    pub fn start_video(&self, data_out: &mut dyn Write, stream_name: &str) -> Result<Never> {
         let connection = self
             .connection
             .as_ref()
@@ -269,7 +269,6 @@ impl BcCamera {
 
         sub_video.send(start_video)?;
 
-
         loop {
             trace!("Getting video message...");
             let msg = sub_video.rx.recv_timeout(self.rx_timeout)?;
@@ -280,20 +279,23 @@ impl BcCamera {
             {
                 trace!("Got {} bytes of video data", binary.len());
                 match binary.kind() {
-                    BinaryDataKind::VideoDataIframe | BinaryDataKind::VideoDataPframe => {
+                    BinaryDataKind::VideoDataIframe
+                    | BinaryDataKind::VideoDataPframe
+                    | BinaryDataKind::VideoCont => {
                         data_out.write_all(binary.body())?;
-                    },
-                    BinaryDataKind::AudioDataAac | BinaryDataKind::AudioDataAdpcm => {
+                    }
+                    BinaryDataKind::AudioDataAac
+                    | BinaryDataKind::AudioDataAdpcm
+                    | BinaryDataKind::AudioCont => {
                         ();
-                    },
-                    BinaryDataKind::InfoData => {
+                    }
+                    BinaryDataKind::InfoData | BinaryDataKind::InfoDataCont => {
                         ();
-                    },
+                    }
                     BinaryDataKind::Unknown => {
-                        data_out.write_all(binary.body())?;
-                    },
+                        ();
+                    }
                 };
-
             } else {
                 warn!("Ignoring weird video message");
                 debug!("Contents: {:?}", msg);

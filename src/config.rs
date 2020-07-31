@@ -109,7 +109,7 @@ fn default_tls_client_auth() -> String {
 pub static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];
 fn validate_username(name: &str) -> Result<(), ValidationError> {
     if name.trim().is_empty() {
-        return Err(ValidationError::new("username cannot be empty"))
+        return Err(ValidationError::new("username cannot be empty"));
     }
     if RESERVED_NAMES.contains(&name) {
         return Err(ValidationError::new("This is a reserved username"));
