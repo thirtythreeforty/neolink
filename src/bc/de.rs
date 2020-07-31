@@ -174,37 +174,12 @@ fn bc_modern_msg<'a, 'b, 'c>(
             // message).
             context.in_bin_mode.insert(header.msg_id);
 
-            let magic = &payload.as_slice()[..4];
-            trace!("Magic is: {:x?}", &magic);
-            binary = match magic {
-                MAGIC_VIDEO_INFO => {
-                    trace!("Video info magic type");
-                    Some(BinaryData::InfoData(payload))
-                },
-                MAGIC_AAC => {
-                    trace!("AAC magic type");
-                    Some(BinaryData::AudioData(payload))
-                },
-                MAGIC_ADPCM => {
-                    trace!("ADPCM magic type");
-                    Some(BinaryData::AudioData(payload))
-                },
-                MAGIC_IFRAME => {
-                    trace!("IFrame magic type");
-                    let frame = VideoFrame::IFrame(VideoIFrame::from_binary(&payload));
-                    Some(BinaryData::VideoData(frame))
-                },
-                MAGIC_PFRAME => {
-                    trace!("PFrame magic type");
-                    let frame = VideoFrame::PFrame(VideoPFrame::from_binary(&payload));
-                    Some(BinaryData::VideoData(frame))
-                }
-                _ => {
-                    trace!("Unknown magic type"); // When large video is chunked it goes here
-                    Some(BinaryData::Unknown(payload))
-                }
+            let binary_data = BinaryData{
+                data: payload
             };
+            context.binary_kind.insert(binary_data.kind());
 
+            binary = Some(binary_data);
             buf = buf_after;
         } else {
             // Seriously, Nom, what even is this

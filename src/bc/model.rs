@@ -1,6 +1,7 @@
 use super::xml::BcXml;
 use std::collections::HashSet;
 use std::convert::TryInto;
+use log::trace;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -23,177 +24,125 @@ pub enum BcBody {
     ModernMsg(ModernMsg),
 }
 
-pub const MAGIC_VIDEO_INFO: &[u8] = &[0x31, 0x30, 0x30, 0x31];
-pub const MAGIC_AAC: &[u8] = &[0x30, 0x35, 0x77, 0x62];
-pub const MAGIC_ADPCM: &[u8] = &[0x30, 0x31, 0x77, 0x62];
-pub const MAGIC_IFRAME:  &[u8] = &[0x30, 0x30, 0x64, 0x63];
-pub const MAGIC_PFRAME:  &[u8] = &[0x30, 0x31, 0x64, 0x63];
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct VideoIFrame {
-    pub raw: Vec<u8>
-}
-
-impl VideoIFrame {
-    pub fn from_binary(binary: &[u8]) -> VideoIFrame {
-        VideoIFrame {
-            raw: binary.to_vec(),
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.raw.len()
-    }
-
-    pub fn as_slice(&self) -> &[u8] {
-        self.raw.as_slice()
-    }
-
-    pub fn magic(&self) -> &[u8] {
-        &self.raw[0..4]
-    }
-
-    pub fn video_type(&self) -> &[u8] {
-        &self.raw[4..8]
-    }
-
-    pub fn data_size(&self) -> usize {
-        u32::from_le_bytes(self.raw[8..12].try_into().expect("slice with incorrect length")).try_into().expect("u32 won't fit into usize")
-    }
-
-    pub fn unknowna(&self) -> &[u8] {
-        &self.raw[12..16]
-    }
-
-    pub fn timestamp(&self) -> &[u8] {
-        &self.raw[16..20]
-    }
-
-    pub fn unknownb(&self) -> &[u8] {
-        &self.raw[20..24]
-    }
-
-    pub fn clocktime(&self) -> &[u8] {
-        &self.raw[24..28]
-    }
-
-    pub fn unknownc(&self) -> &[u8] {
-        &self.raw[28..32]
-    }
-
-    pub fn video_data(&self) -> &[u8] {
-        &self.raw[32..]
-    }
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum BinaryDataKind {
+    VideoDataIframe,
+    VideoDataPframe,
+    AudioDataAac,
+    AudioDataAdpcm,
+    InfoData,
+    Unknown,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct VideoPFrame {
-    pub raw: Vec<u8>
-}
-
-impl VideoPFrame {
-    pub fn from_binary(binary: &[u8]) -> VideoPFrame {
-        VideoPFrame {
-            raw: binary.to_vec(),
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.raw.len()
-    }
-
-    pub fn as_slice(&self) -> &[u8] {
-        self.raw.as_slice()
-    }
-
-    pub fn magic(&self) -> &[u8] {
-        &self.raw[0..4]
-    }
-
-    pub fn video_type(&self) -> &[u8] {
-        &self.raw[4..8]
-    }
-
-    pub fn data_size(&self) -> usize {
-        u32::from_le_bytes(self.raw[8..12].try_into().expect("slice with incorrect length")).try_into().expect("u32 won't fit into usize")
-    }
-
-    pub fn unknowna(&self) -> &[u8] {
-        &self.raw[12..16]
-    }
-
-    pub fn timestamp(&self) -> &[u8] {
-        &self.raw[16..20]
-    }
-
-    pub fn unknownb(&self) -> &[u8] {
-        &self.raw[20..24]
-    }
-
-    pub fn video_data(&self) -> &[u8] {
-        &self.raw[24..]
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum VideoFrame {
-    IFrame(VideoIFrame),
-    PFrame(VideoPFrame),
-}
-
-impl VideoFrame {
-    pub fn len(&self) -> usize {
-        match self {
-            VideoFrame::IFrame(binary) => binary.len(),
-            VideoFrame::PFrame(binary) => binary.len(),
-        }
-    }
-
-    pub fn as_slice(&self) -> &[u8] {
-        match self {
-            VideoFrame::IFrame(binary) => binary.as_slice(),
-            VideoFrame::PFrame(binary) => binary.as_slice(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum BinaryData {
-    VideoData(VideoFrame),
-    AudioData(Vec<u8>),
-    InfoData(Vec<u8>),
-    Unknown(Vec<u8>),
-}
-
-// Used during serlisation to create the binary data
-impl std::convert::AsRef<[u8]> for BinaryData {
-    fn as_ref(&self) -> &[u8] {
-        match self {
-            BinaryData::VideoData(binary) => binary.as_slice(),
-            BinaryData::AudioData(binary) => binary.as_slice(),
-            BinaryData::InfoData(binary) => binary.as_slice(),
-            BinaryData::Unknown(binary) => binary.as_slice(),
-        }
-    }
+pub struct BinaryData {
+    pub data: Vec<u8>,
 }
 
 impl BinaryData {
-    pub fn len(&self) -> usize {
-        match self {
-            BinaryData::VideoData(binary) => binary.len(),
-            BinaryData::AudioData(binary) => binary.len(),
-            BinaryData::InfoData(binary) => binary.len(),
-            BinaryData::Unknown(binary) => binary.len(),
+    pub fn body(&self) -> &[u8] {
+        let lower_limit = self.header_size();
+        const CHUNK_SIZE: usize = 40000;
+        let upper_limit = match self.data_size() % CHUNK_SIZE {
+            0 => CHUNK_SIZE, // Modulo quirk that 39999 -> 39999, 40000 -> 0, 40001 -> 1
+            n => n,
+        };
+        &self.data[lower_limit..upper_limit]
+    }
+
+    pub fn header_size(&self) -> usize {
+        match self.kind() {
+            BinaryDataKind::VideoDataIframe => 32,
+            BinaryDataKind::VideoDataPframe => 24,
+            BinaryDataKind::AudioDataAac => 8,
+            BinaryDataKind::AudioDataAdpcm => 16,
+            BinaryDataKind::InfoData => 32,
+            BinaryDataKind::Unknown => 0,
         }
     }
 
-    pub fn as_slice(&self) -> &[u8] {
-        match self {
-            BinaryData::VideoData(binary) => binary.as_slice(),
-            BinaryData::AudioData(binary) => binary.as_slice(),
-            BinaryData::InfoData(binary) => binary.as_slice(),
-            BinaryData::Unknown(binary) => binary.as_slice(),
+    pub fn data_size(&self) -> usize {
+        match self.kind() {
+            BinaryDataKind::VideoDataIframe => BinaryData::bytes_to_size(&self.data[8..12]),
+            BinaryDataKind::VideoDataPframe => BinaryData::bytes_to_size(&self.data[8..12]),
+            BinaryDataKind::AudioDataAac => BinaryData::bytes_to_size(&self.data[4..6]),
+            BinaryDataKind::AudioDataAdpcm => BinaryData::bytes_to_size(&self.data[4..6]),
+            BinaryDataKind::InfoData => BinaryData::bytes_to_size(&self.data[4..8]),
+            BinaryDataKind::Unknown => self.data.len(),
         }
+    }
+
+    fn bytes_to_size(bytes: &[u8]) -> usize {
+        match bytes.len() {
+            // 8 Won't fit into usize on a 32-bit machine
+            4 => {
+                u32::from_le_bytes(bytes.try_into()
+                .expect("slice with incorrect length"))
+                .try_into().expect("u32 won't fit into usize")
+            },
+            2 => {
+                u16::from_le_bytes(bytes.try_into()
+                .expect("slice with incorrect length"))
+                .try_into().expect("u16 won't fit into usize")
+            }
+            1 => {
+                u8::from_le_bytes(bytes.try_into()
+                .expect("slice with incorrect length"))
+                .try_into().expect("u8 won't fit into usize")
+            }
+            _ => unreachable!()
+        }
+    }
+
+    pub fn kind(&self) -> BinaryDataKind {
+        const MAGIC_VIDEO_INFO: &[u8] = &[0x31, 0x30, 0x30, 0x31];
+        const MAGIC_AAC: &[u8] = &[0x30, 0x35, 0x77, 0x62];
+        const MAGIC_ADPCM: &[u8] = &[0x30, 0x31, 0x77, 0x62];
+        const MAGIC_IFRAME:  &[u8] = &[0x30, 0x30, 0x64, 0x63];
+        const MAGIC_PFRAME:  &[u8] = &[0x30, 0x31, 0x64, 0x63];
+
+        let magic = &self.data[..4];
+        trace!("Magic is: {:x?}", &magic);
+        match magic {
+            MAGIC_VIDEO_INFO => {
+                trace!("Video info magic type");
+                BinaryDataKind::InfoData
+            },
+            MAGIC_AAC => {
+                trace!("AAC magic type");
+                BinaryDataKind::AudioDataAac
+            },
+            MAGIC_ADPCM => {
+                trace!("ADPCM magic type");
+                BinaryDataKind::AudioDataAdpcm
+            },
+            MAGIC_IFRAME => {
+                trace!("IFrame magic type");
+                BinaryDataKind::VideoDataIframe
+            },
+            MAGIC_PFRAME => {
+                trace!("PFrame magic type");
+                BinaryDataKind::VideoDataPframe
+            }
+            _ => {
+                trace!("Unknown magic type"); // When large data is chunked it goes here
+                BinaryDataKind::Unknown
+            }
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        self.data.as_slice()
+    }
+}
+
+impl std::convert::AsRef<[u8]> for BinaryData {
+    fn as_ref(&self) -> &[u8] {
+        self.as_slice()
     }
 }
 
@@ -240,6 +189,7 @@ pub(super) struct BcSendInfo {
 #[derive(Debug)]
 pub struct BcContext {
     pub(super) in_bin_mode: HashSet<u32>,
+    pub(super) binary_kind: HashSet<BinaryDataKind>,
 }
 
 impl Bc {
@@ -260,6 +210,7 @@ impl BcContext {
     pub fn new() -> BcContext {
         BcContext {
             in_bin_mode: HashSet::new(),
+            binary_kind: HashSet::new(),
         }
     }
 }
