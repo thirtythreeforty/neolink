@@ -7,6 +7,8 @@ There are many flavours of linux so the name of some packages
 may not exactly match. You are expected to be able to find the
 correct names yourselves.
 
+The general steps we will follow in this guide are as follows:
+
 1. Install dependancies
 
 2. Download neolink
@@ -31,7 +33,7 @@ Glib2.0 is usually already installed on most modern unix flavours.
 But the others will likely need to be installed via your package
 manager.
 
-Here are some examples for command packages that work on some distros
+Here are some examples for commands of package managers
 
 - ubuntu, buster, stretch
 
@@ -59,7 +61,7 @@ Here are some examples for command packages that work on some distros
     gst-rtsp-server
   ```
 
-  If your on archlinux or manjaro and you need to install yay do this:
+  If your on archlinux or manjaro and you need to install `yay` do this:
 
   ```bash
   git clone https://aur.archlinux.org/yay.git
@@ -72,11 +74,9 @@ Here are some examples for command packages that work on some distros
 You now need to get a copy of neolink. You can get that from this
 github [under the CI assets](https://github.com/thirtythreeforty/neolink/actions?query=branch%3Amaster+workflow%3ACI).
 
-Currently only amd64 is officially released, but armv7 will soon
-be available too.
+Currently amd64 and armv7 are officially released.
 
-If you are installing on a raspberry pi, you will need to compile
-from source until the official armv7 builds are available.
+If you are installing on a raspberry pi, you will need the armv7 build.
 
 You will get a zip file called `release-ubuntu-18.04.zip`, unzip it with
 
@@ -102,7 +102,7 @@ Open up the file in your favourite text editor.
 
 For the most basic setup you need to change only the parts in `[[ cameras ]]`.
 Neolink can connect to any number of supported reolink cameras at once. Each
-camera requires its own `[[ cameras ]]` block. Here is the example one:
+camera requires its own `[[ cameras ]]` block. Here is an example one:
 
 ```toml
 [[cameras]]
@@ -113,20 +113,19 @@ address = "192.168.1.187:9000"
 ```
 
 Set the `name` to any value you want, this will be the name of the rtsp stream.
-In this tutorial I will assume you leave as "driveway".
+In this tutorial I will assume you leave it as "driveway".
 
-The username and password are the ones that are used to connect to the camera
-and are the same ones used in the official reolink app.
+The username and passwords are the same ones used in the official reolink app.
 
 The address is the ip address of the camera. You should set and use a fixed ip
 for your camera. There are many ways to get a fixed ip address for your camera
 including changing the settings in the reolink app.
-Or my personal favourite assigning I fixed DHCP address from your router. How
-to do either of these things is beyond the scope of this tutorial.
+Or by assigning a fixed DHCP address from your router. How to do either of
+these things is beyond the scope of this tutorial.
 
-- Note for E1 and Lumos
+- Note for E1 and Lumus
 
-  If your camera is an `E1` or a `Lumos` you will need to add the `format` line
+  If your camera is an E1 or a Lumus you will need to add the `format` line
   to your `[[ cameras ]]` block like this:
 
   ```toml
@@ -145,8 +144,8 @@ Set up as many `[[ cameras ]]` as you want and save the file as `my_config.toml`
 
 ## Running Neolink
 
-We are now ready to run neolink. Open up and terminal and navigate the the
-folder where you `neolink` and `my_config.toml` are.
+We are now ready to run neolink. Open up and terminal and navigate to the
+folder where `neolink` and `my_config.toml` are.
 
 Run neolink with:
 
@@ -154,7 +153,7 @@ Run neolink with:
 ./neolink --config my_config.toml
 ```
 
-You should see a message such as:
+You should see messages such as:
 
 ```
 [DATE TIME INFO  neolink] Neolink 0.3.0 (unknown commit) release
@@ -175,16 +174,15 @@ If you do not have `ffmpeg` installed yet do it now through your package
 manager:
 
 ```bash
-sudo apt intall ffmpeg
+sudo apt install ffmpeg
 ```
 
 You must leave neolink running at the same time you run ffprobe. Neolink is a
 translator and it cannot translate reolink -> rtsp if you close it. The easiest
 way to do this is to open two terminals. One with neolink running and the other
-we will use for running ffprobe.
+for running ffprobe.
 
-In a neo terminal run:
-
+In a new terminal run:
 
 ```bash
 ffprobe rtsp://127.0.0.1:8554/driveway
@@ -216,7 +214,7 @@ If the mainStream fails but the subStream succeeds you may need to add
 
 - Missing dependancies
 
-  If you get a message such as:
+  If when start neolink you get a message such as:
 
   ```
   libgstrtspserver-1.0.so.0: cannot open shared object file: No such file or directory
@@ -254,7 +252,7 @@ If the mainStream fails but the subStream succeeds you may need to add
 
   - Advanced debugging: Missing plugins
 
-    If while running advanced debugging you get the message:
+    If while running advanced debugging you get a message like this:
 
     ```
     GST_ELEMENT_FACTORY gstelementfactory.c:456:gst_element_factory_make: no such element factory "h265parse"!
@@ -266,20 +264,20 @@ If the mainStream fails but the subStream succeeds you may need to add
 
   - Advanced debugging: Incorrect video format
 
-    If while running the advanced debugging you get the message:
+    If while running advanced debugging you get a message like this:
 
     ```
     h265parse gsth265parse.c:1110:gst_h265_parse_handle_frame:<h265parse0> broken/invalid nal Type: 48 Invalid, Size: 1073 will be dropped
     ```
 
     You have not set the format to `h264` in the `[[ cameras ]]` config while
-    using an E1 or Lumos.
+    using an E1 or Lumus camera.
 
     Change the `[[ cameras ]]` config to include `format = "h264"` and restart
     neolink
 
     (If you are using another camera and you need to use h264 please let us
-      know so we can update this guide)
+      know via an issue so we can update this guide)
 
 - Something else
 
