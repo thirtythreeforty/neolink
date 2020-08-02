@@ -175,9 +175,7 @@ fn bc_modern_msg<'a, 'b, 'c>(
 
             context.in_bin_mode.insert(header.msg_id);
 
-            let binary_data = BinaryData {
-                data: payload,
-            };
+            let binary_data = BinaryData { data: payload };
 
             binary = Some(binary_data);
             buf = buf_after;

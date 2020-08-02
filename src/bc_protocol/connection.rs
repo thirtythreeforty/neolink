@@ -143,7 +143,11 @@ impl<'a> BcSubscription<'a> {
         Ok(())
     }
 
-    pub fn get_binary_data_of_kind(&self, interested_kinds: &[BinaryDataKind], rx_timeout: Duration) -> std::result::Result<BinaryData, Error> {
+    pub fn get_binary_data_of_kind(
+        &self,
+        interested_kinds: &[BinaryDataKind],
+        rx_timeout: Duration,
+    ) -> std::result::Result<BinaryData, Error> {
         trace!("Finding binary message of interest...");
         let mut binary_data: BinaryData;
         // This loop is just for restarting (could have done with nesting too)
@@ -157,13 +161,13 @@ impl<'a> BcSubscription<'a> {
                 }) = msg.body
                 {
                     match binary.kind() {
-                        n if interested_kinds.contains(&n)  => {
+                        n if interested_kinds.contains(&n) => {
                             binary_data = binary;
                             break;
-                        },
+                        }
                         _ => {
                             trace!("Ignoring uninteresting binary data kind");
-                        },
+                        }
                     };
                 } else {
                     warn!("Ignoring weird binary message");
@@ -173,7 +177,7 @@ impl<'a> BcSubscription<'a> {
 
             trace!("Found binary message of interest...");
             // If the binary date is not complete get more packets to complete it
-            while ! binary_data.complete() {
+            while !binary_data.complete() {
                 let msg = self.rx.recv_timeout(rx_timeout)?;
                 if let BcBody::ModernMsg(ModernMsg {
                     binary: Some(binary),
@@ -184,8 +188,8 @@ impl<'a> BcSubscription<'a> {
                         BinaryDataKind::Continue => {
                             // If its a continuation add it to our binary data
                             binary_data.data.extend(binary.data);
-                        },
-                        n if interested_kinds.contains(&n)  => {
+                        }
+                        n if interested_kinds.contains(&n) => {
                             // If its another packet we are interested in
                             // Give up on current packet and try to complete
                             // This new one
@@ -197,7 +201,7 @@ impl<'a> BcSubscription<'a> {
                             // If we find something else then give up on the procees and restart
                             trace!("Binary data was unfinished, found uninteresting data");
                             continue 'outer;
-                        },
+                        }
                     }
                 } else {
                     warn!("Ignoring weird binary message");

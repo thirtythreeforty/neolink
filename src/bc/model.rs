@@ -1,8 +1,8 @@
 use super::xml::BcXml;
 use log::trace;
+use std::cmp::min;
 use std::collections::HashSet;
 use std::convert::TryInto;
-use std::cmp::min;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -49,10 +49,15 @@ impl BinaryData {
         let lower_limit = self.header_size();
         let upper_limit = self.data_size() + lower_limit;
         let len = self.len();
-        if ! self.complete() {
+        if !self.complete() {
             unreachable!(); // An incomplete packet should be discarded not read, panic if we try
         }
-        trace!("Sending data from {} to {} of {}", lower_limit, upper_limit, len);
+        trace!(
+            "Sending data from {} to {} of {}",
+            lower_limit,
+            upper_limit,
+            len
+        );
         &self.data[lower_limit..upper_limit]
     }
 
@@ -71,7 +76,7 @@ impl BinaryData {
     pub fn header(&self) -> &[u8] {
         let lower_limit = 0;
         let upper_limit = self.header_size() + lower_limit;
-        &self.data[min(self.len(),lower_limit)..min(self.len(), upper_limit)]
+        &self.data[min(self.len(), lower_limit)..min(self.len(), upper_limit)]
     }
 
     pub fn header_size(&self) -> usize {
@@ -92,7 +97,9 @@ impl BinaryData {
             BinaryDataKind::AudioDataAac => BinaryData::bytes_to_size(&self.data[4..6]),
             BinaryDataKind::AudioDataAdpcm => BinaryData::bytes_to_size(&self.data[4..6]),
             BinaryDataKind::InfoData => BinaryData::bytes_to_size(&self.data[4..8]),
-            BinaryDataKind::Unknown | BinaryDataKind::Invalid | BinaryDataKind::Continue => self.data.len(),
+            BinaryDataKind::Unknown | BinaryDataKind::Invalid | BinaryDataKind::Continue => {
+                self.data.len()
+            }
         }
     }
 
@@ -121,27 +128,13 @@ impl BinaryData {
 
         let magic = &self.data[..4];
         match magic {
-            MAGIC_VIDEO_INFO => {
-                BinaryDataKind::InfoData
-            }
-            MAGIC_AAC => {
-                BinaryDataKind::AudioDataAac
-            }
-            MAGIC_ADPCM => {
-                BinaryDataKind::AudioDataAdpcm
-            }
-            MAGIC_IFRAME => {
-                BinaryDataKind::VideoDataIframe
-            }
-            MAGIC_PFRAME => {
-                BinaryDataKind::VideoDataPframe
-            }
-            _ if self.len() == CHUNK_SIZE => {
-                BinaryDataKind::Continue
-            }
-            _ => {
-                BinaryDataKind::Unknown
-            }
+            MAGIC_VIDEO_INFO => BinaryDataKind::InfoData,
+            MAGIC_AAC => BinaryDataKind::AudioDataAac,
+            MAGIC_ADPCM => BinaryDataKind::AudioDataAdpcm,
+            MAGIC_IFRAME => BinaryDataKind::VideoDataIframe,
+            MAGIC_PFRAME => BinaryDataKind::VideoDataPframe,
+            _ if self.len() == CHUNK_SIZE => BinaryDataKind::Continue,
+            _ => BinaryDataKind::Unknown,
         }
     }
 
