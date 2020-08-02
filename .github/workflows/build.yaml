@@ -3,14 +3,15 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  ubuntu:
+  builds:
     name: build
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-18.04, windows-2019]
+        os: [ubuntu-18.04, windows-2019, macos-10.15]
     steps:
       - uses: actions/checkout@v2
+        name: Checkout onto ${{ runner.os }}
       - if: runner.os == 'Linux'
         name: apt install gstreamer
         run: |
@@ -24,6 +25,13 @@ jobs:
           echo "Updating Cargo environment"
           echo "C:\gstreamer\1.0\x86_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           echo "GSTREAMER_1_0_ROOT_X86_64=C:\gstreamer\1.0\x86_64\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - if: runner.os == 'macOS'
+        name: Install Gstreamer on macOS
+        run: |
+          curl -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/gstreamer-1.0-devel-1.16.2-x86_64.pkg' -o "$(pwd)/gstreamer-devel.pkg"
+          sudo installer -verbose -pkg "$(pwd)/gstreamer-devel.pkg" -target /
+          PKG_CONFIG_PATH="/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "${GITHUB_ENV}"
       - name: Cache cargo registry
         uses: actions/cache@v1
         with:
