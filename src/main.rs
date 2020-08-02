@@ -231,7 +231,7 @@ fn camera_main(
                     camera_config.name, time
                 );
             } else {
-                error!("{}: Camera did not accept new time", camera_config.name);
+                error!("{}: Camera did not accept new time (is {} an admin?)", camera_config.name, camera_config.username);
             }
         }
 
