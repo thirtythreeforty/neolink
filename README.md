@@ -19,9 +19,7 @@ Currently it has been tested on the following cameras:
 - B800/D800
 - B400/D400
 - E1
-
-It *should* support the Lumus as well, but this has not yet been tested.
-Please test if you have one, and [open an issue](https://github.com/thirtythreeforty/neolink/issues/new/choose) if you encounter problems:
+- Lumus
 
 Neolink does not support other cameras such as the RLC-420, since they already [provide native RTSP](https://support.reolink.com/hc/en-us/articles/360007010473-How-to-Live-View-Reolink-Cameras-via-VLC-Media-Player).
 
