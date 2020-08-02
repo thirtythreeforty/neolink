@@ -8,9 +8,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-18.04, windows-2019]
+        os: [ubuntu-18.04, windows-2019, macos-10.15]
     steps:
       - uses: actions/checkout@v2
+        name: Checkout onto ${{ runner.os }}
       - if: runner.os == 'Linux'
         name: apt install gstreamer
         run: |
@@ -27,6 +28,10 @@ jobs:
           echo "Updating Environment"
           echo "::add-path::C:\gstreamer\1.0\x86_64\bin"
           echo "::set-env name=GSTREAMER_1_0_ROOT_X86_64::C:\gstreamer\1.0\x86_64\"
+      - if: runner.os == 'macOS'
+        name: Brew Install Gstreamer
+        run: |
+          brew install gst-rtsp-server gst-plugins-good gst-plugins-bad glib
       - name: Cache cargo registry
         uses: actions/cache@v1
         with:
