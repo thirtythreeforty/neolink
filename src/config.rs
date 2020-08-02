@@ -51,6 +51,7 @@ pub struct CameraConfig {
     pub username: String,
     pub password: Option<String>,
 
+    // no longer used, but still here so we can warn users:
     pub timeout: Option<Duration>,
 
     #[validate(regex(
