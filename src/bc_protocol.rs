@@ -270,36 +270,42 @@ impl BcCamera {
         sub_video.send(start_video)?;
 
         loop {
-            trace!("Getting video message...");
-            let msg = sub_video.rx.recv_timeout(self.rx_timeout)?;
-            if let BcBody::ModernMsg(ModernMsg {
-                binary: Some(binary),
-                ..
-            }) = msg.body
-            {
-                trace!("Got {} bytes of video data", binary.len());
-                match binary.kind() {
-                    BinaryDataKind::VideoDataIframe
-                    | BinaryDataKind::VideoDataPframe
-                    | BinaryDataKind::VideoCont => {
-                        data_out.write_all(binary.body())?;
-                    }
-                    BinaryDataKind::AudioDataAac
-                    | BinaryDataKind::AudioDataAdpcm
-                    | BinaryDataKind::AudioCont => {
-                        ();
-                    }
-                    BinaryDataKind::InfoData | BinaryDataKind::InfoDataCont => {
-                        ();
-                    }
-                    BinaryDataKind::Unknown => {
-                        ();
-                    }
-                };
-            } else {
-                warn!("Ignoring weird video message");
-                debug!("Contents: {:?}", msg);
-            }
+
+            let binary_data = sub_video.get_binary_data_of_kind(&vec![BinaryDataKind::VideoDataIframe, BinaryDataKind::VideoDataPframe], self.rx_timeout)?;
+            // We now have a complete interesting packet. Send it to gst.
+            // Process the packet
+            match binary_data.kind() {
+                BinaryDataKind::VideoDataIframe
+                | BinaryDataKind::VideoDataPframe  => {
+                    data_out.write_all(binary_data.body())?;
+                },
+                BinaryDataKind::AudioDataAac
+                | BinaryDataKind::AudioDataAdpcm  => {
+                    // We should not have a packet of this kind as we skip them until we get
+                    // a packet of interest
+                    unreachable!();
+                },
+                BinaryDataKind::InfoData => {
+                    // We should not have a packet of this kind as we skip them until we get
+                    // a packet of interest
+                    unreachable!();
+                },
+                BinaryDataKind::Unknown => {
+                    // We should not have a packet of this kind as we skip them until we get
+                    // a packet of interest
+                    unreachable!();
+                },
+                BinaryDataKind::Invalid => {
+                    // We should not have a packet of this kind as we skip them until we get
+                    // a packet of interest
+                    unreachable!();
+                },
+                BinaryDataKind::Continue => {
+                    // We should not have a packet of this kind as it would be attached
+                    // to a packet of interest
+                    unreachable!();
+                }
+            };
         }
     }
 }

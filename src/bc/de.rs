@@ -116,7 +116,7 @@ fn bc_modern_msg<'a, 'b, 'c>(
         Err,
     };
 
-    let mut in_bin_mode = context.last_binary_kind.contains_key(&header.msg_id);
+    let mut in_bin_mode = context.in_bin_mode.contains(&header.msg_id);
 
     // We'd like to know where the XML stops, but we haven't parsed the XML yet to see if the
     // binaryData offset in the header is valid
@@ -173,64 +173,11 @@ fn bc_modern_msg<'a, 'b, 'c>(
             // behavior of future passes of this function even if we didn't yet consume the
             // message).
 
-            let mut binary_data = BinaryData {
+            context.in_bin_mode.insert(header.msg_id);
+
+            let binary_data = BinaryData {
                 data: payload,
-                continuation_of: None,
             };
-            let binary_kind = binary_data.kind();
-            let body_size = binary_data.body_size();
-            let data_size = binary_data.data_size();
-
-            let remaining_binary_bytes = match context.remaining_binary_bytes.get(&header.msg_id) {
-                Some(remaining_binary_bytes) => remaining_binary_bytes.clone(),
-                None => 0,
-            };
-            let last_binary_kind = match context.last_binary_kind.get(&header.msg_id) {
-                Some(last_binary_kind) => last_binary_kind.clone(),
-                None => None,
-            };
-
-            // Handle continuation
-            if binary_kind != BinaryDataKind::Unknown && data_size > body_size {
-                // If it is a known type and the size is larger than the bodysize expect more
-                // packets to follow
-                context
-                    .remaining_binary_bytes
-                    .insert(header.msg_id, data_size - body_size);
-                context
-                    .last_binary_kind
-                    .insert(header.msg_id, Some(binary_kind));
-            } else if binary_kind == BinaryDataKind::Unknown
-                && remaining_binary_bytes > 0
-                && remaining_binary_bytes >= body_size
-            {
-                // If the data is unknown and we are expecting packets then proccess them
-                // Ensure however that consuming this packet as binary will not result in
-                // negative remaining_binary_bytes
-                if body_size == CHUNK_SIZE {
-                    // All known continuation packets are of size CHUNK_SIZE
-                    binary_data.continuation_of = last_binary_kind;
-                    context
-                        .remaining_binary_bytes
-                        .insert(header.msg_id, remaining_binary_bytes - body_size);
-                } else {
-                    // If its not of chunk size this may be an unknown magic code
-                    // Reset but suggest that this might be an unknown magic code
-                    trace!(
-                        "Possibly new magic code: {:x?}",
-                        &binary_data.body()[..std::cmp::min(body_size, 32)]
-                    );
-                    context.remaining_binary_bytes.insert(header.msg_id, 0);
-                    context.last_binary_kind.insert(header.msg_id, None);
-                }
-            } else {
-                // In all other cases just proccess data as normal non-continuation packets
-                // We also reset the remaining_binary_bytes which could be non zero if
-                // The continuation was inturrepted by an audio frame
-                // Reset
-                context.remaining_binary_bytes.insert(header.msg_id, 0);
-                context.last_binary_kind.insert(header.msg_id, None);
-            }
 
             binary = Some(binary_data);
             buf = buf_after;

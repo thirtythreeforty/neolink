@@ -1,7 +1,8 @@
 use super::xml::BcXml;
 use log::trace;
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::convert::TryInto;
+use std::cmp::min;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -30,26 +31,47 @@ pub enum BcBody {
 pub enum BinaryDataKind {
     VideoDataIframe,
     VideoDataPframe,
-    VideoCont,
     AudioDataAac,
     AudioDataAdpcm,
-    AudioCont,
     InfoData,
-    InfoDataCont,
+    Invalid,
+    Continue,
     Unknown,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BinaryData {
     pub data: Vec<u8>,
-    pub continuation_of: Option<BinaryDataKind>,
 }
 
 impl BinaryData {
     pub fn body(&self) -> &[u8] {
         let lower_limit = self.header_size();
-        let upper_limit = self.body_size() + lower_limit;
+        let upper_limit = self.data_size() + lower_limit;
+        let len = self.len();
+        if ! self.complete() {
+            unreachable!(); // An incomplete packet should be discarded not read, panic if we try
+        }
+        trace!("Sending data from {} to {} of {}", lower_limit, upper_limit, len);
         &self.data[lower_limit..upper_limit]
+    }
+
+    pub fn complete(&self) -> bool {
+        if self.len() < self.header_size() {
+            return false;
+        }
+        let full_data_len = self.len() - self.header_size();
+        full_data_len >= self.data_size() && full_data_len < self.data_size() + 8
+    }
+
+    pub fn expected_num_packet(&self) -> usize {
+        self.data_size() / CHUNK_SIZE + 1
+    }
+
+    pub fn header(&self) -> &[u8] {
+        let lower_limit = 0;
+        let upper_limit = self.header_size() + lower_limit;
+        &self.data[min(self.len(),lower_limit)..min(self.len(), upper_limit)]
     }
 
     pub fn header_size(&self) -> usize {
@@ -59,10 +81,7 @@ impl BinaryData {
             BinaryDataKind::AudioDataAac => 8,
             BinaryDataKind::AudioDataAdpcm => 16,
             BinaryDataKind::InfoData => 32,
-            BinaryDataKind::Unknown
-            | BinaryDataKind::VideoCont
-            | BinaryDataKind::AudioCont
-            | BinaryDataKind::InfoDataCont => 0,
+            BinaryDataKind::Unknown | BinaryDataKind::Invalid | BinaryDataKind::Continue => 0,
         }
     }
 
@@ -73,17 +92,7 @@ impl BinaryData {
             BinaryDataKind::AudioDataAac => BinaryData::bytes_to_size(&self.data[4..6]),
             BinaryDataKind::AudioDataAdpcm => BinaryData::bytes_to_size(&self.data[4..6]),
             BinaryDataKind::InfoData => BinaryData::bytes_to_size(&self.data[4..8]),
-            BinaryDataKind::Unknown
-            | BinaryDataKind::VideoCont
-            | BinaryDataKind::AudioCont
-            | BinaryDataKind::InfoDataCont => self.data.len(),
-        }
-    }
-
-    pub fn body_size(&self) -> usize {
-        match self.data_size() % CHUNK_SIZE {
-            0 => CHUNK_SIZE, // Modulo quirk that 39999 -> 39999, 40000 -> 0, 40001 -> 1
-            n => n,
+            BinaryDataKind::Unknown | BinaryDataKind::Invalid | BinaryDataKind::Continue => self.data.len(),
         }
     }
 
@@ -110,48 +119,27 @@ impl BinaryData {
         const MAGIC_IFRAME: &[u8] = &[0x30, 0x30, 0x64, 0x63];
         const MAGIC_PFRAME: &[u8] = &[0x30, 0x31, 0x64, 0x63];
 
-        if let Some(continuation_of) = &self.continuation_of {
-            return match continuation_of {
-                BinaryDataKind::VideoDataIframe
-                | BinaryDataKind::VideoDataPframe
-                | BinaryDataKind::VideoCont => BinaryDataKind::VideoCont,
-                BinaryDataKind::AudioDataAac
-                | BinaryDataKind::AudioDataAdpcm
-                | BinaryDataKind::AudioCont => BinaryDataKind::AudioCont,
-                BinaryDataKind::InfoData | BinaryDataKind::InfoDataCont => {
-                    BinaryDataKind::InfoDataCont
-                }
-                BinaryDataKind::Unknown => BinaryDataKind::Unknown,
-            };
-        }
-
         let magic = &self.data[..4];
-        trace!("Magic is: {:x?}", &magic);
         match magic {
             MAGIC_VIDEO_INFO => {
-                trace!("Video info magic type");
                 BinaryDataKind::InfoData
             }
             MAGIC_AAC => {
-                trace!("AAC magic type");
                 BinaryDataKind::AudioDataAac
             }
             MAGIC_ADPCM => {
-                trace!("ADPCM magic type");
                 BinaryDataKind::AudioDataAdpcm
             }
             MAGIC_IFRAME => {
-                trace!("IFrame magic type");
                 BinaryDataKind::VideoDataIframe
             }
             MAGIC_PFRAME => {
-                trace!("PFrame magic type");
                 BinaryDataKind::VideoDataPframe
             }
+            _ if self.len() == CHUNK_SIZE => {
+                BinaryDataKind::Continue
+            }
             _ => {
-                // When large data is chunked it goes here
-                // We work out whether or not it is a continued chunked in the deserialization
-                trace!("Unknown magic type");
                 BinaryDataKind::Unknown
             }
         }
@@ -214,8 +202,7 @@ pub(super) struct BcSendInfo {
 
 #[derive(Debug)]
 pub struct BcContext {
-    pub(super) last_binary_kind: HashMap<u32, Option<BinaryDataKind>>,
-    pub(super) remaining_binary_bytes: HashMap<u32, usize>,
+    pub(super) in_bin_mode: HashSet<u32>,
 }
 
 impl Bc {
@@ -235,8 +222,7 @@ impl Bc {
 impl BcContext {
     pub fn new() -> BcContext {
         BcContext {
-            last_binary_kind: HashMap::new(),
-            remaining_binary_bytes: HashMap::new(),
+            in_bin_mode: HashSet::new(),
         }
     }
 }

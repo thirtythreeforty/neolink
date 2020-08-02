@@ -43,6 +43,9 @@ pub enum Error {
 
     #[error(display = "Simultaneous subscription")]
     SimultaneousSubscription { msg_id: u32 },
+
+    #[error(display = "Timeout")]
+    Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
 }
 
 impl BcConnection {
@@ -138,6 +141,74 @@ impl<'a> BcSubscription<'a> {
 
         bc.serialize(&*self.conn.connection.lock().unwrap())?;
         Ok(())
+    }
+
+    pub fn get_binary_data_of_kind(&self, interested_kinds: &[BinaryDataKind], rx_timeout: Duration) -> std::result::Result<BinaryData, Error> {
+        trace!("Finding binary message of interest...");
+        let mut binary_data: BinaryData;
+        // This loop is just for restarting (could have done with nesting too)
+        'outer: loop {
+            // Loop over the messages until we find one we want
+            loop {
+                let msg = self.rx.recv_timeout(rx_timeout)?;
+                if let BcBody::ModernMsg(ModernMsg {
+                    binary: Some(binary),
+                    ..
+                }) = msg.body
+                {
+                    match binary.kind() {
+                        n if interested_kinds.contains(&n)  => {
+                            binary_data = binary;
+                            break;
+                        },
+                        _ => {
+                            trace!("Ignoring uninteresting binary data kind");
+                        },
+                    };
+                } else {
+                    warn!("Ignoring weird binary message");
+                    debug!("Contents: {:?}", msg);
+                }
+            }
+
+            trace!("Found binary message of interest...");
+            // If the binary date is not complete get more packets to complete it
+            while ! binary_data.complete() {
+                let msg = self.rx.recv_timeout(rx_timeout)?;
+                if let BcBody::ModernMsg(ModernMsg {
+                    binary: Some(binary),
+                    ..
+                }) = msg.body
+                {
+                    match binary.kind() {
+                        BinaryDataKind::Continue => {
+                            // If its a continuation add it to our binary data
+                            binary_data.data.extend(binary.data);
+                        },
+                        n if interested_kinds.contains(&n)  => {
+                            // If its another packet we are interested in
+                            // Give up on current packet and try to complete
+                            // This new one
+                            // We are assuming that the camera has dropped that frame
+                            trace!("Binary data was unfinished, found new interesting data");
+                            binary_data = binary;
+                        }
+                        _ => {
+                            // If we find something else then give up on the procees and restart
+                            trace!("Binary data was unfinished, found uninteresting data");
+                            continue 'outer;
+                        },
+                    }
+                } else {
+                    warn!("Ignoring weird binary message");
+                    debug!("Contents: {:?}", msg);
+                }
+            }
+
+            trace!("Have complete binary message.");
+
+            return Ok(binary_data);
+        }
     }
 }
 
