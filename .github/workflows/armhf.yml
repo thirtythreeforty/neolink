@@ -6,7 +6,10 @@ jobs:
   armhfbuild:
     name: build-armhf
     runs-on: ubuntu-latest
-    container: node:current-buster-slim
+    container: "node:current-${{ matrix.container }}-slim"
+    strategy:
+      matrix:
+        container: ["buster"]
     steps:
       - uses: actions/checkout@v2
       - name: Install basic tools
@@ -47,5 +50,5 @@ jobs:
           PKG_CONFIG_LIBDIR: /usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig/
       - uses: actions/upload-artifact@v2
         with:
-          name: release-armhf
+          name: release-armhf-${{ matrix.container }}
           path: "target/armv7-unknown-linux-gnueabihf/release/neolink*"
