@@ -1,8 +1,5 @@
 use super::xml::BcXml;
-use log::trace;
-use std::cmp::min;
 use std::collections::HashSet;
-use std::convert::TryInto;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -11,8 +8,6 @@ pub const MSG_ID_VIDEO: u32 = 3;
 pub const MSG_ID_PING: u32 = 93;
 pub const MSG_ID_GET_GENERAL: u32 = 104;
 pub const MSG_ID_SET_GENERAL: u32 = 105;
-
-pub const CHUNK_SIZE: usize = 40000;
 
 pub const EMPTY_LEGACY_PASSWORD: &str =
     "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
@@ -29,136 +24,10 @@ pub enum BcBody {
     ModernMsg(ModernMsg),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
-pub enum BinaryDataKind {
-    VideoDataIframe,
-    VideoDataPframe,
-    AudioDataAac,
-    AudioDataAdpcm,
-    InfoData,
-    Invalid,
-    Continue,
-    Unknown,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct BinaryData {
-    pub data: Vec<u8>,
-}
-
-impl BinaryData {
-    pub fn body(&self) -> &[u8] {
-        let lower_limit = self.header_size();
-        let upper_limit = self.data_size() + lower_limit;
-        let len = self.len();
-        if !self.complete() {
-            unreachable!(); // An incomplete packet should be discarded not read, panic if we try
-        }
-        trace!(
-            "Sending data from {} to {} of {}",
-            lower_limit,
-            upper_limit,
-            len
-        );
-        &self.data[lower_limit..upper_limit]
-    }
-
-    pub fn complete(&self) -> bool {
-        if self.len() < self.header_size() {
-            return false;
-        }
-        let full_data_len = self.len() - self.header_size();
-        full_data_len >= self.data_size() && full_data_len < self.data_size() + 8
-    }
-
-    pub fn expected_num_packet(&self) -> usize {
-        self.data_size() / CHUNK_SIZE + 1
-    }
-
-    pub fn header(&self) -> &[u8] {
-        let lower_limit = 0;
-        let upper_limit = self.header_size() + lower_limit;
-        &self.data[min(self.len(), lower_limit)..min(self.len(), upper_limit)]
-    }
-
-    pub fn header_size(&self) -> usize {
-        match self.kind() {
-            BinaryDataKind::VideoDataIframe => 32,
-            BinaryDataKind::VideoDataPframe => 24,
-            BinaryDataKind::AudioDataAac => 8,
-            BinaryDataKind::AudioDataAdpcm => 16,
-            BinaryDataKind::InfoData => 32,
-            BinaryDataKind::Unknown | BinaryDataKind::Invalid | BinaryDataKind::Continue => 0,
-        }
-    }
-
-    pub fn data_size(&self) -> usize {
-        match self.kind() {
-            BinaryDataKind::VideoDataIframe => BinaryData::bytes_to_size(&self.data[8..12]),
-            BinaryDataKind::VideoDataPframe => BinaryData::bytes_to_size(&self.data[8..12]),
-            BinaryDataKind::AudioDataAac => BinaryData::bytes_to_size(&self.data[4..6]),
-            BinaryDataKind::AudioDataAdpcm => BinaryData::bytes_to_size(&self.data[4..6]),
-            BinaryDataKind::InfoData => BinaryData::bytes_to_size(&self.data[4..8]),
-            BinaryDataKind::Unknown | BinaryDataKind::Invalid | BinaryDataKind::Continue => {
-                self.data.len()
-            }
-        }
-    }
-
-    fn bytes_to_size(bytes: &[u8]) -> usize {
-        match bytes.len() {
-            // 8 Won't fit into usize on a 32-bit machine
-            4 => u32::from_le_bytes(bytes.try_into().expect("slice with incorrect length"))
-                .try_into()
-                .expect("u32 won't fit into usize"),
-            2 => u16::from_le_bytes(bytes.try_into().expect("slice with incorrect length"))
-                .try_into()
-                .expect("u16 won't fit into usize"),
-            1 => u8::from_le_bytes(bytes.try_into().expect("slice with incorrect length"))
-                .try_into()
-                .expect("u8 won't fit into usize"),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn kind(&self) -> BinaryDataKind {
-        const MAGIC_VIDEO_INFO: &[u8] = &[0x31, 0x30, 0x30, 0x31];
-        const MAGIC_AAC: &[u8] = &[0x30, 0x35, 0x77, 0x62];
-        const MAGIC_ADPCM: &[u8] = &[0x30, 0x31, 0x77, 0x62];
-        const MAGIC_IFRAME: &[u8] = &[0x30, 0x30, 0x64, 0x63];
-        const MAGIC_PFRAME: &[u8] = &[0x30, 0x31, 0x64, 0x63];
-
-        let magic = &self.data[..4];
-        match magic {
-            MAGIC_VIDEO_INFO => BinaryDataKind::InfoData,
-            MAGIC_AAC => BinaryDataKind::AudioDataAac,
-            MAGIC_ADPCM => BinaryDataKind::AudioDataAdpcm,
-            MAGIC_IFRAME => BinaryDataKind::VideoDataIframe,
-            MAGIC_PFRAME => BinaryDataKind::VideoDataPframe,
-            _ if self.len() == CHUNK_SIZE => BinaryDataKind::Continue,
-            _ => BinaryDataKind::Unknown,
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-
-    pub fn as_slice(&self) -> &[u8] {
-        self.data.as_slice()
-    }
-}
-
-impl std::convert::AsRef<[u8]> for BinaryData {
-    fn as_ref(&self) -> &[u8] {
-        self.as_slice()
-    }
-}
-
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ModernMsg {
     pub xml: Option<BcXml>,
-    pub binary: Option<BinaryData>,
+    pub binary: Option<Vec<u8>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -11,6 +11,7 @@
 //! "Extension" message.
 
 pub mod model;
+pub mod media_packet;
 
 pub mod de;
 pub mod ser;

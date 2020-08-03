@@ -1,6 +1,7 @@
 use self::connection::BcConnection;
 use crate::bc;
 use crate::bc::{model::*, xml::*};
+use crate::bc::media_packet::*;
 use err_derive::Error;
 use log::*;
 use md5;
@@ -244,7 +245,7 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to start video");
-        let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
+        let mut sub_video = connection.subscribe(MSG_ID_VIDEO)?;
 
         let start_video = Bc::new_from_xml(
             BcMeta {
@@ -267,40 +268,40 @@ impl BcCamera {
         sub_video.send(start_video)?;
 
         loop {
-            let binary_data = sub_video.get_binary_data_of_kind(
+            let binary_data = sub_video.get_media_packet(
                 &vec![
-                    BinaryDataKind::VideoDataIframe,
-                    BinaryDataKind::VideoDataPframe,
+                    MediaDataKind::VideoDataIframe,
+                    MediaDataKind::VideoDataPframe,
                 ],
                 RX_TIMEOUT,
             )?;
             // We now have a complete interesting packet. Send it to gst.
             // Process the packet
             match binary_data.kind() {
-                BinaryDataKind::VideoDataIframe | BinaryDataKind::VideoDataPframe => {
+                MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
                     data_out.write_all(binary_data.body())?;
                 }
-                BinaryDataKind::AudioDataAac | BinaryDataKind::AudioDataAdpcm => {
+                MediaDataKind::AudioDataAac | MediaDataKind::AudioDataAdpcm => {
                     // We should not have a packet of this kind as we skip them until we get
                     // a packet of interest
                     unreachable!();
                 }
-                BinaryDataKind::InfoData => {
+                MediaDataKind::InfoData => {
                     // We should not have a packet of this kind as we skip them until we get
                     // a packet of interest
                     unreachable!();
                 }
-                BinaryDataKind::Unknown => {
+                MediaDataKind::Unknown => {
                     // We should not have a packet of this kind as we skip them until we get
                     // a packet of interest
                     unreachable!();
                 }
-                BinaryDataKind::Invalid => {
+                MediaDataKind::Invalid => {
                     // We should not have a packet of this kind as we skip them until we get
                     // a packet of interest
                     unreachable!();
                 }
-                BinaryDataKind::Continue => {
+                MediaDataKind::Continue => {
                     // We should not have a packet of this kind as it would be attached
                     // to a packet of interest
                     unreachable!();

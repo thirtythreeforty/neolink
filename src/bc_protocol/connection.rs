@@ -1,5 +1,6 @@
 use crate::bc;
 use crate::bc::model::*;
+use crate::bc::media_packet::*;
 use err_derive::Error;
 use log::*;
 use socket2::{Domain, Socket, Type};
@@ -10,6 +11,9 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
+use std::collections::VecDeque;
+
+const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[MediaDataKind::Invalid, MediaDataKind::Continue, MediaDataKind::Unknown];
 
 /// A shareable connection to a camera.  Handles serialization of messages.  To send/receive, call
 /// .subscribe() with a message ID.  You can use the BcSubscription to send or receive only
@@ -26,6 +30,7 @@ pub struct BcSubscription<'a> {
     pub rx: Receiver<Bc>,
     msg_id: u32,
     conn: &'a BcConnection,
+    binary_buffer: VecDeque<u8>,
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -78,6 +83,7 @@ impl BcConnection {
             rx,
             conn: self,
             msg_id,
+            binary_buffer: VecDeque::new(),
         })
     }
 
@@ -143,76 +149,128 @@ impl<'a> BcSubscription<'a> {
         Ok(())
     }
 
-    pub fn get_binary_data_of_kind(
-        &self,
-        interested_kinds: &[BinaryDataKind],
-        rx_timeout: Duration,
-    ) -> std::result::Result<BinaryData, Error> {
-        trace!("Finding binary message of interest...");
-        let mut binary_data: BinaryData;
-        // This loop is just for restarting (could have done with nesting too)
-        'outer: loop {
-            // Loop over the messages until we find one we want
-            loop {
-                let msg = self.rx.recv_timeout(rx_timeout)?;
-                if let BcBody::ModernMsg(ModernMsg {
-                    binary: Some(binary),
-                    ..
-                }) = msg.body
-                {
-                    match binary.kind() {
-                        n if interested_kinds.contains(&n) => {
-                            binary_data = binary;
-                            break;
-                        }
-                        _ => {
-                            trace!("Ignoring uninteresting binary data kind");
-                        }
-                    };
-                } else {
-                    warn!("Ignoring weird binary message");
-                    debug!("Contents: {:?}", msg);
-                }
+    fn fill_binary_buffer(&mut self, rx_timeout: Duration) -> Result<()> {
+        // Loop messages until we get binary
+        loop {
+            let msg = self.rx.recv_timeout(rx_timeout)?;
+            if let BcBody::ModernMsg(ModernMsg {
+                binary: Some(binary),
+                ..
+            }) = msg.body
+            {
+                self.binary_buffer.extend(binary);
+                break;
             }
-
-            trace!("Found binary message of interest...");
-            // If the binary date is not complete get more packets to complete it
-            while !binary_data.complete() {
-                let msg = self.rx.recv_timeout(rx_timeout)?;
-                if let BcBody::ModernMsg(ModernMsg {
-                    binary: Some(binary),
-                    ..
-                }) = msg.body
-                {
-                    match binary.kind() {
-                        BinaryDataKind::Continue => {
-                            // If its a continuation add it to our binary data
-                            binary_data.data.extend(binary.data);
-                        }
-                        n if interested_kinds.contains(&n) => {
-                            // If its another packet we are interested in
-                            // Give up on current packet and try to complete
-                            // This new one
-                            // We are assuming that the camera has dropped that frame
-                            trace!("Binary data was unfinished, found new interesting data");
-                            binary_data = binary;
-                        }
-                        _ => {
-                            // If we find something else then give up on the procees and restart
-                            trace!("Binary data was unfinished, found uninteresting data");
-                            continue 'outer;
-                        }
-                    }
-                } else {
-                    warn!("Ignoring weird binary message");
-                    debug!("Contents: {:?}", msg);
-                }
-            }
-
-            trace!("Have complete binary message.");
-
-            return Ok(binary_data);
         }
+        Ok(())
+    }
+
+    fn advance_to_media_packet(&mut self, rx_timeout: Duration) -> Result<()> {
+        // In the event we get an unknown packet we advance by brute force
+        // reading of bytes to the next valid magic
+        trace!("Advancing to next know packet header");
+        while self.binary_buffer.len() < 4 {
+            self.fill_binary_buffer(rx_timeout)?;
+        }
+
+        // Check the kind, if its invalid use pop a byte and try again
+        let mut magic = BcSubscription::get_first_n_deque(&self.binary_buffer, 4);
+        while INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
+            self.binary_buffer.pop_front();
+            while self.binary_buffer.len() < 4 {
+                self.fill_binary_buffer(rx_timeout)?;
+            }
+            magic = BcSubscription::get_first_n_deque(&self.binary_buffer, 4);
+        }
+
+        Ok(())
+    }
+
+    fn get_first_n_deque<T: std::clone::Clone>(deque: &VecDeque<T>, n: usize) -> Vec<T> {
+        // NOTE: I want to use make_contiguous
+        // This will make this func unneeded as we can use
+        // make_contiguous then as_slices.0
+        // We won't need the clone in this case either.
+        // This is an experimental feature.
+        // It is able to be moved to stable though
+        // As can be seen from this PR
+        // https://github.com/rust-lang/rust/pull/74559
+        let slice0 = deque.as_slices().0;
+        let slice1 = deque.as_slices().1;
+        if slice0.len() >= n {
+            return slice0[0..n].iter().cloned().collect();
+        } else {
+            let remain = n - slice0.len();
+            return slice0.iter().chain(&slice1[0..remain]).cloned().collect();
+        }
+    }
+
+    fn next_media_packet(&mut self, rx_timeout: Duration) -> std::result::Result<MediaData, Error> {
+        // Get enough data for at least the magic
+        while self.binary_buffer.len() < 4 {
+            self.fill_binary_buffer(rx_timeout)?;
+        }
+
+        // Check the kind, if its invalid use advance to get a valid
+        // If not just grab the kind from the buffer
+        let mut magic = BcSubscription::get_first_n_deque(&self.binary_buffer, 4);
+        trace!("Magic 1: {:x?}", magic);
+        trace!("Kind: {:?}", MediaData::kind_from_raw(&magic));
+        if INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
+            // The if is because
+            // I presume this is expensive and only call when neccecary
+            self.advance_to_media_packet(rx_timeout)?;
+            magic = BcSubscription::get_first_n_deque(&self.binary_buffer, 4);
+        }
+        trace!("Magic 2: {:x?}", magic);
+        let kind = MediaData::kind_from_raw(&magic);
+
+        // Get enough for the full header
+        let header_size = MediaData::header_size_from_raw(&magic);
+        while self.binary_buffer.len() < header_size {
+            self.fill_binary_buffer(rx_timeout)?;
+        }
+
+        // Get enough for the full data + 8 byte buffer
+        let header = BcSubscription::get_first_n_deque(&self.binary_buffer, header_size);
+        trace!("Header: {:x?}", header);
+        let data_size = MediaData::data_size_from_raw(&header);
+        let pad_size = MediaData::pad_size_from_raw(&header);
+        let full_size = header_size + data_size + pad_size;
+        while self.binary_buffer.len() < full_size {
+            self.fill_binary_buffer(rx_timeout)?;
+        }
+        trace!("data_size: {}", data_size);
+
+        // Pop the full binary buffer
+        let binary = self.binary_buffer.drain(..full_size);
+
+        Ok(MediaData{
+            data: binary.collect()
+        })
+    }
+
+    pub fn get_media_packet(
+        &mut self,
+        interested_kinds: &[MediaDataKind],
+        rx_timeout: Duration,
+    ) -> std::result::Result<MediaData, Error> {
+        trace!("Finding binary message of interest...");
+        let result_media_packet: MediaData;
+        // Loop over the messages until we find one we want
+        loop {
+            let media_packet = self.next_media_packet(rx_timeout)?;
+            match media_packet.kind() {
+                n if interested_kinds.contains(&n) => {
+                    result_media_packet = media_packet;
+                    break;
+                }
+                _ => {
+                    trace!("Ignoring uninteresting binary data kind");
+                }
+            };
+        }
+        return Ok(result_media_packet);
     }
 }
 
