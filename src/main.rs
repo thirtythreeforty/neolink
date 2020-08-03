@@ -202,8 +202,9 @@ fn camera_main(
     let mut connected = false;
     (|| {
         let mut camera = BcCamera::new_with_addr(camera_config.camera_addr)?;
-        if let Some(timeout) = camera_config.timeout {
-            camera.set_rx_timeout(timeout);
+        if let Some(_) = camera_config.timeout {
+            warn!("The undocumented `timeout` config option has been removed and is no longer needed.");
+            warn!("Please update your config file.");
         }
 
         info!(
@@ -215,9 +216,34 @@ fn camera_main(
         camera.login(&camera_config.username, camera_config.password.as_deref())?;
 
         connected = true;
+        info!("{}: Connected and logged in", camera_config.name);
+
+        let cam_time = camera.get_time()?;
+        if let Some(time) = cam_time {
+            info!(
+                "{}: Camera time is already set: {}",
+                camera_config.name, time
+            );
+        } else {
+            let new_time = time::OffsetDateTime::now_local();
+            warn!(
+                "{}: Camera has no time set, setting to {}",
+                camera_config.name, new_time
+            );
+            camera.set_time(new_time)?;
+            let cam_time = camera.get_time()?;
+            if let Some(time) = cam_time {
+                info!(
+                    "{}: Camera time is now set: {}",
+                    camera_config.name, time
+                );
+            } else {
+                error!("{}: Camera did not accept new time (is {} an admin?)", camera_config.name, camera_config.username);
+            }
+        }
 
         info!(
-            "{}: Connected to camera, starting video stream {}",
+            "{}: Starting video stream {}",
             camera_config.name, stream_name
         );
         camera.start_video(output, stream_name)

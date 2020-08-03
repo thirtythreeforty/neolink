@@ -169,7 +169,7 @@ impl RtspServer {
         // We seperate reading the file and changing to a PEM so that we get different error messages.
         let cert_contents = fs::read_to_string(cert_file).expect("TLS file not found");
         let cert =
-            TlsCertificate::new_from_pem(&cert_contents).expect("Not a valid TLS certificate");
+            TlsCertificate::from_pem(&cert_contents).expect("Not a valid TLS certificate");
         auth.set_tls_certificate(Some(&cert));
         auth.set_tls_authentication_mode(client_auth);
 

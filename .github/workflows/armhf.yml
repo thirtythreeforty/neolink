@@ -1,0 +1,51 @@
+name: Build ARMHF
+
+on: [push, pull_request]
+
+jobs:
+  armhfbuild:
+    name: build-armhf
+    runs-on: ubuntu-latest
+    container: node:current-buster-slim
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install basic tools
+        run: |
+          apt-get update
+          apt-get install --assume-yes --no-install-recommends sudo curl ca-certificates build-essential
+      - name: Add armhf as a foreign architecture
+        run: |
+          sudo dpkg --add-architecture armhf
+      - name: Install cross compile tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --assume-yes --no-install-recommends gcc-arm-linux-gnueabihf
+      - name: Install armhf gstreamer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --assume-yes --no-install-recommends \
+          libgstrtspserver-1.0-dev:armhf \
+          libgstreamer1.0-dev:armhf \
+          libgtk2.0-dev:armhf
+      - name: Install rustup armv7
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            override: true
+            target: armv7-unknown-linux-gnueabihf
+      - name: Build armfh
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features --target=armv7-unknown-linux-gnueabihf
+        env:
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+          CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
+          PKG_CONFIG_ALLOW_CROSS: 1
+          PKG_CONFIG_PATH: /usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig/
+          PKG_CONFIG_LIBDIR: /usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig/
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release-armhf
+          path: "target/armv7-unknown-linux-gnueabihf/release/neolink*"

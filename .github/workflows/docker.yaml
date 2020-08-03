@@ -12,16 +12,16 @@ jobs:
         shell: bash
         run: |
             unset HAS_SECRET
-            if [-n $SECRET]; then HAS_SECRET='true' ; fi
+            if [ -n $SECRET ]; then HAS_SECRET='true' ; fi
             echo ::set-output name=HAS_SECRET_TOKEN::${HAS_SECRET}
         env:
           SECRET: "${{ secrets.DOCKER_TOKEN }}"
       - name: Check out the repo
         uses: actions/checkout@v2
-        if: ${{ steps.vars.outputs.HAS_SECRET }}
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
       - name: Push to Docker Hub
         uses: docker/build-push-action@v1
-        if: ${{ steps.vars.outputs.HAS_SECRET }}
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         with:
           username: thirtythreeforty
           password: ${{ secrets.DOCKER_TOKEN }}

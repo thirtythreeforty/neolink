@@ -9,6 +9,8 @@ pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 pub const MSG_ID_LOGIN: u32 = 1;
 pub const MSG_ID_VIDEO: u32 = 3;
 pub const MSG_ID_PING: u32 = 93;
+pub const MSG_ID_GET_GENERAL: u32 = 104;
+pub const MSG_ID_SET_GENERAL: u32 = 105;
 
 pub const CHUNK_SIZE: usize = 40000;
 

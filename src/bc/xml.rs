@@ -37,6 +37,10 @@ pub struct BcXml {
     pub device_info: Option<DeviceInfo>,
     #[yaserde(rename = "Preview")]
     pub preview: Option<Preview>,
+    #[yaserde(rename = "SystemGeneral")]
+    pub system_general: Option<SystemGeneral>,
+    #[yaserde(rename = "Norm")]
+    pub norm: Option<Norm>,
 }
 
 impl AllTopXmls {
@@ -123,6 +127,37 @@ pub struct Preview {
 pub struct Extension {
     #[yaserde(rename = "binaryData")]
     pub binary_data: u32,
+}
+
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct SystemGeneral {
+    #[yaserde(attribute)]
+    pub version: String,
+
+    #[yaserde(rename = "timeZone")]
+    pub time_zone: Option<i32>,
+    pub year: Option<i32>,
+    pub month: Option<u8>,
+    pub day: Option<u8>,
+    pub hour: Option<u8>,
+    pub minute: Option<u8>,
+    pub second: Option<u8>,
+
+    #[yaserde(rename = "osdFormat")]
+    pub osd_format: Option<String>,
+    #[yaserde(rename = "timeFormat")]
+    pub time_format: Option<u8>,
+
+    pub language: Option<String>,
+    #[yaserde(rename = "deviceName")]
+    pub device_name: Option<String>,
+}
+
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct Norm {
+    #[yaserde(attribute)]
+    pub version: String,
+    norm: String,
 }
 
 pub fn xml_ver() -> String {

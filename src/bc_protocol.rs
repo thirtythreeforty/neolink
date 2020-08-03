@@ -11,17 +11,19 @@ use std::time::Duration;
 use Md5Trunc::*;
 
 mod connection;
+mod time;
 
 pub struct BcCamera {
     address: SocketAddr,
     connection: Option<BcConnection>,
     logged_in: bool,
-    rx_timeout: Duration,
 }
 
 use crate::Never;
 
 type Result<T> = std::result::Result<T, Error>;
+
+const RX_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -70,16 +72,11 @@ impl BcCamera {
             address,
             connection: None,
             logged_in: false,
-            rx_timeout: Duration::from_secs(1),
         })
     }
 
-    pub fn set_rx_timeout(&mut self, timeout: Duration) {
-        self.rx_timeout = timeout;
-    }
-
     pub fn connect(&mut self) -> Result<()> {
-        self.connection = Some(BcConnection::new(self.address, self.rx_timeout)?);
+        self.connection = Some(BcConnection::new(self.address, RX_TIMEOUT)?);
         Ok(())
     }
 
@@ -126,7 +123,7 @@ impl BcCamera {
 
         sub_login.send(legacy_login)?;
 
-        let legacy_reply = sub_login.rx.recv_timeout(self.rx_timeout)?;
+        let legacy_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
         let nonce;
         match legacy_reply.body {
             BcBody::ModernMsg(ModernMsg {
@@ -180,7 +177,7 @@ impl BcCamera {
         );
 
         sub_login.send(modern_login)?;
-        let modern_reply = sub_login.rx.recv_timeout(self.rx_timeout)?;
+        let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
 
         let device_info;
         match modern_reply.body {
@@ -237,7 +234,7 @@ impl BcCamera {
 
         sub_ping.send(ping)?;
 
-        sub_ping.rx.recv_timeout(self.rx_timeout)?;
+        sub_ping.rx.recv_timeout(RX_TIMEOUT)?;
 
         Ok(())
     }
@@ -275,7 +272,7 @@ impl BcCamera {
                     BinaryDataKind::VideoDataIframe,
                     BinaryDataKind::VideoDataPframe,
                 ],
-                self.rx_timeout,
+                RX_TIMEOUT,
             )?;
             // We now have a complete interesting packet. Send it to gst.
             // Process the packet
