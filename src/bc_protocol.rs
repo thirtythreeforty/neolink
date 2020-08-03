@@ -1,5 +1,6 @@
 use self::connection::BcConnection;
 use crate::bc;
+use crate::bc::media_packet::MediaDataSubscriber;
 use crate::bc::media_packet::*;
 use crate::bc::{model::*, xml::*};
 use err_derive::Error;
@@ -11,7 +12,7 @@ use std::time::Duration;
 
 use Md5Trunc::*;
 
-mod connection;
+pub mod connection;
 mod time;
 
 pub struct BcCamera {
@@ -48,6 +49,9 @@ pub enum Error {
 
     #[error(display = "Timeout")]
     Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
+
+    #[error(display = "Media")]
+    MediaPacket(#[error(source)] bc::media_packet::Error),
 
     #[error(display = "Credential error")]
     AuthFailed,
@@ -245,7 +249,7 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to start video");
-        let mut sub_video = connection.subscribe(MSG_ID_VIDEO)?;
+        let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
 
         let start_video = Bc::new_from_xml(
             BcMeta {
@@ -267,8 +271,10 @@ impl BcCamera {
 
         sub_video.send(start_video)?;
 
+        let mut media_sub = MediaDataSubscriber::from_bc_sub(&sub_video);
+
         loop {
-            let binary_data = sub_video.get_media_packet_of_kind(
+            let binary_data = media_sub.get_media_packet_of_kind(
                 &vec![
                     MediaDataKind::VideoDataIframe,
                     MediaDataKind::VideoDataPframe,

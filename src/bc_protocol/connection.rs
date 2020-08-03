@@ -1,23 +1,15 @@
 use crate::bc;
-use crate::bc::media_packet::*;
 use crate::bc::model::*;
 use err_derive::Error;
 use log::*;
 use socket2::{Domain, Socket, Type};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
-use std::collections::VecDeque;
 use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
-
-const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[
-    MediaDataKind::Invalid,
-    MediaDataKind::Continue,
-    MediaDataKind::Unknown,
-];
 
 /// A shareable connection to a camera.  Handles serialization of messages.  To send/receive, call
 /// .subscribe() with a message ID.  You can use the BcSubscription to send or receive only
@@ -34,7 +26,6 @@ pub struct BcSubscription<'a> {
     pub rx: Receiver<Bc>,
     msg_id: u32,
     conn: &'a BcConnection,
-    binary_buffer: VecDeque<u8>,
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -52,9 +43,6 @@ pub enum Error {
 
     #[error(display = "Simultaneous subscription")]
     SimultaneousSubscription { msg_id: u32 },
-
-    #[error(display = "Timeout")]
-    Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
 }
 
 impl BcConnection {
@@ -87,7 +75,6 @@ impl BcConnection {
             rx,
             conn: self,
             msg_id,
-            binary_buffer: VecDeque::new(),
         })
     }
 
@@ -151,123 +138,6 @@ impl<'a> BcSubscription<'a> {
 
         bc.serialize(&*self.conn.connection.lock().unwrap())?;
         Ok(())
-    }
-
-    fn fill_binary_buffer(&mut self, rx_timeout: Duration) -> Result<()> {
-        // Loop messages until we get binary add that data and return
-        loop {
-            let msg = self.rx.recv_timeout(rx_timeout)?;
-            if let BcBody::ModernMsg(ModernMsg {
-                binary: Some(binary),
-                ..
-            }) = msg.body
-            {
-                // Add the new binary to the buffer and return
-                self.binary_buffer.extend(binary);
-                break;
-            }
-        }
-        Ok(())
-    }
-
-    fn advance_to_media_packet(&mut self, rx_timeout: Duration) -> Result<()> {
-        // In the event we get an unknown packet we advance by brute force
-        // reading of bytes to the next valid magic
-        trace!("Advancing to next know packet header");
-        while self.binary_buffer.len() < 4 {
-            self.fill_binary_buffer(rx_timeout)?;
-        }
-
-        // Check the kind, if its invalid use pop a byte and try again
-        let mut magic = BcSubscription::get_first_n_deque(&self.binary_buffer, 4);
-        while INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
-            self.binary_buffer.pop_front();
-            while self.binary_buffer.len() < 4 {
-                self.fill_binary_buffer(rx_timeout)?;
-            }
-            magic = BcSubscription::get_first_n_deque(&self.binary_buffer, 4);
-        }
-
-        Ok(())
-    }
-
-    fn get_first_n_deque<T: std::clone::Clone>(deque: &VecDeque<T>, n: usize) -> Vec<T> {
-        // NOTE: I want to use make_contiguous
-        // This will make this func unneeded as we can use
-        // make_contiguous then as_slices.0
-        // We won't need the clone in this case either.
-        // This is an experimental feature.
-        // It is about to be moved to stable though
-        // As can be seen from this PR
-        // https://github.com/rust-lang/rust/pull/74559
-        let slice0 = deque.as_slices().0;
-        let slice1 = deque.as_slices().1;
-        if slice0.len() >= n {
-            return slice0[0..n].iter().cloned().collect();
-        } else {
-            let remain = n - slice0.len();
-            return slice0.iter().chain(&slice1[0..remain]).cloned().collect();
-        }
-    }
-
-    fn next_media_packet(&mut self, rx_timeout: Duration) -> std::result::Result<MediaData, Error> {
-        // Find the first packet (does nothing if already at one)
-        self.advance_to_media_packet(rx_timeout)?;
-
-        // Get the magic bytes (guaranteed by advance_to_media_packet)
-        let magic = BcSubscription::get_first_n_deque(&self.binary_buffer, 4);
-        let kind = MediaData::kind_from_raw(&magic);
-
-        // Get enough for the full header
-        let header_size = MediaData::header_size_from_raw(&magic);
-        while self.binary_buffer.len() < header_size {
-            self.fill_binary_buffer(rx_timeout)?;
-        }
-
-        // Get enough for the full data + 8 byte buffer
-        let header = BcSubscription::get_first_n_deque(&self.binary_buffer, header_size);
-        let data_size = MediaData::data_size_from_raw(&header);
-        let pad_size = MediaData::pad_size_from_raw(&header);
-        let full_size = header_size + data_size + pad_size;
-        while self.binary_buffer.len() < full_size {
-            self.fill_binary_buffer(rx_timeout)?;
-        }
-
-        // Pop the full binary buffer
-        let binary = self.binary_buffer.drain(..full_size);
-
-        Ok(MediaData {
-            data: binary.collect(),
-        })
-    }
-
-    pub fn get_media_packet_of_kind(
-        &mut self,
-        interested_kinds: &[MediaDataKind],
-        rx_timeout: Duration,
-    ) -> std::result::Result<MediaData, Error> {
-        trace!("Finding binary message of interest...");
-
-        let result_media_packet: MediaData;
-
-        // Loop over the messages until we find one we want
-        loop {
-            let media_packet = self.next_media_packet(rx_timeout)?;
-            match media_packet.kind() {
-                n if interested_kinds.contains(&n) => {
-                    result_media_packet = media_packet;
-                    break;
-                }
-                _ => {
-                    trace!(
-                        "Ignoring uninteresting binary data kind: {:?}",
-                        media_packet.kind()
-                    );
-                }
-            };
-        }
-
-        return Ok(result_media_packet);
     }
 }
 
