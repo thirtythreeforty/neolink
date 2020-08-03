@@ -1,19 +1,23 @@
 use crate::bc;
-use crate::bc::model::*;
 use crate::bc::media_packet::*;
+use crate::bc::model::*;
 use err_derive::Error;
 use log::*;
 use socket2::{Domain, Socket, Type};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
+use std::collections::VecDeque;
 use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
-use std::collections::VecDeque;
 
-const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[MediaDataKind::Invalid, MediaDataKind::Continue, MediaDataKind::Unknown];
+const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[
+    MediaDataKind::Invalid,
+    MediaDataKind::Continue,
+    MediaDataKind::Unknown,
+];
 
 /// A shareable connection to a camera.  Handles serialization of messages.  To send/receive, call
 /// .subscribe() with a message ID.  You can use the BcSubscription to send or receive only
@@ -245,8 +249,8 @@ impl<'a> BcSubscription<'a> {
         // Pop the full binary buffer
         let binary = self.binary_buffer.drain(..full_size);
 
-        Ok(MediaData{
-            data: binary.collect()
+        Ok(MediaData {
+            data: binary.collect(),
         })
     }
 

@@ -80,9 +80,7 @@ impl MediaData {
             MediaDataKind::AudioDataAac => MediaData::bytes_to_size(&data[4..6]),
             MediaDataKind::AudioDataAdpcm => MediaData::bytes_to_size(&data[4..6]),
             MediaDataKind::InfoData => MediaData::bytes_to_size(&data[4..8]),
-            MediaDataKind::Unknown | MediaDataKind::Invalid | MediaDataKind::Continue => {
-                data.len()
-            }
+            MediaDataKind::Unknown | MediaDataKind::Invalid | MediaDataKind::Continue => data.len(),
         }
     }
 

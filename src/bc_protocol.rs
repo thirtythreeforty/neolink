@@ -1,7 +1,7 @@
 use self::connection::BcConnection;
 use crate::bc;
-use crate::bc::{model::*, xml::*};
 use crate::bc::media_packet::*;
+use crate::bc::{model::*, xml::*};
 use err_derive::Error;
 use log::*;
 use md5;
