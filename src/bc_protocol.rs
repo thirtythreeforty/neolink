@@ -268,7 +268,7 @@ impl BcCamera {
         sub_video.send(start_video)?;
 
         loop {
-            let binary_data = sub_video.get_media_packet(
+            let binary_data = sub_video.get_media_packet_of_kind(
                 &vec![
                     MediaDataKind::VideoDataIframe,
                     MediaDataKind::VideoDataPframe,

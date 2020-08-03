@@ -172,7 +172,6 @@ fn bc_modern_msg<'a, 'b, 'c>(
             // receive enough bytes before modifying the context (otherwise we'll alter the
             // behavior of future passes of this function even if we didn't yet consume the
             // message).
-
             context.in_bin_mode.insert(header.msg_id);
 
             binary = Some(payload);

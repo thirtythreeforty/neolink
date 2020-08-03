@@ -154,7 +154,7 @@ impl<'a> BcSubscription<'a> {
     }
 
     fn fill_binary_buffer(&mut self, rx_timeout: Duration) -> Result<()> {
-        // Loop messages until we get binary
+        // Loop messages until we get binary add that data and return
         loop {
             let msg = self.rx.recv_timeout(rx_timeout)?;
             if let BcBody::ModernMsg(ModernMsg {
@@ -162,6 +162,7 @@ impl<'a> BcSubscription<'a> {
                 ..
             }) = msg.body
             {
+                // Add the new binary to the buffer and return
                 self.binary_buffer.extend(binary);
                 break;
             }
@@ -196,7 +197,7 @@ impl<'a> BcSubscription<'a> {
         // make_contiguous then as_slices.0
         // We won't need the clone in this case either.
         // This is an experimental feature.
-        // It is able to be moved to stable though
+        // It is about to be moved to stable though
         // As can be seen from this PR
         // https://github.com/rust-lang/rust/pull/74559
         let slice0 = deque.as_slices().0;
@@ -210,23 +211,11 @@ impl<'a> BcSubscription<'a> {
     }
 
     fn next_media_packet(&mut self, rx_timeout: Duration) -> std::result::Result<MediaData, Error> {
-        // Get enough data for at least the magic
-        while self.binary_buffer.len() < 4 {
-            self.fill_binary_buffer(rx_timeout)?;
-        }
+        // Find the first packet (does nothing if already at one)
+        self.advance_to_media_packet(rx_timeout)?;
 
-        // Check the kind, if its invalid use advance to get a valid
-        // If not just grab the kind from the buffer
-        let mut magic = BcSubscription::get_first_n_deque(&self.binary_buffer, 4);
-        trace!("Magic 1: {:x?}", magic);
-        trace!("Kind: {:?}", MediaData::kind_from_raw(&magic));
-        if INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
-            // The if is because
-            // I presume this is expensive and only call when neccecary
-            self.advance_to_media_packet(rx_timeout)?;
-            magic = BcSubscription::get_first_n_deque(&self.binary_buffer, 4);
-        }
-        trace!("Magic 2: {:x?}", magic);
+        // Get the magic bytes (guaranteed by advance_to_media_packet)
+        let magic = BcSubscription::get_first_n_deque(&self.binary_buffer, 4);
         let kind = MediaData::kind_from_raw(&magic);
 
         // Get enough for the full header
@@ -237,14 +226,12 @@ impl<'a> BcSubscription<'a> {
 
         // Get enough for the full data + 8 byte buffer
         let header = BcSubscription::get_first_n_deque(&self.binary_buffer, header_size);
-        trace!("Header: {:x?}", header);
         let data_size = MediaData::data_size_from_raw(&header);
         let pad_size = MediaData::pad_size_from_raw(&header);
         let full_size = header_size + data_size + pad_size;
         while self.binary_buffer.len() < full_size {
             self.fill_binary_buffer(rx_timeout)?;
         }
-        trace!("data_size: {}", data_size);
 
         // Pop the full binary buffer
         let binary = self.binary_buffer.drain(..full_size);
@@ -254,13 +241,15 @@ impl<'a> BcSubscription<'a> {
         })
     }
 
-    pub fn get_media_packet(
+    pub fn get_media_packet_of_kind(
         &mut self,
         interested_kinds: &[MediaDataKind],
         rx_timeout: Duration,
     ) -> std::result::Result<MediaData, Error> {
         trace!("Finding binary message of interest...");
+
         let result_media_packet: MediaData;
+
         // Loop over the messages until we find one we want
         loop {
             let media_packet = self.next_media_packet(rx_timeout)?;
@@ -270,10 +259,14 @@ impl<'a> BcSubscription<'a> {
                     break;
                 }
                 _ => {
-                    trace!("Ignoring uninteresting binary data kind");
+                    trace!(
+                        "Ignoring uninteresting binary data kind: {:?}",
+                        media_packet.kind()
+                    );
                 }
             };
         }
+
         return Ok(result_media_packet);
     }
 }
