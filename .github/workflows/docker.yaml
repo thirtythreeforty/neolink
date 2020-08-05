@@ -23,8 +23,8 @@ jobs:
         uses: docker/build-push-action@v1
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         with:
-          username: quantumentangledandy
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.DOCKER_TOKEN }}
           registry: docker.io
-          repository: quantumentangledandy/neolink
+          repository: ${{ github.repository }}
           tag_with_ref: true
