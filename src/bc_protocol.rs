@@ -1,6 +1,6 @@
 use self::connection::BcConnection;
+use self::media_packet::{MediaDataKind, MediaDataSubscriber};
 use crate::bc;
-use self::media_packet::{MediaDataSubscriber, MediaDataKind};
 use crate::bc::{model::*, xml::*};
 use err_derive::Error;
 use log::*;
@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use Md5Trunc::*;
 
-mod media_packet;
 mod connection;
+mod media_packet;
 mod time;
 
 pub struct BcCamera {

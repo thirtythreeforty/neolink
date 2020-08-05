@@ -6,8 +6,8 @@ use log::*;
 use std::cmp::min;
 use std::collections::VecDeque;
 use std::convert::TryInto;
-use std::time::Duration;
 use std::str;
+use std::time::Duration;
 
 const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[
     MediaDataKind::Invalid,
@@ -156,31 +156,21 @@ impl MediaData {
 
         let magic = &data[..4];
         let kind = match magic {
-            MAGIC_VIDEO_INFO_V1 | MAGIC_VIDEO_INFO_V2 => {
-                MediaDataKind::InfoData
-            },
-            MAGIC_AAC => {
-                MediaDataKind::AudioDataAac
-            },
-            MAGIC_ADPCM => {
-                MediaDataKind::AudioDataAdpcm
-            },
-            MAGIC_IFRAME => {
-                MediaDataKind::VideoDataIframe
-            },
-            MAGIC_PFRAME => {
-                MediaDataKind::VideoDataPframe
-            },
+            MAGIC_VIDEO_INFO_V1 | MAGIC_VIDEO_INFO_V2 => MediaDataKind::InfoData,
+            MAGIC_AAC => MediaDataKind::AudioDataAac,
+            MAGIC_ADPCM => MediaDataKind::AudioDataAdpcm,
+            MAGIC_IFRAME => MediaDataKind::VideoDataIframe,
+            MAGIC_PFRAME => MediaDataKind::VideoDataPframe,
             _ if data.len() == CHUNK_SIZE => MediaDataKind::Continue,
             _ => {
                 trace!("Unknown magic kind: {:x?}", &magic);
                 MediaDataKind::Unknown
-            },
+            }
         };
 
         // I've never had this fail yet. It checks more bytes then just the magic
         // Including some 2 bytes at the start of the data
-        if ! MediaData::full_header_check_from_kind(kind, &data) {
+        if !MediaData::full_header_check_from_kind(kind, &data) {
             return MediaDataKind::Invalid;
         } else {
             return kind;
@@ -215,14 +205,17 @@ impl MediaData {
                         "H264" => true,
                         "H265" => true,
                         _ => {
-                            trace!("Video Iframe failed header checks: {:x?}", &data[0..min(MAX_HEADER_SIZE, data.len())]);
+                            trace!(
+                                "Video Iframe failed header checks: {:x?}",
+                                &data[0..min(MAX_HEADER_SIZE, data.len())]
+                            );
                             false
                         }
                     }
                 } else {
                     false
                 }
-            },
+            }
             MediaDataKind::VideoDataPframe => {
                 let stream_type = &data[4..8];
                 if let Ok(stream_type_name) = str::from_utf8(stream_type) {
@@ -230,44 +223,52 @@ impl MediaData {
                         "H264" | "h264" => true, // Offically it should be "H264" not "h264" but covering all cases
                         "H265" | "h265" => true,
                         _ => {
-                            trace!("Video Pframe failed header checks: {:x?}", &data[0..min(MAX_HEADER_SIZE, data.len())]);
+                            trace!(
+                                "Video Pframe failed header checks: {:x?}",
+                                &data[0..min(MAX_HEADER_SIZE, data.len())]
+                            );
                             false
                         }
                     }
                 } else {
                     false
                 }
-            },
+            }
             MediaDataKind::AudioDataAac => {
                 let check_bytes = &data[8..10];
                 const AAC_VALID: &[u8] = &[0xff, 0xf1];
                 match check_bytes {
                     AAC_VALID => true,
                     _ => {
-                        trace!("AAC failed header checks: {:x?}", &data[0..min(MAX_HEADER_SIZE, data.len())]);
+                        trace!(
+                            "AAC failed header checks: {:x?}",
+                            &data[0..min(MAX_HEADER_SIZE, data.len())]
+                        );
                         false
-                    },
+                    }
                 }
-            },
+            }
             MediaDataKind::AudioDataAdpcm => {
                 let check_bytes = &data[8..10];
                 const ADPCM_VALID: &[u8] = &[0x0, 0x1];
                 match check_bytes {
                     ADPCM_VALID => true,
                     _ => {
-                        trace!("ADPCM failed header checks: {:x?}", &data[0..min(MAX_HEADER_SIZE, data.len())]);
+                        trace!(
+                            "ADPCM failed header checks: {:x?}",
+                            &data[0..min(MAX_HEADER_SIZE, data.len())]
+                        );
                         false
-                    },
+                    }
                 }
-            },
+            }
             MediaDataKind::InfoData => {
                 // Not sure how to check this yet. Theres only one per stream at the start though
                 true
-            },
+            }
             MediaDataKind::Unknown | MediaDataKind::Continue => true,
             MediaDataKind::Invalid => false,
         }
-
     }
 }
 
@@ -309,7 +310,8 @@ impl<'a> MediaDataSubscriber<'a> {
         }
 
         // Check the kind, if its invalid use pop a byte and try again
-        let mut magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAX_HEADER_SIZE);
+        let mut magic =
+            MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAX_HEADER_SIZE);
         if INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
             trace!("Advancing to next know packet header: {:x?}", &magic);
         }
@@ -379,7 +381,6 @@ impl<'a> MediaDataSubscriber<'a> {
         interested_kinds: &[MediaDataKind],
         rx_timeout: Duration,
     ) -> std::result::Result<MediaData, Error> {
-
         let result_media_packet: MediaData;
 
         // Loop over the messages until we find one we want
@@ -390,9 +391,7 @@ impl<'a> MediaDataSubscriber<'a> {
                     result_media_packet = media_packet;
                     break;
                 }
-                _ => {
-                    ()
-                }
+                _ => (),
             };
         }
 
