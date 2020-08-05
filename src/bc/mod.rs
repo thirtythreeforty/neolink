@@ -10,7 +10,6 @@
 //! All message IDs start out as XML, but can be statefully switched to binary with a special XML
 //! "Extension" message.
 
-pub mod media_packet;
 pub mod model;
 
 pub mod de;

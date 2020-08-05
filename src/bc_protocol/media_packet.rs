@@ -7,12 +7,17 @@ use std::cmp::min;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::time::Duration;
+use std::str;
 
 const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[
     MediaDataKind::Invalid,
     MediaDataKind::Continue,
     MediaDataKind::Unknown,
 ];
+
+// This is used as the minium data to pull from the camera
+// When testing the type
+const MAX_HEADER_SIZE: usize = 32;
 
 pub const CHUNK_SIZE: usize = 40000;
 
@@ -49,12 +54,6 @@ impl MediaData {
         if !self.complete() {
             unreachable!(); // An incomplete packet should be discarded not read, panic if we try
         }
-        trace!(
-            "Sending data from {} to {} of {}",
-            lower_limit,
-            upper_limit,
-            len
-        );
         &self.data[lower_limit..upper_limit]
     }
 
@@ -76,8 +75,7 @@ impl MediaData {
         &self.data[min(self.len(), lower_limit)..min(self.len(), upper_limit)]
     }
 
-    pub fn header_size_from_raw(data: &[u8]) -> usize {
-        let kind = MediaData::kind_from_raw(data);
+    pub fn header_size_from_kind(kind: MediaDataKind) -> usize {
         match kind {
             MediaDataKind::VideoDataIframe => 32,
             MediaDataKind::VideoDataPframe => 24,
@@ -86,6 +84,11 @@ impl MediaData {
             MediaDataKind::InfoData => 32,
             MediaDataKind::Unknown | MediaDataKind::Invalid | MediaDataKind::Continue => 0,
         }
+    }
+
+    pub fn header_size_from_raw(data: &[u8]) -> usize {
+        let kind = MediaData::kind_from_raw(data);
+        MediaData::header_size_from_kind(kind)
     }
 
     pub fn header_size(&self) -> usize {
@@ -99,7 +102,7 @@ impl MediaData {
             MediaDataKind::VideoDataPframe => MediaData::bytes_to_size(&data[8..12]),
             MediaDataKind::AudioDataAac => MediaData::bytes_to_size(&data[4..6]),
             MediaDataKind::AudioDataAdpcm => MediaData::bytes_to_size(&data[4..6]),
-            MediaDataKind::InfoData => MediaData::bytes_to_size(&data[4..8]),
+            MediaDataKind::InfoData => 0, // The bytes in MediaData::bytes_to_size(&data[4..8]) seem to be the size of the header
             MediaDataKind::Unknown | MediaDataKind::Invalid | MediaDataKind::Continue => data.len(),
         }
     }
@@ -137,6 +140,10 @@ impl MediaData {
     }
 
     pub fn kind_from_raw(data: &[u8]) -> MediaDataKind {
+        // When calling this ensure you have enough data for header_size +2
+        // Else full_header_check_from_kind will fail because we check the
+        // First two bytes after the header for the audio stream
+        // Since AAC and ADMPC streams start in a predicatble manner
         if data.len() < 4 {
             return MediaDataKind::Invalid;
         }
@@ -148,14 +155,35 @@ impl MediaData {
         const MAGIC_PFRAME: &[u8] = &[0x30, 0x31, 0x64, 0x63];
 
         let magic = &data[..4];
-        match magic {
-            MAGIC_VIDEO_INFO_V1 | MAGIC_VIDEO_INFO_V2 => MediaDataKind::InfoData,
-            MAGIC_AAC => MediaDataKind::AudioDataAac,
-            MAGIC_ADPCM => MediaDataKind::AudioDataAdpcm,
-            MAGIC_IFRAME => MediaDataKind::VideoDataIframe,
-            MAGIC_PFRAME => MediaDataKind::VideoDataPframe,
+        let kind = match magic {
+            MAGIC_VIDEO_INFO_V1 | MAGIC_VIDEO_INFO_V2 => {
+                MediaDataKind::InfoData
+            },
+            MAGIC_AAC => {
+                MediaDataKind::AudioDataAac
+            },
+            MAGIC_ADPCM => {
+                MediaDataKind::AudioDataAdpcm
+            },
+            MAGIC_IFRAME => {
+                MediaDataKind::VideoDataIframe
+            },
+            MAGIC_PFRAME => {
+                MediaDataKind::VideoDataPframe
+            },
             _ if data.len() == CHUNK_SIZE => MediaDataKind::Continue,
-            _ => MediaDataKind::Unknown,
+            _ => {
+                trace!("Unknown magic kind: {:x?}", &magic);
+                MediaDataKind::Unknown
+            },
+        };
+
+        // I've never had this fail yet. It checks more bytes then just the magic
+        // Including some 2 bytes at the start of the data
+        if ! MediaData::full_header_check_from_kind(kind, &data) {
+            return MediaDataKind::Invalid;
+        } else {
+            return kind;
         }
     }
 
@@ -169,6 +197,77 @@ impl MediaData {
 
     pub fn as_slice(&self) -> &[u8] {
         self.data.as_slice()
+    }
+
+    pub fn full_header_check_from_kind(kind: MediaDataKind, data: &[u8]) -> bool {
+        // This will run more advanced checks to ensure it is a valid header
+        let header_size = MediaData::header_size_from_kind(kind);
+        if data.len() < header_size {
+            trace!("Magic failed header checks on size: {:x?}", &data);
+            return false;
+        }
+
+        match kind {
+            MediaDataKind::VideoDataIframe => {
+                let stream_type = &data[4..8];
+                if let Ok(stream_type_name) = str::from_utf8(stream_type) {
+                    match stream_type_name {
+                        "H264" => true,
+                        "H265" => true,
+                        _ => {
+                            trace!("Video Iframe failed header checks: {:x?}", &data[0..min(MAX_HEADER_SIZE, data.len())]);
+                            false
+                        }
+                    }
+                } else {
+                    false
+                }
+            },
+            MediaDataKind::VideoDataPframe => {
+                let stream_type = &data[4..8];
+                if let Ok(stream_type_name) = str::from_utf8(stream_type) {
+                    match stream_type_name {
+                        "H264" | "h264" => true, // Offically it should be "H264" not "h264" but covering all cases
+                        "H265" | "h265" => true,
+                        _ => {
+                            trace!("Video Pframe failed header checks: {:x?}", &data[0..min(MAX_HEADER_SIZE, data.len())]);
+                            false
+                        }
+                    }
+                } else {
+                    false
+                }
+            },
+            MediaDataKind::AudioDataAac => {
+                let check_bytes = &data[8..10];
+                const AAC_VALID: &[u8] = &[0xff, 0xf1];
+                match check_bytes {
+                    AAC_VALID => true,
+                    _ => {
+                        trace!("AAC failed header checks: {:x?}", &data[0..min(MAX_HEADER_SIZE, data.len())]);
+                        false
+                    },
+                }
+            },
+            MediaDataKind::AudioDataAdpcm => {
+                let check_bytes = &data[8..10];
+                const ADPCM_VALID: &[u8] = &[0x0, 0x1];
+                match check_bytes {
+                    ADPCM_VALID => true,
+                    _ => {
+                        trace!("ADPCM failed header checks: {:x?}", &data[0..min(MAX_HEADER_SIZE, data.len())]);
+                        false
+                    },
+                }
+            },
+            MediaDataKind::InfoData => {
+                // Not sure how to check this yet. Theres only one per stream at the start though
+                true
+            },
+            MediaDataKind::Unknown | MediaDataKind::Continue => true,
+            MediaDataKind::Invalid => false,
+        }
+
     }
 }
 
@@ -205,19 +304,21 @@ impl<'a> MediaDataSubscriber<'a> {
     fn advance_to_media_packet(&mut self, rx_timeout: Duration) -> Result<()> {
         // In the event we get an unknown packet we advance by brute force
         // reading of bytes to the next valid magic
-        trace!("Advancing to next know packet header");
-        while self.binary_buffer.len() < 4 {
+        while self.binary_buffer.len() < MAX_HEADER_SIZE {
             self.fill_binary_buffer(rx_timeout)?;
         }
 
         // Check the kind, if its invalid use pop a byte and try again
-        let mut magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, 4);
+        let mut magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAX_HEADER_SIZE);
+        if INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
+            trace!("Advancing to next know packet header: {:x?}", &magic);
+        }
         while INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
             self.binary_buffer.pop_front();
-            while self.binary_buffer.len() < 4 {
+            while self.binary_buffer.len() < MAX_HEADER_SIZE {
                 self.fill_binary_buffer(rx_timeout)?;
             }
-            magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, 4);
+            magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAX_HEADER_SIZE);
         }
 
         Ok(())
@@ -247,17 +348,17 @@ impl<'a> MediaDataSubscriber<'a> {
         self.advance_to_media_packet(rx_timeout)?;
 
         // Get the magic bytes (guaranteed by advance_to_media_packet)
-        let magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, 4);
+        let magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAX_HEADER_SIZE);
         let kind = MediaData::kind_from_raw(&magic);
 
         // Get enough for the full header
         let header_size = MediaData::header_size_from_raw(&magic);
-        while self.binary_buffer.len() < header_size {
+        while self.binary_buffer.len() < MAX_HEADER_SIZE {
             self.fill_binary_buffer(rx_timeout)?;
         }
 
         // Get enough for the full data + 8 byte buffer
-        let header = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, header_size);
+        let header = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAX_HEADER_SIZE);
         let data_size = MediaData::data_size_from_raw(&header);
         let pad_size = MediaData::pad_size_from_raw(&header);
         let full_size = header_size + data_size + pad_size;
@@ -278,7 +379,6 @@ impl<'a> MediaDataSubscriber<'a> {
         interested_kinds: &[MediaDataKind],
         rx_timeout: Duration,
     ) -> std::result::Result<MediaData, Error> {
-        trace!("Finding binary message of interest...");
 
         let result_media_packet: MediaData;
 
@@ -291,10 +391,7 @@ impl<'a> MediaDataSubscriber<'a> {
                     break;
                 }
                 _ => {
-                    trace!(
-                        "Ignoring uninteresting binary data kind: {:?}",
-                        media_packet.kind()
-                    );
+                    ()
                 }
             };
         }

@@ -1,7 +1,6 @@
 use self::connection::BcConnection;
 use crate::bc;
-use crate::bc::media_packet::MediaDataSubscriber;
-use crate::bc::media_packet::*;
+use self::media_packet::{MediaDataSubscriber, MediaDataKind};
 use crate::bc::{model::*, xml::*};
 use err_derive::Error;
 use log::*;
@@ -12,7 +11,8 @@ use std::time::Duration;
 
 use Md5Trunc::*;
 
-pub mod connection;
+mod media_packet;
+mod connection;
 mod time;
 
 pub struct BcCamera {
@@ -51,7 +51,7 @@ pub enum Error {
     Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
 
     #[error(display = "Media")]
-    MediaPacket(#[error(source)] bc::media_packet::Error),
+    MediaPacket(#[error(source)] self::media_packet::Error),
 
     #[error(display = "Credential error")]
     AuthFailed,
