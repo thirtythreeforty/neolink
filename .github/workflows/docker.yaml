@@ -19,12 +19,22 @@ jobs:
       - name: Check out the repo
         uses: actions/checkout@v2
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+      - name: Convert username to lower case for docker
+        id: string_user
+        uses: ASzc/change-string-case-action@v1
+        with:
+          string: ${{ github.repository_owner }}
+      - name: Convert repo to lower case for docker
+        id: string_repo
+        uses: ASzc/change-string-case-action@v1
+        with:
+          string: ${{ github.repository }}
       - name: Push to Docker Hub
         uses: docker/build-push-action@v1
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         with:
-          username: ${{ github.repository_owner }}
+          username: ${{ steps.string_user.outputs.lowercase }}
           password: ${{ secrets.DOCKER_TOKEN }}
           registry: docker.io
-          repository: ${{ github.repository }}
+          repository: ${{ steps.string_repo.outputs.lowercase }}
           tag_with_ref: true
