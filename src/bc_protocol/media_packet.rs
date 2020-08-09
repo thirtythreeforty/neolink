@@ -345,7 +345,10 @@ impl<'a> MediaDataSubscriber<'a> {
         }
     }
 
-    fn next_media_packet(&mut self, rx_timeout: Duration) -> std::result::Result<MediaData, Error> {
+    pub fn next_media_packet(
+        &mut self,
+        rx_timeout: Duration,
+    ) -> std::result::Result<MediaData, Error> {
         // Find the first packet (does nothing if already at one)
         self.advance_to_media_packet(rx_timeout)?;
 
@@ -374,27 +377,5 @@ impl<'a> MediaDataSubscriber<'a> {
         Ok(MediaData {
             data: binary.collect(),
         })
-    }
-
-    pub fn get_media_packet_of_kind(
-        &mut self,
-        interested_kinds: &[MediaDataKind],
-        rx_timeout: Duration,
-    ) -> std::result::Result<MediaData, Error> {
-        let result_media_packet: MediaData;
-
-        // Loop over the messages until we find one we want
-        loop {
-            let media_packet = self.next_media_packet(rx_timeout)?;
-            match media_packet.kind() {
-                n if interested_kinds.contains(&n) => {
-                    result_media_packet = media_packet;
-                    break;
-                }
-                _ => (),
-            };
-        }
-
-        return Ok(result_media_packet);
     }
 }

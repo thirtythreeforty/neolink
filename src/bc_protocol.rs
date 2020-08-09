@@ -274,13 +274,7 @@ impl BcCamera {
         let mut media_sub = MediaDataSubscriber::from_bc_sub(&sub_video);
 
         loop {
-            let binary_data = media_sub.get_media_packet_of_kind(
-                &vec![
-                    MediaDataKind::VideoDataIframe,
-                    MediaDataKind::VideoDataPframe,
-                ],
-                RX_TIMEOUT,
-            )?;
+            let binary_data = media_sub.next_media_packet(RX_TIMEOUT)?;
             // We now have a complete interesting packet. Send it to gst.
             // Process the packet
             match binary_data.kind() {
@@ -288,29 +282,19 @@ impl BcCamera {
                     data_out.write_all(binary_data.body())?;
                 }
                 MediaDataKind::AudioDataAac | MediaDataKind::AudioDataAdpcm => {
-                    // We should not have a packet of this kind as we skip them until we get
-                    // a packet of interest
-                    unreachable!();
+                    ();
                 }
                 MediaDataKind::InfoData => {
-                    // We should not have a packet of this kind as we skip them until we get
-                    // a packet of interest
-                    unreachable!();
+                    ();
                 }
                 MediaDataKind::Unknown => {
-                    // We should not have a packet of this kind as we skip them until we get
-                    // a packet of interest
-                    unreachable!();
+                    ();
                 }
                 MediaDataKind::Invalid => {
-                    // We should not have a packet of this kind as we skip them until we get
-                    // a packet of interest
-                    unreachable!();
+                    ();
                 }
                 MediaDataKind::Continue => {
-                    // We should not have a packet of this kind as it would be attached
-                    // to a packet of interest
-                    unreachable!();
+                    ();
                 }
             };
         }
