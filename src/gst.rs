@@ -53,8 +53,8 @@ impl RtspServer {
             .expect("The server should have mountpoints");
 
         let launch_str = match stream_format {
-            StreamFormat::H264 => "! h264parse ! rtph264pay name=pay0",
-            StreamFormat::H265 => "! h265parse ! rtph265pay name=pay0",
+            StreamFormat::H264 => "! queue ! h264parse ! rtph264pay name=pay0",
+            StreamFormat::H265 => "! queue ! h265parse ! rtph265pay name=pay0",
             StreamFormat::Custom(ref custom_format) => custom_format,
         };
 
