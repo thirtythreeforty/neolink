@@ -58,13 +58,10 @@ fn main() -> Result<(), Error> {
 
     crossbeam::scope(|s| {
         for camera in config.cameras {
-            if Some(format) = camera.format {
+            if let Some(_) = &camera.format {
                 warn!("The format config option of the camera has been removed in favour of auto detection.")
             }
-            let stream_format = match &*camera.format {
-                "h264" | "H264" => StreamFormat::H264,
-                "h265" | "H265" => StreamFormat::H265,
-            };
+            let stream_format = StreamFormat::H265; // Set to this for now until we get data
 
             // Let subthreads share the camera object; in principle I think they could share
             // the object as it sits in the config.cameras block, but I have not figured out the
