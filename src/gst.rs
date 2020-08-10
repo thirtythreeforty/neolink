@@ -58,8 +58,11 @@ impl GstOutputs {
             " )"
         ));
     }
+    
     pub fn set_video_format(&self, format: StreamFormat) {
-        Self::set_video_format_factory(&self.factory, format);
+        if format != self.video_format {
+            Self::set_video_format_factory(&self.factory, format);
+        }
     }
 }
 
