@@ -1,8 +1,9 @@
 use self::connection::BcConnection;
-use self::media_packet::{MediaDataKind, MediaDataSubscriber};
+use self::media_packet::{MediaDataKind, MediaDataSubscriber, MediaFormat};
 use crate::gst;
 use crate::bc;
 use crate::bc::{model::*, xml::*};
+use crate::gst::StreamFormat;
 use err_derive::Error;
 use log::*;
 use md5;
@@ -243,6 +244,68 @@ impl BcCamera {
         sub_ping.rx.recv_timeout(RX_TIMEOUT)?;
 
         Ok(())
+    }
+
+    pub fn get_video_format(&self, stream_name: &str) -> Result<StreamFormat> {
+        let connection = self
+            .connection
+            .as_ref()
+            .expect("Must be connected to start video");
+        let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
+
+        let start_video = Bc::new_from_xml(
+            BcMeta {
+                msg_id: MSG_ID_VIDEO,
+                client_idx: 0, // TODO
+                encrypted: true,
+                class: 0x6414, // IDK why
+            },
+            BcXml {
+                preview: Some(Preview {
+                    version: xml_ver(),
+                    channel_id: 0,
+                    handle: 0,
+                    stream_type: stream_name.to_string(),
+                }),
+                ..Default::default()
+            },
+        );
+
+        sub_video.send(start_video)?;
+
+        let mut media_sub = MediaDataSubscriber::from_bc_sub(&sub_video);
+
+        loop {
+            let binary_data = media_sub.next_media_packet(RX_TIMEOUT)?;
+            // We now have a complete interesting packet. Send it to gst.
+            // Process the packet
+            match binary_data.kind() {
+                MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
+                    let media_format = binary_data.media_format();
+                    let stream_format = match media_format {
+                        MediaFormat::H264 => StreamFormat::H264,
+                        MediaFormat::H265 => StreamFormat::H265,
+                        _ => unreachable!(), // Unless packets are invalid but that should already be caught before this
+                    };
+                    return Ok(stream_format);
+                }
+                MediaDataKind::AudioDataAac | MediaDataKind::AudioDataAdpcm => {
+                    ();
+                }
+                MediaDataKind::InfoData => {
+                    ();
+                }
+                MediaDataKind::Unknown => {
+                    ();
+                }
+                MediaDataKind::Invalid => {
+                    ();
+                }
+                MediaDataKind::Continue => {
+                    ();
+                }
+            };
+        }
     }
 
     pub fn start_video(&self, data_outs: &mut gst::MaybeAppSrcs, stream_name: &str) -> Result<Never> {

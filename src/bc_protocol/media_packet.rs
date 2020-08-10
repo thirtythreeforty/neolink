@@ -35,6 +35,14 @@ pub enum MediaDataKind {
     Unknown,
 }
 
+pub enum MediaFormat {
+    H264,
+    H265,
+    AAC,
+    ADPCM,
+    Unknown,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct MediaData {
     data: Vec<u8>,
