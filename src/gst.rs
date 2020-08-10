@@ -30,7 +30,6 @@ pub struct RtspServer {
 pub enum StreamFormat {
     H264,
     H265,
-    Custom(String),
 }
 
 pub struct MaybeAppSrcs {
@@ -60,7 +59,6 @@ impl RtspServer {
         let launch_vid = match stream_format {
             StreamFormat::H264 => "! queue ! h264parse ! rtph264pay name=pay0",
             StreamFormat::H265 => "! queue ! h265parse ! rtph265pay name=pay0",
-            StreamFormat::Custom(ref custom_format) => custom_format,
         };
 
         let launch_aud = "! queue ! aacparse ! rtpmp4apay name=pay1";

@@ -8,7 +8,6 @@ use validator::{Validate, ValidationError};
 use validator_derive::Validate;
 
 lazy_static! {
-    static ref RE_STREAM_FORM: Regex = Regex::new(r"^([hH]26[45]|[ \t]*[!].*)$").unwrap();
     static ref RE_STREAM_SRC: Regex = Regex::new(r"^(mainStream|subStream|both)$").unwrap();
     static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
 }
@@ -54,13 +53,8 @@ pub struct CameraConfig {
     // no longer used, but still here so we can warn users:
     pub timeout: Option<Duration>,
 
-    #[validate(regex(
-        path = "RE_STREAM_FORM",
-        message = "Incorrect stream format",
-        code = "format"
-    ))]
-    #[serde(default = "default_format")]
-    pub format: String,
+    // no longer used, but still here so we can warn users:
+    pub format: Option<String>,
 
     #[validate(regex(
         path = "RE_STREAM_SRC",
@@ -89,10 +83,6 @@ fn default_bind_addr() -> String {
 
 fn default_bind_port() -> u16 {
     8554
-}
-
-fn default_format() -> String {
-    "h265".to_string()
 }
 
 fn default_stream() -> String {
