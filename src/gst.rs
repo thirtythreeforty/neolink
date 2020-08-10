@@ -27,6 +27,7 @@ pub struct RtspServer {
     server: GstRTSPServer,
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum StreamFormat {
     H264,
     H265,
@@ -35,6 +36,31 @@ pub enum StreamFormat {
 pub struct MaybeAppSrcs {
     pub audsrc: MaybeAppSrc,
     pub vidsrc: MaybeAppSrc,
+    video_format: StreamFormat,
+    factory: RTSPMediaFactory,
+}
+
+impl MaybeAppSrcs {
+    pub fn set_video_format_factory(factory: &RTSPMediaFactory, stream_format: StreamFormat) {
+        let launch_vid = match stream_format {
+            StreamFormat::H264 => "! queue ! h264parse ! rtph264pay name=pay0",
+            StreamFormat::H265 => "! queue ! h265parse ! rtph265pay name=pay0",
+        };
+
+        let launch_aud = "! queue ! aacparse ! rtpmp4apay name=pay1";
+        //factory.set_protocols(RTSPLowerTrans::TCP);
+        factory.set_launch(&format!("{}{}{}{}{}{}",
+            "( ",
+            "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
+            launch_vid,
+            " appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
+            launch_aud,
+            " )"
+        ));
+    }
+    pub fn set_video_format(&self, format: StreamFormat) {
+        Self::set_video_format_factory(&self.factory, format);
+    }
 }
 
 impl RtspServer {
@@ -56,13 +82,6 @@ impl RtspServer {
             .get_mount_points()
             .expect("The server should have mountpoints");
 
-        let launch_vid = match stream_format {
-            StreamFormat::H264 => "! queue ! h264parse ! rtph264pay name=pay0",
-            StreamFormat::H265 => "! queue ! h265parse ! rtph265pay name=pay0",
-        };
-
-        let launch_aud = "! queue ! aacparse ! rtpmp4apay name=pay1";
-
         let factory = RTSPMediaFactory::new();
 
         debug!(
@@ -76,16 +95,8 @@ impl RtspServer {
             paths.join(", ")
         );
         self.add_permitted_roles(&factory, permitted_users);
+        MaybeAppSrcs::set_video_format_factory(&factory, stream_format);
 
-        //factory.set_protocols(RTSPLowerTrans::TCP);
-        factory.set_launch(&format!("{}{}{}{}{}{}",
-            "( ",
-            "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
-            launch_vid,
-            " appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
-            launch_aud,
-            " )"
-        ));
         factory.set_shared(true);
 
         // TODO maybe set video format via
@@ -126,6 +137,8 @@ impl RtspServer {
         let result = MaybeAppSrcs{
             vidsrc: maybe_app_src,
             audsrc: maybe_app_src_aud,
+            factory: factory,
+            video_format: stream_format,
         };
 
         Ok(result)

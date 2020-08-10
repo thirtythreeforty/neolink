@@ -238,6 +238,9 @@ fn camera_main(
             }
         }
 
+        let stream_format = camera.get_video_format(stream_name)?;
+        outputs.set_video_format(stream_format);
+
         info!(
             "{}: Starting video stream {}",
             camera_config.name, stream_name
