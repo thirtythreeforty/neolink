@@ -36,32 +36,29 @@ pub enum StreamFormat {
 pub struct GstOutputs {
     pub audsrc: MaybeAppSrc,
     pub vidsrc: MaybeAppSrc,
-    video_format: StreamFormat,
+    video_format: Option<StreamFormat>,
     factory: RTSPMediaFactory,
 }
 
 impl GstOutputs {
-    pub fn set_video_format_factory(factory: &RTSPMediaFactory, stream_format: StreamFormat) {
-        let launch_vid = match stream_format {
-            StreamFormat::H264 => "! queue ! h264parse ! rtph264pay name=pay0",
-            StreamFormat::H265 => "! queue ! h265parse ! rtph265pay name=pay0",
-        };
+    pub fn set_video_format(&mut self, stream_format: StreamFormat) {
+        if Some(stream_format) != self.video_format {
+            let launch_vid = match stream_format {
+                StreamFormat::H264 => "! queue ! h264parse ! rtph264pay name=pay0",
+                StreamFormat::H265 => "! queue ! h265parse ! rtph265pay name=pay0",
+            };
 
-        let launch_aud = "! queue ! aacparse ! rtpmp4apay name=pay1";
-        //factory.set_protocols(RTSPLowerTrans::TCP);
-        factory.set_launch(&format!("{}{}{}{}{}{}",
-            "( ",
-            "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
-            launch_vid,
-            " appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
-            launch_aud,
-            " )"
-        ));
-    }
-    
-    pub fn set_video_format(&self, format: StreamFormat) {
-        if format != self.video_format {
-            Self::set_video_format_factory(&self.factory, format);
+            let launch_aud = "! queue ! aacparse ! rtpmp4apay name=pay1";
+            //factory.set_protocols(RTSPLowerTrans::TCP);
+            self.factory.set_launch(&format!("{}{}{}{}{}{}",
+                "( ",
+                "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
+                launch_vid,
+                " appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
+                launch_aud,
+                " )"
+            ));
+            self.video_format = Some(stream_format);
         }
     }
 }
@@ -77,7 +74,6 @@ impl RtspServer {
     pub fn add_stream(
         &self,
         paths: &[&str],
-        stream_format: StreamFormat,
         permitted_users: &HashSet<&str>,
     ) -> Result<GstOutputs> {
         let mounts = self
@@ -85,7 +81,20 @@ impl RtspServer {
             .get_mount_points()
             .expect("The server should have mountpoints");
 
-        let factory = RTSPMediaFactory::new();
+        // Create a MaybeAppSrc: Write which we will give the caller.  When the backing AppSrc is
+        // created by the factory, fish it out and give it to the waiting MaybeAppSrc via the
+        // channel it provided.  This callback may be called more than once by Gstreamer if it is
+        // unhappy with the pipeline, so keep updating the MaybeAppSrc.
+        let (maybe_app_src, tx) = MaybeAppSrc::new_with_tx();
+        let (maybe_app_src_aud, tx_aud) = MaybeAppSrc::new_with_tx();
+        let outputs = GstOutputs{
+            vidsrc: maybe_app_src,
+            audsrc: maybe_app_src_aud,
+            factory: RTSPMediaFactory::new(),
+            video_format: None,
+        };
+
+        let factory = &outputs.factory;
 
         debug!(
             "Permitting {} to access {}",
@@ -97,20 +106,10 @@ impl RtspServer {
                 .collect::<String>(),
             paths.join(", ")
         );
-        self.add_permitted_roles(&factory, permitted_users);
-        GstOutputs::set_video_format_factory(&factory, stream_format);
+        self.add_permitted_roles(factory, permitted_users);
 
         factory.set_shared(true);
 
-        // TODO maybe set video format via
-        // https://gitlab.freedesktop.org/gstreamer/gstreamer-rs/-/blob/master/examples/src/bin/appsrc.rs#L66
-
-        // Create a MaybeAppSrc: Write which we will give the caller.  When the backing AppSrc is
-        // created by the factory, fish it out and give it to the waiting MaybeAppSrc via the
-        // channel it provided.  This callback may be called more than once by Gstreamer if it is
-        // unhappy with the pipeline, so keep updating the MaybeAppSrc.
-        let (maybe_app_src, tx) = MaybeAppSrc::new_with_tx();
-        let (maybe_app_src_aud, tx_aud) = MaybeAppSrc::new_with_tx();
         factory.connect_media_configure(move |_factory, media| {
             debug!("RTSP: media was configured");
             let bin = media
@@ -134,17 +133,10 @@ impl RtspServer {
         });
 
         for path in paths {
-            mounts.add_factory(path, &factory);
+            mounts.add_factory(path, factory);
         }
 
-        let result = GstOutputs{
-            vidsrc: maybe_app_src,
-            audsrc: maybe_app_src_aud,
-            factory: factory,
-            video_format: stream_format,
-        };
-
-        Ok(result)
+        Ok(outputs)
     }
 
     pub fn add_permitted_roles(&self, factory: &RTSPMediaFactory, permitted_roles: &HashSet<&str>) {

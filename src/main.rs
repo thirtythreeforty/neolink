@@ -3,7 +3,7 @@ use err_derive::Error;
 use gio::TlsAuthenticationMode;
 use log::*;
 use neolink::bc_protocol::BcCamera;
-use neolink::gst::{GstOutputs, RtspServer, StreamFormat};
+use neolink::gst::{GstOutputs, RtspServer};
 use neolink::Never;
 use std::collections::HashSet;
 use std::fs;
@@ -61,15 +61,11 @@ fn main() -> Result<(), Error> {
             if let Some(_) = &camera.format {
                 warn!("The format config option of the camera has been removed in favour of auto detection.")
             }
-            let stream_format = StreamFormat::H265; // Set to this for now until we get data
-
             // Let subthreads share the camera object; in principle I think they could share
             // the object as it sits in the config.cameras block, but I have not figured out the
             // syntax for that.
             let arc_cam = Arc::new(camera);
 
-            // The substream always seems to be H264, even on B800 cameras
-            let substream_format = StreamFormat::H264;
             let permitted_users =
                 get_permitted_users(config.users.as_slice(), &arc_cam.permitted_users);
 
@@ -80,7 +76,7 @@ fn main() -> Result<(), Error> {
                     &*format!("/{}/mainStream", arc_cam.name),
                 ];
                 let mut outputs = rtsp
-                    .add_stream(paths, stream_format, &permitted_users)
+                    .add_stream(paths, &permitted_users)
                     .unwrap();
                 let main_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut outputs));
@@ -88,7 +84,7 @@ fn main() -> Result<(), Error> {
             if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
                 let mut outputs = rtsp
-                    .add_stream(paths, substream_format, &permitted_users)
+                    .add_stream(paths, &permitted_users)
                     .unwrap();
                 let sub_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut outputs));
