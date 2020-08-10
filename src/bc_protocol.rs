@@ -308,7 +308,7 @@ impl BcCamera {
         }
     }
 
-    pub fn start_video(&self, data_outs: &mut gst::MaybeAppSrcs, stream_name: &str) -> Result<Never> {
+    pub fn start_video(&self, data_outs: &mut gst::GstOutputs, stream_name: &str) -> Result<Never> {
         let connection = self
             .connection
             .as_ref()

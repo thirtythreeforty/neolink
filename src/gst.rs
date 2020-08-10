@@ -33,14 +33,14 @@ pub enum StreamFormat {
     H265,
 }
 
-pub struct MaybeAppSrcs {
+pub struct GstOutputs {
     pub audsrc: MaybeAppSrc,
     pub vidsrc: MaybeAppSrc,
     video_format: StreamFormat,
     factory: RTSPMediaFactory,
 }
 
-impl MaybeAppSrcs {
+impl GstOutputs {
     pub fn set_video_format_factory(factory: &RTSPMediaFactory, stream_format: StreamFormat) {
         let launch_vid = match stream_format {
             StreamFormat::H264 => "! queue ! h264parse ! rtph264pay name=pay0",
@@ -76,7 +76,7 @@ impl RtspServer {
         paths: &[&str],
         stream_format: StreamFormat,
         permitted_users: &HashSet<&str>,
-    ) -> Result<MaybeAppSrcs> {
+    ) -> Result<GstOutputs> {
         let mounts = self
             .server
             .get_mount_points()
@@ -95,7 +95,7 @@ impl RtspServer {
             paths.join(", ")
         );
         self.add_permitted_roles(&factory, permitted_users);
-        MaybeAppSrcs::set_video_format_factory(&factory, stream_format);
+        GstOutputs::set_video_format_factory(&factory, stream_format);
 
         factory.set_shared(true);
 
@@ -134,7 +134,7 @@ impl RtspServer {
             mounts.add_factory(path, &factory);
         }
 
-        let result = MaybeAppSrcs{
+        let result = GstOutputs{
             vidsrc: maybe_app_src,
             audsrc: maybe_app_src_aud,
             factory: factory,

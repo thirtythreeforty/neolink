@@ -3,7 +3,7 @@ use err_derive::Error;
 use gio::TlsAuthenticationMode;
 use log::*;
 use neolink::bc_protocol::BcCamera;
-use neolink::gst::{MaybeAppSrcs, RtspServer, StreamFormat};
+use neolink::gst::{GstOutputs, RtspServer, StreamFormat};
 use neolink::Never;
 use std::collections::HashSet;
 use std::fs;
@@ -105,7 +105,7 @@ fn main() -> Result<(), Error> {
 fn camera_loop(
     camera_config: &CameraConfig,
     stream_name: &str,
-    outputs: &mut MaybeAppSrcs,
+    outputs: &mut GstOutputs,
 ) -> Result<Never, Error> {
     let min_backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(15);
@@ -193,7 +193,7 @@ fn get_permitted_users<'a>(
 fn camera_main(
     camera_config: &CameraConfig,
     stream_name: &str,
-    outputs: &mut MaybeAppSrcs,
+    outputs: &mut GstOutputs,
 ) -> Result<Never, CameraErr> {
     let mut connected = false;
     (|| {
