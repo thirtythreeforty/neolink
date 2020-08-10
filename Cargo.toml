@@ -4,6 +4,9 @@ description = "A standards-compliant bridge to Reolink IP cameras"
 version = "0.3.0"
 authors = ["George Hilliard <thirtythreeforty@gmail.com>"]
 edition = "2018"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/thirtythreeforty/neolink"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -35,3 +38,22 @@ yaserde_derive = "0.3.16"
 xml-rs = "0.8"
 validator = "0.10"
 validator_derive = "0.10"
+
+[package.metadata.deb]
+section = "utility"
+assets = [
+  ["sample_config.toml", "usr/local/etc/neolink.toml", "644"],
+  ["target/release/neolink", "usr/local/bin/neolink", "755"],
+  ["target/release/neolink.d", "usr/local/lib/neolink.d", "644"],
+]
+conf-files = ["etc/neolink.toml"]
+depends = "$auto,  gstreamer1.0-plugins-good,  gstreamer1.0-plugins-bad, libgstreamer-plugins-base1.0-0, libpcre3, libmount1, libselinux1, libgstrtspserver-1.0-0, libuuid1, libgstreamer1.0-0, libglib2.0-0, libblkid1, zlib1g, libc6, libffi6"
+
+[package.metadata.rpm]
+package = "neolink"
+
+[package.metadata.rpm.cargo]
+buildflags = ["--release"]
+
+[package.metadata.rpm.targets]
+neolink = { path = "/usr/bin/neolink" }
