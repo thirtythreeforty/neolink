@@ -33,6 +33,11 @@ pub enum StreamFormat {
     Custom(String),
 }
 
+pub struct MaybeAppSrcs {
+    pub audsrc: MaybeAppSrc,
+    pub vidsrc: MaybeAppSrc,
+}
+
 impl RtspServer {
     pub fn new() -> RtspServer {
         gstreamer::init().expect("Gstreamer should not explode");
@@ -46,17 +51,19 @@ impl RtspServer {
         paths: &[&str],
         stream_format: StreamFormat,
         permitted_users: &HashSet<&str>,
-    ) -> Result<MaybeAppSrc> {
+    ) -> Result<MaybeAppSrcs> {
         let mounts = self
             .server
             .get_mount_points()
             .expect("The server should have mountpoints");
 
-        let launch_str = match stream_format {
+        let launch_vid = match stream_format {
             StreamFormat::H264 => "! queue ! h264parse ! rtph264pay name=pay0",
             StreamFormat::H265 => "! queue ! h265parse ! rtph265pay name=pay0",
             StreamFormat::Custom(ref custom_format) => custom_format,
         };
+
+        let launch_aud = "! queue ! aacparse ! rtpmp4apay name=pay1";
 
         let factory = RTSPMediaFactory::new();
 
@@ -73,10 +80,12 @@ impl RtspServer {
         self.add_permitted_roles(&factory, permitted_users);
 
         //factory.set_protocols(RTSPLowerTrans::TCP);
-        factory.set_launch(&format!("{}{}{}{}",
+        factory.set_launch(&format!("{}{}{}{}{}{}",
             "( ",
-            "appsrc name=writesrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
-            launch_str,
+            "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
+            launch_vid,
+            " appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
+            launch_aud,
             " )"
         ));
         factory.set_shared(true);
@@ -89,6 +98,7 @@ impl RtspServer {
         // channel it provided.  This callback may be called more than once by Gstreamer if it is
         // unhappy with the pipeline, so keep updating the MaybeAppSrc.
         let (maybe_app_src, tx) = MaybeAppSrc::new_with_tx();
+        let (maybe_app_src_aud, tx_aud) = MaybeAppSrc::new_with_tx();
         factory.connect_media_configure(move |_factory, media| {
             debug!("RTSP: media was configured");
             let bin = media
@@ -97,18 +107,30 @@ impl RtspServer {
                 .dynamic_cast::<Bin>()
                 .expect("Media source's element should be a bin");
             let app_src = bin
-                .get_by_name_recurse_up("writesrc")
+                .get_by_name_recurse_up("vidsrc")
                 .expect("write_src must be present in created bin")
                 .dynamic_cast::<AppSrc>()
                 .expect("Source element is expected to be an appsrc!");
             let _ = tx.send(app_src); // Receiver may be dropped, don't panic if so
+
+            let app_src_aud = bin
+                .get_by_name_recurse_up("audsrc")
+                .expect("write_src must be present in created bin")
+                .dynamic_cast::<AppSrc>()
+                .expect("Source element is expected to be an appsrc!");
+            let _ = tx_aud.send(app_src_aud); // Receiver may be dropped, don't panic if so
         });
 
         for path in paths {
             mounts.add_factory(path, &factory);
         }
 
-        Ok(maybe_app_src)
+        let result = MaybeAppSrcs{
+            vidsrc: maybe_app_src,
+            audsrc: maybe_app_src_aud,
+        };
+
+        Ok(result)
     }
 
     pub fn add_permitted_roles(&self, factory: &RTSPMediaFactory, permitted_roles: &HashSet<&str>) {

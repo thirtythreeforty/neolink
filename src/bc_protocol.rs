@@ -1,5 +1,6 @@
 use self::connection::BcConnection;
 use self::media_packet::{MediaDataKind, MediaDataSubscriber};
+use crate::gst;
 use crate::bc;
 use crate::bc::{model::*, xml::*};
 use err_derive::Error;
@@ -244,7 +245,7 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(&self, data_out: &mut dyn Write, stream_name: &str) -> Result<Never> {
+    pub fn start_video(&self, data_outs: &mut gst::MaybeAppSrcs, stream_name: &str) -> Result<Never> {
         let connection = self
             .connection
             .as_ref()
@@ -279,8 +280,11 @@ impl BcCamera {
             // Process the packet
             match binary_data.kind() {
                 MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
-                    data_out.write_all(binary_data.body())?;
-                }
+                    data_outs.vidsrc.write_all(binary_data.body())?;
+                },
+                MediaDataKind::AudioDataAac | MediaDataKind::AudioDataAdpcm => {
+                    data_outs.audsrc.write_all(binary_data.body())?;
+                },
                 _ => {}
             };
         }
