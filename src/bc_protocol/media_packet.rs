@@ -6,7 +6,6 @@ use log::*;
 use std::cmp::min;
 use std::collections::VecDeque;
 use std::convert::TryInto;
-use std::str;
 use std::time::Duration;
 
 const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[
@@ -178,20 +177,20 @@ impl MediaData {
         match kind {
             MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
                 let stream_type = &data[4..8];
-                if let Ok(stream_type_name) = str::from_utf8(stream_type) {
-                    match stream_type_name {
-                        "H264" => true,
-                        "H265" => true,
-                        _ => {
-                            trace!(
-                                "Video Iframe failed header checks: {:x?}",
-                                &data[0..min(MAX_HEADER_SIZE, data.len())]
-                            );
-                            false
-                        }
+                const H264_STR_UPPER: &[u8] = &[0x48, 0x32, 0x36, 0x34];
+                const H264_STR_LOWER: &[u8] = &[0x68, 0x32, 0x36, 0x34];
+                const H265_STR_UPPER: &[u8] = &[0x48, 0x32, 0x36, 0x35];
+                const H265_STR_LOWER: &[u8] = &[0x68, 0x32, 0x36, 0x35];
+                match stream_type {
+                    H264_STR_UPPER | H264_STR_LOWER => true,
+                    H265_STR_UPPER | H265_STR_LOWER => true,
+                    _ => {
+                        trace!(
+                            "Video I/Pframe failed header checks: {:x?}",
+                            &data[0..min(MAX_HEADER_SIZE, data.len())]
+                        );
+                        false
                     }
-                } else {
-                    false
                 }
             }
             MediaDataKind::AudioDataAac => {
