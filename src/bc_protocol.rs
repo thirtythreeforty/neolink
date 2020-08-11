@@ -281,18 +281,7 @@ impl BcCamera {
                 MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
                     data_out.write_all(binary_data.body())?;
                 }
-                MediaDataKind::AudioDataAac | MediaDataKind::AudioDataAdpcm => {
-                    ();
-                }
-                MediaDataKind::InfoData => {
-                    ();
-                }
-                MediaDataKind::Unknown => {
-                    ();
-                }
-                MediaDataKind::Invalid => {
-                    ();
-                }
+                _ => {}
             };
         }
     }

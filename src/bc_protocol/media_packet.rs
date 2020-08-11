@@ -240,7 +240,7 @@ impl<'a> MediaDataSubscriber<'a> {
     pub fn from_bc_sub<'b>(bc_sub: &'b BcSubscription) -> MediaDataSubscriber<'b> {
         MediaDataSubscriber {
             binary_buffer: VecDeque::new(),
-            bc_sub: bc_sub,
+            bc_sub,
         }
     }
 
@@ -297,10 +297,10 @@ impl<'a> MediaDataSubscriber<'a> {
         let slice0 = deque.as_slices().0;
         let slice1 = deque.as_slices().1;
         if slice0.len() >= n {
-            return slice0[0..n].iter().cloned().collect();
+            slice0[0..n].to_vec()
         } else {
             let remain = n - slice0.len();
-            return slice0.iter().chain(&slice1[0..remain]).cloned().collect();
+            slice0.iter().chain(&slice1[0..remain]).cloned().collect()
         }
     }
 
