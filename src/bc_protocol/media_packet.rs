@@ -21,6 +21,9 @@ const MAX_HEADER_SIZE: usize = 32;
 
 pub const CHUNK_SIZE: usize = 40000;
 
+// Media packets use 8 byte padding
+const PAD_SIZE: usize = 8;
+
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
@@ -51,18 +54,7 @@ impl MediaData {
         let lower_limit = self.header_size();
         let upper_limit = self.data_size() + lower_limit;
         let len = self.len();
-        if !self.complete() {
-            unreachable!(); // An incomplete packet should be discarded not read, panic if we try
-        }
         &self.data[lower_limit..upper_limit]
-    }
-
-    pub fn complete(&self) -> bool {
-        if self.len() < self.header_size() {
-            return false;
-        }
-        let full_data_len = self.len() - self.header_size();
-        full_data_len >= self.data_size() && full_data_len < self.data_size() + 8
     }
 
     pub fn header(&self) -> &[u8] {
@@ -109,9 +101,9 @@ impl MediaData {
 
     pub fn pad_size_from_raw(data: &[u8]) -> usize {
         let data_size = MediaData::data_size_from_raw(data);
-        match data_size % 8 {
+        match data_size % PAD_SIZE {
             0 => 0,
-            n => 8 - n,
+            n => PAD_SIZE - n,
         }
     }
 
@@ -140,7 +132,8 @@ impl MediaData {
         // Else full_header_check_from_kind will fail because we check the
         // First two bytes after the header for the audio stream
         // Since AAC and ADMPC streams start in a predicatble manner
-        if data.len() < 4 {
+        const MAGIC_LEN: usize = 4; // Number of bytes needed to get magic header type
+        if data.len() < MAGIC_LEN {
             return MediaDataKind::Invalid;
         }
         const MAGIC_VIDEO_INFO_V1: &[u8] = &[0x31, 0x30, 0x30, 0x31];
@@ -150,7 +143,7 @@ impl MediaData {
         const MAGIC_IFRAME: &[u8] = &[0x30, 0x30, 0x64, 0x63];
         const MAGIC_PFRAME: &[u8] = &[0x30, 0x31, 0x64, 0x63];
 
-        let magic = &data[..4];
+        let magic = &data[..MAGIC_LEN];
         let kind = match magic {
             MAGIC_VIDEO_INFO_V1 | MAGIC_VIDEO_INFO_V2 => MediaDataKind::InfoData,
             MAGIC_AAC => MediaDataKind::AudioDataAac,
@@ -167,9 +160,9 @@ impl MediaData {
         // I've never had this fail yet. It checks more bytes then just the magic
         // Including some 2 bytes at the start of the data
         if !MediaData::full_header_check_from_kind(kind, &data) {
-            return MediaDataKind::Invalid;
+            MediaDataKind::Invalid
         } else {
-            return kind;
+            kind
         }
     }
 
