@@ -4,7 +4,6 @@ use crate::bc;
 use crate::bc::{model::*, xml::*};
 use err_derive::Error;
 use log::*;
-use md5;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
@@ -111,7 +110,7 @@ impl BcCamera {
         let md5_username = md5_string(username, ZeroLast);
         let md5_password = password
             .map(|p| md5_string(p, ZeroLast))
-            .unwrap_or(EMPTY_LEGACY_PASSWORD.to_owned());
+            .unwrap_or_else(|| EMPTY_LEGACY_PASSWORD.to_owned());
 
         let legacy_login = Bc {
             meta: BcMeta {

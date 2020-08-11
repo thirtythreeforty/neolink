@@ -62,7 +62,7 @@ fn main() -> Result<(), Error> {
             let stream_format = match &*camera.format {
                 "h264" | "H264" => StreamFormat::H264,
                 "h265" | "H265" => StreamFormat::H265,
-                custom_format @ _ => StreamFormat::Custom(custom_format.to_string()),
+                custom_format => StreamFormat::Custom(custom_format.to_string()),
             };
 
             // Let subthreads share the camera object; in principle I think they could share
@@ -73,7 +73,7 @@ fn main() -> Result<(), Error> {
             // The substream always seems to be H264, even on B800 cameras
             let substream_format = match &*arc_cam.format {
                 "h264" | "H264" | "h265" | "H265" => StreamFormat::H264,
-                custom_format @ _ => StreamFormat::Custom(custom_format.to_string()),
+                custom_format => StreamFormat::Custom(custom_format.to_string()),
             };
             let permitted_users =
                 get_permitted_users(config.users.as_slice(), &arc_cam.permitted_users);
@@ -205,7 +205,7 @@ fn camera_main(
     let mut connected = false;
     (|| {
         let mut camera = BcCamera::new_with_addr(camera_config.camera_addr)?;
-        if let Some(_) = camera_config.timeout {
+        if camera_config.timeout.is_some() {
             warn!("The undocumented `timeout` config option has been removed and is no longer needed.");
             warn!("Please update your config file.");
         }
