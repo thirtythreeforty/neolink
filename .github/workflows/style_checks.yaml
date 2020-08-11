@@ -1,0 +1,33 @@
+name: Style
+
+on: [push, pull_request]
+
+jobs:
+  check_clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions-rs/toolchain@v1
+      with:
+          toolchain: nightly
+          components: clippy
+          override: true
+    - uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features
+
+  check_fmt:
+    name: Rust-fmt
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions-rs/toolchain@v1
+      with:
+          toolchain: nightly
+          components: rustfmt
+          override: true
+    - name: rustfmt
+      run: |
+        cargo +nightly fmt -- --check
