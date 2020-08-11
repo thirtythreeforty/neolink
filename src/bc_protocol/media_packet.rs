@@ -3,21 +3,18 @@ use crate::bc_protocol::connection::BcSubscription;
 use err_derive::Error;
 use log::trace;
 use log::*;
-use std::cmp::min;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::time::Duration;
 
 const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[
-    MediaDataKind::Invalid,
     MediaDataKind::Unknown,
 ];
 
-// This is used as the minium data to pull from the camera
-// When testing the type
-const MAX_HEADER_SIZE: usize = 32;
-
-// Media packets use 8 byte padding
+// MAGIC_LEN: Number of bytes needed to get magic header type, represets minimum bytes to pull from the
+// stream
+const MAGIC_LEN: usize = 4;
+// PAD_SIZE: Media packets use 8 byte padding
 const PAD_SIZE: usize = 8;
 
 type Result<T> = std::result::Result<T, Error>;
@@ -35,7 +32,6 @@ pub enum MediaDataKind {
     AudioDataAac,
     AudioDataAdpcm,
     InfoData,
-    Invalid,
     Unknown,
 }
 
@@ -58,7 +54,7 @@ impl MediaData {
             MediaDataKind::AudioDataAac => 8,
             MediaDataKind::AudioDataAdpcm => 16,
             MediaDataKind::InfoData => 32,
-            MediaDataKind::Unknown | MediaDataKind::Invalid => 0,
+            MediaDataKind::Unknown => 0,
         }
     }
 
@@ -79,7 +75,7 @@ impl MediaData {
             MediaDataKind::AudioDataAac => MediaData::bytes_to_size(&data[4..6]),
             MediaDataKind::AudioDataAdpcm => MediaData::bytes_to_size(&data[4..6]),
             MediaDataKind::InfoData => 0, // The bytes in MediaData::bytes_to_size(&data[4..8]) seem to be the size of the header
-            MediaDataKind::Unknown | MediaDataKind::Invalid => data.len(),
+            MediaDataKind::Unknown => data.len(),
         }
     }
 
@@ -116,10 +112,7 @@ impl MediaData {
         // Else full_header_check_from_kind will fail because we check the
         // First two bytes after the header for the audio stream
         // Since AAC and ADMPC streams start in a predicatble manner
-        const MAGIC_LEN: usize = 4; // Number of bytes needed to get magic header type
-        if data.len() < MAGIC_LEN {
-            return MediaDataKind::Invalid;
-        }
+        assert!(data.len() >= MAGIC_LEN, "At least four bytes needed to get media packet type");
         const MAGIC_VIDEO_INFO_V1: &[u8] = &[0x31, 0x30, 0x30, 0x31];
         const MAGIC_VIDEO_INFO_V2: &[u8] = &[0x31, 0x30, 0x30, 0x32];
         const MAGIC_AAC: &[u8] = &[0x30, 0x35, 0x77, 0x62];
@@ -128,7 +121,7 @@ impl MediaData {
         const MAGIC_PFRAME: &[u8] = &[0x30, 0x31, 0x64, 0x63];
 
         let magic = &data[..MAGIC_LEN];
-        let kind = match magic {
+        match magic {
             MAGIC_VIDEO_INFO_V1 | MAGIC_VIDEO_INFO_V2 => MediaDataKind::InfoData,
             MAGIC_AAC => MediaDataKind::AudioDataAac,
             MAGIC_ADPCM => MediaDataKind::AudioDataAdpcm,
@@ -138,83 +131,11 @@ impl MediaData {
                 trace!("Unknown magic kind: {:x?}", &magic);
                 MediaDataKind::Unknown
             }
-        };
-
-        // I've never had this fail yet. It checks more bytes then just the magic
-        // Including some 2 bytes at the start of the data
-        if !MediaData::full_header_check_from_kind(kind, &data) {
-            MediaDataKind::Invalid
-        } else {
-            kind
         }
     }
 
     pub fn kind(&self) -> MediaDataKind {
         MediaData::kind_from_raw(&self.data)
-    }
-
-    fn full_header_check_from_kind(kind: MediaDataKind, data: &[u8]) -> bool {
-        // This will run more advanced checks to ensure it is a valid header
-        let header_size = MediaData::header_size_from_kind(kind);
-        if data.len() < header_size {
-            trace!("Magic failed header checks on size: {:x?}", &data);
-            return false;
-        }
-
-        match kind {
-            MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
-                let stream_type = &data[4..8];
-                const H264_STR_UPPER: &[u8] = &[0x48, 0x32, 0x36, 0x34];
-                const H264_STR_LOWER: &[u8] = &[0x68, 0x32, 0x36, 0x34];
-                const H265_STR_UPPER: &[u8] = &[0x48, 0x32, 0x36, 0x35];
-                const H265_STR_LOWER: &[u8] = &[0x68, 0x32, 0x36, 0x35];
-                match stream_type {
-                    H264_STR_UPPER | H264_STR_LOWER => true,
-                    H265_STR_UPPER | H265_STR_LOWER => true,
-                    _ => {
-                        trace!(
-                            "Video I/Pframe failed header checks: {:x?}",
-                            &data[0..min(MAX_HEADER_SIZE, data.len())]
-                        );
-                        false
-                    }
-                }
-            }
-            MediaDataKind::AudioDataAac => {
-                let check_bytes = &data[8..10];
-                const AAC_VALID: &[u8] = &[0xff, 0xf1];
-                match check_bytes {
-                    AAC_VALID => true,
-                    _ => {
-                        trace!(
-                            "AAC failed header checks: {:x?}",
-                            &data[0..min(MAX_HEADER_SIZE, data.len())]
-                        );
-                        false
-                    }
-                }
-            }
-            MediaDataKind::AudioDataAdpcm => {
-                let check_bytes = &data[8..10];
-                const ADPCM_VALID: &[u8] = &[0x0, 0x1];
-                match check_bytes {
-                    ADPCM_VALID => true,
-                    _ => {
-                        trace!(
-                            "ADPCM failed header checks: {:x?}",
-                            &data[0..min(MAX_HEADER_SIZE, data.len())]
-                        );
-                        false
-                    }
-                }
-            }
-            MediaDataKind::InfoData => {
-                // Not sure how to check this yet. Theres only one of each kind per stream at the start
-                true
-            }
-            MediaDataKind::Unknown => true,
-            MediaDataKind::Invalid => false,
-        }
     }
 }
 
@@ -251,22 +172,22 @@ impl<'a> MediaDataSubscriber<'a> {
     fn advance_to_media_packet(&mut self, rx_timeout: Duration) -> Result<()> {
         // In the event we get an unknown packet we advance by brute force
         // reading of bytes to the next valid magic
-        while self.binary_buffer.len() < MAX_HEADER_SIZE {
+        while self.binary_buffer.len() < MAGIC_LEN {
             self.fill_binary_buffer(rx_timeout)?;
         }
 
         // Check the kind, if its invalid use pop a byte and try again
         let mut magic =
-            MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAX_HEADER_SIZE);
+            MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_LEN);
         if INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
             trace!("Advancing to next know packet header: {:x?}", &magic);
         }
         while INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
             self.binary_buffer.pop_front();
-            while self.binary_buffer.len() < MAX_HEADER_SIZE {
+            while self.binary_buffer.len() < MAGIC_LEN {
                 self.fill_binary_buffer(rx_timeout)?;
             }
-            magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAX_HEADER_SIZE);
+            magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_LEN);
         }
 
         Ok(())
@@ -299,16 +220,16 @@ impl<'a> MediaDataSubscriber<'a> {
         self.advance_to_media_packet(rx_timeout)?;
 
         // Get the magic bytes (guaranteed by advance_to_media_packet)
-        let magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAX_HEADER_SIZE);
+        let magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_LEN);
 
         // Get enough for the full header
         let header_size = MediaData::header_size_from_raw(&magic);
-        while self.binary_buffer.len() < MAX_HEADER_SIZE {
+        while self.binary_buffer.len() < header_size {
             self.fill_binary_buffer(rx_timeout)?;
         }
 
         // Get enough for the full data + 8 byte buffer
-        let header = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAX_HEADER_SIZE);
+        let header = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, header_size);
         let data_size = MediaData::data_size_from_raw(&header);
         let pad_size = MediaData::pad_size_from_raw(&header);
         let full_size = header_size + data_size + pad_size;
