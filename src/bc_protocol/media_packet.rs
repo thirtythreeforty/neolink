@@ -65,10 +65,6 @@ impl MediaData {
         full_data_len >= self.data_size() && full_data_len < self.data_size() + 8
     }
 
-    pub fn expected_num_packet(&self) -> usize {
-        self.data_size() / CHUNK_SIZE + 1
-    }
-
     pub fn header(&self) -> &[u8] {
         let lower_limit = 0;
         let upper_limit = self.header_size() + lower_limit;
