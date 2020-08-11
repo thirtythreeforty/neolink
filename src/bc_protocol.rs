@@ -293,9 +293,6 @@ impl BcCamera {
                 MediaDataKind::Invalid => {
                     ();
                 }
-                MediaDataKind::Continue => {
-                    ();
-                }
             };
         }
     }

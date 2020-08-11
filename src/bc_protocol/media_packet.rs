@@ -11,7 +11,6 @@ use std::time::Duration;
 
 const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[
     MediaDataKind::Invalid,
-    MediaDataKind::Continue,
     MediaDataKind::Unknown,
 ];
 
@@ -40,7 +39,6 @@ pub enum MediaDataKind {
     AudioDataAdpcm,
     InfoData,
     Invalid,
-    Continue,
     Unknown,
 }
 
@@ -70,7 +68,7 @@ impl MediaData {
             MediaDataKind::AudioDataAac => 8,
             MediaDataKind::AudioDataAdpcm => 16,
             MediaDataKind::InfoData => 32,
-            MediaDataKind::Unknown | MediaDataKind::Invalid | MediaDataKind::Continue => 0,
+            MediaDataKind::Unknown | MediaDataKind::Invalid => 0,
         }
     }
 
@@ -91,7 +89,7 @@ impl MediaData {
             MediaDataKind::AudioDataAac => MediaData::bytes_to_size(&data[4..6]),
             MediaDataKind::AudioDataAdpcm => MediaData::bytes_to_size(&data[4..6]),
             MediaDataKind::InfoData => 0, // The bytes in MediaData::bytes_to_size(&data[4..8]) seem to be the size of the header
-            MediaDataKind::Unknown | MediaDataKind::Invalid | MediaDataKind::Continue => data.len(),
+            MediaDataKind::Unknown | MediaDataKind::Invalid => data.len(),
         }
     }
 
@@ -150,7 +148,6 @@ impl MediaData {
             MAGIC_ADPCM => MediaDataKind::AudioDataAdpcm,
             MAGIC_IFRAME => MediaDataKind::VideoDataIframe,
             MAGIC_PFRAME => MediaDataKind::VideoDataPframe,
-            _ if data.len() == CHUNK_SIZE => MediaDataKind::Continue,
             _ => {
                 trace!("Unknown magic kind: {:x?}", &magic);
                 MediaDataKind::Unknown
@@ -255,7 +252,7 @@ impl MediaData {
                 // Not sure how to check this yet. Theres only one per stream at the start though
                 true
             }
-            MediaDataKind::Unknown | MediaDataKind::Continue => true,
+            MediaDataKind::Unknown => true,
             MediaDataKind::Invalid => false,
         }
     }
