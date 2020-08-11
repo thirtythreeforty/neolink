@@ -18,8 +18,6 @@ const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[
 // When testing the type
 const MAX_HEADER_SIZE: usize = 32;
 
-pub const CHUNK_SIZE: usize = 40000;
-
 // Media packets use 8 byte padding
 const PAD_SIZE: usize = 8;
 
@@ -44,7 +42,7 @@ pub enum MediaDataKind {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MediaData {
-    pub data: Vec<u8>,
+    data: Vec<u8>,
 }
 
 impl MediaData {
@@ -55,13 +53,7 @@ impl MediaData {
         &self.data[lower_limit..upper_limit]
     }
 
-    pub fn header(&self) -> &[u8] {
-        let lower_limit = 0;
-        let upper_limit = self.header_size() + lower_limit;
-        &self.data[min(self.len(), lower_limit)..min(self.len(), upper_limit)]
-    }
-
-    pub fn header_size_from_kind(kind: MediaDataKind) -> usize {
+    fn header_size_from_kind(kind: MediaDataKind) -> usize {
         match kind {
             MediaDataKind::VideoDataIframe => 32,
             MediaDataKind::VideoDataPframe => 24,
@@ -72,16 +64,16 @@ impl MediaData {
         }
     }
 
-    pub fn header_size_from_raw(data: &[u8]) -> usize {
+    fn header_size_from_raw(data: &[u8]) -> usize {
         let kind = MediaData::kind_from_raw(data);
         MediaData::header_size_from_kind(kind)
     }
 
-    pub fn header_size(&self) -> usize {
+    fn header_size(&self) -> usize {
         MediaData::header_size_from_raw(&self.data)
     }
 
-    pub fn data_size_from_raw(data: &[u8]) -> usize {
+    fn data_size_from_raw(data: &[u8]) -> usize {
         let kind = MediaData::kind_from_raw(data);
         match kind {
             MediaDataKind::VideoDataIframe => MediaData::bytes_to_size(&data[8..12]),
@@ -93,11 +85,11 @@ impl MediaData {
         }
     }
 
-    pub fn data_size(&self) -> usize {
+    fn data_size(&self) -> usize {
         MediaData::data_size_from_raw(&self.data)
     }
 
-    pub fn pad_size_from_raw(data: &[u8]) -> usize {
+    fn pad_size_from_raw(data: &[u8]) -> usize {
         let data_size = MediaData::data_size_from_raw(data);
         match data_size % PAD_SIZE {
             0 => 0,
@@ -105,7 +97,7 @@ impl MediaData {
         }
     }
 
-    pub fn pad_size(&self) -> usize {
+    fn pad_size(&self) -> usize {
         MediaData::data_size_from_raw(&self.data)
     }
 
@@ -125,7 +117,7 @@ impl MediaData {
         }
     }
 
-    pub fn kind_from_raw(data: &[u8]) -> MediaDataKind {
+    fn kind_from_raw(data: &[u8]) -> MediaDataKind {
         // When calling this ensure you have enough data for header_size +2
         // Else full_header_check_from_kind will fail because we check the
         // First two bytes after the header for the audio stream
@@ -167,15 +159,15 @@ impl MediaData {
         MediaData::kind_from_raw(&self.data)
     }
 
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.data.len()
     }
 
-    pub fn as_slice(&self) -> &[u8] {
+    fn as_slice(&self) -> &[u8] {
         self.data.as_slice()
     }
 
-    pub fn full_header_check_from_kind(kind: MediaDataKind, data: &[u8]) -> bool {
+    fn full_header_check_from_kind(kind: MediaDataKind, data: &[u8]) -> bool {
         // This will run more advanced checks to ensure it is a valid header
         let header_size = MediaData::header_size_from_kind(kind);
         if data.len() < header_size {
@@ -184,7 +176,7 @@ impl MediaData {
         }
 
         match kind {
-            MediaDataKind::VideoDataIframe => {
+            MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
                 let stream_type = &data[4..8];
                 if let Ok(stream_type_name) = str::from_utf8(stream_type) {
                     match stream_type_name {
@@ -193,24 +185,6 @@ impl MediaData {
                         _ => {
                             trace!(
                                 "Video Iframe failed header checks: {:x?}",
-                                &data[0..min(MAX_HEADER_SIZE, data.len())]
-                            );
-                            false
-                        }
-                    }
-                } else {
-                    false
-                }
-            }
-            MediaDataKind::VideoDataPframe => {
-                let stream_type = &data[4..8];
-                if let Ok(stream_type_name) = str::from_utf8(stream_type) {
-                    match stream_type_name {
-                        "H264" | "h264" => true, // Offically it should be "H264" not "h264" but covering all cases
-                        "H265" | "h265" => true,
-                        _ => {
-                            trace!(
-                                "Video Pframe failed header checks: {:x?}",
                                 &data[0..min(MAX_HEADER_SIZE, data.len())]
                             );
                             false
@@ -249,7 +223,7 @@ impl MediaData {
                 }
             }
             MediaDataKind::InfoData => {
-                // Not sure how to check this yet. Theres only one per stream at the start though
+                // Not sure how to check this yet. Theres only one of each kind per stream at the start
                 true
             }
             MediaDataKind::Unknown => true,
