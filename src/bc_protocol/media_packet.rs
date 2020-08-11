@@ -48,7 +48,6 @@ impl MediaData {
     pub fn body(&self) -> &[u8] {
         let lower_limit = self.header_size();
         let upper_limit = self.data_size() + lower_limit;
-        let len = self.len();
         &self.data[lower_limit..upper_limit]
     }
 
@@ -94,10 +93,6 @@ impl MediaData {
             0 => 0,
             n => PAD_SIZE - n,
         }
-    }
-
-    fn pad_size(&self) -> usize {
-        MediaData::data_size_from_raw(&self.data)
     }
 
     fn bytes_to_size(bytes: &[u8]) -> usize {
@@ -156,14 +151,6 @@ impl MediaData {
 
     pub fn kind(&self) -> MediaDataKind {
         MediaData::kind_from_raw(&self.data)
-    }
-
-    fn len(&self) -> usize {
-        self.data.len()
-    }
-
-    fn as_slice(&self) -> &[u8] {
-        self.data.as_slice()
     }
 
     fn full_header_check_from_kind(kind: MediaDataKind, data: &[u8]) -> bool {
@@ -313,7 +300,6 @@ impl<'a> MediaDataSubscriber<'a> {
 
         // Get the magic bytes (guaranteed by advance_to_media_packet)
         let magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAX_HEADER_SIZE);
-        let kind = MediaData::kind_from_raw(&magic);
 
         // Get enough for the full header
         let header_size = MediaData::header_size_from_raw(&magic);
