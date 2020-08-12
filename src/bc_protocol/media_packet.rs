@@ -180,7 +180,8 @@ impl<'a> MediaDataSubscriber<'a> {
         let mut magic =
             MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_SIZE);
         if INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
-            trace!("Advancing to next know packet header: {:x?}", &magic);
+            warn!("Possibly truncated packet or unknown magic in stream");
+            trace!("Unknown magic was: {:x?}", &magic);
         }
         while INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
             self.binary_buffer.pop_front();
