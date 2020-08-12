@@ -41,21 +41,22 @@ impl BcCamera {
             ..
         }) = msg.body
         {
-            let datetime = match try_build_timestamp(
-                time_zone, year, month, day, hour, minute, second
-            ) {
-                Ok(dt) => dt,
-                Err(e) => return Err(Error::UnintelligibleReply {
-                    reply: msg,
-                    why: "Could not parse date",
-                })
-            };
+            let datetime =
+                match try_build_timestamp(time_zone, year, month, day, hour, minute, second) {
+                    Ok(dt) => dt,
+                    Err(e) => {
+                        return Err(Error::UnintelligibleReply {
+                            reply: msg,
+                            why: "Could not parse date",
+                        })
+                    }
+                };
 
             // This code was written in 2020; I'm trying to catch all the possible epochs that
             // cameras might reset themselves to. My B800 resets to Jan 1, 1999, but I can't
             // guarantee that Reolink won't pick some newer date.  Therefore, last year ought
             // to be new enough, yet still distant enough that it won't interfere with anything
-            const BOUNDARY: Date = date!(2019-01-01);
+            const BOUNDARY: Date = date!(2019 - 01 - 01);
 
             // detect if no time is actually set, and return Ok(None): that is, operation
             // succeeded, and there is no time set

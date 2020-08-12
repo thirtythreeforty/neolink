@@ -52,7 +52,9 @@ fn main() -> Result<(), Error> {
     set_up_users(&config.users, &rtsp);
 
     if config.certificate == None && !config.users.is_empty() {
-        warn!("Without a server certificate, usernames and passwords will be exchanged in plaintext!")
+        warn!(
+            "Without a server certificate, usernames and passwords will be exchanged in plaintext!"
+        )
     }
 
     crossbeam::scope(|s| {
@@ -73,9 +75,8 @@ fn main() -> Result<(), Error> {
                 "h264" | "H264" | "h265" | "H265" => StreamFormat::H264,
                 custom_format @ _ => StreamFormat::Custom(custom_format.to_string()),
             };
-            let permitted_users = get_permitted_users(
-                config.users.as_slice(),
-                &arc_cam.permitted_users);
+            let permitted_users =
+                get_permitted_users(config.users.as_slice(), &arc_cam.permitted_users);
 
             // Set up each main and substream according to all the RTSP mount paths we support
             if ["both", "mainStream"].iter().any(|&e| e == arc_cam.stream) {
@@ -83,13 +84,17 @@ fn main() -> Result<(), Error> {
                     &*format!("/{}", arc_cam.name),
                     &*format!("/{}/mainStream", arc_cam.name),
                 ];
-                let mut output = rtsp.add_stream(paths, stream_format, &permitted_users).unwrap();
+                let mut output = rtsp
+                    .add_stream(paths, stream_format, &permitted_users)
+                    .unwrap();
                 let main_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output));
             }
             if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
-                let mut output = rtsp.add_stream(paths, substream_format, &permitted_users).unwrap();
+                let mut output = rtsp
+                    .add_stream(paths, substream_format, &permitted_users)
+                    .unwrap();
                 let sub_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut output));
             }
@@ -159,8 +164,12 @@ fn set_up_tls(config: &Config, rtsp: &RtspServer) {
 
 fn set_up_users(users: &[UserConfig], rtsp: &RtspServer) {
     // Setting up users
-    let credentials: Vec<_> = users.iter().map(|user| (&*user.name, &*user.pass)).collect();
-    rtsp.set_credentials(&credentials).expect("Failed to set up users");
+    let credentials: Vec<_> = users
+        .iter()
+        .map(|user| (&*user.name, &*user.pass))
+        .collect();
+    rtsp.set_credentials(&credentials)
+        .expect("Failed to set up users");
 }
 
 fn get_permitted_users<'a>(
@@ -169,9 +178,7 @@ fn get_permitted_users<'a>(
     permitted_users: &'a Option<Vec<String>>,
 ) -> HashSet<&'a str> {
     // Helper to build hashset of all users in `users`:
-    let all_users_hash = || {
-        users.iter().map(|u| u.name.as_str()).collect()
-    };
+    let all_users_hash = || users.iter().map(|u| u.name.as_str()).collect();
 
     match permitted_users {
         // If in the camera config there is the user "anyone", or if none is specified but users
