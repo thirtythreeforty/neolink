@@ -145,6 +145,27 @@ impl MediaData {
     pub fn kind(&self) -> MediaDataKind {
         MediaData::kind_from_raw(&self.data)
     }
+
+    pub fn media_format(&self) -> MediaFormat {
+        let kind = self.kind();
+        match kind {
+            MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
+                let stream_type = &self.data[4..8];
+                const H264_STR_UPPER: &[u8] = &[0x48, 0x32, 0x36, 0x34];
+                const H264_STR_LOWER: &[u8] = &[0x68, 0x32, 0x36, 0x34];
+                const H265_STR_UPPER: &[u8] = &[0x48, 0x32, 0x36, 0x35];
+                const H265_STR_LOWER: &[u8] = &[0x68, 0x32, 0x36, 0x35];
+                match stream_type {
+                    H264_STR_UPPER | H264_STR_LOWER => MediaFormat::H264, // Offically it should be "H264" not "h264" but covering all cases
+                    H265_STR_UPPER | H265_STR_LOWER => MediaFormat::H265,
+                    _ => MediaFormat::Unknown,
+                }
+            }
+            MediaDataKind::AudioDataAac => MediaFormat::AAC,
+            MediaDataKind::AudioDataAdpcm => MediaFormat::ADPCM,
+            _ => MediaFormat::Unknown,
+        }
+    }
 }
 
 pub struct MediaDataSubscriber<'a> {
