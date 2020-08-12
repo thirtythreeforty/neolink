@@ -3,7 +3,7 @@ use self::media_packet::{MediaDataKind, MediaDataSubscriber, MediaFormat};
 use crate::gst;
 use crate::bc;
 use crate::bc::{model::*, xml::*};
-use crate::gst::StreamFormat;
+use crate::gst::{VideoStreamFormat, AudioStreamFormat};
 use err_derive::Error;
 use log::*;
 use md5;
@@ -283,14 +283,21 @@ impl BcCamera {
                 MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
                     let media_format = binary_data.media_format();
                     let stream_format = match media_format {
-                        MediaFormat::H264 => StreamFormat::H264,
-                        MediaFormat::H265 => StreamFormat::H265,
+                        MediaFormat::H264 => VideoStreamFormat::H264,
+                        MediaFormat::H265 => VideoStreamFormat::H265,
                         _ => unreachable!(), // Unless packets are invalid but that should already be caught before this
                     };
                     data_outs.set_video_format(stream_format);
                     data_outs.vidsrc.write_all(binary_data.body())?;
                 },
                 MediaDataKind::AudioDataAac | MediaDataKind::AudioDataAdpcm => {
+                    let media_format = binary_data.media_format();
+                    let stream_format = match media_format {
+                        MediaFormat::AAC => AudioStreamFormat::AAC,
+                        MediaFormat::ADPCM => AudioStreamFormat::ADPCM,
+                        _ => unreachable!(), // Unless packets are invalid but that should already be caught before this
+                    };
+                    data_outs.set_audio_format(stream_format);
                     data_outs.audsrc.write_all(binary_data.body())?;
                 },
                 _ => {}
