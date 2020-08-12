@@ -72,7 +72,7 @@ impl GstOutputs {
                 Some(audio_format) =>  {
                     match audio_format {
                         AudioStreamFormat::AAC => "! queue ! aacparse ! rtpmp4apay name=pay1",
-                        AudioStreamFormat::ADPCM => "! queue ! aacparse ! adpcmdec ! avenc_aac ! rtpmp4apay name=pay1", // Theres no adpcm rtp format so we re-encode
+                        AudioStreamFormat::ADPCM => "! queue ! rawaudioparse format=pcm ! rtppcmapay name=pay1", // Theres no adpcm rtp format but there is pcm and rawaudioparse.
                     }
                 },
                 None => "! fakesink",
