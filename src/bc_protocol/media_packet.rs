@@ -11,9 +11,9 @@ const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[
     MediaDataKind::Unknown,
 ];
 
-// MAGIC_LEN: Number of bytes needed to get magic header type, represets minimum bytes to pull from the
+// MAGIC_SIZE: Number of bytes needed to get magic header type, represets minimum bytes to pull from the
 // stream
-const MAGIC_LEN: usize = 4;
+const MAGIC_SIZE: usize = 4;
 // PAD_SIZE: Media packets use 8 byte padding
 const PAD_SIZE: usize = 8;
 
@@ -112,7 +112,7 @@ impl MediaData {
         // Else full_header_check_from_kind will fail because we check the
         // First two bytes after the header for the audio stream
         // Since AAC and ADMPC streams start in a predicatble manner
-        assert!(data.len() >= MAGIC_LEN, "At least four bytes needed to get media packet type");
+        assert!(data.len() >= MAGIC_SIZE, "At least four bytes needed to get media packet type");
         const MAGIC_VIDEO_INFO_V1: &[u8] = &[0x31, 0x30, 0x30, 0x31];
         const MAGIC_VIDEO_INFO_V2: &[u8] = &[0x31, 0x30, 0x30, 0x32];
         const MAGIC_AAC: &[u8] = &[0x30, 0x35, 0x77, 0x62];
@@ -120,7 +120,7 @@ impl MediaData {
         const MAGIC_IFRAME: &[u8] = &[0x30, 0x30, 0x64, 0x63];
         const MAGIC_PFRAME: &[u8] = &[0x30, 0x31, 0x64, 0x63];
 
-        let magic = &data[..MAGIC_LEN];
+        let magic = &data[..MAGIC_SIZE];
         match magic {
             MAGIC_VIDEO_INFO_V1 | MAGIC_VIDEO_INFO_V2 => MediaDataKind::InfoData,
             MAGIC_AAC => MediaDataKind::AudioDataAac,
@@ -172,22 +172,22 @@ impl<'a> MediaDataSubscriber<'a> {
     fn advance_to_media_packet(&mut self, rx_timeout: Duration) -> Result<()> {
         // In the event we get an unknown packet we advance by brute force
         // reading of bytes to the next valid magic
-        while self.binary_buffer.len() < MAGIC_LEN {
+        while self.binary_buffer.len() < MAGIC_SIZE {
             self.fill_binary_buffer(rx_timeout)?;
         }
 
         // Check the kind, if its invalid use pop a byte and try again
         let mut magic =
-            MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_LEN);
+            MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_SIZE);
         if INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
             trace!("Advancing to next know packet header: {:x?}", &magic);
         }
         while INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
             self.binary_buffer.pop_front();
-            while self.binary_buffer.len() < MAGIC_LEN {
+            while self.binary_buffer.len() < MAGIC_SIZE {
                 self.fill_binary_buffer(rx_timeout)?;
             }
-            magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_LEN);
+            magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_SIZE);
         }
 
         Ok(())
@@ -220,7 +220,7 @@ impl<'a> MediaDataSubscriber<'a> {
         self.advance_to_media_packet(rx_timeout)?;
 
         // Get the magic bytes (guaranteed by advance_to_media_packet)
-        let magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_LEN);
+        let magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_SIZE);
 
         // Get enough for the full header
         let header_size = MediaData::header_size_from_raw(&magic);
