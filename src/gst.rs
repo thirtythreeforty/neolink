@@ -28,13 +28,9 @@ pub struct RtspServer {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
-pub enum VideoStreamFormat {
+pub enum StreamFormat {
     H264,
     H265,
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
-pub enum AudioStreamFormat {
     AAC,
     ADPCM,
 }
@@ -42,55 +38,64 @@ pub enum AudioStreamFormat {
 pub struct GstOutputs {
     pub audsrc: MaybeAppSrc,
     pub vidsrc: MaybeAppSrc,
-    video_format: Option<VideoStreamFormat>,
-    audio_format: Option<AudioStreamFormat>,
+    video_format: Option<StreamFormat>,
+    audio_format: Option<StreamFormat>,
     factory: RTSPMediaFactory,
 }
 
 impl GstOutputs {
-    pub fn set_video_format(&mut self, vid_format: VideoStreamFormat) {
-        self.set_format(Some(vid_format), self.audio_format);
+    pub fn from_appsrcs(vidsrc: MaybeAppSrc, audsrc: MaybeAppSrc) -> GstOutputs {
+        let result = GstOutputs{
+            vidsrc,
+            audsrc,
+            video_format: None,
+            audio_format: None,
+            factory: RTSPMediaFactory::new(),
+        };
+        result.apply_format();
+        result
     }
 
-    pub fn set_audio_format(&mut self, audio_format: AudioStreamFormat) {
-        self.set_format(self.video_format, Some(audio_format));
-    }
-
-    pub fn set_format(&mut self, vid_format: Option<VideoStreamFormat>, audio_format: Option<AudioStreamFormat>) {
-        if vid_format != self.video_format || audio_format != self.audio_format { // Needs update
-            let launch_vid = match vid_format {
-                Some(vid_format) =>  {
-                    match vid_format {
-                        VideoStreamFormat::H264 => "! queue ! h264parse ! rtph264pay name=pay0",
-                        VideoStreamFormat::H265 => "! queue ! h265parse ! rtph265pay name=pay0",
-                    }
-                },
-                None => "! fakesink",
-            };
-
-            let launch_aud = match audio_format {
-                Some(audio_format) =>  {
-                    match audio_format {
-                        AudioStreamFormat::AAC => "! queue ! aacparse ! rtpmp4apay name=pay1",
-                        AudioStreamFormat::ADPCM => "! queue ! rawaudioparse format=pcm ! rtppcmapay name=pay1", // Theres no adpcm rtp format but there is pcm and rawaudioparse.
-                    }
-                },
-                None => "! fakesink",
-            };
-
-            self.factory.set_launch(&format!("{}{}{}{}{}{}",
-                "( ",
-                "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
-                launch_vid,
-                " appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
-                launch_aud,
-                " )"
-            ));
-            self.video_format = vid_format;
-            self.audio_format = audio_format;
+    pub fn set_format(&mut self, format: Option<StreamFormat>) {
+        match format {
+            Some(StreamFormat::H264) | Some(StreamFormat::H265) => {
+                if format != self.video_format {
+                    self.video_format = format;
+                    self.apply_format();
+                }
+            }
+            Some(StreamFormat::AAC) | Some(StreamFormat::ADPCM) => {
+                if format != self.audio_format {
+                    self.audio_format = format;
+                    self.apply_format();
+                }
+            }
+            _ => {}
         }
     }
 
+    fn apply_format(&self) {
+        let launch_vid = match self.video_format {
+            Some(StreamFormat::H264) => "! queue ! h264parse ! rtph264pay name=pay0",
+            Some(StreamFormat::H265) => "! queue ! h265parse ! rtph265pay name=pay0",
+            _ => "! fakesink",
+        };
+
+        let launch_aud = match self.audio_format {
+            Some(StreamFormat::AAC) => "! queue ! aacparse ! rtpmp4apay name=pay1",
+            Some(StreamFormat::ADPCM) => "! queue ! rawaudioparse format=pcm ! rtppcmapay name=pay1", // Theres no adpcm rtp format but there is pcm and rawaudioparse.
+            _ => "! fakesink",
+        };
+
+        self.factory.set_launch(&format!("{}{}{}{}{}{}",
+            "( ",
+            "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
+            launch_vid,
+            " appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
+            launch_aud,
+            " )"
+        ));
+    }
 }
 
 impl RtspServer {
@@ -118,13 +123,7 @@ impl RtspServer {
         let (maybe_app_src, tx) = MaybeAppSrc::new_with_tx();
         let (maybe_app_src_aud, tx_aud) = MaybeAppSrc::new_with_tx();
 
-        let outputs = GstOutputs{
-            vidsrc: maybe_app_src,
-            audsrc: maybe_app_src_aud,
-            factory: RTSPMediaFactory::new(),
-            video_format: None,
-            audio_format: None,
-        };
+        let outputs = GstOutputs::from_appsrcs(maybe_app_src, maybe_app_src_aud);
 
         let factory = &outputs.factory;
 
@@ -139,19 +138,6 @@ impl RtspServer {
             paths.join(", ")
         );
         self.add_permitted_roles(factory, permitted_users);
-
-        // Until we know the format we just use fakesink
-        let launch_vid = "! fakesink";
-        let launch_aud = "! fakesink";
-        //factory.set_protocols(RTSPLowerTrans::TCP);
-        factory.set_launch(&format!("{}{}{}{}{}{}",
-            "( ",
-            "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
-            launch_vid,
-            " appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
-            launch_aud,
-            " )"
-        ));
 
         factory.set_shared(true);
 

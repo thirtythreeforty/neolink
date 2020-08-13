@@ -1,5 +1,6 @@
 use crate::bc::model::*;
 use crate::bc_protocol::connection::BcSubscription;
+use crate::gst::StreamFormat;
 use err_derive::Error;
 use log::trace;
 use log::*;
@@ -32,14 +33,6 @@ pub enum MediaDataKind {
     AudioDataAac,
     AudioDataAdpcm,
     InfoData,
-    Unknown,
-}
-
-pub enum MediaFormat {
-    H264,
-    H265,
-    AAC,
-    ADPCM,
     Unknown,
 }
 
@@ -146,7 +139,7 @@ impl MediaData {
         MediaData::kind_from_raw(&self.data)
     }
 
-    pub fn media_format(&self) -> MediaFormat {
+    pub fn media_format(&self) -> Option<StreamFormat> {
         let kind = self.kind();
         match kind {
             MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
@@ -156,14 +149,14 @@ impl MediaData {
                 const H265_STR_UPPER: &[u8] = &[0x48, 0x32, 0x36, 0x35];
                 const H265_STR_LOWER: &[u8] = &[0x68, 0x32, 0x36, 0x35];
                 match stream_type {
-                    H264_STR_UPPER | H264_STR_LOWER => MediaFormat::H264, // Offically it should be "H264" not "h264" but covering all cases
-                    H265_STR_UPPER | H265_STR_LOWER => MediaFormat::H265,
-                    _ => MediaFormat::Unknown,
+                    H264_STR_UPPER | H264_STR_LOWER => Some(StreamFormat::H264), // Offically it should be "H264" not "h264" but covering all cases
+                    H265_STR_UPPER | H265_STR_LOWER => Some(StreamFormat::H265),
+                    _ => None,
                 }
             }
-            MediaDataKind::AudioDataAac => MediaFormat::AAC,
-            MediaDataKind::AudioDataAdpcm => MediaFormat::ADPCM,
-            _ => MediaFormat::Unknown,
+            MediaDataKind::AudioDataAac => Some(StreamFormat::AAC),
+            MediaDataKind::AudioDataAdpcm => Some(StreamFormat::ADPCM),
+            _ => None,
         }
     }
 }

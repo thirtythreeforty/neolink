@@ -1,9 +1,8 @@
 use self::connection::BcConnection;
-use self::media_packet::{MediaDataKind, MediaDataSubscriber, MediaFormat};
-use crate::gst;
+use self::media_packet::{MediaDataKind, MediaDataSubscriber};
+use crate::gst::GstOutputs;
 use crate::bc;
 use crate::bc::{model::*, xml::*};
-use crate::gst::{VideoStreamFormat, AudioStreamFormat};
 use err_derive::Error;
 use log::*;
 use md5;
@@ -246,7 +245,7 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(&self, data_outs: &mut gst::GstOutputs, stream_name: &str) -> Result<Never> {
+    pub fn start_video(&self, data_outs: &mut GstOutputs, stream_name: &str) -> Result<Never> {
         let connection = self
             .connection
             .as_ref()
@@ -282,22 +281,12 @@ impl BcCamera {
             match binary_data.kind() {
                 MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
                     let media_format = binary_data.media_format();
-                    let stream_format = match media_format {
-                        MediaFormat::H264 => VideoStreamFormat::H264,
-                        MediaFormat::H265 => VideoStreamFormat::H265,
-                        _ => unreachable!(), // Unless packets are invalid but that should already be caught before this
-                    };
-                    data_outs.set_video_format(stream_format);
+                    data_outs.set_format(media_format);
                     data_outs.vidsrc.write_all(binary_data.body())?;
                 },
                 MediaDataKind::AudioDataAac | MediaDataKind::AudioDataAdpcm => {
                     let media_format = binary_data.media_format();
-                    let stream_format = match media_format {
-                        MediaFormat::AAC => AudioStreamFormat::AAC,
-                        MediaFormat::ADPCM => AudioStreamFormat::ADPCM,
-                        _ => unreachable!(), // Unless packets are invalid but that should already be caught before this
-                    };
-                    data_outs.set_audio_format(stream_format);
+                    data_outs.set_format(media_format);
                     data_outs.audsrc.write_all(binary_data.body())?;
                 },
                 _ => {}
