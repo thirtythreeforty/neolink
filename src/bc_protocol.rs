@@ -1,4 +1,5 @@
 use self::connection::BcConnection;
+use self::media_packet::{MediaDataKind, MediaDataSubscriber};
 use crate::bc;
 use crate::bc::{model::*, xml::*};
 use err_derive::Error;
@@ -10,6 +11,7 @@ use std::time::Duration;
 use Md5Trunc::*;
 
 mod connection;
+mod media_packet;
 mod time;
 
 pub struct BcCamera {
@@ -46,6 +48,9 @@ pub enum Error {
 
     #[error(display = "Timeout")]
     Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
+
+    #[error(display = "Media")]
+    MediaPacket(#[error(source)] self::media_packet::Error),
 
     #[error(display = "Credential error")]
     AuthFailed,
@@ -265,20 +270,18 @@ impl BcCamera {
 
         sub_video.send(start_video)?;
 
+        let mut media_sub = MediaDataSubscriber::from_bc_sub(&sub_video);
+
         loop {
-            trace!("Getting video message...");
-            let msg = sub_video.rx.recv_timeout(RX_TIMEOUT)?;
-            if let BcBody::ModernMsg(ModernMsg {
-                binary: Some(binary),
-                ..
-            }) = msg.body
-            {
-                trace!("Got {} bytes of video data", binary.len());
-                data_out.write_all(binary.as_slice())?;
-            } else {
-                warn!("Ignoring weird video message");
-                debug!("Contents: {:?}", msg);
-            }
+            let binary_data = media_sub.next_media_packet(RX_TIMEOUT)?;
+            // We now have a complete interesting packet. Send it to gst.
+            // Process the packet
+            match binary_data.kind() {
+                MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
+                    data_out.write_all(binary_data.body())?;
+                }
+                _ => {}
+            };
         }
     }
 }
