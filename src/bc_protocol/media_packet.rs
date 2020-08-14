@@ -7,9 +7,7 @@ use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::time::Duration;
 
-const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[
-    MediaDataKind::Unknown,
-];
+const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[MediaDataKind::Unknown];
 
 // MAGIC_SIZE: Number of bytes needed to get magic header type, represets minimum bytes to pull from the
 // stream
@@ -112,7 +110,10 @@ impl MediaData {
         // Else full_header_check_from_kind will fail because we check the
         // First two bytes after the header for the audio stream
         // Since AAC and ADMPC streams start in a predicatble manner
-        assert!(data.len() >= MAGIC_SIZE, "At least four bytes needed to get media packet type");
+        assert!(
+            data.len() >= MAGIC_SIZE,
+            "At least four bytes needed to get media packet type"
+        );
         const MAGIC_VIDEO_INFO_V1: &[u8] = &[0x31, 0x30, 0x30, 0x31];
         const MAGIC_VIDEO_INFO_V2: &[u8] = &[0x31, 0x30, 0x30, 0x32];
         const MAGIC_AAC: &[u8] = &[0x30, 0x35, 0x77, 0x62];
@@ -177,8 +178,7 @@ impl<'a> MediaDataSubscriber<'a> {
         }
 
         // Check the kind, if its invalid use pop a byte and try again
-        let mut magic =
-            MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_SIZE);
+        let mut magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_SIZE);
         if INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
             warn!("Possibly truncated packet or unknown magic in stream");
             trace!("Unknown magic was: {:x?}", &magic);
