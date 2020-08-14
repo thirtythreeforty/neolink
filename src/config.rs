@@ -6,6 +6,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 use validator::{Validate, ValidationError};
 use validator_derive::Validate;
+use std::sync::{Arc, Mutex};
 
 lazy_static! {
     static ref RE_STREAM_FORM: Regex = Regex::new(r"^([hH]26[45]|[ \t]*[!].*)$").unwrap();
@@ -13,7 +14,7 @@ lazy_static! {
     static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
 }
 
-#[derive(Debug, Deserialize, Validate, Clone)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct Config {
     #[validate]
     pub cameras: Vec<CameraConfig>,
@@ -41,7 +42,7 @@ pub struct Config {
     pub users: Vec<UserConfig>,
 }
 
-#[derive(Debug, Deserialize, Validate, Clone)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct CameraConfig {
     pub name: String,
 
@@ -71,6 +72,9 @@ pub struct CameraConfig {
     pub stream: String,
 
     pub permitted_users: Option<Vec<String>>,
+
+    #[serde(skip, default = "default_time_set")]
+    pub time_has_been_set: Arc<Mutex<bool>>,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -105,6 +109,10 @@ fn default_certificate() -> Option<String> {
 
 fn default_tls_client_auth() -> String {
     "none".to_string()
+}
+
+fn default_time_set() -> Arc<Mutex<bool>> {
+    Arc::new(Mutex::new(false))
 }
 
 pub static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];

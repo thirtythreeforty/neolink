@@ -218,27 +218,36 @@ fn camera_main(
         connected = true;
         info!("{}: Connected and logged in", camera_config.name);
 
-        let cam_time = camera.get_time()?;
-        if let Some(time) = cam_time {
-            info!(
-                "{}: Camera time is already set: {}",
-                camera_config.name, time
-            );
-        } else {
-            let new_time = time::OffsetDateTime::now_local();
-            warn!(
-                "{}: Camera has no time set, setting to {}",
-                camera_config.name, new_time
-            );
-            camera.set_time(new_time)?;
-            let cam_time = camera.get_time()?;
-            if let Some(time) = cam_time {
-                info!(
-                    "{}: Camera time is now set: {}",
-                    camera_config.name, time
-                );
-            } else {
-                error!("{}: Camera did not accept new time (is {} an admin?)", camera_config.name, camera_config.username);
+        let mut lock_time = camera_config.time_has_been_set.try_lock();
+        // If we were able to get the lock do then set the time
+        // If not another thread is setting it now so just skip this
+        if let Ok(ref mut time_set) = lock_time {
+            // Check if its been set on another thead already
+            if ! **time_set {
+                    **time_set = true;
+                let cam_time = camera.get_time()?;
+                if let Some(time) = cam_time {
+                    info!(
+                        "{}: Camera time is already set: {}",
+                        camera_config.name, time
+                    );
+                } else {
+                    let new_time = time::OffsetDateTime::now_local();
+                    warn!(
+                        "{}: Camera has no time set, setting to {}",
+                        camera_config.name, new_time
+                    );
+                    camera.set_time(new_time)?;
+                    let cam_time = camera.get_time()?;
+                    if let Some(time) = cam_time {
+                        info!(
+                            "{}: Camera time is now set: {}",
+                            camera_config.name, time
+                        );
+                    } else {
+                        error!("{}: Camera did not accept new time (is {} an admin?)", camera_config.name, camera_config.username);
+                    }
+                }
             }
         }
 
