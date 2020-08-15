@@ -53,7 +53,7 @@ impl MediaData {
             MediaDataKind::VideoDataIframe => 32,
             MediaDataKind::VideoDataPframe => 24,
             MediaDataKind::AudioDataAac => 8,
-            MediaDataKind::AudioDataAdpcm => 16,
+            MediaDataKind::AudioDataAdpcm => 8,
             MediaDataKind::InfoData => 32,
             MediaDataKind::Unknown => 0,
         }
@@ -129,7 +129,7 @@ impl MediaData {
             MAGIC_IFRAME => MediaDataKind::VideoDataIframe,
             MAGIC_PFRAME => MediaDataKind::VideoDataPframe,
             _ => {
-                trace!("Unknown magic kind: {:x?}", &magic);
+                //trace!("Unknown magic kind: {:x?}", &magic);
                 MediaDataKind::Unknown
             }
         }
