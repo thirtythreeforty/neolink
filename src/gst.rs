@@ -83,7 +83,7 @@ impl GstOutputs {
 
         let launch_aud = match self.audio_format {
             Some(StreamFormat::AAC) => "! queue ! aacparse ! rtpmp4apay name=pay1",
-            Some(StreamFormat::ADPCM) => "! queue ! rawaudioparse format=pcm ! rtppcmapay name=pay1", // Theres no adpcm rtp format but there is pcm and rawaudioparse.
+            Some(StreamFormat::ADPCM) => "! fakesink", // Theres no decoder or parser for adpcm_ima_oki streams, we cannot handle this.
             _ => "! fakesink",
         };
 
