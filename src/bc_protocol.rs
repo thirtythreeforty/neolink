@@ -6,7 +6,7 @@ use crate::bc::{model::*, xml::*};
 use err_derive::Error;
 use log::*;
 use md5;
-use adpcm::{oki_to_pcm, AdpcmSetup};
+use adpcm::oki_to_pcm;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
@@ -275,7 +275,7 @@ impl BcCamera {
         sub_video.send(start_video)?;
 
         let mut media_sub = MediaDataSubscriber::from_bc_sub(&sub_video);
-        let mut adpcm_contex = AdpcmSetup::new_oki();
+
         loop {
             let binary_data = media_sub.next_media_packet(RX_TIMEOUT)?;
             // We now have a complete interesting packet. Send it to gst.
@@ -290,7 +290,7 @@ impl BcCamera {
                     let media_format = binary_data.media_format();
                     data_outs.set_format(media_format);
                     let oki_adpcm = binary_data.body();
-                    let pcm = oki_to_pcm(oki_adpcm, &mut adpcm_contex);
+                    let pcm = oki_to_pcm(oki_adpcm);
                     data_outs.audsrc.write_all(&pcm)?;
                 },
                 _ => {}
