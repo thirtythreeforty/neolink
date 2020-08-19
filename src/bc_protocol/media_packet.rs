@@ -18,6 +18,10 @@ const MAGIC_SIZE: usize = 4;
 // PAD_SIZE: Media packets use 8 byte padding
 const PAD_SIZE: usize = 8;
 
+// ADPCM has a sub header we are not interested it (it is the step size and step_index
+// and we only want the raw data)
+const ADPCM_SUBHEADER_SIZE: usize =8;
+
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
@@ -53,7 +57,7 @@ impl MediaData {
             MediaDataKind::VideoDataIframe => 32,
             MediaDataKind::VideoDataPframe => 24,
             MediaDataKind::AudioDataAac => 8,
-            MediaDataKind::AudioDataAdpcm => 8,
+            MediaDataKind::AudioDataAdpcm => 8 + ADPCM_SUBHEADER_SIZE,
             MediaDataKind::InfoData => 32,
             MediaDataKind::Unknown => 0,
         }
@@ -74,7 +78,7 @@ impl MediaData {
             MediaDataKind::VideoDataIframe => MediaData::bytes_to_size(&data[8..12]),
             MediaDataKind::VideoDataPframe => MediaData::bytes_to_size(&data[8..12]),
             MediaDataKind::AudioDataAac => MediaData::bytes_to_size(&data[4..6]),
-            MediaDataKind::AudioDataAdpcm => MediaData::bytes_to_size(&data[4..6]),
+            MediaDataKind::AudioDataAdpcm => MediaData::bytes_to_size(&data[4..6]) - ADPCM_SUBHEADER_SIZE,
             MediaDataKind::InfoData => 0, // The bytes in MediaData::bytes_to_size(&data[4..8]) seem to be the size of the header
             MediaDataKind::Unknown => data.len(),
         }

@@ -83,7 +83,7 @@ impl GstOutputs {
 
         let launch_aud = match self.audio_format {
             Some(StreamFormat::AAC) => "! queue ! aacparse ! rtpmp4apay name=pay1",
-            Some(StreamFormat::ADPCM) => "! fakesink", // Theres no decoder or parser for adpcm_ima_oki streams, we cannot handle this.
+            Some(StreamFormat::ADPCM) => "! queue ! rawaudioparse format=0 num-channels=1 sample-rate=8000 ! alawenc ! rtppcmapay name=pay1", // We decode as oki adpcm as raw before the appsink then we convert to alaw for the rtp transport
             _ => "! fakesink",
         };
 

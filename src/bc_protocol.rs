@@ -6,6 +6,7 @@ use crate::bc::{model::*, xml::*};
 use err_derive::Error;
 use log::*;
 use md5;
+use adpcm::oki_to_pcm;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
@@ -15,6 +16,7 @@ use Md5Trunc::*;
 mod connection;
 mod media_packet;
 mod time;
+mod adpcm;
 
 pub struct BcCamera {
     address: SocketAddr,
@@ -287,7 +289,9 @@ impl BcCamera {
                 MediaDataKind::AudioDataAac | MediaDataKind::AudioDataAdpcm => {
                     let media_format = binary_data.media_format();
                     data_outs.set_format(media_format);
-                    data_outs.audsrc.write_all(binary_data.body())?;
+                    let oki_adpcm = binary_data.body();
+                    let pcm = oki_to_pcm(oki_adpcm);
+                    data_outs.audsrc.write_all(&pcm)?;
                 },
                 _ => {}
             };
