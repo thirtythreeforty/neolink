@@ -125,9 +125,9 @@ pub fn oki_to_pcm(bytes: &[u8]) -> Vec<u8> {
             };
 
             // PCM is really in i16 range
-            // OKI has an upper limit of I15....
-            // To convert we must scale it to the I16 range
-            // We also cast to I16 at this point ready for the conversion to u8 bytes of the output
+            // OKI has an upper limit of i15....
+            // To convert we must scale it to the i16 range
+            // We also cast to i16 at this point ready for the conversion to u8 bytes of the output
             let scaled_sample = (sample as isize * (i16::MAX as isize) / oki_context.max_sample_size as isize) as i16;
 
             // Get the results in bytes
@@ -137,11 +137,7 @@ pub fn oki_to_pcm(bytes: &[u8]) -> Vec<u8> {
             last_output = sample;
 
             // Increment the step index
-            step_index = match step_index as isize + oki_context.changes[unibble] {
-                n if n < 0 => 0,
-                n if n > oki_context.max_step_index as isize => oki_context.max_step_index as isize,
-                n => n,
-            };
+            step_index = step_index as isize + oki_context.changes[unibble];
         }
     };
 
