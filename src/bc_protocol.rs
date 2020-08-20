@@ -286,13 +286,18 @@ impl BcCamera {
                     data_outs.set_format(media_format);
                     data_outs.vidsrc.write_all(binary_data.body())?;
                 },
-                MediaDataKind::AudioDataAac | MediaDataKind::AudioDataAdpcm => {
+                MediaDataKind::AudioDataAac => {
+                    let media_format = binary_data.media_format();
+                    data_outs.set_format(media_format);
+                    data_outs.audsrc.write_all(binary_data.body())?;
+                },
+                MediaDataKind::AudioDataAdpcm => {
                     let media_format = binary_data.media_format();
                     data_outs.set_format(media_format);
                     let oki_adpcm = binary_data.body();
                     let pcm = oki_to_pcm(oki_adpcm);
                     data_outs.audsrc.write_all(&pcm)?;
-                },
+                }
                 _ => {}
             };
         }
