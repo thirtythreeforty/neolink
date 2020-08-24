@@ -89,120 +89,134 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
     // Each audio sample requires information on the previous sample
     // To solve this reolink caches the intermediate variables (step_index and last_output)
     // Into the block header in the stream. When ever an adpcm packet arrives it starts with
-    // 0x00017A00 which is the magic (I think) following by
+    // 0x0001 which is the frame time from HISilicon documentation (I think) following by
+    // 0xWW which is half the block size
     // 0xYY which is the last output
     // 0xZZ which is the step index of the last output
     // We must initialise our decoder with this data
 
-    // Check for valid magic panic if not
-    const BLOCK_MAGIC: &[u8] = &[0x00, 0x01, 0x7A, 0x00];
-    let magic = &bytes[0..4];
+    // Check for valid number of frame type
+    let frame_type_bytes = &bytes[0..2];
+    const FRAME_TYPE_HISILICON: &[u8] = &[0x00, 0x01];
     assert!(
-        magic == BLOCK_MAGIC,
-        "Unexpected adpcm block magic code {:x?}",
-        &magic
+        frame_type_bytes == FRAME_TYPE_HISILICON,
+        "Unexpected adpcm frame type: {:x?}",
+        frame_type_bytes
     );
 
-    // Get predictor state from block header using DVI 4 format.
-    let step_output_bytes = &bytes[4..6];
-    let mut last_output = i16::from_le_bytes(
-        step_output_bytes
+    // Check for valid block size
+    let block_size_bytes = &bytes[2..4];
+    let block_size = (u16::from_le_bytes(
+        block_size_bytes
             .try_into()
             .expect("slice with incorrect length"),
-    ) as isize;
-    let step_index_bytes = &bytes[6..8];
-    let mut step_index = u16::from_le_bytes(
-        step_index_bytes
-            .try_into()
-            .expect("slice with incorrect length"),
-    ) as isize;
+    ) as usize)  * 2; // Block size is stored as 1/2 (don't know why)
+    let full_block_size = block_size + 4; // block_size + magic (2 bytes) + size (2 bytes)
+    assert!(bytes.len() % full_block_size == 0, "ADPCM Data is not a multiple of the block size");
 
-    // To avoid casting to u8 <-> u16 <-> u32 and back all the time I just do all maths in u/isize
-    // This gives enough headroom to do all calculations without overflow because adpcm puts artifical
-    // limits on the sample sizes
-    let mut step: usize;
+    // Chunk on block size
+    for bytes in bytes.chunks(full_block_size) {
+        // Get predictor state from block header using DVI 4 format.
+        let step_output_bytes = &bytes[4..6];
+        let mut last_output = i16::from_le_bytes(
+            step_output_bytes
+                .try_into()
+                .expect("slice with incorrect length"),
+        ) as isize;
+        let step_index_bytes = &bytes[6..8];
+        let mut step_index = u16::from_le_bytes(
+            step_index_bytes
+                .try_into()
+                .expect("slice with incorrect length"),
+        ) as isize;
 
-    // The rest is all data to be decoded
-    let data = &bytes[8..];
+        // To avoid casting to u8 <-> u16 <-> u32 and back all the time I just do all maths in u/isize
+        // This gives enough headroom to do all calculations without overflow because adpcm puts artifical
+        // limits on the sample sizes
+        let mut step: usize;
 
-    for byte in data {
-        let nibbles: [Nibble; 2] = Nibble::from_byte(byte);
-        for nibble in &nibbles {
-            let unibble = nibble.unsigned();
+        // The rest is all data to be decoded
+        let data = &bytes[8..];
 
-            // Specifications say: Clamp it in max index range 0..context.max_step_index
-            step_index = match step_index {
-                n if n < 0 => 0,
-                n if n > context.max_step_index as isize => context.max_step_index as isize,
-                n => n,
-            };
+        for byte in data {
+            let nibbles: [Nibble; 2] = Nibble::from_byte(byte);
+            for nibble in &nibbles {
+                let unibble = nibble.unsigned();
 
-            // This is just Eulers approximation with a variable step size
-            // **Adaptive** Differential PCM
-            // Adaptive: because the step size is variable
-            step = context.steps[step_index as usize];
+                // Specifications say: Clamp it in max index range 0..context.max_step_index
+                step_index = match step_index {
+                    n if n < 0 => 0,
+                    n if n > context.max_step_index as isize => context.max_step_index as isize,
+                    n => n,
+                };
 
-            let raw_sample;
-            /* == Non approxiate version ===
-            // This is the full maths version
-            // We don't use this one as we need to match the way the encoder
-            // works if we want to use the state stored in the header.
-            // I have Left it here as it is easier to understand then the bit shift version below
-            let inibble = nibble.signed();
+                // This is just Eulers approximation with a variable step size
+                // **Adaptive** Differential PCM
+                // Adaptive: because the step size is variable
+                step = context.steps[step_index as usize];
 
-            // Calculate the delta (which is really what adpcm is all about)
-            // Adaptive **Differential** PCM
-            // Differential: Becuase its all about the difference (gradient)
-            let diff = (step as isize) * (inibble) / 2 + (step as isize) / 8;
+                let raw_sample;
+                /* == Non approxiate version ===
+                // This is the full maths version
+                // We don't use this one as we need to match the way the encoder
+                // works if we want to use the state stored in the header.
+                // I have Left it here as it is easier to understand then the bit shift version below
+                let inibble = nibble.signed();
 
-            // Eulers approxiation
-            // Sample = Previous_Sample + difference*step_size
-            raw_sample = last_output + diff;
-            */
+                // Calculate the delta (which is really what adpcm is all about)
+                // Adaptive **Differential** PCM
+                // Differential: Becuase its all about the difference (gradient)
+                let diff = (step as isize) * (inibble) / 2 + (step as isize) / 8;
 
-            // === Approximate version ==
-            // Approximate form uses bit shift operators.
-            // This is a legacy of the days when mult/divides were expensive
-            // It is also the format used on low end CPUs like cameras
-            let mut diff = step >> 3;
-            if (unibble & 0b0100) == 0b0100 {
-                diff += step;
+                // Eulers approxiation
+                // Sample = Previous_Sample + difference*step_size
+                raw_sample = last_output + diff;
+                */
+
+                // === Approximate version ==
+                // Approximate form uses bit shift operators.
+                // This is a legacy of the days when mult/divides were expensive
+                // It is also the format used on low end CPUs like cameras
+                let mut diff = step >> 3;
+                if (unibble & 0b0100) == 0b0100 {
+                    diff += step;
+                }
+                if (unibble & 0b0010) == 0b0010 {
+                    diff += step >> 1;
+                }
+                if (unibble & 0b0001) == 0b0001 {
+                    diff += step >> 2;
+                }
+                // Sign test
+                if (unibble & 0b1000) == 0b1000 {
+                    raw_sample = last_output - (diff as isize);
+                } else {
+                    raw_sample = last_output + (diff as isize);
+                }
+
+                // Specifications say: Clamp it in max sample range -context.max_sample_size..context.max_sample_size
+                let sample = match raw_sample {
+                    value if value > context.max_sample_size - 1 => context.max_sample_size - 1,
+                    value if value < -context.max_sample_size => -context.max_sample_size,
+                    value => value,
+                };
+
+                // PCM is really in i16 range
+                // Some formats e.g. OKI are not in the full PCM range of values
+                // To convert we must scale it to the i16 range
+                // We also cast to i16 at this point ready for the conversion to u8 bytes of the output
+                let scaled_sample = (sample as isize * (i16::MAX as isize)
+                    / (context.max_sample_size - 1) as isize) as i16;
+
+                // Get the results in bytes
+                result.extend(scaled_sample.to_le_bytes().iter());
+
+                // Increment the step index
+                step_index = step_index as isize + context.changes[unibble];
+
+                // cache the last_output ready for next run
+                last_output = sample;
             }
-            if (unibble & 0b0010) == 0b0010 {
-                diff += step >> 1;
-            }
-            if (unibble & 0b0001) == 0b0001 {
-                diff += step >> 2;
-            }
-            // Sign test
-            if (unibble & 0b1000) == 0b1000 {
-                raw_sample = last_output - (diff as isize);
-            } else {
-                raw_sample = last_output + (diff as isize);
-            }
-
-            // Specifications say: Clamp it in max sample range -context.max_sample_size..context.max_sample_size
-            let sample = match raw_sample {
-                value if value > context.max_sample_size - 1 => context.max_sample_size - 1,
-                value if value < -context.max_sample_size => -context.max_sample_size,
-                value => value,
-            };
-
-            // PCM is really in i16 range
-            // Some formats e.g. OKI are not in the full PCM range of values
-            // To convert we must scale it to the i16 range
-            // We also cast to i16 at this point ready for the conversion to u8 bytes of the output
-            let scaled_sample = (sample as isize * (i16::MAX as isize)
-                / (context.max_sample_size - 1) as isize) as i16;
-
-            // Get the results in bytes
-            result.extend(scaled_sample.to_le_bytes().iter());
-
-            // Increment the step index
-            step_index = step_index as isize + context.changes[unibble];
-
-            // cache the last_output ready for next run
-            last_output = sample;
         }
     }
     result
