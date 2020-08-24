@@ -1,5 +1,5 @@
 /*
- This is a rust implementation of OKI ADPCM.
+ This is a rust implementation of OKI and DVI/IMA ADPCM.
 */
 use std::convert::TryInto;
 
@@ -38,7 +38,7 @@ impl AdpcmSetup {
                 18500, 20350, 22385, 24623, 27086, 29794, 32767,
             ],
             changes: vec![-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8],
-            max_sample_size: 32767,
+            max_sample_size: 32768,
         }
     }
 }
@@ -95,11 +95,11 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
     // We must initialise our decoder with this data
 
     // Check for valid magic panic if not
-    const OKI_MAGIC: &[u8] = &[0x00, 0x01, 0x7A, 0x00];
+    const BLOCK_MAGIC: &[u8] = &[0x00, 0x01, 0x7A, 0x00];
     let magic = &bytes[0..4];
     assert!(
-        magic == OKI_MAGIC,
-        "Unexpected oki magic code {:x?}",
+        magic == BLOCK_MAGIC,
+        "Unexpected adpcm block magic code {:x?}",
         &magic
     );
 
@@ -118,7 +118,7 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
     ) as isize;
 
     // To avoid casting to u8 <-> u16 <-> u32 and back all the time I just do all maths in u/isize
-    // This gives enough headroom to do all calculations without overflow because oki puts artifical
+    // This gives enough headroom to do all calculations without overflow because adpcm puts artifical
     // limits on the sample sizes
     let mut step: usize;
 
