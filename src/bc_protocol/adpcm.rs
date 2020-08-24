@@ -4,27 +4,47 @@
 use std::convert::TryInto;
 
 struct AdpcmSetup {
-  max_step_index: usize,
-  steps: Vec<usize>,
-  max_sample_size: isize,
-  changes: Vec<isize>,
+    max_step_index: usize,
+    steps: Vec<usize>,
+    max_sample_size: isize,
+    changes: Vec<isize>,
 }
 
 impl AdpcmSetup {
+    // Unused, originally we thought BC might be using OKI but it is actually DVI4
     fn new_oki() -> Self {
-        Self{
+        Self {
             max_step_index: 48,
-            steps: vec![16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45,
-                        50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143,
-                        157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449,
-                        494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552],
+            steps: vec![
+                16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97,
+                107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449,
+                494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552,
+            ],
             changes: vec![-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8],
             max_sample_size: 2048,
         }
     }
+
+    // This is IMA format, but it is the same as DVI4 format except in the block header
+    fn new_ima() -> Self {
+        Self {
+            max_step_index: 88,
+            steps: vec![
+                7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50,
+                55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279,
+                307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282,
+                1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871,
+                5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818,
+                18500, 20350, 22385, 24623, 27086, 29794, 32767,
+            ],
+            changes: vec![-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8],
+            max_sample_size: 32767,
+        }
+    }
 }
 
-struct Nibble { // A nibble is a 4bit int
+struct Nibble {
+    // A nibble is a 4bit int
     data: u8, // This is the raw data for the nibble
 }
 
@@ -36,55 +56,70 @@ impl Nibble {
     }
 
     fn signed_magnitude(&self) -> usize {
-        (self.data & 0b00000111) as usize  // Mask of first 3 bits which are the magnitiude bits in signed int
+        (self.data & 0b00000111) as usize // Mask of first 3 bits which are the magnitiude bits in signed int
     }
 
     fn signed(&self) -> isize {
-        match self.data & 0b00001000  { // Sign bit is at the 4th bit
+        match self.data & 0b00001000 {
+            // Sign bit is at the 4th bit
             0b00001000 => -(self.signed_magnitude() as isize),
             _ => self.signed_magnitude() as isize,
         }
     }
 
-    fn from_byte(byte: &u8) -> [Self; 2] { // Two nibbles per byte
+    fn from_byte(byte: &u8) -> [Self; 2] {
+        // Two nibbles per byte
         [
-            Self{
+            Self {
+                data: (byte & 0b11110000) >> 4,
+            },
+            Self {
                 data: byte & 0b00001111,
             },
-            Self{
-                data: (byte & 0b11110000) >> 4,
-            }
         ]
     }
 }
 
-pub fn oki_to_pcm(bytes: &[u8]) -> Vec<u8> {
-    let oki_context = AdpcmSetup::new_oki(); // Should be able to get other adpcm by changing this
-    let mut result = vec![]; // Stores the PCM byte array as it is built
+pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
+    let context = AdpcmSetup::new_ima();
+
+    let mut result: Vec<u8> = vec![]; // Stores the PCM byte array
 
     // ADPCM is not really a streamable format
     // Each audio sample requires information on the previous sample
     // To solve this reolink caches the intermediate variables (step_index and last_output)
-    // Into a sub-header in the stream. When ever an adpcm packet arrives it starts with
+    // Into the block header in the stream. When ever an adpcm packet arrives it starts with
     // 0x00017A00 which is the magic (I think) following by
     // 0xYY which is the last output
     // 0xZZ which is the step index of the last output
     // We must initialise our decoder with this data
 
-    // To avoid casting to u8 <-> u16 <-> u32 and back all the time I just do all maths in u/isize
-    // This gives enough headroom to do all calculations without overflow because oki puts artifical
-    // limits on the sample sizes
-
     // Check for valid magic panic if not
     const OKI_MAGIC: &[u8] = &[0x00, 0x01, 0x7A, 0x00];
     let magic = &bytes[0..4];
-    assert!(magic == OKI_MAGIC, "Unexpected oki magic code {:x?}", &magic);
+    assert!(
+        magic == OKI_MAGIC,
+        "Unexpected oki magic code {:x?}",
+        &magic
+    );
 
-    // Get the cached intermediate variables from the subheader
-    let last_output_byes = &bytes[4..6];
+    // Get predictor state from block header using DVI 4 format.
+    let step_output_bytes = &bytes[4..6];
+    let mut last_output = i16::from_le_bytes(
+        step_output_bytes
+            .try_into()
+            .expect("slice with incorrect length"),
+    ) as isize;
     let step_index_bytes = &bytes[6..8];
-    let mut step_index: isize = u16::from_le_bytes(step_index_bytes.try_into().expect("slice with incorrect length")) as isize; // Index is inti to 16 in oki
-    let mut last_output: isize = i16::from_le_bytes(last_output_byes.try_into().expect("slice with incorrect length")) as isize;  // PCM is i16, init to 0 in oki
+    let mut step_index = u16::from_le_bytes(
+        step_index_bytes
+            .try_into()
+            .expect("slice with incorrect length"),
+    ) as isize;
+
+    // To avoid casting to u8 <-> u16 <-> u32 and back all the time I just do all maths in u/isize
+    // This gives enough headroom to do all calculations without overflow because oki puts artifical
+    // limits on the sample sizes
     let mut step: usize;
 
     // The rest is all data to be decoded
@@ -94,52 +129,81 @@ pub fn oki_to_pcm(bytes: &[u8]) -> Vec<u8> {
         let nibbles: [Nibble; 2] = Nibble::from_byte(byte);
         for nibble in &nibbles {
             let unibble = nibble.unsigned();
-            let inibble = nibble.signed();
 
-            // Specifications say: Clamp it in max index range 0..oki_context.max_step_index
+            // Specifications say: Clamp it in max index range 0..context.max_step_index
             step_index = match step_index {
                 n if n < 0 => 0,
-                n if n > oki_context.max_step_index as isize => oki_context.max_step_index as isize,
+                n if n > context.max_step_index as isize => context.max_step_index as isize,
                 n => n,
             };
 
             // This is just Eulers approximation with a variable step size
             // **Adaptive** Differential PCM
             // Adaptive: because the step size is variable
-            step = oki_context.steps[step_index as usize];
+            step = context.steps[step_index as usize];
+
+            let raw_sample;
+            /* == Non approxiate version ===
+            // This is the full maths version
+            // We don't use this one as we need to match the way the encoder
+            // works if we want to use the state stored in the header.
+            // I have Left it here as it is easier to understand then the bit shift version below
+            let inibble = nibble.signed();
 
             // Calculate the delta (which is really what adpcm is all about)
             // Adaptive **Differential** PCM
             // Differential: Becuase its all about the difference (gradient)
-            let diff = (step as isize) * (inibble) /2 + (step as isize) /8;
+            let diff = (step as isize) * (inibble) / 2 + (step as isize) / 8;
 
             // Eulers approxiation
             // Sample = Previous_Sample + difference*step_size
-            let raw_sample = last_output + diff;
+            raw_sample = last_output + diff;
+            */
 
-            // Specifications say: Clamp it in max sample range -oki_context.max_sample_size..oki_context.max_sample_size
+            // === Approximate version ==
+            // Approximate form uses bit shift operators.
+            // This is a legacy of the days when mult/divides were expensive
+            // It is also the format used on low end CPUs like cameras
+            let mut diff = step >> 3;
+            if (unibble & 0b0100) == 0b0100 {
+                diff += step;
+            }
+            if (unibble & 0b0010) == 0b0010 {
+                diff += step >> 1;
+            }
+            if (unibble & 0b0001) == 0b0001 {
+                diff += step >> 2;
+            }
+            // Sign test
+            if (unibble & 0b1000) == 0b1000 {
+                raw_sample = last_output - (diff as isize);
+            } else {
+                raw_sample = last_output + (diff as isize);
+            }
+
+            // Specifications say: Clamp it in max sample range -context.max_sample_size..context.max_sample_size
             let sample = match raw_sample {
-                sample if sample > oki_context.max_sample_size => oki_context.max_sample_size,
-                sample if sample < -oki_context.max_sample_size => -oki_context.max_sample_size,
-                sample => sample,
+                value if value > context.max_sample_size - 1 => context.max_sample_size - 1,
+                value if value < -context.max_sample_size => -context.max_sample_size,
+                value => value,
             };
 
             // PCM is really in i16 range
-            // OKI has an upper limit of i15....
+            // Some formats e.g. OKI are not in the full PCM range of values
             // To convert we must scale it to the i16 range
             // We also cast to i16 at this point ready for the conversion to u8 bytes of the output
-            let scaled_sample = (sample as isize * (i16::MAX as isize) / oki_context.max_sample_size as isize) as i16;
+            let scaled_sample = (sample as isize * (i16::MAX as isize)
+                / (context.max_sample_size - 1) as isize) as i16;
 
             // Get the results in bytes
             result.extend(scaled_sample.to_le_bytes().iter());
 
+            // Increment the step index
+            step_index = step_index as isize + context.changes[unibble];
+
             // cache the last_output ready for next run
             last_output = sample;
-
-            // Increment the step index
-            step_index = step_index as isize + oki_context.changes[unibble];
         }
-    };
-
+    }
     result
 }

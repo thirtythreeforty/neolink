@@ -1,30 +1,19 @@
+use super::{Error, Result, RX_TIMEOUT};
 use crate::bc::model::*;
 use crate::bc_protocol::connection::BcSubscription;
 use crate::gst::StreamFormat;
-use err_derive::Error;
 use log::trace;
 use log::*;
 use std::collections::VecDeque;
 use std::convert::TryInto;
-use std::time::Duration;
 
-const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[
-    MediaDataKind::Unknown,
-];
+const INVALID_MEDIA_PACKETS: &[MediaDataKind] = &[MediaDataKind::Unknown];
 
 // MAGIC_SIZE: Number of bytes needed to get magic header type, represets minimum bytes to pull from the
 // stream
 const MAGIC_SIZE: usize = 4;
 // PAD_SIZE: Media packets use 8 byte padding
 const PAD_SIZE: usize = 8;
-
-type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(display = "Timeout")]
-    Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
-}
 
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum MediaDataKind {
@@ -62,6 +51,39 @@ impl MediaData {
     fn header_size_from_raw(data: &[u8]) -> usize {
         let kind = MediaData::kind_from_raw(data);
         MediaData::header_size_from_kind(kind)
+    }
+
+    pub fn header(&self) -> &[u8] {
+        &self.data[0..self.header_size()]
+    }
+
+    pub fn header_dump(&self) {
+        info!("{:?}-hex: {:02?}", self.kind(), self.header());
+        let mut result = vec![];
+        for four in self.header().chunks(4) {
+            result.push(u32::from_le_bytes(four.try_into().unwrap()));
+        }
+        info!("{:?}-32: {:?}", self.kind(), result);
+        let mut result = vec![];
+        for two in self.header().chunks(2) {
+            result.push(u16::from_le_bytes(two.try_into().unwrap()));
+        }
+        info!("{:?}-16: {:?}", self.kind(), result);
+        let mut result = vec![];
+        for one in self.header().chunks(1) {
+            result.push(u8::from_le_bytes(one.try_into().unwrap()));
+        }
+        info!("{:?}-8: {:?}", self.kind(), result);
+        let mut result = vec![];
+        for four in self.header().chunks(4) {
+            result.push(f32::from_le_bytes(four.try_into().unwrap()));
+        }
+        info!("{:?}-f32: {:?}", self.kind(), result);
+        let mut result = vec![];
+        for four in self.header().chunks(4) {
+            result.push(String::from_utf8_lossy(four));
+        }
+        info!("{:?}-utf8: {:?}", self.kind(), result);
     }
 
     fn header_size(&self) -> usize {
@@ -113,7 +135,10 @@ impl MediaData {
         // Else full_header_check_from_kind will fail because we check the
         // First two bytes after the header for the audio stream
         // Since AAC and ADMPC streams start in a predicatble manner
-        assert!(data.len() >= MAGIC_SIZE, "At least four bytes needed to get media packet type");
+        assert!(
+            data.len() >= MAGIC_SIZE,
+            "At least four bytes needed to get media packet type"
+        );
         const MAGIC_VIDEO_INFO_V1: &[u8] = &[0x31, 0x30, 0x30, 0x31];
         const MAGIC_VIDEO_INFO_V2: &[u8] = &[0x31, 0x30, 0x30, 0x32];
         const MAGIC_AAC: &[u8] = &[0x30, 0x35, 0x77, 0x62];
@@ -159,6 +184,18 @@ impl MediaData {
             _ => None,
         }
     }
+
+    pub fn timestamp(&self) -> Option<u64> {
+        let kind = self.kind();
+        match kind {
+            MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => Some(
+                Self::bytes_to_size(&self.data[16..20])
+                    .try_into()
+                    .expect("usize wont fit into u64"),
+            ),
+            _ => None,
+        }
+    }
 }
 
 pub struct MediaDataSubscriber<'a> {
@@ -174,10 +211,10 @@ impl<'a> MediaDataSubscriber<'a> {
         }
     }
 
-    fn fill_binary_buffer(&mut self, rx_timeout: Duration) -> Result<()> {
+    fn fill_binary_buffer(&mut self) -> Result<()> {
         // Loop messages until we get binary add that data and return
         loop {
-            let msg = self.bc_sub.rx.recv_timeout(rx_timeout)?;
+            let msg = self.bc_sub.rx.recv_timeout(RX_TIMEOUT)?;
             if let BcBody::ModernMsg(ModernMsg {
                 binary: Some(binary),
                 ..
@@ -191,16 +228,15 @@ impl<'a> MediaDataSubscriber<'a> {
         Ok(())
     }
 
-    fn advance_to_media_packet(&mut self, rx_timeout: Duration) -> Result<()> {
+    fn advance_to_media_packet(&mut self) -> Result<()> {
         // In the event we get an unknown packet we advance by brute force
         // reading of bytes to the next valid magic
         while self.binary_buffer.len() < MAGIC_SIZE {
-            self.fill_binary_buffer(rx_timeout)?;
+            self.fill_binary_buffer()?;
         }
 
         // Check the kind, if its invalid use pop a byte and try again
-        let mut magic =
-            MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_SIZE);
+        let mut magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_SIZE);
         if INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
             warn!("Possibly truncated packet or unknown magic in stream");
             trace!("Unknown magic was: {:x?}", &magic);
@@ -208,7 +244,7 @@ impl<'a> MediaDataSubscriber<'a> {
         while INVALID_MEDIA_PACKETS.contains(&MediaData::kind_from_raw(&magic)) {
             self.binary_buffer.pop_front();
             while self.binary_buffer.len() < MAGIC_SIZE {
-                self.fill_binary_buffer(rx_timeout)?;
+                self.fill_binary_buffer()?;
             }
             magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_SIZE);
         }
@@ -235,12 +271,9 @@ impl<'a> MediaDataSubscriber<'a> {
         }
     }
 
-    pub fn next_media_packet(
-        &mut self,
-        rx_timeout: Duration,
-    ) -> std::result::Result<MediaData, Error> {
+    pub fn next_media_packet(&mut self) -> std::result::Result<MediaData, Error> {
         // Find the first packet (does nothing if already at one)
-        self.advance_to_media_packet(rx_timeout)?;
+        self.advance_to_media_packet()?;
 
         // Get the magic bytes (guaranteed by advance_to_media_packet)
         let magic = MediaDataSubscriber::get_first_n_deque(&self.binary_buffer, MAGIC_SIZE);
@@ -248,7 +281,7 @@ impl<'a> MediaDataSubscriber<'a> {
         // Get enough for the full header
         let header_size = MediaData::header_size_from_raw(&magic);
         while self.binary_buffer.len() < header_size {
-            self.fill_binary_buffer(rx_timeout)?;
+            self.fill_binary_buffer()?;
         }
 
         // Get enough for the full data + 8 byte buffer
@@ -257,7 +290,7 @@ impl<'a> MediaDataSubscriber<'a> {
         let pad_size = MediaData::pad_size_from_raw(&header);
         let full_size = header_size + data_size + pad_size;
         while self.binary_buffer.len() < full_size {
-            self.fill_binary_buffer(rx_timeout)?;
+            self.fill_binary_buffer()?;
         }
 
         // Pop the full binary buffer

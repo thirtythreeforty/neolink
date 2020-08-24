@@ -1,7 +1,6 @@
 //! This module provides an "RtspServer" abstraction that allows consumers of its API to feed it
 //! data using an ordinary std::io::Write interface.
 pub use self::maybe_app_src::MaybeAppSrc;
-
 use gstreamer::prelude::Cast;
 use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
@@ -45,7 +44,7 @@ pub struct GstOutputs {
 
 impl GstOutputs {
     pub fn from_appsrcs(vidsrc: MaybeAppSrc, audsrc: MaybeAppSrc) -> GstOutputs {
-        let result = GstOutputs{
+        let result = GstOutputs {
             vidsrc,
             audsrc,
             video_format: None,
@@ -76,25 +75,32 @@ impl GstOutputs {
 
     fn apply_format(&self) {
         let launch_vid = match self.video_format {
-            Some(StreamFormat::H264) => "! queue ! h264parse ! rtph264pay name=pay0",
-            Some(StreamFormat::H265) => "! queue ! h265parse ! rtph265pay name=pay0",
+            Some(StreamFormat::H264) => {
+                "! queue silent=true max-size-bytes=10485760  min-threshold-bytes=1024 ! h264parse ! rtph264pay name=pay0"
+            }
+            Some(StreamFormat::H265) => {
+                "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! h265parse ! rtph265pay name=pay0"
+            }
             _ => "! fakesink",
         };
 
         let launch_aud = match self.audio_format {
-            Some(StreamFormat::AAC) => "! queue ! aacparse ! rtpmp4apay name=pay1",
-            Some(StreamFormat::ADPCM) => "! queue ! rawaudioparse format=0 num-channels=1 sample-rate=8000 ! audioconvert ! queue ! rtpL16pay name=pay1", // We decode as oki adpcm as raw before the appsink then payload to BigEndian for the rtp transport
+            Some(StreamFormat::ADPCM) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! rawaudioparse format=pcm pcm-format=s16le sample-rate=8000 num-channels=1 interleaved=true ! audioconvert ! rtpL16pay name=pay1", // DVI4 is converted to pcm in the appsrc
+            Some(StreamFormat::AAC) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! aacparse ! rtpmp4apay name=pay1",
             _ => "! fakesink",
         };
 
-        self.factory.set_launch(&format!("{}{}{}{}{}{}",
+        self.factory.set_launch(
+            &vec![
             "( ",
-            "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
+            "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
             launch_vid,
-            " appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
+            "appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
             launch_aud,
-            " )"
-        ));
+            ")"
+        ]
+            .join(" "),
+        );
     }
 }
 
@@ -294,12 +300,14 @@ mod maybe_app_src {
                 Some(src) => src,
                 None => return Ok(buf.len()),
             };
+
             let mut gst_buf = gstreamer::Buffer::with_size(buf.len()).unwrap();
             {
                 let gst_buf_mut = gst_buf.get_mut().unwrap();
                 let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
                 gst_buf_data.copy_from_slice(buf);
             }
+
             let res = app_src.push_buffer(gst_buf); //.map_err(|e| io::Error::new(io::ErrorKind::Other, Box::new(e)))?;
             if res.is_err() {
                 self.app_src = None;
