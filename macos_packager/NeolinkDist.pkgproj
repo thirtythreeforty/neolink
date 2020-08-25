@@ -470,7 +470,7 @@
 				<key>FOLLOW_SYMBOLIC_LINKS</key>
 				<false/>
 				<key>IDENTIFIER</key>
-				<string>com.thirtythreeforty.pkg.Neolink</string>
+				<string>com.thirtythreeforty.pkg.neolink</string>
 				<key>LOCATION</key>
 				<integer>0</integer>
 				<key>NAME</key>
@@ -493,43 +493,6 @@
 			<key>UUID</key>
 			<string>BB4C4E01-E6EE-4268-8677-C997B03F94C9</string>
 		</dict>
-		<dict>
-			<key>MUST-CLOSE-APPLICATION-ITEMS</key>
-			<array/>
-			<key>MUST-CLOSE-APPLICATIONS</key>
-			<false/>
-			<key>PACKAGE_SETTINGS</key>
-			<dict>
-				<key>AUTHENTICATION</key>
-				<integer>1</integer>
-				<key>CONCLUSION_ACTION</key>
-				<integer>0</integer>
-				<key>FOLLOW_SYMBOLIC_LINKS</key>
-				<false/>
-				<key>IDENTIFIER</key>
-				<string>com.gstreamer.pkg.gstreamer</string>
-				<key>LOCATION</key>
-				<integer>4</integer>
-				<key>NAME</key>
-				<string>gstreamer-1.0-1.16.2-x86_64</string>
-				<key>OVERWRITE_PERMISSIONS</key>
-				<false/>
-				<key>PAYLOAD_SIZE</key>
-				<integer>-1</integer>
-				<key>REFERENCE_PATH</key>
-				<string>https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/</string>
-				<key>RELOCATABLE</key>
-				<false/>
-				<key>USE_HFS+_COMPRESSION</key>
-				<false/>
-				<key>VERSION</key>
-				<string>1.16.2</string>
-			</dict>
-			<key>TYPE</key>
-			<integer>2</integer>
-			<key>UUID</key>
-			<string>8AE96F6D-D3FA-4AB5-AFAB-CEF56CD863A6</string>
-		</dict>
 	</array>
 	<key>PROJECT</key>
 	<dict>
@@ -541,8 +504,94 @@
 		</dict>
 		<key>PROJECT_PRESENTATION</key>
 		<dict>
+			<key>BACKGROUND</key>
+			<dict>
+				<key>APPAREANCES</key>
+				<dict>
+					<key>DARK_AQUA</key>
+					<dict/>
+					<key>LIGHT_AQUA</key>
+					<dict/>
+				</dict>
+				<key>SHARED_SETTINGS_FOR_ALL_APPAREANCES</key>
+				<true/>
+			</dict>
 			<key>INSTALLATION_STEPS</key>
-			<array/>
+			<array>
+				<dict>
+					<key>ICPRESENTATION_CHAPTER_VIEW_CONTROLLER_CLASS</key>
+					<string>ICPresentationViewIntroductionController</string>
+					<key>INSTALLER_PLUGIN</key>
+					<string>Introduction</string>
+					<key>LIST_TITLE_KEY</key>
+					<string>InstallerSectionTitle</string>
+				</dict>
+				<dict>
+					<key>ICPRESENTATION_CHAPTER_VIEW_CONTROLLER_CLASS</key>
+					<string>ICPresentationViewReadMeController</string>
+					<key>INSTALLER_PLUGIN</key>
+					<string>ReadMe</string>
+					<key>LIST_TITLE_KEY</key>
+					<string>InstallerSectionTitle</string>
+				</dict>
+				<dict>
+					<key>ICPRESENTATION_CHAPTER_VIEW_CONTROLLER_CLASS</key>
+					<string>ICPresentationViewLicenseController</string>
+					<key>INSTALLER_PLUGIN</key>
+					<string>License</string>
+					<key>LIST_TITLE_KEY</key>
+					<string>InstallerSectionTitle</string>
+				</dict>
+				<dict>
+					<key>ICPRESENTATION_CHAPTER_VIEW_CONTROLLER_CLASS</key>
+					<string>ICPresentationViewDestinationSelectController</string>
+					<key>INSTALLER_PLUGIN</key>
+					<string>TargetSelect</string>
+					<key>LIST_TITLE_KEY</key>
+					<string>InstallerSectionTitle</string>
+				</dict>
+				<dict>
+					<key>ICPRESENTATION_CHAPTER_VIEW_CONTROLLER_CLASS</key>
+					<string>ICPresentationViewInstallationTypeController</string>
+					<key>INSTALLER_PLUGIN</key>
+					<string>PackageSelection</string>
+					<key>LIST_TITLE_KEY</key>
+					<string>InstallerSectionTitle</string>
+				</dict>
+				<dict>
+					<key>ICPRESENTATION_CHAPTER_VIEW_CONTROLLER_CLASS</key>
+					<string>ICPresentationViewInstallationController</string>
+					<key>INSTALLER_PLUGIN</key>
+					<string>Install</string>
+					<key>LIST_TITLE_KEY</key>
+					<string>InstallerSectionTitle</string>
+				</dict>
+				<dict>
+					<key>ICPRESENTATION_CHAPTER_VIEW_CONTROLLER_CLASS</key>
+					<string>ICPresentationViewSummaryController</string>
+					<key>INSTALLER_PLUGIN</key>
+					<string>Summary</string>
+					<key>LIST_TITLE_KEY</key>
+					<string>InstallerSectionTitle</string>
+				</dict>
+			</array>
+			<key>INTRODUCTION</key>
+			<dict>
+				<key>LOCALIZATIONS</key>
+				<array/>
+			</dict>
+			<key>LICENSE</key>
+			<dict>
+				<key>LOCALIZATIONS</key>
+				<array/>
+				<key>MODE</key>
+				<integer>0</integer>
+			</dict>
+			<key>README</key>
+			<dict>
+				<key>LOCALIZATIONS</key>
+				<array/>
+			</dict>
 			<key>TITLE</key>
 			<dict>
 				<key>LOCALIZATIONS</key>
@@ -555,6 +604,52 @@
 					</dict>
 				</array>
 			</dict>
+		</dict>
+		<key>PROJECT_REQUIREMENTS</key>
+		<dict>
+			<key>LIST</key>
+			<array>
+				<dict>
+					<key>BEHAVIOR</key>
+					<integer>3</integer>
+					<key>DICTIONARY</key>
+					<dict>
+						<key>IC_REQUIREMENT_FILES_CONDITION</key>
+						<integer>0</integer>
+						<key>IC_REQUIREMENT_FILES_DISK_TYPE</key>
+						<integer>0</integer>
+						<key>IC_REQUIREMENT_FILES_LIST</key>
+						<array>
+							<string>/Library/Frameworks/GStreamer.framework</string>
+						</array>
+						<key>IC_REQUIREMENT_FILES_SELECTOR</key>
+						<integer>0</integer>
+					</dict>
+					<key>IC_REQUIREMENT_CHECK_TYPE</key>
+					<integer>1</integer>
+					<key>IDENTIFIER</key>
+					<string>fr.whitebox.Packages.requirement.files</string>
+					<key>MESSAGE</key>
+					<array>
+						<dict>
+							<key>LANGUAGE</key>
+							<string>English</string>
+							<key>VALUE</key>
+							<string>Gstreamer is required to run this program. Please download and install it from:
+
+https://gstreamer.freedesktop.org/download/#macos</string>
+						</dict>
+					</array>
+					<key>NAME</key>
+					<string>Files</string>
+					<key>STATE</key>
+					<true/>
+				</dict>
+			</array>
+			<key>RESOURCES</key>
+			<array/>
+			<key>ROOT_VOLUME_ONLY</key>
+			<false/>
 		</dict>
 		<key>PROJECT_SETTINGS</key>
 		<dict>
@@ -736,12 +831,17 @@
 				</dict>
 			</array>
 			<key>NAME</key>
-			<string>NeolinkDist</string>
+			<string>neolink</string>
 			<key>PAYLOAD_ONLY</key>
 			<false/>
 			<key>TREAT_MISSING_PRESENTATION_DOCUMENTS_AS_WARNING</key>
 			<false/>
 		</dict>
+	</dict>
+	<key>SHARED_GLOBAL_DATA</key>
+	<dict>
+		<key>IC_REQUIREMENT_JAVASCRIPT_SHARED_SOURCE_CODE</key>
+		<string></string>
 	</dict>
 	<key>TYPE</key>
 	<integer>0</integer>
