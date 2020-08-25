@@ -150,14 +150,15 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
-          brew install gstreamer glib
+          brew install gst-rtsp-server gst-plugins-good gst-plugins-bad glib
       - name: Install latest rust
         uses: actions-rs/toolchain@v1
         with:
             toolchain: stable
-      - name: Build neolink
-        run: |
-          cargo build --release
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
       - name: Make pkg
         run: |
           brew cask install packages
