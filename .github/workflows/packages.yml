@@ -148,14 +148,14 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Install gstreamer
+      - name: Install dependencies
         run: |
-          brew install gstreamer
+          brew install gstreamer glib
       - name: Install latest rust
         uses: actions-rs/toolchain@v1
         with:
             toolchain: stable
-      - name: Build rpm
+      - name: Build neolink
         run: |
           cargo build --release
       - name: Make pkg
@@ -168,16 +168,6 @@ jobs:
           chmod 644 target/pkg_root/usr/local/etc/neolink.toml
           chown -R root:wheel target/pkg_root/usr
           packagesbuild macos_packager/NeolinkDist.pkgproj
-      - name: Install toml-cli
-        uses: actions-rs/install@v0.1
-        with:
-          crate: toml-cli
-          version: latest
-      - name: Get project version
-        id: toml
-        run: |
-          NEOLINK_VERSION="$(toml get Cargo.toml  package.version | sed 's|"||g')"
-          echo "::set-output name=version::${NEOLINK_VERSION}"
       - uses: actions/upload-artifact@v2
         with:
           name: amd64_pkg_package_macos
