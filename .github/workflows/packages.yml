@@ -164,7 +164,7 @@ jobs:
           brew cask install packages
           mkdir -p target/pkg_root/usr/local/{bin,etc}
           cp target/release/neolink target/pkg_root/usr/local/bin
-          cp target/release/sample_config.toml target/pkg_root/usr/local/etc/neolink.toml
+          cp ./sample_config.toml target/pkg_root/usr/local/etc/neolink.toml
           chmod 755 target/pkg_root/usr/local/bin/neolink
           chmod 644 target/pkg_root/usr/local/etc/neolink.toml
           chown -R root:wheel target/pkg_root/usr
