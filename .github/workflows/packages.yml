@@ -162,12 +162,15 @@ jobs:
       - name: Make pkg
         run: |
           brew cask install packages
+          brew install pandoc
           mkdir -p target/pkg_root/usr/local/{bin,etc}
           cp target/release/neolink target/pkg_root/usr/local/bin
           cp ./sample_config.toml target/pkg_root/usr/local/etc/neolink.toml
           chmod 755 target/pkg_root/usr/local/bin/neolink
           chmod 644 target/pkg_root/usr/local/etc/neolink.toml
           chown -R root:wheel target/pkg_root/usr
+          pandoc -f txt LICENSE -o target/pkg_root/LICENSE.txt
+          pandoc README.md  -o target/pkg_root/README.html
           packagesbuild macos_packager/NeolinkDist.pkgproj
       - uses: actions/upload-artifact@v2
         with:

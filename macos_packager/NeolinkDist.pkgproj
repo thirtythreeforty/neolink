@@ -516,6 +516,43 @@
 				<key>SHARED_SETTINGS_FOR_ALL_APPAREANCES</key>
 				<true/>
 			</dict>
+			<key>INSTALLATION TYPE</key>
+			<dict>
+				<key>HIERARCHIES</key>
+				<dict>
+					<key>INSTALLER</key>
+					<dict>
+						<key>LIST</key>
+						<array>
+							<dict>
+								<key>CHILDREN</key>
+								<array/>
+								<key>DESCRIPTION</key>
+								<array/>
+								<key>OPTIONS</key>
+								<dict>
+									<key>HIDDEN</key>
+									<false/>
+									<key>STATE</key>
+									<integer>1</integer>
+								</dict>
+								<key>PACKAGE_UUID</key>
+								<string>BB4C4E01-E6EE-4268-8677-C997B03F94C9</string>
+								<key>TITLE</key>
+								<array/>
+								<key>TYPE</key>
+								<integer>0</integer>
+								<key>UUID</key>
+								<string>D1C683B9-D0E9-4990-A492-419FA05B1267</string>
+							</dict>
+						</array>
+						<key>REMOVED</key>
+						<dict/>
+					</dict>
+				</dict>
+				<key>MODE</key>
+				<integer>0</integer>
+			</dict>
 			<key>INSTALLATION_STEPS</key>
 			<array>
 				<dict>
@@ -578,16 +615,57 @@
 			<key>INTRODUCTION</key>
 			<dict>
 				<key>LOCALIZATIONS</key>
-				<array/>
+				<array>
+					<dict>
+						<key>LANGUAGE</key>
+						<string>English</string>
+						<key>VALUE</key>
+						<dict>
+							<key>PATH</key>
+							<string>introduction.txt</string>
+							<key>PATH_TYPE</key>
+							<integer>1</integer>
+						</dict>
+					</dict>
+				</array>
 			</dict>
 			<key>LICENSE</key>
 			<dict>
 				<key>LOCALIZATIONS</key>
-				<array/>
+				<array>
+					<dict>
+						<key>LANGUAGE</key>
+						<string>English</string>
+						<key>VALUE</key>
+						<dict>
+							<key>PATH</key>
+							<string>../target/pkg_root/LICENSE.txt</string>
+							<key>PATH_TYPE</key>
+							<integer>1</integer>
+						</dict>
+					</dict>
+				</array>
 				<key>MODE</key>
 				<integer>0</integer>
 			</dict>
 			<key>README</key>
+			<dict>
+				<key>LOCALIZATIONS</key>
+				<array>
+					<dict>
+						<key>LANGUAGE</key>
+						<string>English</string>
+						<key>VALUE</key>
+						<dict>
+							<key>PATH</key>
+							<string>../target/pkg_root/README.html</string>
+							<key>PATH_TYPE</key>
+							<integer>1</integer>
+						</dict>
+					</dict>
+				</array>
+			</dict>
+			<key>SUMMARY</key>
 			<dict>
 				<key>LOCALIZATIONS</key>
 				<array/>
@@ -600,7 +678,7 @@
 						<key>LANGUAGE</key>
 						<string>English</string>
 						<key>VALUE</key>
-						<string>NeolinkDist</string>
+						<string>Neolink</string>
 					</dict>
 				</array>
 			</dict>
