@@ -169,7 +169,7 @@ jobs:
           chmod 755 target/pkg_root/usr/local/bin/neolink
           chmod 644 target/pkg_root/usr/local/etc/neolink.toml
           sudo chown -R root:wheel target/pkg_root/usr
-          pandoc -f txt LICENSE -o target/pkg_root/LICENSE.txt
+          pandoc -f markdown LICENSE -o target/pkg_root/LICENSE.txt
           pandoc README.md  -o target/pkg_root/README.html
           packagesbuild macos_packager/NeolinkDist.pkgproj
       - uses: actions/upload-artifact@v2
