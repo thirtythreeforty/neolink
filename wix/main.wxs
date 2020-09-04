@@ -172,7 +172,7 @@
           the following `WixUILicenseRTF` tag and changing the `Value`
           attribute.
         -->
-        <WixVariable Id='WixUILicenseRtf' Value='../LICENSE'/>
+        <WixVariable Id='WixUILicenseRtf' Value='target/LICENSE.rtf'/>
 
 
         <!--

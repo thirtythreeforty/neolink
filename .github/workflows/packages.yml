@@ -184,12 +184,18 @@ jobs:
         run: |
           $curlgst = Start-Job -ScriptBlock { curl.exe -fsSL "https://gstreamer.freedesktop.org/data/pkg/windows/1.16.2/gstreamer-1.0-devel-msvc-x86_64-1.16.2.msi" -o gstreamer-1.0-devel.msi }
           choco install -y --no-progress gstreamer
+          choco install -y --no-progress pandoc
           echo "Installing gstreamer-1.0-devel"
           Wait-Job $curlgst
           msiexec /i gstreamer-1.0-devel.msi /qn /norestart
           echo "Updating Environment"
           echo "::add-path::C:\gstreamer\1.0\x86_64\bin"
           echo "::set-env name=GSTREAMER_1_0_ROOT_X86_64::C:\gstreamer\1.0\x86_64\"
+      - name: Build neolink
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
       - name: Install cargo wix
         uses: actions-rs/install@v0.1
         with:
@@ -197,7 +203,8 @@ jobs:
           version: latest
       - name: Build msi
         run: |
-          cargo wix
+          pandoc -f markdown LICENSE -o target/LICENSE.rtf
+          cargo wix --nocapture --no-build
       - name: Install toml-cli
         uses: actions-rs/install@v0.1
         with:
