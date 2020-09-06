@@ -213,8 +213,8 @@ jobs:
       - name: Get project version
         id: toml
         run: |
-          NEOLINK_VERSION="$(toml get Cargo.toml  package.version | sed 's|"||g')"
-          echo "::set-output name=version::${NEOLINK_VERSION}"
+          $NEOLINK_VERSION = (toml get Cargo.toml  package.version) -replace '"'
+          echo "::set-output name=version::$NEOLINK_VERSION"
       - uses: actions/upload-artifact@v2
         with:
           name: x86_64_msi_package_win
