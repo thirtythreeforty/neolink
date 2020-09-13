@@ -238,7 +238,7 @@ fn camera_main(
             "{}: Starting video stream {}",
             camera_config.name, stream_name
         );
-        camera.start_video(outputs, stream_name)
+        camera.start_video(outputs, stream_name, camera_config.channel_id)
     })()
     .map_err(|err| CameraErr { connected, err })
 }
