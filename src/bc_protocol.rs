@@ -244,7 +244,7 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(&self, data_out: &mut dyn Write, stream_name: &str) -> Result<Never> {
+    pub fn start_video(&self, data_out: &mut dyn Write, stream_name: &str, channel_id: u32) -> Result<Never> {
         let connection = self
             .connection
             .as_ref()
@@ -261,7 +261,7 @@ impl BcCamera {
             BcXml {
                 preview: Some(Preview {
                     version: xml_ver(),
-                    channel_id: 0,
+                    channel_id: channel_id,
                     handle: 0,
                     stream_type: stream_name.to_string(),
                 }),
