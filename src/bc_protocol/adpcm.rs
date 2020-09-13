@@ -2,6 +2,7 @@
  This is a rust implementation of OKI and DVI/IMA ADPCM.
 */
 use std::convert::TryInto;
+use log::error;
 
 struct AdpcmSetup {
     max_step_index: usize,
@@ -98,11 +99,12 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
     // Check for valid number of frame type
     let frame_type_bytes = &bytes[0..2];
     const FRAME_TYPE_HISILICON: &[u8] = &[0x00, 0x01];
-    assert!(
-        frame_type_bytes == FRAME_TYPE_HISILICON,
-        "Unexpected adpcm frame type: {:x?}",
-        frame_type_bytes
-    );
+    if frame_type_bytes != FRAME_TYPE_HISILICON {
+        error!(
+            "Unexpected adpcm frame type: {:x?}",
+            frame_type_bytes
+        );
+    }
 
     // Check for valid block size
     let block_size_bytes = &bytes[2..4];
@@ -112,7 +114,9 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
             .expect("slice with incorrect length"),
     ) as usize)  * 2; // Block size is stored as 1/2 (don't know why)
     let full_block_size = block_size + 4; // block_size + magic (2 bytes) + size (2 bytes)
-    assert!(bytes.len() % full_block_size == 0, "ADPCM Data is not a multiple of the block size");
+    if ! bytes.len() % full_block_size == 0 {
+        error!("ADPCM Data is not a multiple of the block size");
+    }
 
     // Chunk on block size
     for bytes in bytes.chunks(full_block_size) {
