@@ -88,7 +88,7 @@ fn main() -> Result<(), Error> {
                     .add_stream(paths, stream_format, &permitted_users)
                     .unwrap();
                 let main_camera = arc_cam.clone();
-                s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output));
+                s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output, true));
             }
             if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
@@ -96,7 +96,8 @@ fn main() -> Result<(), Error> {
                     .add_stream(paths, substream_format, &permitted_users)
                     .unwrap();
                 let sub_camera = arc_cam.clone();
-                s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut output));
+                let manage = arc_cam.stream == "subStream";
+                s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut output, manage));
             }
         }
 
@@ -111,13 +112,14 @@ fn camera_loop(
     camera_config: &CameraConfig,
     stream_name: &str,
     output: &mut MaybeAppSrc,
+    manage: bool,
 ) -> Result<Never, Error> {
     let min_backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(15);
     let mut current_backoff = min_backoff;
 
     loop {
-        let cam_err = camera_main(camera_config, stream_name, output).unwrap_err();
+        let cam_err = camera_main(camera_config, stream_name, output, manage).unwrap_err();
         output.on_stream_error();
         // Authentication failures are permanent; we retry everything else
         if cam_err.connected {
@@ -198,6 +200,7 @@ fn camera_main(
     camera_config: &CameraConfig,
     stream_name: &str,
     output: &mut dyn Write,
+    manage: bool,
 ) -> Result<Never, CameraErr> {
     let mut connected = false;
     (|| {
@@ -218,27 +221,29 @@ fn camera_main(
         connected = true;
         info!("{}: Connected and logged in", camera_config.name);
 
-        let cam_time = camera.get_time()?;
-        if let Some(time) = cam_time {
-            info!(
-                "{}: Camera time is already set: {}",
-                camera_config.name, time
-            );
-        } else {
-            let new_time = time::OffsetDateTime::now_local();
-            warn!(
-                "{}: Camera has no time set, setting to {}",
-                camera_config.name, new_time
-            );
-            camera.set_time(new_time)?;
+        if manage {
             let cam_time = camera.get_time()?;
             if let Some(time) = cam_time {
                 info!(
-                    "{}: Camera time is now set: {}",
+                    "{}: Camera time is already set: {}",
                     camera_config.name, time
                 );
             } else {
-                error!("{}: Camera did not accept new time (is {} an admin?)", camera_config.name, camera_config.username);
+                let new_time = time::OffsetDateTime::now_local();
+                warn!(
+                    "{}: Camera has no time set, setting to {}",
+                    camera_config.name, new_time
+                );
+                camera.set_time(new_time)?;
+                let cam_time = camera.get_time()?;
+                if let Some(time) = cam_time {
+                    info!(
+                        "{}: Camera time is now set: {}",
+                        camera_config.name, time
+                    );
+                } else {
+                    error!("{}: Camera did not accept new time (is {} an admin?)", camera_config.name, camera_config.username);
+                }
             }
         }
 
