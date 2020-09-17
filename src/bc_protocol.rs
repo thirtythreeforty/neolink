@@ -260,7 +260,7 @@ impl BcCamera {
             BcXml {
                 preview: Some(Preview {
                     version: xml_ver(),
-                    channel_id: channel_id,
+                    channel_id,
                     handle: 0,
                     stream_type: stream_name.to_string(),
                 }),
