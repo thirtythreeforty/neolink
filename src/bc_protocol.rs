@@ -243,7 +243,12 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(&self, data_out: &mut dyn Write, stream_name: &str, channel_id: u32) -> Result<Never> {
+    pub fn start_video(
+        &self,
+        data_out: &mut dyn Write,
+        stream_name: &str,
+        channel_id: u32,
+    ) -> Result<Never> {
         let connection = self
             .connection
             .as_ref()
