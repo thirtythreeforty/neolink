@@ -143,14 +143,16 @@ jobs:
           name: amd64_rpm_package_fc32
           path: "target/release/rpmbuild/RPMS/x86_64/neolink-${{ steps.toml.outputs.version }}-1.fc32.x86_64.rpm"
   # X86_64 Macos
-  # Notes: Uses the packgebuild app http://s.sudre.free.fr/Software/documentation/Packages
+  # Notes: Uses the packagebuild app http://s.sudre.free.fr/Software/documentation/Packages
   package_osx:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
-          brew install gst-rtsp-server gst-plugins-good gst-plugins-bad glib
+          curl -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/gstreamer-1.0-devel-1.16.2-x86_64.pkg' -o "$(pwd)/gstreamer-devel.pkg"
+          sudo installer -verbose -pkg "$(pwd)/gstreamer-devel.pkg" -target /
+          PKG_CONFIG_PATH="/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
       - name: Install latest rust
         uses: actions-rs/toolchain@v1
         with:
@@ -159,6 +161,8 @@ jobs:
         with:
           command: build
           args: --release --all-features
+        env:
+          PKG_CONFIG_PATH: "/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig"
       - name: Make pkg
         run: |
           brew cask install packages
@@ -182,13 +186,9 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install Gstreamer
         run: |
-          $curlgst = Start-Job -ScriptBlock { curl.exe -fsSL "https://gstreamer.freedesktop.org/data/pkg/windows/1.16.2/gstreamer-1.0-devel-msvc-x86_64-1.16.2.msi" -o gstreamer-1.0-devel.msi }
-          choco install -y --no-progress gstreamer
-          choco install -y --no-progress pandoc
-          echo "Installing gstreamer-1.0-devel"
-          Wait-Job $curlgst
-          msiexec /i gstreamer-1.0-devel.msi /qn /norestart
-          echo "Updating Environment"
+          choco install -y --no-progress gstreamer --version=1.16.2.20200527
+          choco install -y --no-progress gstreamer-devel --version=1.16.2
+          echo "Updating Cargo environment"
           echo "::add-path::C:\gstreamer\1.0\x86_64\bin"
           echo "::set-env name=GSTREAMER_1_0_ROOT_X86_64::C:\gstreamer\1.0\x86_64\"
       - name: Build neolink
@@ -196,6 +196,12 @@ jobs:
         with:
           command: build
           args: --release --all-features
+      - name: Install pandoc
+        run: |
+          choco install pandoc
+      - name: Install wix
+        run: |
+          choco install wixtoolset
       - name: Install cargo wix
         uses: actions-rs/install@v0.1
         with:
