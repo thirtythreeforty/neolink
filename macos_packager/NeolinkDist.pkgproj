@@ -450,6 +450,8 @@
 			<dict>
 				<key>POSTINSTALL_PATH</key>
 				<dict>
+					<key>PATH</key>
+					<string>/Users/awk21/Projects/Software/neolink/macos_packager/postinstall.sh</string>
 					<key>PATH_TYPE</key>
 					<integer>0</integer>
 				</dict>
@@ -459,7 +461,72 @@
 					<integer>0</integer>
 				</dict>
 				<key>RESOURCES</key>
-				<array/>
+				<array>
+					<dict>
+						<key>CHILDREN</key>
+						<array/>
+						<key>GID</key>
+						<integer>0</integer>
+						<key>PATH</key>
+						<string>../target/pkg_root/gst-runtime/base-system.pkg</string>
+						<key>PATH_TYPE</key>
+						<integer>1</integer>
+						<key>PERMISSIONS</key>
+						<integer>448</integer>
+						<key>TYPE</key>
+						<integer>3</integer>
+						<key>UID</key>
+						<integer>0</integer>
+					</dict>
+					<dict>
+						<key>CHILDREN</key>
+						<array/>
+						<key>GID</key>
+						<integer>0</integer>
+						<key>PATH</key>
+						<string>../target/pkg_root/gst-runtime/gstreamer-codecs.pkg</string>
+						<key>PATH_TYPE</key>
+						<integer>1</integer>
+						<key>PERMISSIONS</key>
+						<integer>448</integer>
+						<key>TYPE</key>
+						<integer>3</integer>
+						<key>UID</key>
+						<integer>0</integer>
+					</dict>
+					<dict>
+						<key>CHILDREN</key>
+						<array/>
+						<key>GID</key>
+						<integer>0</integer>
+						<key>PATH</key>
+						<string>../target/pkg_root/gst-runtime/gstreamer-core.pkg</string>
+						<key>PATH_TYPE</key>
+						<integer>1</integer>
+						<key>PERMISSIONS</key>
+						<integer>448</integer>
+						<key>TYPE</key>
+						<integer>3</integer>
+						<key>UID</key>
+						<integer>0</integer>
+					</dict>
+					<dict>
+						<key>CHILDREN</key>
+						<array/>
+						<key>GID</key>
+						<integer>0</integer>
+						<key>PATH</key>
+						<string>../target/pkg_root/gst-runtime/gstreamer-net.pkg</string>
+						<key>PATH_TYPE</key>
+						<integer>1</integer>
+						<key>PERMISSIONS</key>
+						<integer>448</integer>
+						<key>TYPE</key>
+						<integer>3</integer>
+						<key>UID</key>
+						<integer>0</integer>
+					</dict>
+				</array>
 			</dict>
 			<key>PACKAGE_SETTINGS</key>
 			<dict>
@@ -686,44 +753,7 @@
 		<key>PROJECT_REQUIREMENTS</key>
 		<dict>
 			<key>LIST</key>
-			<array>
-				<dict>
-					<key>BEHAVIOR</key>
-					<integer>3</integer>
-					<key>DICTIONARY</key>
-					<dict>
-						<key>IC_REQUIREMENT_FILES_CONDITION</key>
-						<integer>0</integer>
-						<key>IC_REQUIREMENT_FILES_DISK_TYPE</key>
-						<integer>0</integer>
-						<key>IC_REQUIREMENT_FILES_LIST</key>
-						<array>
-							<string>/Library/Frameworks/GStreamer.framework</string>
-						</array>
-						<key>IC_REQUIREMENT_FILES_SELECTOR</key>
-						<integer>0</integer>
-					</dict>
-					<key>IC_REQUIREMENT_CHECK_TYPE</key>
-					<integer>1</integer>
-					<key>IDENTIFIER</key>
-					<string>fr.whitebox.Packages.requirement.files</string>
-					<key>MESSAGE</key>
-					<array>
-						<dict>
-							<key>LANGUAGE</key>
-							<string>English</string>
-							<key>VALUE</key>
-							<string>Gstreamer is required to run this program. Please download and install it from:
-
-https://gstreamer.freedesktop.org/download/#macos</string>
-						</dict>
-					</array>
-					<key>NAME</key>
-					<string>Files</string>
-					<key>STATE</key>
-					<true/>
-				</dict>
-			</array>
+			<array/>
 			<key>RESOURCES</key>
 			<array/>
 			<key>ROOT_VOLUME_ONLY</key>
@@ -732,7 +762,7 @@ https://gstreamer.freedesktop.org/download/#macos</string>
 		<key>PROJECT_SETTINGS</key>
 		<dict>
 			<key>BUILD_FORMAT</key>
-			<integer>0</integer>
+			<integer>1</integer>
 			<key>BUILD_PATH</key>
 			<dict>
 				<key>PATH</key>

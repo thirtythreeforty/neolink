@@ -165,16 +165,37 @@ jobs:
           PKG_CONFIG_PATH: "/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig"
       - name: Make pkg
         run: |
+          gst_version="1.16.2"
+          echo "Install packaging tools"
           brew cask install packages
           brew install pandoc
+
+          echo "Prepare deployment paths"
           mkdir -p target/pkg_root/usr/local/{bin,etc}
           cp target/release/neolink target/pkg_root/usr/local/bin
           cp ./sample_config.toml target/pkg_root/usr/local/etc/neolink.toml
           chmod 755 target/pkg_root/usr/local/bin/neolink
           chmod 644 target/pkg_root/usr/local/etc/neolink.toml
           sudo chown -R root:wheel target/pkg_root/usr
+
+          echo "Prepare aux files"
           pandoc -f markdown LICENSE -o target/pkg_root/LICENSE.txt
           pandoc README.md  -o target/pkg_root/README.html
+
+          echo "Download gstreamer runtime pkg"
+          curl -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/gstreamer-1.0-${gst_version}-x86_64.pkg' -o "target/pkg_root/gstreamer-runtime.pkg"
+
+          echo "Extracting gstreamer components"
+          pkgutil --expand target/pkg_root/gstreamer-runtime.pkg target/pkg_root/gst-runtime
+
+          echo "Moving gstreamer components to version independant path"
+          mv target/pkg_root/gst-runtime/base-system-1.0-${gst_version}-x86_64.pkg target/pkg_root/gst-runtime/base-system.pkg
+          mv target/pkg_root/gst-runtime/gstreamer-1.0-core-${gst_version}-x86_64.pkg target/pkg_root/gst-runtime/gstreamer-core.pkg
+          mv target/pkg_root/gst-runtime/gstreamer-1.0-net-${gst_version}-x86_64.pkg target/pkg_root/gst-runtime/gstreamer-net.pkg
+          mv target/pkg_root/gst-runtime/gstreamer-1.0-codecs-${gst_version}-x86_64.pkg target/pkg_root/gst-runtime/gstreamer-codecs.pkg
+
+
+          echo "Build pkg"
           packagesbuild macos_packager/NeolinkDist.pkgproj
       - uses: actions/upload-artifact@v2
         with:
@@ -207,7 +228,18 @@ jobs:
         with:
           crate: cargo-wix
           version: latest
-      - name: Build msi
+      - name: Get gstreamer merge modules
+        run: |
+          $version = "1.16.2"
+          $minor_version = "1.16"
+          Invoke-WebRequest "https://gstreamer.freedesktop.org/data/pkg/windows/$version/gstreamer-1.0-msvc-x86_64-$version-merge-modules.zip" -OutFile "gstreamer-merge-modules.zip"
+          Expand-Archive -LiteralPath "gstreamer-merge-modules.zip" -DestinationPath "."
+          echo "Moving files to version independant path"
+          Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/base-system-msvc-x86_64-$version.msm base-system.msm # Always required
+          Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/gstreamer-1.0-core-msvc-x86_64-$version.msm gstreamer-1.0-core.msm # Always required, rawparse appsrc
+          Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/gstreamer-1.0-net-msvc-x86_64-$version.msm gstreamer-1.0-net.msm # For rtph264pay rtph265pay rtpmp4apay rtpL16pay rtsp-server
+          Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/gstreamer-1.0-codecs-msvc-x86_64-$version.msm gstreamer-1.0-codecs.msm # For h264parse h265parse aacparse
+      - name: Build installer
         run: |
           pandoc -f markdown LICENSE -o target/LICENSE.rtf
           cargo wix --nocapture --no-build

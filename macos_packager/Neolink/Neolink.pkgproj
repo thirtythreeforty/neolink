@@ -478,43 +478,6 @@
 			<key>UUID</key>
 			<string>C6215FAA-8AB4-470F-BFEB-91747C3FDB20</string>
 		</dict>
-		<dict>
-			<key>MUST-CLOSE-APPLICATION-ITEMS</key>
-			<array/>
-			<key>MUST-CLOSE-APPLICATIONS</key>
-			<false/>
-			<key>PACKAGE_SETTINGS</key>
-			<dict>
-				<key>AUTHENTICATION</key>
-				<integer>1</integer>
-				<key>CONCLUSION_ACTION</key>
-				<integer>0</integer>
-				<key>FOLLOW_SYMBOLIC_LINKS</key>
-				<false/>
-				<key>IDENTIFIER</key>
-				<string></string>
-				<key>LOCATION</key>
-				<integer>4</integer>
-				<key>NAME</key>
-				<string>untitled package</string>
-				<key>OVERWRITE_PERMISSIONS</key>
-				<false/>
-				<key>PAYLOAD_SIZE</key>
-				<integer>-1</integer>
-				<key>REFERENCE_PATH</key>
-				<string>https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/gstreamer-1.0-1.16.2-x86_64.pkg</string>
-				<key>RELOCATABLE</key>
-				<false/>
-				<key>USE_HFS+_COMPRESSION</key>
-				<false/>
-				<key>VERSION</key>
-				<string>1.0</string>
-			</dict>
-			<key>TYPE</key>
-			<integer>2</integer>
-			<key>UUID</key>
-			<string>9BE8E368-0554-4F8C-926C-22E1BF6E1D4C</string>
-		</dict>
 	</array>
 	<key>PROJECT</key>
 	<dict>

@@ -1,5 +1,5 @@
 This will install the neolink program onto your computer.
 
-You will require gstreamer to be installed to use this program. If you have not already done so please install gstreamer now: https://gstreamer.freedesktop.org/download/#macos
+This program requires gstreamer which will also be installed during the post install step: https://gstreamer.freedesktop.org/download/#macos
 
 This is a command line application, to use it will require the use of a terminal.

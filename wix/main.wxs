@@ -59,6 +59,10 @@
         <Property Id='DiskPrompt' Value='neolink Installation'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
+            <Merge Id="GSTBase" SourceFile="base-system.msm" DiskId="1" Language="0"/>
+            <Merge Id="GSTCore" SourceFile="gstreamer-1.0-core.msm" DiskId="1" Language="0"/>
+            <Merge Id="GSTNet" SourceFile="gstreamer-1.0-net.msm" DiskId="1" Language="0"/>
+            <Merge Id="GSTCodec" SourceFile="gstreamer-1.0-codecs.msm" DiskId="1" Language="0"/>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
                 <Directory Id='APPLICATIONFOLDER' Name='neolink'>
 
@@ -132,6 +136,18 @@
                 Absent='allow'>
                 <ComponentRef Id='Path'/>
             </Feature>
+        </Feature>
+        <Feature Id="GSTBase" Title="Gstreamer Base" AllowAdvertise="no" Display="hidden" Level="1">
+            <MergeRef Id="GSTBase"/>
+        </Feature>
+        <Feature Id="GSTCore" Title="Gstreamer Core" AllowAdvertise="no" Display="hidden" Level="1">
+            <MergeRef Id="GSTCore"/>
+        </Feature>
+        <Feature Id="GSTNet" Title="Gstreamer Net" AllowAdvertise="no" Display="hidden" Level="1">
+            <MergeRef Id="GSTNet"/>
+        </Feature>
+        <Feature Id="GSTCodec" Title="Gstreamer Codecs" AllowAdvertise="no" Display="hidden" Level="1">
+            <MergeRef Id="GSTCodec"/>
         </Feature>
 
         <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
