@@ -59,10 +59,10 @@
         <Property Id='DiskPrompt' Value='neolink Installation'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
-            <Merge Id="GSTBase" SourceFile="base-system.msm" DiskId="1" Language="0"/>
-            <Merge Id="GSTCore" SourceFile="gstreamer-1.0-core.msm" DiskId="1" Language="0"/>
-            <Merge Id="GSTNet" SourceFile="gstreamer-1.0-net.msm" DiskId="1" Language="0"/>
-            <Merge Id="GSTCodec" SourceFile="gstreamer-1.0-codecs.msm" DiskId="1" Language="0"/>
+            <Merge Id="GSTBase" SourceFile="base-system.msm" DiskId="1" Language="1033"/>
+            <Merge Id="GSTCore" SourceFile="gstreamer-1.0-core.msm" DiskId="1" Language="1033"/>
+            <Merge Id="GSTNet" SourceFile="gstreamer-1.0-net.msm" DiskId="1" Language="1033"/>
+            <Merge Id="GSTCodec" SourceFile="gstreamer-1.0-codecs.msm" DiskId="1" Language="1033"/>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
                 <Directory Id='APPLICATIONFOLDER' Name='neolink'>
 
