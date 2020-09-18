@@ -226,6 +226,7 @@ jobs:
           Expand-Archive -LiteralPath "gstreamer-merge-modules.zip" -DestinationPath "."
           echo "Moving files to version independant path"
           Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/base-system-1.0-msvc-x86_64-$version.msm base-system.msm # Always required
+          Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/base-crypto-msvc-x86_64-$version.msm base-crypto.msm # Needed by net and codecs modules
           Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/gstreamer-1.0-core-msvc-x86_64-$version.msm gstreamer-1.0-core.msm # Always required, rawparse appsrc
           Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/gstreamer-1.0-net-msvc-x86_64-$version.msm gstreamer-1.0-net.msm # For rtph264pay rtph265pay rtpmp4apay rtpL16pay rtsp-server
           Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/gstreamer-1.0-codecs-msvc-x86_64-$version.msm gstreamer-1.0-codecs.msm # For h264parse h265parse aacparse

@@ -60,6 +60,7 @@
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Merge Id="GSTBase" SourceFile="base-system.msm" DiskId="1" Language="1033"/>
+            <Merge Id="GSTCrypt" SourceFile="base-crypto.msm" DiskId="1" Language="1033"/>
             <Merge Id="GSTCore" SourceFile="gstreamer-1.0-core.msm" DiskId="1" Language="1033"/>
             <Merge Id="GSTNet" SourceFile="gstreamer-1.0-net.msm" DiskId="1" Language="1033"/>
             <Merge Id="GSTCodec" SourceFile="gstreamer-1.0-codecs.msm" DiskId="1" Language="1033"/>
@@ -139,6 +140,9 @@
         </Feature>
         <Feature Id="GSTBase" Title="Gstreamer Base" AllowAdvertise="no" Display="hidden" Level="1">
             <MergeRef Id="GSTBase"/>
+        </Feature>
+        <Feature Id="GSTCrypt" Title="Gstreamer Base Cryptographic" AllowAdvertise="no" Display="hidden" Level="1">
+            <MergeRef Id="GSTCrypt"/>
         </Feature>
         <Feature Id="GSTCore" Title="Gstreamer Core" AllowAdvertise="no" Display="hidden" Level="1">
             <MergeRef Id="GSTCore"/>
