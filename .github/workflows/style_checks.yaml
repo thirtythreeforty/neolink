@@ -11,7 +11,7 @@ jobs:
     - name: apt install gstreamer
       run: |
         sudo apt update
-        sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libgstreamer-plugins-good1.0-dev
+        sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev
     - uses: actions-rs/toolchain@v1
       with:
           toolchain: nightly
