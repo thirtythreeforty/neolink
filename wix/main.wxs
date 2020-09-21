@@ -107,6 +107,15 @@
                                 KeyPath='yes'/>
                         </Component>
                     </Directory>
+                    <Component Id='config0' Guid='*' Win64='$(var.Win64)'>
+                        <File
+                            Id='config0'
+                            Name='neolink.toml'
+                            DiskId='1'
+                            NeverOverwrite='yes'
+                            Source='sample_config.toml'
+                            KeyPath='yes'/>
+                    </Component>
                 </Directory>
             </Directory>
         </Directory>
