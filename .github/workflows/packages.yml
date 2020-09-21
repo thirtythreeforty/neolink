@@ -171,9 +171,9 @@ jobs:
           brew install pandoc
 
           echo "Prepare deployment paths"
-          mkdir -p target/pkg_root/usr/local/{bin,etc}
+          mkdir -p target/pkg_root/usr/local/{bin,etc,share/neolink}
           cp target/release/neolink target/pkg_root/usr/local/bin
-          cp ./sample_config.toml target/pkg_root/usr/local/etc/neolink.toml
+          cp ./sample_config.toml target/pkg_root/usr/local/share/neolink/sample_config.toml
           chmod 755 target/pkg_root/usr/local/bin/neolink
           chmod 644 target/pkg_root/usr/local/etc/neolink.toml
           sudo chown -R root:wheel target/pkg_root/usr
