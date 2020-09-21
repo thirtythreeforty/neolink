@@ -33,8 +33,8 @@ RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing libg
 COPY --from=build \
   /usr/local/src/neolink/target/release/neolink \
   /usr/local/bin/neolink
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY docker/alpine/entrypoint.sh /entrypoint.sh
 
 CMD ["/usr/local/bin/neolink", "--config", "/etc/neolink.toml"]
 ENTRYPOINT ["/entrypoint.sh"]
-EXPOSE 8554 
+EXPOSE 8554

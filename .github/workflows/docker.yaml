@@ -29,12 +29,46 @@ jobs:
         uses: ASzc/change-string-case-action@v1
         with:
           string: ${{ github.repository }}
-      - name: Push to Docker Hub
-        uses: docker/build-push-action@v1
+      - name: Set up QEMU
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/setup-buildx-action@v1
+      - name: Login to dockerhub
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/login-action@v1
         with:
           username: ${{ steps.string_user.outputs.lowercase }}
           password: ${{ secrets.DOCKER_TOKEN }}
-          registry: docker.io
-          repository: ${{ steps.string_repo.outputs.lowercase }}
-          tag_with_ref: true
+      - name: Get tag name
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        id: tags
+        run: |
+          branch="${GITHUB_REF#refs/heads/}"
+          debtags="${REPO_NAME}:${branch}"
+          alptags="${REPO_NAME}:${branch}-alpine"
+          if [ "${branch}" == "master" ]; then
+            debtags="${debtags},${REPO_NAME}:latest"
+            alptags="${alptags},${REPO_NAME}:latest-alpine"
+          fi
+          echo "::set-output name=DEBTAGS::${debtags}"
+          echo "::set-output name=ALPTAGS::${alptags}"
+        env:
+          REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
+      - name: Push to Docker Hub Debian
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/build-push-action@v2
+        with:
+          platforms: linux/arm/v7,linux/arm64,linux/amd64,linux/386
+          push: true
+          file: docker/debian/Dockerfile
+          tags: ${{ steps.tags.outputs.DEBTAGS }}
+      - name: Push to Docker Hub Alpine
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/build-push-action@v2
+        with:
+          platforms: linux/amd64
+          push: true
+          file: docker/alpine/Dockerfile
+          tags: ${{ steps.tags.outputs.ALPTAGS }}
