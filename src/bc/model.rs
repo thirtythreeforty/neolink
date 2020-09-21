@@ -83,6 +83,12 @@ impl Bc {
     }
 }
 
+impl Default for BcContext {
+    fn default() -> BcContext {
+        Self::new()
+    }
+}
+
 impl BcContext {
     pub fn new() -> BcContext {
         BcContext {
