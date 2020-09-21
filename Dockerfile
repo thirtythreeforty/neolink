@@ -22,6 +22,7 @@ RUN cargo build --release
 FROM docker.io/alpine:latest
 
 RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing libgcc \
+  tzdata \
   gstreamer \
   gst-plugins-base \
   gst-plugins-good \

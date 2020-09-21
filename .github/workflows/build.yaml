@@ -15,16 +15,13 @@ jobs:
         name: apt install gstreamer
         run: |
           sudo apt update
-          sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libgstreamer-plugins-good1.0-dev
+          sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev
       - if: runner.os == 'Windows'
         name: Install Gstreamer
         run: |
-          $curlgst = Start-Job -ScriptBlock { curl.exe -fsSL "https://gstreamer.freedesktop.org/data/pkg/windows/1.16.2/gstreamer-1.0-devel-msvc-x86_64-1.16.2.msi" -o gstreamer-1.0-devel.msi }
-          choco install -y --no-progress gstreamer
-          echo "Installing gstreamer-1.0-devel"
-          Wait-Job $curlgst
-          msiexec /i gstreamer-1.0-devel.msi /qn /norestart
-          echo "Updating Environment"
+          choco install -y --no-progress gstreamer --version=1.16.2.20200527
+          choco install -y --no-progress gstreamer-devel --version=1.16.2
+          echo "Updating Cargo environment"
           echo "::add-path::C:\gstreamer\1.0\x86_64\bin"
           echo "::set-env name=GSTREAMER_1_0_ROOT_X86_64::C:\gstreamer\1.0\x86_64\"
       - name: Cache cargo registry

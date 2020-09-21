@@ -14,12 +14,12 @@ use gstreamer_rtsp_server::{
     RTSP_PERM_MEDIA_FACTORY_ACCESS, RTSP_PERM_MEDIA_FACTORY_CONSTRUCT,
     RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
+use itertools::Itertools;
 use log::*;
 use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::io::Write;
-use itertools::Itertools;
 
 type Result<T> = std::result::Result<T, ()>;
 
@@ -31,6 +31,12 @@ pub enum StreamFormat {
     H264,
     H265,
     Custom(String),
+}
+
+impl Default for RtspServer {
+    fn default() -> RtspServer {
+        Self::new()
+    }
 }
 
 impl RtspServer {
@@ -63,7 +69,11 @@ impl RtspServer {
         debug!(
             "Permitting {} to access {}",
             // This is hashmap or (iter) equivalent of join, it requres itertools
-            permitted_users.iter().cloned().intersperse(", ").collect::<String>(),
+            permitted_users
+                .iter()
+                .cloned()
+                .intersperse(", ")
+                .collect::<String>(),
             paths.join(", ")
         );
         self.add_permitted_roles(&factory, permitted_users);
@@ -140,7 +150,7 @@ impl RtspServer {
     }
 
     pub fn set_credentials(&self, credentials: &[(&str, &str)]) -> Result<()> {
-        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
+        let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new);
         auth.set_supported_methods(RTSPAuthMethod::Basic);
 
         let mut un_authtoken = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"anonymous")]);
@@ -160,12 +170,11 @@ impl RtspServer {
 
     pub fn set_tls(&self, cert_file: &str, client_auth: TlsAuthenticationMode) -> Result<()> {
         debug!("Setting up TLS using {}", cert_file);
-        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
+        let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new);
 
         // We seperate reading the file and changing to a PEM so that we get different error messages.
         let cert_contents = fs::read_to_string(cert_file).expect("TLS file not found");
-        let cert =
-            TlsCertificate::from_pem(&cert_contents).expect("Not a valid TLS certificate");
+        let cert = TlsCertificate::from_pem(&cert_contents).expect("Not a valid TLS certificate");
         auth.set_tls_certificate(Some(&cert));
         auth.set_tls_authentication_mode(client_auth);
 

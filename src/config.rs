@@ -71,6 +71,10 @@ pub struct CameraConfig {
     pub stream: String,
 
     pub permitted_users: Option<Vec<String>>,
+
+    #[validate(range(min = 0, max = 31, message = "Invalid channel", code = "channel_id"))]
+    #[serde(default = "default_channel_id")]
+    pub channel_id: u32,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -107,10 +111,14 @@ fn default_tls_client_auth() -> String {
     "none".to_string()
 }
 
+fn default_channel_id() -> u32 {
+    0
+}
+
 pub static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];
 fn validate_username(name: &str) -> Result<(), ValidationError> {
     if name.trim().is_empty() {
-        return Err(ValidationError::new("username cannot be empty"))
+        return Err(ValidationError::new("username cannot be empty"));
     }
     if RESERVED_NAMES.contains(&name) {
         return Err(ValidationError::new("This is a reserved username"));

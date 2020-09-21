@@ -55,7 +55,7 @@ impl BcConnection {
 
         let rx_thread = std::thread::spawn(move || {
             let mut context = BcContext::new();
-            while let Ok(_) = BcConnection::poll(&mut context, &conn, &mut subs) {}
+            while BcConnection::poll(&mut context, &conn, &mut subs).is_ok() {}
         });
 
         Ok(BcConnection {
@@ -96,7 +96,7 @@ impl BcConnection {
         let mut locked_subs = subscribers.lock().unwrap();
         match locked_subs.entry(msg_id) {
             Entry::Occupied(mut occ) => {
-                if let Err(_) = occ.get_mut().send(response) {
+                if occ.get_mut().send(response).is_err() {
                     // Exceedingly unlikely, unless you mishandle the subscription object
                     warn!("Subscriber to ID {} dropped their channel", msg_id);
                     occ.remove();
