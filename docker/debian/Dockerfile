@@ -3,10 +3,17 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 FROM --platform=$BUILDPLATFORM docker.io/rust:slim-buster AS build
-MAINTAINER thirtythreeforty@gmail.com
-
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
+ARG REPO
+ARG VERSION
+ARG OWNER
+
+LABEL description="An image for the neolink program which is a reolink camera to rtsp translator"
+LABEL repository="$REPO"
+LABEL version="$VERSION"
+LABEL maintainer="$OWNER"
+
 
 # ORIGINALY I TRIED TO BUILD IN A QEMU CONTAINER.
 # THIS WOULD HAVE BEEN IDEAL BECAUSE THEN WE COULD BUILD FOR ALL
@@ -109,6 +116,14 @@ RUN echo >&2 "\e[0;32mRUNNING: ${TARGETPLATFORM} ${BUILDPLATFORM} ${arch}\e[0m";
 FROM --platform=$TARGETPLATFORM docker.io/debian:buster-slim
 
 ARG TARGETPLATFORM
+ARG REPO
+ARG VERSION
+ARG OWNER
+
+LABEL description="An image for the neolink program which is a reolink camera to rtsp translator"
+LABEL repository="$REPO"
+LABEL version="$VERSION"
+LABEL maintainer="$OWNER"
 
 RUN apt-get update && \
   apt-get install --assume-yes --no-install-recommends \

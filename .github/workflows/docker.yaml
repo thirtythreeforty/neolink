@@ -56,6 +56,16 @@ jobs:
           echo "::set-output name=ALPTAGS::${alptags}"
         env:
           REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
+      - name: Install toml-cli
+        uses: actions-rs/install@v0.1
+        with:
+          crate: toml-cli
+          version: latest
+      - name: Get project version
+        id: toml
+        run: |
+          NEOLINK_VERSION="$(toml get Cargo.toml  package.version | sed 's|"||g')"
+          echo "::set-output name=version::${NEOLINK_VERSION}"
       - name: Push to Docker Hub Debian
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         uses: docker/build-push-action@v2
@@ -64,6 +74,7 @@ jobs:
           push: true
           file: docker/debian/Dockerfile
           tags: ${{ steps.tags.outputs.DEBTAGS }}
+          build-args: VERSION=${{ steps.toml.outputs.version }}, REPO=${{ github.repository }}, OWNER=${{ github.repository_owner }}
       - name: Push to Docker Hub Alpine
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         uses: docker/build-push-action@v2
@@ -72,3 +83,4 @@ jobs:
           push: true
           file: docker/alpine/Dockerfile
           tags: ${{ steps.tags.outputs.ALPTAGS }}
+          build-args: VERSION=${{ steps.toml.outputs.version }}, REPO=${{ github.repository }}, OWNER=${{ github.repository_owner }}

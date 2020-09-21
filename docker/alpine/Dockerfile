@@ -3,7 +3,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 FROM docker.io/rust:1-alpine AS build
-MAINTAINER thirtythreeforty@gmail.com
+ARG REPO
+ARG VERSION
+ARG OWNER
+
+LABEL description="An image for the neolink program which is a reolink camera to rtsp translator"
+LABEL repository="$REPO"
+LABEL version="$VERSION"
+LABEL maintainer="$OWNER"
 
 RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
   gst-rtsp-server-dev
@@ -20,6 +27,14 @@ RUN cargo build --release
 
 # Create the release container. Match the base OS used to build
 FROM docker.io/alpine:latest
+ARG REPO
+ARG VERSION
+ARG OWNER
+
+LABEL description="An image for the neolink program which is a reolink camera to rtsp translator"
+LABEL repository="$REPO"
+LABEL version="$VERSION"
+LABEL maintainer="$OWNER"
 
 RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing libgcc \
   tzdata \
