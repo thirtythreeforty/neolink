@@ -58,3 +58,143 @@ jobs:
         with:
           name: release-${{ matrix.os }}
           path: "target/release/neolink*"
+  armhfbuild:
+    name: build-armhf
+    runs-on: ubuntu-latest
+    container: "node:current-buster-slim"
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install basic tools
+        run: |
+          apt-get update
+          apt-get install --assume-yes --no-install-recommends sudo curl ca-certificates build-essential
+      - name: Add armhf as a foreign architecture
+        run: |
+          sudo dpkg --add-architecture armhf
+      - name: Install cross compile tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --assume-yes --no-install-recommends gcc-arm-linux-gnueabihf
+      - name: Install armhf gstreamer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --assume-yes --no-install-recommends \
+          libgstrtspserver-1.0-dev:armhf \
+          libgstreamer1.0-dev:armhf \
+          libgtk2.0-dev:armhf
+      - name: Install rustup armv7
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            override: true
+            target: armv7-unknown-linux-gnueabihf
+      - name: Build armfh
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features --target=armv7-unknown-linux-gnueabihf
+        env:
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+          CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
+          PKG_CONFIG_ALLOW_CROSS: 1
+          PKG_CONFIG_PATH: /usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig/
+          PKG_CONFIG_LIBDIR: /usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig/
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release-armhf-buster
+          path: "target/armv7-unknown-linux-gnueabihf/release/neolink*"
+
+  arm64build:
+    name: build-arm64
+    runs-on: ubuntu-latest
+    container: "node:current-buster-slim"
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install basic tools
+        run: |
+          apt-get update
+          apt-get install --assume-yes --no-install-recommends sudo curl ca-certificates build-essential
+      - name: Add arm64 as a foreign architecture
+        run: |
+          sudo dpkg --add-architecture arm64
+      - name: Install cross compile tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --assume-yes --no-install-recommends gcc-aarch64-linux-gnu
+      - name: Install arm64 gstreamer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --assume-yes --no-install-recommends \
+          libgstrtspserver-1.0-dev:arm64 \
+          libgstreamer1.0-dev:arm64 \
+          libgtk2.0-dev:arm64
+      - name: Install rustup arm64
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            override: true
+            target: aarch64-unknown-linux-gnu
+      - name: Build arm64
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features --target=aarch64-unknown-linux-gnu
+        env:
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: aarch64-linux-gnu-gcc
+          CC_armv7_unknown_linux_gnueabihf: aarch64-linux-gnu-gcc
+          CXX_armv7_unknown_linux_gnueabihf: aarch64-linux-gnu-g++
+          PKG_CONFIG_ALLOW_CROSS: 1
+          PKG_CONFIG_PATH: /usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig/
+          PKG_CONFIG_LIBDIR: /usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig/
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release-arm64-buster
+          path: "target/aarch64-unknown-linux-gnu/release/neolink*"
+
+  i386build:
+    name: build-i386
+    runs-on: ubuntu-latest
+    container: "node:current-buster-slim"
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install basic tools
+        run: |
+          apt-get update
+          apt-get install --assume-yes --no-install-recommends sudo curl ca-certificates build-essential
+      - name: Add arm64 as a foreign architecture
+        run: |
+          sudo dpkg --add-architecture i386
+      - name: Install cross compile tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --assume-yes --no-install-recommends gcc-i686-linux-gnu
+      - name: Install i386 gstreamer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --assume-yes --no-install-recommends \
+          libgstrtspserver-1.0-dev:i386 \
+          libgstreamer1.0-dev:i386 \
+          libgtk2.0-dev:i386
+      - name: Install rustup i386
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            override: true
+            target: i686-unknown-linux-gnu
+      - name: Build i386
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features --target=i686-unknown-linux-gnu
+        env:
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: i686-linux-gnu-gcc
+          CC_armv7_unknown_linux_gnueabihf: i686-linux-gnu-gcc
+          CXX_armv7_unknown_linux_gnueabihf: i686-linux-gnu-g++
+          PKG_CONFIG_ALLOW_CROSS: 1
+          PKG_CONFIG_PATH: /usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig/
+          PKG_CONFIG_LIBDIR: /usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig/
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release-i386-buster
+          path: "target/i686-unknown-linux-gnu/release/neolink*"
