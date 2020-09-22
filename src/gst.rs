@@ -104,6 +104,12 @@ impl GstOutputs {
     }
 }
 
+impl Default for RtspServer {
+    fn default() -> RtspServer {
+        Self::new()
+    }
+}
+
 impl RtspServer {
     pub fn new() -> RtspServer {
         gstreamer::init().expect("Gstreamer should not explode");
@@ -209,7 +215,7 @@ impl RtspServer {
     }
 
     pub fn set_credentials(&self, credentials: &[(&str, &str)]) -> Result<()> {
-        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
+        let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new);
         auth.set_supported_methods(RTSPAuthMethod::Basic);
 
         let mut un_authtoken = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"anonymous")]);
@@ -229,7 +235,7 @@ impl RtspServer {
 
     pub fn set_tls(&self, cert_file: &str, client_auth: TlsAuthenticationMode) -> Result<()> {
         debug!("Setting up TLS using {}", cert_file);
-        let auth = self.server.get_auth().unwrap_or_else(|| RTSPAuth::new());
+        let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new);
 
         // We seperate reading the file and changing to a PEM so that we get different error messages.
         let cert_contents = fs::read_to_string(cert_file).expect("TLS file not found");
