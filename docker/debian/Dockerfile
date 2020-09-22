@@ -77,8 +77,8 @@ RUN echo >&2 "\e[0;32mRUNNING: ${TARGETPLATFORM} ${BUILDPLATFORM} ${arch}\e[0m";
             arch="i386"; \
             gcc="gcc-i686-linux-gnu"; \
             export CARGO_TARGET_I686_UNKNOWN_LINUX_GNU_LINKER=i686-linux-gnu-gcc && \
-            export CC_aarch64_unknown_linux_gnu=i686-linux-gnu-gcc  && \
-            export CXX_aarch64_unknown_linux_gnu=i686-linux-gnu-g++  && \
+            export CC_i686_unknown_linux_gnu=i686-linux-gnu-gcc  && \
+            export CXX_i686_unknown_linux_gnu=i686-linux-gnu-g++  && \
             export PKG_CONFIG_ALLOW_CROSS=1  && \
             export PKG_CONFIG_PATH=/usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig/  && \
             export PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig/; \
