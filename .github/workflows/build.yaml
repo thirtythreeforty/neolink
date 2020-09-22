@@ -3,7 +3,7 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  ubuntu:
+  builds:
     name: build
     runs-on: ${{ matrix.os }}
     strategy:
@@ -29,9 +29,12 @@ jobs:
           echo "::add-path::C:\gstreamer\1.0\x86_64\bin"
           echo "::set-env name=GSTREAMER_1_0_ROOT_X86_64::C:\gstreamer\1.0\x86_64\"
       - if: runner.os == 'macOS'
-        name: Brew Install Gstreamer
+        name: Install Gstreamer on MACOS
         run: |
-          brew install gst-rtsp-server gst-plugins-good gst-plugins-bad glib
+          curl -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/gstreamer-1.0-devel-1.16.2-x86_64.pkg' -o "$(pwd)/gstreamer-devel.pkg"
+          sudo installer -verbose -pkg "$(pwd)/gstreamer-devel.pkg" -target /
+          PKG_CONFIG_PATH="/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          echo "::set-env name=PKG_CONFIG_PATH::${PKG_CONFIG_PATH}"
       - name: Cache cargo registry
         uses: actions/cache@v1
         with:
