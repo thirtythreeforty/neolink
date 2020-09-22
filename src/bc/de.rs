@@ -99,14 +99,14 @@ fn hex32<'a>() -> impl Fn(&'a [u8]) -> IResult<&'a [u8], String> {
     })
 }
 
-fn bc_legacy_login_msg<'a, 'b>(buf: &'b [u8]) -> IResult<&'b [u8], LegacyMsg> {
+fn bc_legacy_login_msg<'a>(buf: &'a [u8]) -> IResult<&'a [u8], LegacyMsg> {
     let (buf, username) = hex32()(buf)?;
     let (buf, password) = hex32()(buf)?;
 
     Ok((buf, LegacyMsg::LoginMsg { username, password }))
 }
 
-fn bc_modern_msg<'a, 'b, 'c>(
+fn bc_modern_msg<'a, 'b>(
     context: &mut BcContext,
     header: &'a BcHeader,
     buf: &'b [u8],

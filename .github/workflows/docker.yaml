@@ -12,19 +12,29 @@ jobs:
         shell: bash
         run: |
             unset HAS_SECRET
-            if [-n $SECRET]; then HAS_SECRET='true' ; fi
+            if [ -n $SECRET ]; then HAS_SECRET='true' ; fi
             echo ::set-output name=HAS_SECRET_TOKEN::${HAS_SECRET}
         env:
           SECRET: "${{ secrets.DOCKER_TOKEN }}"
       - name: Check out the repo
         uses: actions/checkout@v2
-        if: ${{ steps.vars.outputs.HAS_SECRET }}
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+      - name: Convert username to lower case for docker
+        id: string_user
+        uses: ASzc/change-string-case-action@v1
+        with:
+          string: ${{ github.repository_owner }}
+      - name: Convert repo to lower case for docker
+        id: string_repo
+        uses: ASzc/change-string-case-action@v1
+        with:
+          string: ${{ github.repository }}
       - name: Push to Docker Hub
         uses: docker/build-push-action@v1
-        if: ${{ steps.vars.outputs.HAS_SECRET }}
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         with:
-          username: thirtythreeforty
+          username: ${{ steps.string_user.outputs.lowercase }}
           password: ${{ secrets.DOCKER_TOKEN }}
           registry: docker.io
-          repository: thirtythreeforty/neolink
+          repository: ${{ steps.string_repo.outputs.lowercase }}
           tag_with_ref: true

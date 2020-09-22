@@ -1,9 +1,9 @@
 use self::connection::BcConnection;
+use self::media_packet::{MediaDataKind, MediaDataSubscriber};
 use crate::bc;
 use crate::bc::{model::*, xml::*};
 use err_derive::Error;
 use log::*;
-use md5;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
@@ -11,17 +11,20 @@ use std::time::Duration;
 use Md5Trunc::*;
 
 mod connection;
+mod media_packet;
+mod time;
 
 pub struct BcCamera {
     address: SocketAddr,
     connection: Option<BcConnection>,
     logged_in: bool,
-    rx_timeout: Duration,
 }
 
 use crate::Never;
 
 type Result<T> = std::result::Result<T, Error>;
+
+const RX_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -45,6 +48,9 @@ pub enum Error {
 
     #[error(display = "Timeout")]
     Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
+
+    #[error(display = "Media")]
+    MediaPacket(#[error(source)] self::media_packet::Error),
 
     #[error(display = "Credential error")]
     AuthFailed,
@@ -70,16 +76,11 @@ impl BcCamera {
             address,
             connection: None,
             logged_in: false,
-            rx_timeout: Duration::from_secs(1),
         })
     }
 
-    pub fn set_rx_timeout(&mut self, timeout: Duration) {
-        self.rx_timeout = timeout;
-    }
-
     pub fn connect(&mut self) -> Result<()> {
-        self.connection = Some(BcConnection::new(self.address, self.rx_timeout)?);
+        self.connection = Some(BcConnection::new(self.address, RX_TIMEOUT)?);
         Ok(())
     }
 
@@ -109,7 +110,7 @@ impl BcCamera {
         let md5_username = md5_string(username, ZeroLast);
         let md5_password = password
             .map(|p| md5_string(p, ZeroLast))
-            .unwrap_or(EMPTY_LEGACY_PASSWORD.to_owned());
+            .unwrap_or_else(|| EMPTY_LEGACY_PASSWORD.to_owned());
 
         let legacy_login = Bc {
             meta: BcMeta {
@@ -126,7 +127,7 @@ impl BcCamera {
 
         sub_login.send(legacy_login)?;
 
-        let legacy_reply = sub_login.rx.recv_timeout(self.rx_timeout)?;
+        let legacy_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
         let nonce;
         match legacy_reply.body {
             BcBody::ModernMsg(ModernMsg {
@@ -180,7 +181,7 @@ impl BcCamera {
         );
 
         sub_login.send(modern_login)?;
-        let modern_reply = sub_login.rx.recv_timeout(self.rx_timeout)?;
+        let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
 
         let device_info;
         match modern_reply.body {
@@ -237,12 +238,17 @@ impl BcCamera {
 
         sub_ping.send(ping)?;
 
-        sub_ping.rx.recv_timeout(self.rx_timeout)?;
+        sub_ping.rx.recv_timeout(RX_TIMEOUT)?;
 
         Ok(())
     }
 
-    pub fn start_video(&self, data_out: &mut dyn Write, stream_name: &str) -> Result<Never> {
+    pub fn start_video(
+        &self,
+        data_out: &mut dyn Write,
+        stream_name: &str,
+        channel_id: u32,
+    ) -> Result<Never> {
         let connection = self
             .connection
             .as_ref()
@@ -259,7 +265,7 @@ impl BcCamera {
             BcXml {
                 preview: Some(Preview {
                     version: xml_ver(),
-                    channel_id: 0,
+                    channel_id,
                     handle: 0,
                     stream_type: stream_name.to_string(),
                 }),
@@ -269,20 +275,18 @@ impl BcCamera {
 
         sub_video.send(start_video)?;
 
+        let mut media_sub = MediaDataSubscriber::from_bc_sub(&sub_video);
+
         loop {
-            trace!("Getting video message...");
-            let msg = sub_video.rx.recv_timeout(self.rx_timeout)?;
-            if let BcBody::ModernMsg(ModernMsg {
-                binary: Some(binary),
-                ..
-            }) = msg.body
-            {
-                trace!("Got {} bytes of video data", binary.len());
-                data_out.write_all(binary.as_slice())?;
-            } else {
-                warn!("Ignoring weird video message");
-                debug!("Contents: {:?}", msg);
-            }
+            let binary_data = media_sub.next_media_packet(RX_TIMEOUT)?;
+            // We now have a complete interesting packet. Send it to gst.
+            // Process the packet
+            match binary_data.kind() {
+                MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
+                    data_out.write_all(binary_data.body())?;
+                }
+                _ => {}
+            };
         }
     }
 }

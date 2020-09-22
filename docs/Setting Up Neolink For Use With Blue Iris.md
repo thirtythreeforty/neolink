@@ -31,17 +31,7 @@ _This is the most reliable setup since Neolink cannot autodetect when a camera's
 
 _You will have to reconnect to the camera once you have changed the IP address_
 
-### 3. Set the camera's time to your local network time and disable Auto Reboot
-_When a camera reboots, it loses its date and time settings. If the camera's time is not set, Neolink will recursively "time out" every one second and will not stream video.  Setting the time and disabling auto reboot on the camera is a workaround for [issue #14](https://github.com/thirtythreeforty/neolink/issues/14)._ 
-1. In the Reolink PC app, login to your camera.
-2. Click "Device Settings" -> "System General" -> "Synchronize Local Time."
-3. Click "Ok."
-
-4. Click "Device Settings" -> "Maintenance."
-
-5. Uncheck "Enable Auto Reboot."
-
-### 4. Set a Password
+### 3. Set a Password
 _It's recommended that you set a password for each of your cameras. If you want to use the Reolink Mobile App, it makes you set a password for each camera anyway._
 1. In the Reolink PC app, login to your camera.
 2. Click "Device Settings" -> "Manage User."
