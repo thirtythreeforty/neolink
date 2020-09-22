@@ -1,8 +1,8 @@
 /*
  This is a rust implementation of OKI and DVI/IMA ADPCM.
 */
-use std::convert::TryInto;
 use log::error;
+use std::convert::TryInto;
 
 struct AdpcmSetup {
     max_step_index: usize,
@@ -100,10 +100,7 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
     let frame_type_bytes = &bytes[0..2];
     const FRAME_TYPE_HISILICON: &[u8] = &[0x00, 0x01];
     if frame_type_bytes != FRAME_TYPE_HISILICON {
-        error!(
-            "Unexpected adpcm frame type: {:x?}",
-            frame_type_bytes
-        );
+        error!("Unexpected adpcm frame type: {:x?}", frame_type_bytes);
     }
 
     // Check for valid block size
@@ -112,9 +109,10 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
         block_size_bytes
             .try_into()
             .expect("slice with incorrect length"),
-    ) as usize)  * 2; // Block size is stored as 1/2 (don't know why)
+    ) as usize)
+        * 2; // Block size is stored as 1/2 (don't know why)
     let full_block_size = block_size + 4; // block_size + magic (2 bytes) + size (2 bytes)
-    if ! bytes.len() % full_block_size == 0 {
+    if !bytes.len() % full_block_size == 0 {
         error!("ADPCM Data is not a multiple of the block size");
     }
 
@@ -210,7 +208,8 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
                 // To convert we must scale it to the i16 range
                 // We also cast to i16 at this point ready for the conversion to u8 bytes of the output
                 let scaled_sample = (sample as isize * (i16::MAX as isize)
-                    / (context.max_sample_size - 1) as isize) as i16;
+                    / (context.max_sample_size - 1) as isize)
+                    as i16;
 
                 // Get the results in bytes
                 result.extend(scaled_sample.to_le_bytes().iter());

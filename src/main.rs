@@ -58,7 +58,7 @@ fn main() -> Result<(), Error> {
 
     crossbeam::scope(|s| {
         for camera in config.cameras {
-            if let Some(_) = &camera.format {
+            if camera.format.is_some() {
                 warn!("The format config option of the camera has been removed in favour of auto detection.")
             }
             // Let subthreads share the camera object; in principle I think they could share
