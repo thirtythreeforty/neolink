@@ -20,7 +20,13 @@ jobs:
       - if: runner.os == 'Windows'
         name: Install Gstreamer
         run: |
-          $curlgst = Start-Job -ScriptBlock { curl.exe -fsSL "https://gstreamer.freedesktop.org/data/pkg/windows/1.16.2/gstreamer-1.0-devel-msvc-x86_64-1.16.2.msi" -o gstreamer-1.0-devel.msi }
+          $curl_retry = @(
+            "--connect-timeout", "5",
+            "--retry", "5",
+            "--retry-delay", "0",
+            "--retry-max-time", "300"
+          )
+          $curlgst = Start-Job -ScriptBlock { curl.exe -fsSL $curl_retry "https://gstreamer.freedesktop.org/data/pkg/windows/1.16.2/gstreamer-1.0-devel-msvc-x86_64-1.16.2.msi" -o gstreamer-1.0-devel.msi }
           choco install -y --no-progress gstreamer
           echo "Installing gstreamer-1.0-devel"
           Wait-Job $curlgst
@@ -31,7 +37,13 @@ jobs:
       - if: runner.os == 'macOS'
         name: Install Gstreamer on MACOS
         run: |
-          curl -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/gstreamer-1.0-devel-1.16.2-x86_64.pkg' -o "$(pwd)/gstreamer-devel.pkg"
+          curl_retry=(
+            --connect-timeout 5
+            --retry 5
+            --retry-delay 0
+            --retry-max-time 300
+          )
+          curl "${curl_retry[@]}" -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/gstreamer-1.0-devel-1.16.2-x86_64.pkg' -o "$(pwd)/gstreamer-devel.pkg"
           sudo installer -verbose -pkg "$(pwd)/gstreamer-devel.pkg" -target /
           PKG_CONFIG_PATH="/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           echo "::set-env name=PKG_CONFIG_PATH::${PKG_CONFIG_PATH}"
