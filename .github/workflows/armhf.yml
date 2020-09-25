@@ -19,7 +19,7 @@ jobs:
       - name: Install cross compile tools
         run: |
           sudo apt-get update
-          sudo apt-get install --assume-yes --no-install-recommends gcc-arm-linux-gnueabihf
+          sudo apt-get install --assume-yes --no-install-recommends gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
       - name: Install armhf gstreamer
         run: |
           sudo apt-get update
