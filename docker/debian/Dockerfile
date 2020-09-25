@@ -39,7 +39,8 @@ RUN echo >&2 "\e[0;32mRUNNING: ${TARGETPLATFORM} ${BUILDPLATFORM} ${arch}\e[0m";
             echo >&2 "\e[0;32mBUILDING for ${TARGETPLATFORM} on ${BUILDPLATFORM}\e[0m"; \
             rustArch='x86_64-unknown-linux-gnu'; \
             arch="amd64"; \
-            gcc="x86_64-linux-gnu-gcc"; \
+            gcc=" gcc-x86-64-linux-gnu"; \
+            gpp=" g++-x86-64-linux-gnu"; \
             export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc && \
             export CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc  && \
             export CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++  && \
@@ -52,6 +53,7 @@ RUN echo >&2 "\e[0;32mRUNNING: ${TARGETPLATFORM} ${BUILDPLATFORM} ${arch}\e[0m";
             rustArch='armv7-unknown-linux-gnueabihf'; \
             arch="armhf"; \
             gcc="gcc-arm-linux-gnueabihf"; \
+            gpp="g++-arm-linux-gnueabihf"; \
             export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc && \
             export CC_armv7_unknown_linux_gnueabihf=arm-linux-gnueabihf-gcc  && \
             export CXX_armv7_unknown_linux_gnueabihf=arm-linux-gnueabihf-g++  && \
@@ -64,6 +66,7 @@ RUN echo >&2 "\e[0;32mRUNNING: ${TARGETPLATFORM} ${BUILDPLATFORM} ${arch}\e[0m";
             rustArch='aarch64-unknown-linux-gnu'; \
             arch="arm64"; \
             gcc="gcc-aarch64-linux-gnu"; \
+            gpp="g++-aarch64-linux-gnu"; \
             export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc && \
             export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc  && \
             export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++  && \
@@ -76,6 +79,7 @@ RUN echo >&2 "\e[0;32mRUNNING: ${TARGETPLATFORM} ${BUILDPLATFORM} ${arch}\e[0m";
             rustArch='i686-unknown-linux-gnu'; \
             arch="i386"; \
             gcc="gcc-i686-linux-gnu"; \
+            gpp="g++-i686-linux-gnu"; \
             export CARGO_TARGET_I686_UNKNOWN_LINUX_GNU_LINKER=i686-linux-gnu-gcc && \
             export CC_i686_unknown_linux_gnu=i686-linux-gnu-gcc  && \
             export CXX_i686_unknown_linux_gnu=i686-linux-gnu-g++  && \
@@ -95,6 +99,7 @@ RUN echo >&2 "\e[0;32mRUNNING: ${TARGETPLATFORM} ${BUILDPLATFORM} ${arch}\e[0m";
                 *) echo >&2 "\e[0;31mUnsupported architecture: ${dpkgArch}\e[0m"; exit 1 ;; \
             esac; \
             gcc="gcc" \
+            gpp="g++" \
           ;; \
         *) echo >&2 "\e[0;31mUnsupported architecture: ${TARGETPLATFORM} ${BUILDPLATFORM} ${arch}\e[0m"; exit 1 ;; \
     esac; \
@@ -102,7 +107,7 @@ RUN echo >&2 "\e[0;32mRUNNING: ${TARGETPLATFORM} ${BUILDPLATFORM} ${arch}\e[0m";
     apt-get update && \
     apt-get install --assume-yes --no-install-recommends \
       build-essential \
-      "${gcc}" \
+      "${gcc}" "${gpp}" \
       libgstrtspserver-1.0-dev:${arch} \
       libgstreamer1.0-dev:${arch} \
       libgtk2.0-dev:${arch} && \
