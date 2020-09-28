@@ -63,103 +63,193 @@ function xml_encrypt(ba, offset)
   return e
 end
 
-function bc_protocol.dissector(buffer, pinfo, tree)
-  length = buffer:len()
-  if length == 0 then return end
-
-  if buffer:len() < 20 then
-    -- Need more bytes but we don't have a header to learn how many bytes
-    pinfo.desegment_len = DESEGMENT_ONE_MORE_SEGMENT
-    pinfo.desegment_offset = 0
-    return
-  end
-
-  pinfo.cols.protocol = bc_protocol.name
-
+function get_header_len(buffer)
   local magic = buffer(0, 4):le_uint()
   if magic ~= 0x0abcdef0 then
-    -- Case 3, capture started in middle of packet,
-    -- from https://wiki.wireshark.org/Lua/Dissectors#TCP_reassembly
-    -- The camera always seems to emit a new TCP packet for a new message
-    return 0
+    return -1 -- No header found
   end
-
-  local msg_type = buffer(4, 4):le_uint()
-  local msg_type_str = message_types[msg_type] or "unknown"
-  local msg_len = buffer(8, 4):le_uint()
-  local enc_offset = buffer(12, 4):le_uint()
-  local msg_cls = buffer(18, 2):le_uint()
-  local encrypted = (msg_cls == 0x6414 or buffer(16, 1):le_uint() ~= 0)
-  local class = message_classes[buffer(18, 2):le_uint()]
   local header_len = header_lengths[buffer(18, 2):le_uint()]
+  return header_len
+end
 
-  if buffer:len() ~= msg_len + header_len then
-    -- Case 1, need more bytes,
-    -- from https://wiki.wireshark.org/Lua/Dissectors#TCP_reassembly
-    pinfo.desegment_len = msg_len + header_len - buffer:len()
-    pinfo.desegment_offset = 0
-    return buffer:len()
-  end
-
+function get_header(buffer)
   -- bin_offset is either nil (no binary data) or nonzero
   -- TODO: bin_offset is actually stateful!
   local bin_offset = nil
+  local header_len = header_lengths[buffer(18, 2):le_uint()]
+  local msg_type = buffer(4, 4):le_uint()
   if header_len == 24 then
     bin_offset = buffer(20, 4):le_uint()
-    if bin_offset == 0 then bin_offset = nil end
   end
+  local msg_type = buffer(4, 4):le_uint()
+  return {
+    magic = buffer(0, 4):le_uint(),
+    msg_type = buffer(4, 4):le_uint(),
+    msg_type_str = message_types[msg_type] or "unknown",
+    msg_len = buffer(8, 4):le_uint(),
+    enc_offset = buffer(12, 4):le_uint(),
+    msg_cls = buffer(18, 2):le_uint(),
+    encrypted = (msg_cls == 0x6414 or buffer(16, 1):le_uint() ~= 0),
+    class = message_classes[buffer(18, 2):le_uint()],
+    header_len = header_lengths[buffer(18, 2):le_uint()],
+    bin_offset = bin_offset,
+  }
+end
 
-  local bc_subtree = tree:add(bc_protocol, buffer(),
-    "Baichuan IP Camera Protocol, " .. msg_type_str .. " message")
-  local header = bc_subtree:add(bc_protocol, buffer(0, header_len),
-    "Baichuan Message Header, length: " .. header_len)
-
-  pinfo.cols['info'] = msg_type_str .. ", type " .. msg_type .. ", " .. msg_len .. " bytes"
-
+function process_header(buffer, headers_tree)
+  local header_data = get_header(buffer)
+  local header = headers_tree:add(bc_protocol, buffer(0, header_len),
+    "Baichuan Message Header, length: " .. header_data.header_len .. ", type " .. header_data.msg_type)
   header:add_le(magic_bytes, buffer(0, 4))
   header:add_le(message_id,  buffer(4, 4))
-        :append_text(" (" .. msg_type_str .. ")")
+        :append_text(" (" .. header_data.msg_type_str .. ")")
   header:add_le(message_len, buffer(8, 4))
   header:add_le(xml_enc_offset, buffer(12, 4))
-        :append_text(" (& 0xF == " .. bit32.band(enc_offset, 0xF) .. ")")
+        :append_text(" (& 0xF == " .. bit32.band(header_data.enc_offset, 0xF) .. ")")
   header:add_le(xml_enc_used, buffer(16, 1))
-  header:add_le(message_class, buffer(18, 2))
-        :append_text(" (" .. class .. ")")
-  header:add_le(f_bin_offset, buffer(20, 4))
+  header:add_le(message_class, buffer(18, 2)):append_text(" (" .. header_data.class .. ")")
+  if header_data.header_len == 24 then
+    header:add_le(f_bin_offset, buffer(20, 4))
+  end
+  return header_len
+end
 
-  if msg_len == 0 then
+function process_body(header, body_buffer, body, pinfo)
+  if header.msg_len == 0 then
     return
   end
 
-  local body = bc_subtree:add(bc_protocol, buffer(header_len, nil),
-    "Baichuan Message Body, " .. class .. ", length: " .. msg_len .. ", encrypted: " .. tostring(encrypted))
-
-  if class == "legacy" then
-    if msg_type == 1 then
-      body:add_le(username, buffer(header_len, 32))
-      body:add_le(password, buffer(header_len + 32, 32))
+  if header.class == "legacy" then
+    if header.msg_type == 1 then
+      body:add_le(username, body_buffer(0, 32))
+      body:add_le(password, body_buffer(0 + 32, 32))
     end
   else
-    local body_tvb = buffer(header_len, bin_offset):tvb()
-    body:add(body_tvb(), "XML Payload")
-
-    if encrypted then
-      local ba = buffer(header_len, bin_offset):bytes()
-      local decrypted = xml_encrypt(ba, enc_offset)
-      body_tvb = decrypted:tvb("Decrypted XML")
-      -- Create a tree item that, when clicked, automatically shows the tab we just created
-      body:add(body_tvb(), "Decrypted XML")
+    local xml_len = header.bin_offset
+    if xml_len == nil then
+      xml_len = header.msg_len
     end
-    Dissector.get("xml"):call(body_tvb, pinfo, body)
+    local xml_buffer = body_buffer(0, xml_len)
+    if xml_len > 0 then
+      local body_tvb = xml_buffer:tvb()
+      body:add(body_tvb(), "XML Payload")
+      if xml_len >= 4 then
+        if xml_buffer(0, 4):le_uint() == 0x26441223 then -- Encrypted xml found
+          local ba = xml_buffer:bytes()
+          local decrypted = xml_encrypt(ba, header.enc_offset)
+          body_tvb = decrypted:tvb("Decrypted XML")
+          -- Create a tree item that, when clicked, automatically shows the tab we just created
+          body:add(body_tvb(), "Decrypted XML")
+        end
+      end
+      Dissector.get("xml"):call(body_tvb, pinfo, body)
+    end
 
-    if bin_offset ~= nil then
-      local binary_tvb = buffer(header_len + bin_offset, nil):tvb()
-      body:add(binary_tvb(), "Binary Payload")
-      if msg_type == 0x03 then -- video
-        Dissector.get("h265"):call(binary_tvb, pinfo, tree)
+    if header.bin_offset ~= nil then
+      local bin_len = header.msg_len - header.bin_offset
+      if bin_len > 0 then
+        local binary_buffer = body_buffer(header.bin_offset, bin_len) -- Don't extend beyond msg size
+        if bin_len > 4 then
+          if binary_buffer(0, 4):le_uint() == 0x26441223 then -- Encrypted xml found
+            local decrypted = xml_encrypt(binary_buffer:bytes(), header.enc_offset)
+            body_tvb = decrypted:tvb("Decrypted XML (in binary block)")
+            -- Create a tree item that, when clicked, automatically shows the tab we just created
+            body:add(body_tvb(), "Decrypted XML (in binary block)")
+            Dissector.get("xml"):call(body_tvb, pinfo, body)
+          end
+        else
+          local binary_tvb = binary_buffer:tvb()
+          body:add(binary_tvb(), "Binary Payload")
+        end
       end
     end
   end
 end
 
+function bc_protocol.dissector(buffer, pinfo, tree)
+  length = buffer:len()
+  if length == 0 then return end
+
+  pinfo.cols.protocol = bc_protocol.name
+
+  local sub_buffer = buffer
+  local table_msg_type_str = {}
+  local table_msg_type = {}
+
+  local continue_loop = true
+  while ( continue_loop )
+  do
+    -- Get min bytes for a magic and header len
+    if sub_buffer:len() < 20 then
+      -- Need more bytes but we don't have a header to learn how many bytes
+      pinfo.desegment_len = DESEGMENT_ONE_MORE_SEGMENT
+      pinfo.desegment_offset = 0
+      pinfo.cols['info'] = "Need more header"
+      return
+    end
+
+    header_len = get_header_len(sub_buffer(0, nil))
+    if header_len >= 0 then
+      pinfo.cols['info'] = "Valid header"
+      -- Valid magic and header found
+
+      -- Ensure min bytes for full header
+      if sub_buffer:len() < header_len then
+        pinfo.cols['info'] = "Need even more header"
+        -- Need more bytes
+        pinfo.desegment_len = header_len - sub_buffer:len()
+        pinfo.desegment_offset = 0
+        return buffer:len()
+      end
+
+
+      local header = get_header(sub_buffer(0, nil))
+      table.insert(table_msg_type_str, header.msg_type_str)
+      table.insert(table_msg_type, header.msg_type)
+
+      -- Get full header and body
+      local full_body_len =  header.msg_len + header.header_len
+      if sub_buffer:len() < full_body_len then
+        -- need more bytes,
+        -- from https://wiki.wireshark.org/Lua/Dissectors#TCP_reassembly
+        pinfo.cols['info'] = "Need more body: " .. sub_buffer:len() .. " expected " .. full_body_len
+        pinfo.desegment_len = full_body_len - sub_buffer:len()
+        pinfo.desegment_offset = 0
+        return buffer:len()
+      end
+
+      local remaining = sub_buffer:len() - header.header_len
+
+      local bc_subtree = tree:add(bc_protocol, sub_buffer(0, header.msg_len),
+        "Baichuan IP Camera Protocol, " .. header.msg_type_str .. " message")
+      process_header(sub_buffer, bc_subtree)
+      if header.header_len < sub_buffer:len() then
+        local body_buffer = sub_buffer(header.header_len,nil)
+        local body = bc_subtree:add(bc_protocol, body_buffer,
+          "Baichuan Message Body, " .. header.class .. ", length: " .. header.msg_len .. ", type " .. header.msg_type .. ", encrypted: " .. tostring(header.encrypted))
+
+        process_body(header, body_buffer, body, pinfo)
+
+        remaining = body_buffer:len() - header.msg_len
+      end
+
+      -- Remaning bytes?
+      if remaining == 0 then
+        continue_loop = false
+      else
+        pinfo.cols['info'] = "Another packet"
+        sub_buffer = sub_buffer(full_body_len, nil)
+      end
+    else
+      pinfo.cols['info'] = "Invalid magic"
+      return -- Not a valid header
+    end
+  end
+
+  local msg_type_strs = table.concat(table_msg_type_str, ",")
+  local msg_types = table.concat(table_msg_type, ",")
+  pinfo.cols['info'] = msg_type_strs .. ", type " .. msg_types
+end
+
 DissectorTable.get("tcp.port"):add(9000, bc_protocol)
+DissectorTable.get("tcp.port"):add(52941, bc_protocol)
