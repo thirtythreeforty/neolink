@@ -255,12 +255,123 @@ a PR to improve it.
     </StreamInfoList>
     </body>
     ```
+- 2 Not observed
+
+- 3 Stream
+
+  - Client
+
+    - Header
+    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | binary length |
+    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+    | f0 de bc 0a  | 03 00 00 00  |  aa 00 00 00   |    00 00 00 09    |       00        |   00    |     14 64     |  00 00 00 00  |
+
+    - Body
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Preview version="1.1">
+    <channelId>0</channelId>
+    <handle>0</handle>
+    <streamType>mainStream</streamType>
+    </Preview>
+    </body>
+    ```
+
+    - **Notes:** This requests the camera to send this stream
+
+  - Camera
+
+    - Header
+
+    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | binary length |
+    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+    | f0 de bc 0a  | 03 00 00 00  |  8a 00 00 00   |    00 00 00 09    |       c8        |   00    |     00 00     |  6a 00 00 00  |
+
+    - Body
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <binaryData>1</binaryData>
+    </Extension>
+    ```
+
+    - **Notes:** Camera then send the stream as a binary payload in all
+    following messages of id 3
+
+  - Camera Stream Binary
+
+    - Header
+
+    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | binary length |
+    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+    | f0 de bc 0a  | 03 00 00 00  |  e8 5e 00 00   |    00 00 00 09    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Body
+
+      Body is binary. This binary represents an embedded stream which should
+      be detailed elsewhere.
+
+- 4-9 Not observed
+
+- 10 Audio back-channel
+
+  - Client
+
+    - Header
+
+    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | binary length |
+    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+    | f0 de bc 0a  | 0a 00 00 00  |  68 00 00 00   |    00 00 00 0b    |       00        |   00    |     14 64     |  68 00 00 00  |
+
+    - Body
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+  - Camera
+
+    - Header
+
+    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | binary length |
+    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+    | f0 de bc 0a  | 0a 00 00 00  |  f7 01 00 00   |    00 00 00 0b    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Body
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <TalkAbility version="1.1">
+    <duplexList>
+    <duplex>FDX</duplex>
+    </duplexList>
+    <audioStreamModeList>
+    <audioStreamMode>followVideoStream</audioStreamMode>
+    </audioStreamModeList>
+    <audioConfigList>
+    <audioConfig>
+    <priority>0</priority>
+    <audioType>adpcm</audioType>
+    <sampleRate>16000</sampleRate>
+    <samplePrecision>16</samplePrecision>
+    <lengthPerEncoder>1024</lengthPerEncoder>
+    <soundTrack>mono</soundTrack>
+    </audioConfig>
+    </audioConfigList>
+    </TalkAbility>
+    </body>
+    ```
+
+
 
 
 ---
 # Ancillary
 
-I used this regex replace to make the header tables from the wireshark hex dump.
+I used these regex replace to make the header tables from the wireshark hex dump.
 It may be useful for others working on it.
 
 ```
