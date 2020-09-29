@@ -5,13 +5,16 @@ This is an attempt to document the BC messages. It is subject to change
 and some aspects of it may not be correct. Please feel free to submit
 a PR to improve it.
 
-- 1 Login
+- 1 Login Legacy
 
   - Client
+
     - Header
+
     |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class |
     |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|
     | f0 de bc 0a  | 01 00 00 00  |  2c 07 00 00   |    00 00 00 01    |       01        |   dc    |     14 65     |
+
     - Body
     ```hex
     0000   31 38 35 31 42 34 43 36 34 31 36 31 36 34 34 33
@@ -130,8 +133,128 @@ a PR to improve it.
     0710   00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
     0720   00 00 00 00 00 00 00 00 00 00 00 00
     ```
-    - **Notes:** Body is hash of user and password and then a lot of zero pads
 
+    - **Notes:** Body is hash of user and password and then a lot of zero pads
+  - Camera
+
+    - Header
+
+    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class |
+    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|
+    | f0 de bc 0a  | 01 00 00 00  |  91 00 00 00   |    00 00 00 01    |       01        |   dd    |     14 66     |
+
+    - Body
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Encryption version="1.1">
+    <type>md5</type>
+    <nonce>13BCECE33DA453DB</nonce>
+    </Encryption>
+    </body>
+    ```
+
+    - **Notes:** Sends back a NOONCE used for the modern login message. This is
+    effectively an upgrade request to use the modern xml style over legacy.
+    A legacy camera likely replies differently but I don't have one to test on.
+
+- 1 Login Modern
+
+  - Client
+    - Header
+    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | binary length |
+    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+    | f0 de bc 0a  | 01 00 00 00  |  28 01 00 00   |    00 00 00 01    |       00        |   00    |     14 64     |  00 00 00 00  |
+
+    - Body
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <LoginUser version="1.1">
+    <userName>...</userName> <!-- Hash of username with noonce -->
+    <password>...</password> <!-- Hash of password with noonce -->
+    <userVer>1</userVer>
+    </LoginUser>
+    <LoginNet version="1.1">
+    <type>LAN</type>
+    <udpPort>0</udpPort>
+    </LoginNet>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | binary length |
+    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+    | f0 de bc 0a  | 01 00 00 00  |  2e 06 00 00   |    00 00 00 01    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Body
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <DeviceInfo version="1.1">
+    <firmVersion>00000000000000</firmVersion>
+    <IOInputPortNum>0</IOInputPortNum>
+    <IOOutputPortNum>0</IOOutputPortNum>
+    <diskNum>0</diskNum>
+    <type>wifi_solo_ipc</type>
+    <channelNum>1</channelNum>
+    <audioNum>1</audioNum>
+    <ipChannel>0</ipChannel>
+    <analogChnNum>1</analogChnNum>
+    <resolution>
+    <resolutionName>2304*1296</resolutionName>
+    <width>2304</width>
+    <height>1296</height>
+    </resolution>
+    <language>English</language>
+    <sdCard>1</sdCard>
+    <ptzMode>pt</ptzMode>
+    <typeInfo>IPC</typeInfo>
+    <softVer>33555019</softVer>
+    <hardVer>0</hardVer>
+    <panelVer>0</panelVer>
+    <hdChannel1>0</hdChannel1>
+    <hdChannel2>0</hdChannel2>
+    <hdChannel3>0</hdChannel3>
+    <hdChannel4>0</hdChannel4>
+    <norm>NTSC</norm>
+    <osdFormat>DMY</osdFormat>
+    <B485>0</B485>
+    <supportAutoUpdate>0</supportAutoUpdate>
+    <userVer>1</userVer>
+    </DeviceInfo>
+    <StreamInfoList version="1.1">
+    <StreamInfo>
+    <channelBits>1</channelBits>
+    <encodeTable>
+    <type>mainStream</type>
+    <resolution>
+    <width>2304</width>
+    <height>1296</height>
+    </resolution>
+    <defaultFramerate>15</defaultFramerate>
+    <defaultBitrate>2560</defaultBitrate>
+    <framerateTable>15,12,10,8,6,4,2</framerateTable>
+    <bitrateTable>1024,1536,2048,2560,3072</bitrateTable>
+    </encodeTable>
+    <encodeTable>
+    <type>subStream</type>
+    <resolution>
+    <width>896</width>
+    <height>512</height>
+    </resolution>
+    <defaultFramerate>15</defaultFramerate>
+    <defaultBitrate>512</defaultBitrate>
+    <framerateTable>15,12,10,8,6,4,2</framerateTable>
+    <bitrateTable>128,256,384,512,768,1024</bitrateTable>
+    </encodeTable>
+    </StreamInfo>
+    </StreamInfoList>
+    </body>
+    ```
 
 
 ---
@@ -148,4 +271,14 @@ It may be useful for others working on it.
 |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class |
 |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|
 | $1 | $2 |  $3  |    $4    |       $5       |   $6   |     $7     |
+```
+
+```
+^0000   ([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9])\n0010   ([a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9])
+```
+
+```
+|    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | binary length |
+|--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+| $1 | $2 |  $3  |    $4    |       $5       |   $6   |     $7    |  $8  |
 ```
