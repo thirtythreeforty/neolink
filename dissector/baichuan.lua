@@ -114,10 +114,13 @@ function process_header(buffer, headers_tree)
   return header_len
 end
 
-function process_body(header, body_buffer, body, pinfo)
+function process_body(header, body_buffer, bc_subtree, pinfo)
   if header.msg_len == 0 then
     return
   end
+
+  local body = bc_subtree:add(bc_protocol, body_buffer(0,header.msg_len),
+    "Baichuan Message Body, " .. header.class .. ", length: " .. header.msg_len .. ", type " .. header.msg_type .. ", encrypted: " .. tostring(header.encrypted))
 
   if header.class == "legacy" then
     if header.msg_type == 1 then
@@ -134,7 +137,7 @@ function process_body(header, body_buffer, body, pinfo)
       local body_tvb = xml_buffer:tvb()
       body:add(body_tvb(), "XML Payload")
       if xml_len >= 4 then
-        if xml_buffer(0, 4):le_uint() == 0x26441223 then -- Encrypted xml found
+        if xml_encrypt(binary_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
           local ba = xml_buffer:bytes()
           local decrypted = xml_encrypt(ba, header.enc_offset)
           body_tvb = decrypted:tvb("Decrypted XML")
@@ -150,7 +153,7 @@ function process_body(header, body_buffer, body, pinfo)
       if bin_len > 0 then
         local binary_buffer = body_buffer(header.bin_offset, bin_len) -- Don't extend beyond msg size
         if bin_len > 4 then
-          if binary_buffer(0, 4):le_uint() == 0x26441223 then -- Encrypted xml found
+          if xml_encrypt(binary_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
             local decrypted = xml_encrypt(binary_buffer:bytes(), header.enc_offset)
             body_tvb = decrypted:tvb("Decrypted XML (in binary block)")
             -- Create a tree item that, when clicked, automatically shows the tab we just created
@@ -221,14 +224,11 @@ function bc_protocol.dissector(buffer, pinfo, tree)
       local remaining = sub_buffer:len() - header.header_len
 
       local bc_subtree = tree:add(bc_protocol, sub_buffer(0, header.msg_len),
-        "Baichuan IP Camera Protocol, " .. header.msg_type_str .. " message")
+        "Baichuan IP Camera Protocol, " .. header.msg_type_str .. ":" .. header.msg_type .. " message")
       process_header(sub_buffer, bc_subtree)
       if header.header_len < sub_buffer:len() then
         local body_buffer = sub_buffer(header.header_len,nil)
-        local body = bc_subtree:add(bc_protocol, body_buffer,
-          "Baichuan Message Body, " .. header.class .. ", length: " .. header.msg_len .. ", type " .. header.msg_type .. ", encrypted: " .. tostring(header.encrypted))
-
-        process_body(header, body_buffer, body, pinfo)
+        process_body(header, body_buffer, bc_subtree, pinfo)
 
         remaining = body_buffer:len() - header.msg_len
       end
