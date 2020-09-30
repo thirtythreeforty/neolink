@@ -16,6 +16,7 @@ a PR to improve it.
     | f0 de bc 0a  | 01 00 00 00  |  2c 07 00 00   |    00 00 00 01    |       01        |   dc    |     14 65     |
 
     - Body
+
       Body is hash of user and password and then a lot of zero pads
 
   - Camera
@@ -27,6 +28,7 @@ a PR to improve it.
     | f0 de bc 0a  | 01 00 00 00  |  91 00 00 00   |    00 00 00 01    |       01        |   dd    |     14 66     |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -51,6 +53,7 @@ a PR to improve it.
     | f0 de bc 0a  | 01 00 00 00  |  28 01 00 00   |    00 00 00 01    |       00        |   00    |     14 64     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -75,6 +78,7 @@ a PR to improve it.
     | f0 de bc 0a  | 01 00 00 00  |  2e 06 00 00   |    00 00 00 01    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -152,6 +156,7 @@ a PR to improve it.
     | f0 de bc 0a  | 03 00 00 00  |  aa 00 00 00   |    00 00 00 09    |       00        |   00    |     14 64     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -174,6 +179,7 @@ a PR to improve it.
     | f0 de bc 0a  | 03 00 00 00  |  8a 00 00 00   |    00 00 00 09    |       c8        |   00    |     00 00     |  6a 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <Extension version="1.1">
@@ -210,6 +216,7 @@ a PR to improve it.
     | f0 de bc 0a  | 0a 00 00 00  |  68 00 00 00   |    00 00 00 0b    |       00        |   00    |     14 64     |  68 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <Extension version="1.1">
@@ -226,6 +233,7 @@ a PR to improve it.
     | f0 de bc 0a  | 0a 00 00 00  |  f7 01 00 00   |    00 00 00 0b    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -287,6 +295,7 @@ a PR to improve it.
     | f0 de bc 0a  | 21 00 00 00  |  f0 00 00 00   |    00 00 00 05    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -316,6 +325,7 @@ a PR to improve it.
     | f0 de bc 0a  | 3a 00 00 00  |  6b 00 00 00   |    00 00 00 03    |       00        |   00    |     14 64     |  6b 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <Extension version="1.1">
@@ -332,6 +342,7 @@ a PR to improve it.
     | f0 de bc 0a  | 3a 00 00 00  |  a4 03 00 00   |    00 00 00 03    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -393,6 +404,7 @@ a PR to improve it.
     | f0 de bc 0a  | 4e 00 00 00  |  d3 00 00 00   |    08 db 9c 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -419,6 +431,7 @@ a PR to improve it.
     | f0 de bc 0a  | 4f 00 00 00  |  3b 01 00 00   |    08 db 9c 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -454,6 +467,7 @@ a PR to improve it.
     | f0 de bc 0a  | 50 00 00 00  |  f0 01 00 00   |    00 00 00 08    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -494,6 +508,7 @@ a PR to improve it.
     | f0 de bc 0a  | 66 00 00 00  |  55 00 00 00   |    00 00 00 07    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -524,6 +539,7 @@ a PR to improve it.
     | f0 de bc 0a  | 68 00 00 00  |  a4 01 00 00   |    00 00 00 0a    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -568,6 +584,7 @@ a PR to improve it.
     | f0 de bc 0a  | 73 00 00 00  |  75 00 00 00   |    00 00 00 0c    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -600,6 +617,7 @@ a PR to improve it.
     | f0 de bc 0a  | 85 00 00 00  |  7f 00 00 00   |    00 00 00 06    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -635,6 +653,7 @@ a PR to improve it.
     | f0 de bc 0a  | 92 00 00 00  |  fc 02 00 00   |    00 00 00 04    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -681,6 +700,7 @@ a PR to improve it.
     | f0 de bc 0a  | 97 00 00 00  |  a7 00 00 00   |    00 00 00 02    |       00        |   00    |     14 64     |  a7 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <Extension version="1.1">
@@ -697,6 +717,7 @@ a PR to improve it.
     | f0 de bc 0a  | 97 00 00 00  |  ac 03 00 00   |    00 00 00 02    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -747,6 +768,7 @@ a PR to improve it.
     | f0 de bc 0a  | be 00 00 00  |  68 00 00 00   |    00 00 00 0d    |       00        |   00    |     14 64     |  68 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <Extension version="1.1">
@@ -763,6 +785,7 @@ a PR to improve it.
     | f0 de bc 0a  | be 00 00 00  |  86 00 00 00   |    00 00 00 0d    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
@@ -818,6 +841,7 @@ a PR to improve it.
 
 
     - Body
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
