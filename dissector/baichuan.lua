@@ -34,6 +34,7 @@ message_types = {
   [79]="<Serial>",
   [80]="<VersionInfo>",
   [114]="<Uid>",
+  [133]="<RfAlarm>"
   [146]="<StreamInfoList>",
   [151]="<AbilityInfo>",
   [230]="<cropSnap>",
@@ -79,7 +80,7 @@ function get_header(buffer)
   local header_len = header_lengths[buffer(18, 2):le_uint()]
   local msg_type = buffer(4, 4):le_uint()
   if header_len == 24 then
-    bin_offset = buffer(20, 4):le_uint()
+    bin_offset = buffer(20, 4):le_uint() -- if NHD-805/806 legacy protocol 30 30 30 30 aka "0000"
   end
   local msg_type = buffer(4, 4):le_uint()
   return {
@@ -135,17 +136,20 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
     local xml_buffer = body_buffer(0, xml_len)
     if xml_len > 0 then
       local body_tvb = xml_buffer:tvb()
-      body:add(body_tvb(), "XML Payload")
       if xml_len >= 4 then
         if xml_encrypt(binary_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
+          body:add(body_tvb(), "XML Payload")
           local ba = xml_buffer:bytes()
           local decrypted = xml_encrypt(ba, header.enc_offset)
           body_tvb = decrypted:tvb("Decrypted XML")
           -- Create a tree item that, when clicked, automatically shows the tab we just created
           body:add(body_tvb(), "Decrypted XML")
+          Dissector.get("xml"):call(body_tvb, pinfo, body)
+        elseif binary_buffer(0,5):string() == "<?xml" then  -- Unencrypted xml
+          body:add(body_tvb(), "Decrypted XML")
+          Dissector.get("xml"):call(body_tvb, pinfo, body)
         end
       end
-      Dissector.get("xml"):call(body_tvb, pinfo, body)
     end
 
     if header.bin_offset ~= nil then
