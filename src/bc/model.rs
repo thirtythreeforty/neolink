@@ -1,4 +1,4 @@
-use super::xml::BcXml;
+use super::xml::{BcXml, Extension, TopBcXmls};
 use std::collections::HashSet;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
@@ -77,6 +77,16 @@ impl Bc {
             meta,
             body: BcBody::ModernMsg(ModernMsg {
                 xml: Some(xml),
+                binary: None,
+            }),
+        }
+    }
+
+    pub fn new_from_ext_xml(meta: BcMeta, xml: Extension) -> Bc {
+        Bc {
+            meta,
+            body: BcBody::ModernMsg(ModernMsg {
+                xml: Some(TopBcXmls::Extension(xml)),
                 binary: None,
             }),
         }
