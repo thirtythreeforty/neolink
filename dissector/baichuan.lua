@@ -29,14 +29,21 @@ bc_protocol.fields = {
 message_types = {
   [1]="login",
   [3]="<Preview> (video)",
-  [58]="<AbilitySupport>",
-  [78]="<VideoInput>",
-  [79]="<Serial>",
-  [80]="<VersionInfo>",
+  [10]="Audio back-channel",
+  [33]="Motion Alarm",
+  [58]="<AbilitySupport> (User)",
+  [78]="<VideoInput> (Brightness etc)",
+  [79]="<Serial> (PTZ Details)",
+  [80]="<VersionInfo> (Camera Model/FW)",
+  [102]="HDD Info",
+  [104]="Date time",
   [114]="<Uid>",
-  [133]="<RfAlarm>"
+  [115]="Wifi Signal",
+  [133]="<RfAlarm>",
   [146]="<StreamInfoList>",
-  [151]="<AbilityInfo>",
+  [151]="<AbilityInfo> (User)",
+  [190]="PTZ Preset",
+  [199]="<AbilityInfo> (Camera)",
   [230]="<cropSnap>",
 }
 
