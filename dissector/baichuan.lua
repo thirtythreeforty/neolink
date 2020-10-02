@@ -30,6 +30,7 @@ message_types = {
   [1]="login",
   [3]="<Preview> (video)",
   [10]="Audio back-channel",
+  [31]="Start Motion Alarm",
   [33]="Motion Alarm",
   [58]="<AbilitySupport> (User)",
   [78]="<VideoInput> (Brightness etc)",

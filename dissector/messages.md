@@ -282,7 +282,7 @@ a PR to improve it.
 
 - 26-30 Not observed
 
-- 31 Unknown
+- 31 Start Motion Alarm
 
   - Client
 
@@ -300,9 +300,8 @@ a PR to improve it.
     |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
     | f0 de bc 0a  | 1f 00 00 00  |  00 00 00 00   |    00 00 00 05    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-  - **Notes:** Neither client nor camera have any body. Just header
-  This makes it difficult to figure out what this message does with
-  out active experimentation
+  - **Notes:** The camera will not send message 33 to the client until
+  after this msg has been recieved
 
 - 32 Not observed
 
