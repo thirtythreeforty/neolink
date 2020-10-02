@@ -144,7 +144,7 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
     if xml_len > 0 then
       local body_tvb = xml_buffer:tvb()
       if xml_len >= 4 then
-        if xml_encrypt(binary_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
+        if xml_encrypt(xml_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
           body:add(body_tvb(), "XML Payload")
           local ba = xml_buffer:bytes()
           local decrypted = xml_encrypt(ba, header.enc_offset)
@@ -152,7 +152,7 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
           -- Create a tree item that, when clicked, automatically shows the tab we just created
           body:add(body_tvb(), "Decrypted XML")
           Dissector.get("xml"):call(body_tvb, pinfo, body)
-        elseif binary_buffer(0,5):string() == "<?xml" then  -- Unencrypted xml
+        elseif xml_buffer(0,5):string() == "<?xml" then  -- Unencrypted xml
           body:add(body_tvb(), "Decrypted XML")
           Dissector.get("xml"):call(body_tvb, pinfo, body)
         end
