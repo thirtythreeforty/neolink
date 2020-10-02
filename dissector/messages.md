@@ -258,7 +258,29 @@ a PR to improve it.
     </body>
     ```
 
-- 11-30 Not observed
+- 11-25 Not observed
+
+- 26 Unknown
+
+  - Client
+
+    - Header
+
+    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | binary length |
+    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+    | f0 de bc 0a  | 1a 00 00 00  |  68 00 00 00   |    00 00 00 21    |       00        |   00    |     14 64     |  68 00 00 00  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+  - **Notes:** No message from camera observed
+
+- 26-30 Not observed
 
 - 31 Unknown
 
@@ -922,7 +944,30 @@ a PR to improve it.
     </body>
     ```
 
-- 200+ Not observed
+- 207 Not observed
+
+- 208 Unknown
+
+  - Client
+
+    - Header
+
+    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | binary length |
+    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+    | f0 de bc 0a  | d0 00 00 00  |  68 00 00 00   |    00 00 00 22    |       00        |   00    |     14 64     |  68 00 00 00  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+  - **Notes:** No message observed from camera
+
+- 209+ Not observed
 
 
 ---
