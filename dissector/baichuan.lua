@@ -28,24 +28,88 @@ bc_protocol.fields = {
 
 message_types = {
   [1]="login",
+  [2]="relogin",
   [3]="<Preview> (video)",
-  [10]="Audio back-channel",
+  [4]="<Preview> (stop)",
+  [5]="<FileInfoList> (replay)",
+  [7]="<FileInfoList> (stop)",
+  [8]="<FileInfoList> (DL Video)",
+  [10]="<TalkAbility>",
+  [13]="<FileInfoList> (download)",
+  [14]="<FileInfoList>",
+  [15]="<FileInfoList>",
+  [16]="<FileInfoList>",
+  [25]="<VideoInput> (write)",
+  [26]="<VideoInput>",
   [31]="Start Motion Alarm",
-  [33]="Motion Alarm",
-  [58]="<AbilitySupport> (User)",
-  [78]="<VideoInput> (Brightness etc)",
-  [79]="<Serial> (PTZ Details)",
-  [80]="<VersionInfo> (Camera Model/FW)",
-  [102]="HDD Info",
-  [104]="Date time",
+  [33]="<AlarmEventList>",
+  [36]="<ServerPort> (write)",
+  [37]="<ServerPort>",
+  [38]="<Ntp>",
+  [39]="<Ntp> (write)",
+  [40]="<Ddns>",
+  [41]="<Ddns> (write)",
+  [42]="<Email>",
+  [43]="<Email> (write)",
+  [44]="<OsdChannelName>",
+  [45]="<OsdChannelName> (write)",
+  [46]="<MD>",
+  [47]="<MD> (write)",
+  [50]="<VideoLoss>",
+  [51]="<VideoLoss> (write)",
+  [52]="<Shelter>",
+  [54]="<RecordCfg>",
+  [55]="<RecordCfg> (write)",
+  [56]="<Compression>",
+  [57]="<Compression> (write)",
+  [58]="<AbilitySupport>",
+  [59]="<UserList> (write)",
+  [68]="<Ftp>",
+  [69]="<Ftp> (write)",
+  [70]="<FtpTask>",
+  [71]="<FtpTask> (write)",
+  [76]="<Ip>",
+  [77]="<Ip> (write)",
+  [78]="<VideoInput>",
+  [79]="<Serial> (ptz)",
+  [80]="<VersionInfo>",
+  [81]="<Record> (schedule)",
+  [82]="<Record> (write)",
+  [83]="<HandleException>",
+  [84]="<HandleException> (write)",
+  [91]="<DisplayOutput>",
+  [92]="<DisplayOutput> (write)",
+  [93]="<LinkType>",
+  [97]="<Upnp>",
+  [98]="<Upnp> (write)",
+  [100]="<AutoReboot> (write)",
+  [101]="<AutoReboot>",
+  [102]="<HDDInfoList>",
+  [104]="<SystemGeneral>",
+  [105]="<SystemGeneral> (write)",
+  [106]="<Dst>",
+  [107]="<Dst> (write)",
+  [108]="<ConfigFileInfo>",
   [114]="<Uid>",
-  [115]="Wifi Signal",
+  [115]="<WifiSignal>",
+  [120]="<OnlineUserList>",
+  [123]="<ReplaySeek>",
   [133]="<RfAlarm>",
+  [141]="<Email> (test)",
+  [142]="<DayRecords>",
+  [145]="<ChannelInfoList>",
   [146]="<StreamInfoList>",
-  [151]="<AbilityInfo> (User)",
+  [151]="<AbilityInfo>",
   [190]="PTZ Preset",
-  [199]="<AbilityInfo> (Camera)",
+  [194]="<Ftp> (test)",
+  [199]="<Support>",
+  [208]="<LedState>",
+  [210]="<PTOP>",
+  [211]="<PTOP> (write)",
+  [228]="<Crop>",
   [230]="<cropSnap>",
+  [272]="<findAlarmVideo>",
+  [273]="<alarmVideoInfo>",
 }
 
 message_classes = {
@@ -63,7 +127,7 @@ header_lengths = {
 }
 
 function xml_encrypt(ba, offset)
-  local key = "\031\045\060\075\090\105\120\255"
+  local key = "\031\045\060\075\090\105\120\255" -- 1f, 2d, 3c, 4b, 5a, 69, 78 ,ff
   local e = ByteArray.new()
   e:set_size(ba:len())
   for i=0,ba:len() - 1 do
@@ -143,10 +207,9 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
     end
     local xml_buffer = body_buffer(0, xml_len)
     if xml_len > 0 then
-      local body_tvb = xml_buffer:tvb()
+      local body_tvb = xml_buffer:tvb("Payload")
       if xml_len >= 4 then
         if xml_encrypt(xml_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
-          body:add(body_tvb(), "XML Payload")
           local ba = xml_buffer:bytes()
           local decrypted = xml_encrypt(ba, header.enc_offset)
           body_tvb = decrypted:tvb("Decrypted XML")
@@ -154,8 +217,10 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
           body:add(body_tvb(), "Decrypted XML")
           Dissector.get("xml"):call(body_tvb, pinfo, body)
         elseif xml_buffer(0,5):string() == "<?xml" then  -- Unencrypted xml
-          body:add(body_tvb(), "Decrypted XML")
+          body:add(body_tvb(), "XML")
           Dissector.get("xml"):call(body_tvb, pinfo, body)
+        else
+          body:add(body_tvb(), "Binary")         
         end
       end
     end
@@ -164,6 +229,7 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
       local bin_len = header.msg_len - header.bin_offset
       if bin_len > 0 then
         local binary_buffer = body_buffer(header.bin_offset, bin_len) -- Don't extend beyond msg size
+        body_tvb = binary_buffer:tvb("Binary Payload");
         if bin_len > 4 then
           if xml_encrypt(binary_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
             local decrypted = xml_encrypt(binary_buffer:bytes(), header.enc_offset)
@@ -171,10 +237,12 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
             -- Create a tree item that, when clicked, automatically shows the tab we just created
             body:add(body_tvb(), "Decrypted XML (in binary block)")
             Dissector.get("xml"):call(body_tvb, pinfo, body)
+          elseif binary_buffer(0,5):string() == "<?xml" then  -- Unencrypted xml
+            body:add(body_tvb(), "XML (in binary block)") 
+            Dissector.get("xml"):call(body_tvb, pinfo, body)
+          else
+            body:add(body_tvb(), "Binary")    
           end
-        else
-          local binary_tvb = binary_buffer:tvb()
-          body:add(binary_tvb(), "Binary Payload")
         end
       end
     end
@@ -264,4 +332,4 @@ function bc_protocol.dissector(buffer, pinfo, tree)
 end
 
 DissectorTable.get("tcp.port"):add(9000, bc_protocol)
-DissectorTable.get("tcp.port"):add(52941, bc_protocol)
+DissectorTable.get("tcp.port"):add(52941, bc_protocol) -- change to your own custom port
