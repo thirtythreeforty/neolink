@@ -735,6 +735,7 @@ a PR to improve it.
     <token>system, network, alarm, record, video, image</token>
     </Extension>
     ```
+
   - Camera
 
     - Header
