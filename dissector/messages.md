@@ -39,7 +39,7 @@ a PR to improve it.
     </body>
     ```
 
-    - **Notes:** Sends back a NOONCE used for the modern login message. This is
+    - **Notes:** Sends back a NONCE used for the modern login message. This is
     effectively an upgrade request to use the modern xml style over legacy.
     A legacy camera likely replies differently but I don't have one to test on.
 
@@ -58,8 +58,8 @@ a PR to improve it.
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
     <LoginUser version="1.1">
-    <userName>...</userName> <!-- Hash of username with noonce -->
-    <password>...</password> <!-- Hash of password with noonce -->
+    <userName>...</userName> <!-- Hash of username with nonce -->
+    <password>...</password> <!-- Hash of password with nonce -->
     <userVer>1</userVer>
     </LoginUser>
     <LoginNet version="1.1">

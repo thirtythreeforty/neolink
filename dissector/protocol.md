@@ -133,10 +133,10 @@ Clients should login by
     - Capped at 32 bytes with a null terminator
     - Bytes 32 is always zero so only first 31 bytes are compared
 
-- Receive modern upgrade message with noonce in XML
+- Receive modern upgrade message with nonce in XML
 
 - Send modern login:
-  - User and pass concated with noonce
+  - User and pass concated with nonce
   - Send MD5'ed user and password
 
 - Receive reply with device info

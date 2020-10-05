@@ -65,7 +65,7 @@ Most of this information comes from the work of @twisteddx at his
 - I Frame
 
   - 4 bytes magic
-  - 4 bytes video type (ASCII text of wither H264 or H265)
+  - 4 bytes video type (ASCII text of either H264 or H265)
   - 4 bytes data size of payload after header
   - 4 bytes unknown. NVR channel count? Known values 1-00/08 2-00 3-00 4-00
   - 4 bytes Microseconds
