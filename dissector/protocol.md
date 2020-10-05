@@ -57,7 +57,7 @@ this includes both the XML and binary parts.
 The encryption offset is used as part of the decoding process. It is combined
 with the key to decrypt the data.
 
-Here is an example decryptor in rust
+Here is an example decrypter in rust
 
 ```rust
 const XML_KEY: [u8; 8] = [0x1F, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, 0x78, 0xFF];
@@ -85,13 +85,13 @@ Older cameras do not use encryption and all messages are sent as plain text.
 This flag is 0 for unencrypted or non zero for encrypted. This flag seems
 only to be valid during the login step, and seems to be arbitrary otherwise.
 
-Clients should decide to use encryption or not based on this byte the the camera
-send during login. Then should use that same setting for all further messages
-with the camera.
+Clients should decide to use encryption or not based on this byte that the
+camera send during login. Then should use that same setting for all further
+messages with the camera.
 
 #### Unknown
 
-The purpose of this byte is unkown but is always zero. If you figure out
+The purpose of this byte is unknown but is always zero. If you figure out
 what it does please submit a PR.
 
 #### Message class
@@ -111,7 +111,7 @@ and header lengths are known.
 
 For messages that contain the binary offset field this represents where to start
 the binary part of the message. The total length of XML + binary is equal
-to the message length in the header so binary length is
+to the message length in the header so Binary Offset is
 total_length - this_offset. Where as this field also represents the end of the
 XML part of the message.
 
@@ -136,14 +136,14 @@ Clients should login by
 - Receive modern upgrade message with nonce in XML
 
 - Send modern login:
-  - User and pass concated with nonce
+  - User and pass concatenated with the nonce
   - Send MD5'ed user and password
 
 - Receive reply with device info
 
 # Starting Video
 
-Video is requested and recieved with message ID 3.
+Video is requested and received with message ID 3.
 
 Video is requested with an XML of the following format:
 
@@ -188,10 +188,10 @@ the [docs](dissector/mediapacket.md)
 
 # Other Function
 
-Other data can be received from the camera by sending the approiate header to
+Other data can be received from the camera by sending the appropriate header to
 the camera. For example sending the header for ID 78
 
-|    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Length |
+|    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
 |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
 | f0 de bc 0a  | 4e 00 00 00  |  d3 00 00 00   |    08 db 9c 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
@@ -212,9 +212,9 @@ The camera will reply with an xml with brightness and contrast
 
 Some message IDs also require input along with the request header. For example
 
-ID 151 whihc is the users ability info requries the header
+ID 151 which is the users ability info requires the header
 
-|    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Length |
+|    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
 |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
 | f0 de bc 0a  | 97 00 00 00  |  a7 00 00 00   |    00 00 00 02    |       00        |   00    |     14 64     |  a7 00 00 00  |
 
