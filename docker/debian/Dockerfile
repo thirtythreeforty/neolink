@@ -15,9 +15,9 @@ LABEL version="$VERSION"
 LABEL maintainer="$OWNER"
 
 
-# ORIGINALY I TRIED TO BUILD IN A QEMU CONTAINER.
+# ORIGINALLY I TRIED TO BUILD IN A QEMU CONTAINER.
 # THIS WOULD HAVE BEEN IDEAL BECAUSE THEN WE COULD BUILD FOR ALL
-# ARCH SUPPORTED BY QEMU, DEBIAN AND RUST WITHOUT ANY COMPICATED CROSS COMPILES.
+# ARCH SUPPORTED BY QEMU, DEBIAN AND RUST WITHOUT ANY COMPLICATED CROSS COMPILES.
 # HOWEVER I KEPT GETTING THE FOLLOWING ERROR DURING COMPILE
 # could not read directory '/usr/local/cargo/registry/index/github.com-1285ae84e5963aae/.git//refs': Value too large for defined data type; class=Os (2)
 # Google suggest I should either update the kernel or my fs neither of which I can do on github actions
@@ -60,6 +60,19 @@ RUN echo >&2 "\e[0;32mRUNNING: ${TARGETPLATFORM} ${BUILDPLATFORM} ${arch}\e[0m";
             export PKG_CONFIG_ALLOW_CROSS=1  && \
             export PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig/  && \
             export PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig/; \
+          ;; \
+        "linux/arm/v6") \
+            echo >&2 "\e[0;32mBUILDING for ${TARGETPLATFORM} on ${BUILDPLATFORM}\e[0m"; \
+            rustArch='arm-unknown-linux-gnueabi'; \
+            arch="armel"; \
+            gcc="gcc-arm-linux-gnueabi"; \
+            gpp="g++-arm-linux-gnueabi"; \
+            export CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABI_LINKER=arm-linux-gnueabi-gcc && \
+            export CC_arm_unknown_linux_gnueabi=arm-linux-gnueabi-gcc  && \
+            export CXX_arm_unknown_linux_gnueabi=arm-linux-gnueabi-g++  && \
+            export PKG_CONFIG_ALLOW_CROSS=1  && \
+            export PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabi/pkgconfig:/usr/share/pkgconfig/  && \
+            export PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabi/pkgconfig:/usr/share/pkgconfig/; \
           ;; \
         "linux/arm64") \
             echo >&2 "\e[0;32mBUILDING for ${TARGETPLATFORM} on ${BUILDPLATFORM}\e[0m"; \
