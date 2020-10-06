@@ -227,7 +227,7 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
           body:add(body_tvb(), "XML")
           Dissector.get("xml"):call(body_tvb, pinfo, body)
         else
-          body:add(body_tvb(), "Binary")         
+          body:add(body_tvb(), "Binary")
         end
       end
     end
@@ -245,10 +245,10 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
             body:add(body_tvb(), "Decrypted XML (in binary block)")
             Dissector.get("xml"):call(body_tvb, pinfo, body)
           elseif binary_buffer(0,5):string() == "<?xml" then  -- Unencrypted xml
-            body:add(body_tvb(), "XML (in binary block)") 
+            body:add(body_tvb(), "XML (in binary block)")
             Dissector.get("xml"):call(body_tvb, pinfo, body)
           else
-            body:add(body_tvb(), "Binary")    
+            body:add(body_tvb(), "Binary")
           end
         end
       end
