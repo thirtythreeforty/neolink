@@ -218,20 +218,20 @@ a PR to improve it.
     - **Notes:** Camera then send the stream as a binary payload in all
     following messages of id 3
 
-  - Camera Stream Binary
+- 3: Camera Stream Binary
 
-    - Header
+  - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 03 00 00 00  |  e8 5e 00 00   |    00 00 00 09    |       c8        |   00    |     00 00     |  00 00 00 00  |
+  |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
+  |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+  | f0 de bc 0a  | 03 00 00 00  |  e8 5e 00 00   |    00 00 00 09    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+  - Body
 
-      Body is binary. This binary represents an embedded stream which should
-      be detailed elsewhere.
+    Body is binary. This binary represents an embedded stream which should
+    be detailed elsewhere.
 
-- 4: <Preview> (stop)
+- 4: \<Preview\> (stop)
 
   - Client
 
@@ -261,7 +261,7 @@ a PR to improve it.
         |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 04  |  00 00 00 00   |    2b 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-- 10: <TalkAbility>
+- 10: `<TalkAbility>`
 
   - Client
 
@@ -314,7 +314,7 @@ a PR to improve it.
     </body>
     ```
 
-- 18:
+- 18: `<PtzControl>`
 
   - Client
 
@@ -345,7 +345,7 @@ a PR to improve it.
         |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 12  |  00 00 00 00   |    1e 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-- 26: <VideoInput>
+- 26: `<VideoInput>`
 
   - Client
 
@@ -478,7 +478,7 @@ a PR to improve it.
   - **Notes:** The camera will not send message 33 to the client until
   after this msg has been recieved
 
-- 33: <AlarmEventList>
+- 33: `<AlarmEventList>`
 
   - Camera
 
@@ -504,7 +504,7 @@ a PR to improve it.
     </body>
     ```
 
-- 44: <OsdChannelName>
+- 44: `<OsdChannelName>`
 
   - Client
 
@@ -557,7 +557,7 @@ a PR to improve it.
     </body>
     ```
 
-- 45: <OsdChannelName> (write)
+- 45: `<OsdChannelName>` (write)
 
   - Client
 
@@ -608,7 +608,7 @@ a PR to improve it.
         |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 2d  |  00 00 00 00   |    32 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-- 52: <Shelter>
+- 52: `<Shelter>`
 
   - Client
 
@@ -648,7 +648,7 @@ a PR to improve it.
     </body>
     ```
 
-- 53:
+- 53: `<Shelter>`
 
   - Client
 
@@ -705,7 +705,7 @@ a PR to improve it.
         |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 35  |  00 00 00 00   |    38 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-- 54: <RecordCfg>
+- 54: `<RecordCfg>`
 
   - Client
 
@@ -747,7 +747,7 @@ a PR to improve it.
     </body>
     ```
 
-- 55: <RecordCfg> (write)
+- 55: `<RecordCfg>` (write)
 
   - Client
 
@@ -788,7 +788,7 @@ a PR to improve it.
         |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 37  |  00 00 00 00   |    16 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-- 56: <Compression>
+- 56: `<Compression>`
 
   - Client
 
@@ -857,7 +857,7 @@ a PR to improve it.
     </body>
     ```
 
-- 57: <Compression> (write)
+- 57: `<Compression>` (write)
 
   - Client
 
@@ -915,7 +915,7 @@ a PR to improve it.
         |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 39  |  00 00 00 00   |    1f 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-- 58: <AbilitySupport>
+- 58: `<AbilitySupport>`
 
   - Client
 
@@ -998,7 +998,7 @@ a PR to improve it.
     cameras only have weak encryption that is easily broken since the
     decryption key is fixed and well-known.
 
-- 76: <Ip>
+- 76: `<Ip>`
 
   - Client
 
@@ -1040,7 +1040,7 @@ a PR to improve it.
     </body>
     ```
 
-- 77: <Ip> (write)
+- 77: `<Ip>` (write)
 
   - Client
 
@@ -1082,7 +1082,7 @@ a PR to improve it.
         |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 4d  |  00 00 00 00   |    14 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-- 78: <VideoInput>
+- 78: `<VideoInput>`
 
   - Camera
 
@@ -1107,7 +1107,7 @@ a PR to improve it.
     </body>
     ```
 
-- 79: <Serial> (ptz)
+- 79: `<Serial>` (ptz)
 
   - Camera
 
@@ -1135,7 +1135,7 @@ a PR to improve it.
     </body>
     ```
 
-- 80: <VersionInfo>
+- 80: `<VersionInfo>`
 
   - Client
 
@@ -1174,7 +1174,7 @@ a PR to improve it.
     </body>
     ```
 
-- 81: <Record> (schedule)
+- 81: `<Record>` (schedule)
 
   - Client
 
@@ -1262,7 +1262,7 @@ a PR to improve it.
     </body>
     ```
 
-- 82: <Record> (write)
+- 82: `<Record>` (write)
 
   - Client
 
@@ -1367,7 +1367,7 @@ a PR to improve it.
         |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 52  |  00 00 00 00   |    1a 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-- 93: <LinkType>
+- 93: `<LinkType>`
 
   - Client
 
@@ -1377,7 +1377,7 @@ a PR to improve it.
         |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 5d  |  00 00 00 00   |    17 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
 
-- 102: <HDDInfoList>
+- 102: `<HDDInfoList>`
 
   - Client
 
@@ -1404,7 +1404,7 @@ a PR to improve it.
     </body>
     ```
 
-- 104: <SystemGeneral>
+- 104: `<SystemGeneral>`
 
   - Client
 
@@ -1447,7 +1447,7 @@ a PR to improve it.
     </body>
     ```
 
-- 115: <WifiSignal>
+- 115: `<WifiSignal>`
 
   - Client
 
@@ -1476,7 +1476,7 @@ a PR to improve it.
     </body>
     ```
 
-- 133: <RfAlarm>
+- 133: `<RfAlarm>`
 
   - Client
 
@@ -1506,7 +1506,7 @@ a PR to improve it.
     </body>
     ```
 
-- 146: <StreamInfoList>
+- 146: `<StreamInfoList>`
 
   - Client
 
@@ -1559,7 +1559,7 @@ a PR to improve it.
     </body>
     ```
 
-- 151: <AbilityInfo>
+- 151: `<AbilityInfo>`
 
   - Client
 
@@ -1683,7 +1683,7 @@ a PR to improve it.
         |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 c0  |  00 00 00 00   |    05 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-- 199: <Support>
+- 199: `<Support>`
 
   - Client
 
@@ -1777,7 +1777,7 @@ a PR to improve it.
     </body>
     ```
 
-- 208: <LedState>
+- 208: `<LedState>`
 
   - Client
 
