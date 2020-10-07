@@ -39,6 +39,7 @@ message_types = {
   [14]="<FileInfoList>",
   [15]="<FileInfoList>",
   [16]="<FileInfoList>",
+  [18]="<PtzControl>",
   [25]="<VideoInput> (write)",
   [26]="<VideoInput>", -- <InputAdvanceCfg>
   [31]="Start Motion Alarm",
