@@ -116,7 +116,7 @@ fn bc_modern_msg<'a, 'b>(
         Err,
     };
 
-    let xml_len = match header.bin_offset {
+    let xml_len = match header.payload_offset {
         Some(off) => off,
         _ => header.body_len,
     };
@@ -183,7 +183,7 @@ fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
     // A copy of the source code for the camera would be very useful.
     let encrypted = response_code != 0;
 
-    let (buf, bin_offset) = cond(has_bin_offset(class), le_u32)(buf)?;
+    let (buf, payload_offset) = cond(has_payload_offset(class), le_u32)(buf)?;
 
     Ok((
         buf,
@@ -193,7 +193,7 @@ fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
             enc_offset,
             encrypted,
             class,
-            bin_offset,
+            payload_offset,
         },
     ))
 }
@@ -280,7 +280,7 @@ fn test_bc_modern_login_success() {
     assert_eq!(header.encrypted, true);
     assert_eq!(header.class, 0x0000);
 
-    // Previously, we were not handling bin_offset == 0 (no bin offset) correctly.
+    // Previously, we were not handling payload_offset == 0 (no bin offset) correctly.
     // Test that we decoded XML and no binary.
     match body {
         BcBody::ModernMsg(ModernMsg {

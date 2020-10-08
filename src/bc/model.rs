@@ -44,7 +44,7 @@ pub(super) struct BcHeader {
     pub enc_offset: u32,
     pub encrypted: bool,
     pub class: u16,
-    pub bin_offset: Option<u32>,
+    pub payload_offset: Option<u32>,
 }
 
 /// The components of the Baichuan TLV header that are not
@@ -62,7 +62,7 @@ pub struct BcMeta {
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct BcSendInfo {
     pub body_len: u32,
-    pub bin_offset: Option<u32>,
+    pub payload_offset: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -146,9 +146,9 @@ impl BcHeader {
         }
     }
 
-    pub fn from_meta(meta: &BcMeta, body_len: u32, bin_offset: Option<u32>) -> BcHeader {
+    pub fn from_meta(meta: &BcMeta, body_len: u32, payload_offset: Option<u32>) -> BcHeader {
         BcHeader {
-            bin_offset,
+            payload_offset,
             body_len,
             msg_id: meta.msg_id,
             enc_offset: meta.client_idx,
@@ -158,7 +158,7 @@ impl BcHeader {
     }
 }
 
-pub(super) fn has_bin_offset(class: u16) -> bool {
+pub(super) fn has_payload_offset(class: u16) -> bool {
     // See BcHeader::is_modern() for a description of which packets have the bin offset
     class == 0x6414 || class == 0x0000
 }

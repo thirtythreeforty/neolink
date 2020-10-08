@@ -10,7 +10,7 @@ message_len = ProtoField.int32("baichuan.msg_len", "messageLen", base.DEC)
 xml_enc_offset = ProtoField.int32("baichuan.xml_encryption_offset", "xmlEncryptionOffset", base.DEC)
 xml_enc_used = ProtoField.bool("baichuan.xml_encryption_used", "encrypted", base.NONE)
 message_class = ProtoField.int32("baichuan.msg_class", "messageClass", base.DEC)
-f_bin_offset = ProtoField.int32("baichuan.bin_offset", "binOffset", base.DEC)
+f_payload_offset = ProtoField.int32("baichuan.payload_offset", "binOffset", base.DEC)
 username = ProtoField.string("baichuan.username", "username", base.ASCII)
 password = ProtoField.string("baichuan.password", "password", base.ASCII)
 
@@ -21,7 +21,7 @@ bc_protocol.fields = {
   xml_enc_offset,
   xml_enc_used,
   message_class,
-  f_bin_offset,
+  f_payload_offset,
   username,
   password,
 }
@@ -101,12 +101,12 @@ function bc_protocol.dissector(buffer, pinfo, tree)
     return buffer:len()
   end
 
-  -- bin_offset is either nil (no binary data) or nonzero
-  -- TODO: bin_offset is actually stateful!
-  local bin_offset = nil
+  -- payload_offset is either nil (no binary data) or nonzero
+  -- TODO: payload_offset is actually stateful!
+  local payload_offset = nil
   if header_len == 24 then
-    bin_offset = buffer(20, 4):le_uint()
-    if bin_offset == 0 then bin_offset = nil end
+    payload_offset = buffer(20, 4):le_uint()
+    if payload_offset == 0 then payload_offset = nil end
   end
 
   local bc_subtree = tree:add(bc_protocol, buffer(),
@@ -125,7 +125,7 @@ function bc_protocol.dissector(buffer, pinfo, tree)
   header:add_le(xml_enc_used, buffer(16, 1))
   header:add_le(message_class, buffer(18, 2))
         :append_text(" (" .. class .. ")")
-  header:add_le(f_bin_offset, buffer(20, 4))
+  header:add_le(f_payload_offset, buffer(20, 4))
 
   if msg_len == 0 then
     return
@@ -140,11 +140,11 @@ function bc_protocol.dissector(buffer, pinfo, tree)
       body:add_le(password, buffer(header_len + 32, 32))
     end
   else
-    local body_tvb = buffer(header_len, bin_offset):tvb()
+    local body_tvb = buffer(header_len, payload_offset):tvb()
     body:add(body_tvb(), "XML Payload")
 
     if encrypted then
-      local ba = buffer(header_len, bin_offset):bytes()
+      local ba = buffer(header_len, payload_offset):bytes()
       local decrypted = xml_encrypt(ba, enc_offset)
       body_tvb = decrypted:tvb("Decrypted XML")
       -- Create a tree item that, when clicked, automatically shows the tab we just created
@@ -152,8 +152,8 @@ function bc_protocol.dissector(buffer, pinfo, tree)
     end
     Dissector.get("xml"):call(body_tvb, pinfo, body)
 
-    if bin_offset ~= nil then
-      local binary_tvb = buffer(header_len + bin_offset, nil):tvb()
+    if payload_offset ~= nil then
+      local binary_tvb = buffer(header_len + payload_offset, nil):tvb()
       body:add(binary_tvb(), "Binary Payload")
       if msg_type == 0x03 then -- video
         Dissector.get("h265"):call(binary_tvb, pinfo, tree)

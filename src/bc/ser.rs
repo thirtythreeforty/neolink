@@ -14,7 +14,7 @@ impl Bc {
         // Ideally this would be a combinator, but that would be hairy because we have to
         // serialize the XML to have the metadata to build the header
         let body_buf;
-        let bin_offset;
+        let payload_offset;
         match &self.body {
             BcBody::ModernMsg(ref modern) => {
                 let (buf, xml_len) = gen(
@@ -22,7 +22,7 @@ impl Bc {
                     vec![],
                 )?;
                 body_buf = buf;
-                bin_offset = if has_bin_offset(self.meta.class) {
+                payload_offset = if has_payload_offset(self.meta.class) {
                     // If we're required to put binary length, put 0 if we have no binary
                     Some(if modern.payload.is_some() {
                         xml_len as u32
@@ -36,12 +36,12 @@ impl Bc {
             BcBody::LegacyMsg(ref legacy) => {
                 let (buf, _) = gen(bc_legacy(legacy), vec![])?;
                 body_buf = buf;
-                bin_offset = None;
+                payload_offset = None;
             }
         }
 
         // Now have enough info to create the header
-        let header = BcHeader::from_meta(&self.meta, body_buf.len() as u32, bin_offset);
+        let header = BcHeader::from_meta(&self.meta, body_buf.len() as u32, payload_offset);
 
         let (mut buf, _n) = gen(tuple((bc_header(&header), slice(body_buf))), buf)?;
 
@@ -94,7 +94,7 @@ fn bc_header<W: Write>(header: &BcHeader) -> impl SerializeFn<W> {
         le_u8(signaled_encryption),
         le_u8(spare), // skipped byte
         le_u16(header.class),
-        opt(header.bin_offset, le_u32),
+        opt(header.payload_offset, le_u32),
     ))
 }
 
