@@ -218,20 +218,20 @@ a PR to improve it.
     - **Notes:** Camera then send the stream as a binary payload in all
     following messages of id 3
 
-- 3: Camera Stream Binary
+  - Camera Stream Binary
 
-  - Header
+    - Header
 
-  |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-  |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-  | f0 de bc 0a  | 03 00 00 00  |  e8 5e 00 00   |    00 00 00 09    |       c8        |   00    |     00 00     |  00 00 00 00  |
+    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
+    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+    | f0 de bc 0a  | 03 00 00 00  |  e8 5e 00 00   |    00 00 00 09    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-  - Body
+    - Body
 
-    Body is binary. This binary represents an embedded stream which should
-    be detailed elsewhere.
+      Body is binary. This binary represents an embedded stream which should
+      be detailed elsewhere.
 
-- 4: \<Preview\> (stop)
+- 4: `<Preview>` (stop)
 
   - Client
 
@@ -344,6 +344,118 @@ a PR to improve it.
         |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
         |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 12  |  00 00 00 00   |    1e 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+- 25: `<VideoInput>` (write)
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 19  |  00 00 05 c2   |    64 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <VideoInput version="1.1">
+    <channelId>0</channelId>
+    <bright>128</bright>
+    <contrast>128</contrast>
+    <saturation>128</saturation>
+    <hue>128</hue>
+    <sharpen>166</sharpen>
+    </VideoInput>
+    <InputAdvanceCfg version="1.1">
+    <channelId>0</channelId>
+    <digitalChannel>1</digitalChannel>
+    <PowerLineFrequency>
+    <mode>50hz</mode>
+    <enable>0</enable>
+    </PowerLineFrequency>
+    <Exposure>
+    <mode>auto</mode>
+    <Gainctl>
+    <defMin>1</defMin>
+    <defMax>100</defMax>
+    <curMin>1</curMin>
+    <curMax>62</curMax>
+    </Gainctl>
+    <Shutterctl>
+    <defMin>0</defMin>
+    <defMax>125</defMax>
+    <curMin>0</curMin>
+    <curMax>125</curMax>
+    </Shutterctl>
+    <shutterLevel>1/30</shutterLevel>
+    <gainLevel>50</gainLevel>
+    </Exposure>
+    <Scene>
+    <mode>auto</mode>
+    <Redgain>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </Redgain>
+    <Bluegain>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </Bluegain>
+    </Scene>
+    <DayNight>
+    <mode>auto</mode>
+    <IrcutMode>ir</IrcutMode>
+    <Threshold>medium</Threshold>
+    </DayNight>
+    <BLC>
+    <enable>0</enable>
+    <mode>backLight</mode>
+    <dynamicrange>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </dynamicrange>
+    <backlight>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </backlight>
+    </BLC>
+    <mirror>0</mirror>
+    <flip>0</flip>
+    <Iris>
+    <enable>0</enable>
+    <state>success</state>
+    <focusAutoiris>0</focusAutoiris>
+    </Iris>
+    <nr3d>
+    <value>high</value>
+    <enable>1</enable>
+    </nr3d>
+    </InputAdvanceCfg>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 19  |  00 00 00 00   |    64 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
 
 - 26: `<VideoInput>`
 
@@ -1476,6 +1588,118 @@ a PR to improve it.
     </body>
     ```
 
+- 132: `<VideoInput>`
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 84  |  00 00 00 68   |    65 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 84  |  00 00 05 7c   |    65 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <VideoInput version="1.1">
+    <channelId>0</channelId>
+    <bright>128</bright>
+    <contrast>128</contrast>
+    <saturation>128</saturation>
+    <hue>128</hue>
+    <sharpen>128</sharpen>
+    </VideoInput>
+    <InputAdvanceCfg version="1.1">
+    <channelId>0</channelId>
+    <digitalChannel>1</digitalChannel>
+    <PowerLineFrequency>
+    <mode>50hz</mode>
+    <enable>0</enable>
+    </PowerLineFrequency>
+    <Exposure>
+    <mode>auto</mode>
+    <Gainctl>
+    <defMin>1</defMin>
+    <defMax>100</defMax>
+    <curMin>1</curMin>
+    <curMax>62</curMax>
+    </Gainctl>
+    <Shutterctl>
+    <defMin>0</defMin>
+    <defMax>125</defMax>
+    <curMin>0</curMin>
+    <curMax>125</curMax>
+    </Shutterctl>
+    <shutterLevel>1/30</shutterLevel>
+    <gainLevel>50</gainLevel>
+    </Exposure>
+    <Scene>
+    <mode>auto</mode>
+    <modeList>auto, manual</modeList>
+    <Redgain>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </Redgain>
+    <Bluegain>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </Bluegain>
+    </Scene>
+    <DayNight>
+    <mode>auto</mode>
+    <IrcutMode>ir</IrcutMode>
+    <Threshold>medium</Threshold>
+    </DayNight>
+    <BLC>
+    <enable>0</enable>
+    <mode>backLight</mode>
+    <backlight>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </backlight>
+    <dynamicrange>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </dynamicrange>
+    </BLC>
+    <mirror>0</mirror>
+    <flip>0</flip>
+    <Iris>
+    <enable>0</enable>
+    <state>success</state>
+    <focusAutoiris>0</focusAutoiris>
+    </Iris>
+    <nr3d>
+    <value>high</value>
+    <enable>1</enable>
+    </nr3d>
+    </InputAdvanceCfg>
+    </body>
+    ```
+
 - 133: `<RfAlarm>`
 
   - Client
@@ -1817,3 +2041,43 @@ a PR to improve it.
     </LedState>
     </body>
     ```
+
+- 209: `<LedState>` (write)
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 d1  |  00 00 01 10   |    85 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <LedState version="1.1">
+    <channelId>0</channelId>
+    <state>close</state>
+    <lightState>open</lightState>
+    </LedState>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 d1  |  00 00 00 00   |    85 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
