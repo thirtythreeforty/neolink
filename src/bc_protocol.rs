@@ -24,9 +24,10 @@ use crate::Never;
 
 type Result<T> = std::result::Result<T, Error>;
 
-const RX_TIMEOUT: Duration = Duration::from_secs(5);
+const RX_TIMEOUT: Duration = Duration::from_secs(500);
 
 #[derive(Debug, Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum Error {
     #[error(display = "Communication error")]
     CommunicationError(#[error(source)] std::io::Error),
@@ -49,8 +50,13 @@ pub enum Error {
     #[error(display = "Timeout")]
     Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
 
-    #[error(display = "Media")]
-    MediaPacket(#[error(source)] self::media_packet::Error),
+    // We map std::sync::mpsc::RecvTimeoutError onto one of these based on
+    // the errors enum
+    #[error(display = "Dropped connection")]
+    TimeoutDropped,
+
+    #[error(display = "Timeout")]
+    TimeoutTimeout,
 
     #[error(display = "Credential error")]
     AuthFailed,
@@ -127,12 +133,18 @@ impl BcCamera {
 
         sub_login.send(legacy_login)?;
 
-        let legacy_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
+        let legacy_reply = sub_login.rx.recv_timeout(RX_TIMEOUT).map_err(|e| {
+            match e {
+                std::sync::mpsc::RecvTimeoutError::Timeout => {Error::TimeoutTimeout}
+                std::sync::mpsc::RecvTimeoutError::Disconnected => {Error::TimeoutDropped}
+            }
+        })?;
+
         let nonce;
         match legacy_reply.body {
             BcBody::ModernMsg(ModernMsg {
                 xml:
-                    Some(BcXml {
+                    Some(BcXmls::BcXml(BcXml {
                         encryption: Some(encryption),
                         ..
                     }),
@@ -181,13 +193,18 @@ impl BcCamera {
         );
 
         sub_login.send(modern_login)?;
-        let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
+        let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT).map_err(|e| {
+            match e {
+                std::sync::mpsc::RecvTimeoutError::Timeout => {Error::TimeoutTimeout}
+                std::sync::mpsc::RecvTimeoutError::Disconnected => {Error::TimeoutDropped}
+            }
+        })?;
 
         let device_info;
         match modern_reply.body {
             BcBody::ModernMsg(ModernMsg {
-                xml:
-                    Some(BcXml {
+                payload:
+                    Some(BcPayloads::BcXml(BcXml {
                         device_info: Some(info),
                         ..
                     }),
@@ -199,7 +216,7 @@ impl BcCamera {
             }
             BcBody::ModernMsg(ModernMsg {
                 xml: None,
-                binary: None,
+                payload: None,
             }) => return Err(Error::AuthFailed),
             _ => {
                 return Err(Error::UnintelligibleReply {
@@ -214,7 +231,7 @@ impl BcCamera {
 
     pub fn logout(&mut self) -> Result<()> {
         if self.logged_in {
-            // TODO
+            // TODO: Send message ID 2
         }
         self.logged_in = false;
         Ok(())
@@ -238,7 +255,12 @@ impl BcCamera {
 
         sub_ping.send(ping)?;
 
-        sub_ping.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_ping.rx.recv_timeout(RX_TIMEOUT).map_err(|e| {
+            match e {
+                std::sync::mpsc::RecvTimeoutError::Timeout => {Error::TimeoutTimeout}
+                std::sync::mpsc::RecvTimeoutError::Disconnected => {Error::TimeoutDropped}
+            }
+        })?;
 
         Ok(())
     }

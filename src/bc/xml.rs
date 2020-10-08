@@ -11,16 +11,32 @@ use indoc::indoc;
 
 #[derive(PartialEq, Eq, Debug, YaDeserialize)]
 #[yaserde(flatten)]
-pub(super) enum AllTopXmls {
+pub enum BcXmls {
     #[yaserde(rename = "body")]
     BcXml(BcXml),
     Extension(Extension),
 }
 
 // Required for YaDeserialize
-impl Default for AllTopXmls {
+impl Default for BcXmls {
     fn default() -> Self {
-        AllTopXmls::BcXml(Default::default())
+        BcXmls::BcXml(Default::default())
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, YaDeserialize)]
+#[yaserde(flatten)]
+pub enum BcPayloads {
+    #[yaserde(rename = "body")]
+    BcXml(BcXml),
+    #[yaserde(flatten)]
+    Binary(Vec<u8>),
+}
+
+// Required for YaDeserialize
+impl Default for BcPayloads {
+    fn default() -> Self {
+        BcPayloads::Binary(Default::default())
     }
 }
 
@@ -43,7 +59,7 @@ pub struct BcXml {
     pub norm: Option<Norm>,
 }
 
-impl AllTopXmls {
+impl BcXmls {
     pub fn try_parse(s: impl Read) -> Result<Self, String> {
         yaserde::de::from_reader(s)
     }
@@ -185,9 +201,9 @@ fn test_encryption_deser() {
     assert_eq!(enc.nonce, "9E6D1FCB9E69846D");
     assert_eq!(enc.type_, "md5");
 
-    let t = AllTopXmls::try_parse(sample.as_bytes()).unwrap();
+    let t = BcXmls::try_parse(sample.as_bytes()).unwrap();
     match t {
-        AllTopXmls::BcXml(top_b) if top_b == b => assert!(true),
+        BcXmls::BcXml(top_b) if top_b == b => assert!(true),
         _ => assert!(false),
     }
 }
@@ -322,9 +338,9 @@ fn test_binary_deser() {
         </Extension>
     "#
     );
-    let b = AllTopXmls::try_parse(sample.as_bytes()).unwrap();
+    let b = BcXmls::try_parse(sample.as_bytes()).unwrap();
     match b {
-        AllTopXmls::Extension(Extension { binary_data: 1 }) => assert!(true),
+        BcXmls::Extension(Extension { binary_data: 1 }) => assert!(true),
         _ => assert!(false),
     }
 }

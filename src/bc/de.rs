@@ -1,5 +1,5 @@
 use super::model::*;
-use super::xml::{AllTopXmls, Extension};
+use super::xml::{BcPayloads, BcXml, BcXmls};
 use super::xml_crypto;
 use err_derive::Error;
 use log::*;
@@ -116,74 +116,59 @@ fn bc_modern_msg<'a, 'b>(
         Err,
     };
 
-    let mut in_bin_mode = context.in_bin_mode.contains(&header.msg_id);
-
-    // We'd like to know where the XML stops, but we haven't parsed the XML yet to see if the
-    // binaryData offset in the header is valid
-    let end_of_xml = if in_bin_mode {
-        0
-    } else {
-        match header.bin_offset {
-            Some(off) if off > 0 => off,
-            _ => header.body_len,
-        }
+    let xml_len = match header.bin_offset {
+        Some(off) => off,
+        _ => header.body_len,
     };
 
-    let (mut buf, body_buf) = take(end_of_xml)(buf)?;
+    let (buf, xml_buf) = take(xml_len)(buf)?;
+    let payload_len = header.body_len - xml_len;
+    let (buf, payload_buf) = take(payload_len)(buf)?;
 
     let decrypted;
-    let processed_body_buf = if !header.is_encrypted() {
-        buf
+    let processed_xml_buf = if !header.is_encrypted() {
+        xml_buf
     } else {
-        decrypted = xml_crypto::crypt(header.enc_offset, body_buf);
+        decrypted = xml_crypto::crypt(header.enc_offset, xml_buf);
         &decrypted
     };
 
     // Now we'll take the buffer that Nom gave a ref to and parse it.
-    let mut xml = None;
-    let mut binary = None;
-    if end_of_xml > 0 {
+    let xml;
+    if xml_len > 0 {
         // Apply the XML parse function, but throw away the reference to decrypted in the Ok and
         // Err case. This error-error-error thing is the same idiom Nom uses internally.
-        let parsed = AllTopXmls::try_parse(processed_body_buf)
+        let parsed = BcXmls::try_parse(processed_xml_buf)
             .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
-
-        // If this is the first message containing binary, the Extension message puts the message
-        // ID into binary mode, then the first binary is sent after the XML.  All remaining
-        // messages for that ID are pure binary.
-        match parsed {
-            AllTopXmls::BcXml(x) => {
-                xml = Some(x);
-            }
-            AllTopXmls::Extension(Extension { binary_data: _ }) => {
-                in_bin_mode = true;
-            }
-        }
+        xml = Some(parsed);
+    } else {
+        xml = None;
     }
 
-    // If we are in binary mode, extract it
-    if in_bin_mode {
-        if let Some(bin_offset) = header.bin_offset {
-            // Extract remainder of message as binary, if it exists
-            let (buf_after, payload) =
-                map(take(header.body_len - bin_offset), |x: &[u8]| x.to_vec())(buf)?;
-
-            // Since the parser operates in streaming mode, must wait until after we successfully
-            // receive enough bytes before modifying the context (otherwise we'll alter the
-            // behavior of future passes of this function even if we didn't yet consume the
-            // message).
-            context.in_bin_mode.insert(header.msg_id);
-
-            binary = Some(payload);
-            buf = buf_after;
+    // Now to handle the payload block
+    // This block can either be xml or binary depending on what the message expects.
+    // For our purposes we use try_parse and if all xml based parsers fail we treat
+    // As binary
+    let payload;
+    if payload_len > 0 {
+        // Extract remainder of message as binary, if it exists
+        let decrypted;
+        let processed_payload_buf = if !header.is_encrypted() {
+            xml_buf
         } else {
-            // Seriously, Nom, what even is this
-            error!("Expected header to contain a binary offset, but there was none");
-            return Err(Err::Error(make_error(buf, ErrorKind::Verify)));
+            decrypted = xml_crypto::crypt(header.enc_offset, payload_buf);
+            &decrypted
+        };
+        if let Ok(xml) = BcXml::try_parse(processed_payload_buf) {
+            payload = Some(BcPayloads::BcXml(xml));
+        } else {
+            payload = Some(BcPayloads::Binary(payload_buf.to_vec()));
         }
+    } else {
+        payload = None;
     }
 
-    Ok((buf, ModernMsg { xml, binary }))
+    Ok((buf, ModernMsg { xml, payload }))
 }
 
 fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {

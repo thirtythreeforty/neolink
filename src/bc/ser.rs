@@ -1,5 +1,5 @@
 use super::model::*;
-use super::xml::BcXml;
+use super::xml::{BcXmls, BcPayloads};
 use super::xml_crypto;
 use cookie_factory::bytes::*;
 use cookie_factory::sequence::tuple;
@@ -24,7 +24,7 @@ impl Bc {
                 body_buf = buf;
                 bin_offset = if has_bin_offset(self.meta.class) {
                     // If we're required to put binary length, put 0 if we have no binary
-                    Some(if modern.binary.is_some() {
+                    Some(if modern.payload.is_some() {
                         xml_len as u32
                     } else {
                         0
@@ -47,22 +47,36 @@ impl Bc {
 
         // Put the binary part of the body, TODO this is poorly written
         if let BcBody::ModernMsg(ModernMsg {
-            binary: Some(ref binary),
+            payload: Some(ref payload),
             ..
         }) = self.body
         {
-            let (buf2, _) = gen(slice(binary), buf)?;
-            buf = buf2
+            let (buf2, _) = gen(bc_payload(header.enc_offset, payload), buf)?;
+            buf = buf2;
         }
 
         Ok(buf)
     }
 }
 
-fn bc_xml<W: Write>(enc_offset: u32, xml: &BcXml) -> impl SerializeFn<W> {
-    let xml_bytes = xml.serialize(vec![]).unwrap();
+fn bc_xml<W: Write>(enc_offset: u32, xml: &BcXmls) -> impl SerializeFn<W> {
+    let xml_bytes = match xml {
+        BcXmls::BcXml(x) => x.serialize(vec![]).unwrap(),
+        BcXmls::Extension(x) => x.serialize(vec![]).unwrap(),
+    };
     let enc_bytes = xml_crypto::crypt(enc_offset, &xml_bytes);
     slice(enc_bytes)
+}
+
+fn bc_payload<W: Write>(enc_offset: u32, payload: &BcPayloads) -> impl SerializeFn<W> {
+    let payload_bytes = match payload {
+        BcPayloads::BcXml(x) => {
+            let xml_bytes = x.serialize(vec![]).unwrap();
+            xml_crypto::crypt(enc_offset, &xml_bytes)
+        },
+        BcPayloads::Binary(x) => x.to_owned(),
+    };
+    slice(payload_bytes)
 }
 
 fn bc_header<W: Write>(header: &BcHeader) -> impl SerializeFn<W> {

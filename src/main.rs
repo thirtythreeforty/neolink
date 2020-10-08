@@ -20,6 +20,7 @@ use cmdline::Opt;
 use config::{CameraConfig, Config, UserConfig};
 
 #[derive(Debug, Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum Error {
     #[error(display = "Configuration parsing error")]
     ConfigError(#[error(source)] toml::de::Error),

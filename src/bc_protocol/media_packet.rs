@@ -1,6 +1,6 @@
 use crate::bc::model::*;
 use crate::bc_protocol::connection::BcSubscription;
-use err_derive::Error;
+use super::Error;
 use log::trace;
 use log::*;
 use std::collections::VecDeque;
@@ -16,12 +16,6 @@ const MAGIC_SIZE: usize = 4;
 const PAD_SIZE: usize = 8;
 
 type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(display = "Timeout")]
-    Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
-}
 
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum MediaDataKind {
@@ -156,9 +150,14 @@ impl<'a> MediaDataSubscriber<'a> {
     fn fill_binary_buffer(&mut self, rx_timeout: Duration) -> Result<()> {
         // Loop messages until we get binary add that data and return
         loop {
-            let msg = self.bc_sub.rx.recv_timeout(rx_timeout)?;
+            let msg = self.bc_sub.rx.recv_timeout(rx_timeout).map_err(|e| {
+                match e {
+                    std::sync::mpsc::RecvTimeoutError::Timeout => {Error::TimeoutTimeout}
+                    std::sync::mpsc::RecvTimeoutError::Disconnected => {Error::TimeoutDropped}
+                }
+            })?;
             if let BcBody::ModernMsg(ModernMsg {
-                binary: Some(binary),
+                payload: Some(BcPayloads::Binary(binary)),
                 ..
             }) = msg.body
             {

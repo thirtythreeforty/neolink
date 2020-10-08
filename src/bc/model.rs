@@ -1,4 +1,4 @@
-use super::xml::{BcXml, Extension, TopBcXmls};
+pub use super::xml::{BcXml, Extension, BcXmls, BcPayloads};
 use std::collections::HashSet;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
@@ -19,6 +19,7 @@ pub struct Bc {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum BcBody {
     LegacyMsg(LegacyMsg),
     ModernMsg(ModernMsg),
@@ -26,8 +27,8 @@ pub enum BcBody {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ModernMsg {
-    pub xml: Option<BcXml>,
-    pub binary: Option<Vec<u8>>,
+    pub xml: Option<BcXmls>,
+    pub payload: Option<BcPayloads>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -76,8 +77,8 @@ impl Bc {
         Bc {
             meta,
             body: BcBody::ModernMsg(ModernMsg {
-                xml: Some(xml),
-                binary: None,
+                xml: Some(BcXmls::BcXml(xml)),
+                payload: None,
             }),
         }
     }
@@ -86,8 +87,18 @@ impl Bc {
         Bc {
             meta,
             body: BcBody::ModernMsg(ModernMsg {
-                xml: Some(TopBcXmls::Extension(xml)),
-                binary: None,
+                xml: Some(BcXmls::Extension(xml)),
+                payload: None,
+            }),
+        }
+    }
+
+    pub fn new_from_meta(meta: BcMeta) -> Bc {
+        Bc {
+            meta,
+            body: BcBody::ModernMsg(ModernMsg {
+                xml: None,
+                payload: None,
             }),
         }
     }
