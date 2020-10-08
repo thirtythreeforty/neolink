@@ -1,5 +1,5 @@
 use super::model::*;
-use super::xml::{BcPayloads, BcXml, BcXmls};
+use super::xml::{BcPayloads, BcXml};
 use super::xml_crypto;
 use err_derive::Error;
 use log::*;
@@ -116,33 +116,33 @@ fn bc_modern_msg<'a, 'b>(
         Err,
     };
 
-    let xml_len = match header.payload_offset {
+    let ext_len = match header.payload_offset {
         Some(off) => off,
-        _ => header.body_len,
+        _ => 0, // If missing payload_offset treat all as payload
     };
 
-    let (buf, xml_buf) = take(xml_len)(buf)?;
-    let payload_len = header.body_len - xml_len;
+    let (buf, ext_buf) = take(ext_len)(buf)?;
+    let payload_len = header.body_len - ext_len;
     let (buf, payload_buf) = take(payload_len)(buf)?;
 
     let decrypted;
-    let processed_xml_buf = if !header.is_encrypted() {
-        xml_buf
+    let processed_ext_buf = if !header.is_encrypted() {
+        ext_buf
     } else {
-        decrypted = xml_crypto::crypt(header.enc_offset, xml_buf);
+        decrypted = xml_crypto::crypt(header.enc_offset, ext_buf);
         &decrypted
     };
 
     // Now we'll take the buffer that Nom gave a ref to and parse it.
-    let xml;
-    if xml_len > 0 {
+    let extension;
+    if ext_len > 0 {
         // Apply the XML parse function, but throw away the reference to decrypted in the Ok and
         // Err case. This error-error-error thing is the same idiom Nom uses internally.
-        let parsed = BcXmls::try_parse(processed_xml_buf)
+        let parsed = Extension::try_parse(processed_ext_buf)
             .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
-        xml = Some(parsed);
+        extension = Some(parsed);
     } else {
-        xml = None;
+        extension = None;
     }
 
     // Now to handle the payload block
@@ -154,7 +154,7 @@ fn bc_modern_msg<'a, 'b>(
         // Extract remainder of message as binary, if it exists
         let decrypted;
         let processed_payload_buf = if !header.is_encrypted() {
-            xml_buf
+            payload_buf
         } else {
             decrypted = xml_crypto::crypt(header.enc_offset, payload_buf);
             &decrypted
@@ -168,7 +168,7 @@ fn bc_modern_msg<'a, 'b>(
         payload = None;
     }
 
-    Ok((buf, ModernMsg { xml, payload }))
+    Ok((buf, ModernMsg { extension, payload }))
 }
 
 fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {

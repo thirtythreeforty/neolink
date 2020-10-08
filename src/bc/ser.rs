@@ -1,5 +1,5 @@
 use super::model::*;
-use super::xml::{BcXmls, BcPayloads};
+use super::xml::{BcPayloads};
 use super::xml_crypto;
 use cookie_factory::bytes::*;
 use cookie_factory::sequence::tuple;
@@ -15,55 +15,55 @@ impl Bc {
         // serialize the XML to have the metadata to build the header
         let body_buf;
         let payload_offset;
+
+
         match &self.body {
             BcBody::ModernMsg(ref modern) => {
-                let (buf, xml_len) = gen(
-                    opt_ref(&modern.xml, |xml| bc_xml(self.meta.client_idx, xml)),
+                // First serialize ext
+                let (temp_buf, ext_len) = gen(
+                    opt_ref(&modern.extension, |ext| bc_ext(self.meta.client_idx, ext)),
                     vec![],
                 )?;
-                body_buf = buf;
+
+                // Now get the offset of the payload
                 payload_offset = if has_payload_offset(self.meta.class) {
                     // If we're required to put binary length, put 0 if we have no binary
                     Some(if modern.payload.is_some() {
-                        xml_len as u32
+                        ext_len as u32
                     } else {
                         0
                     })
                 } else {
                     None
                 };
-            }
+
+                // Now get the payload part of the body and add to ext_buf
+                let (temp_buf, _) = gen(
+                    opt_ref(&modern.payload, |payload_offset| bc_payload(self.meta.client_idx, payload_offset)),
+                    temp_buf,
+                )?;
+                body_buf = temp_buf;
+            },
+
             BcBody::LegacyMsg(ref legacy) => {
                 let (buf, _) = gen(bc_legacy(legacy), vec![])?;
                 body_buf = buf;
                 payload_offset = None;
             }
-        }
+        };
 
         // Now have enough info to create the header
         let header = BcHeader::from_meta(&self.meta, body_buf.len() as u32, payload_offset);
 
-        let (mut buf, _n) = gen(tuple((bc_header(&header), slice(body_buf))), buf)?;
+        let (buf, _n) = gen(tuple((bc_header(&header), slice(body_buf))), buf)?;
 
-        // Put the binary part of the body, TODO this is poorly written
-        if let BcBody::ModernMsg(ModernMsg {
-            payload: Some(ref payload),
-            ..
-        }) = self.body
-        {
-            let (buf2, _) = gen(bc_payload(header.enc_offset, payload), buf)?;
-            buf = buf2;
-        }
 
         Ok(buf)
     }
 }
 
-fn bc_xml<W: Write>(enc_offset: u32, xml: &BcXmls) -> impl SerializeFn<W> {
-    let xml_bytes = match xml {
-        BcXmls::BcXml(x) => x.serialize(vec![]).unwrap(),
-        BcXmls::Extension(x) => x.serialize(vec![]).unwrap(),
-    };
+fn bc_ext<W: Write>(enc_offset: u32, xml: &Extension) -> impl SerializeFn<W> {
+    let xml_bytes = xml.serialize(vec![]).unwrap();
     let enc_bytes = xml_crypto::crypt(enc_offset, &xml_bytes);
     slice(enc_bytes)
 }

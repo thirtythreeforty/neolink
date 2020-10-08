@@ -1,4 +1,4 @@
-pub use super::xml::{BcXml, Extension, BcXmls, BcPayloads};
+pub use super::xml::{BcPayloads, BcXml, Extension};
 use std::collections::HashSet;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
@@ -27,7 +27,7 @@ pub enum BcBody {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ModernMsg {
-    pub xml: Option<BcXmls>,
+    pub extension: Option<Extension>,
     pub payload: Option<BcPayloads>,
 }
 
@@ -77,17 +77,17 @@ impl Bc {
         Bc {
             meta,
             body: BcBody::ModernMsg(ModernMsg {
-                xml: Some(BcXmls::BcXml(xml)),
-                payload: None,
+                extension: None,
+                payload: Some(BcPayloads::BcXml(xml)),
             }),
         }
     }
 
-    pub fn new_from_ext_xml(meta: BcMeta, xml: Extension) -> Bc {
+    pub fn new_from_ext(meta: BcMeta, xml: Extension) -> Bc {
         Bc {
             meta,
             body: BcBody::ModernMsg(ModernMsg {
-                xml: Some(BcXmls::Extension(xml)),
+                extension: Some(xml),
                 payload: None,
             }),
         }
@@ -97,8 +97,18 @@ impl Bc {
         Bc {
             meta,
             body: BcBody::ModernMsg(ModernMsg {
-                xml: None,
+                extension: None,
                 payload: None,
+            }),
+        }
+    }
+
+    pub fn new_from_ext_ext(meta: BcMeta, ext: Extension, xml: BcXml) -> Bc {
+        Bc {
+            meta,
+            body: BcBody::ModernMsg(ModernMsg {
+                extension: Some(ext),
+                payload: Some(BcPayloads::BcXml(xml)),
             }),
         }
     }

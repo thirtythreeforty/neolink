@@ -143,8 +143,8 @@ impl BcCamera {
         let nonce;
         match legacy_reply.body {
             BcBody::ModernMsg(ModernMsg {
-                xml:
-                    Some(BcXmls::BcXml(BcXml {
+                payload:
+                    Some(BcPayloads::BcXml(BcXml {
                         encryption: Some(encryption),
                         ..
                     }),
@@ -215,7 +215,7 @@ impl BcCamera {
                 device_info = info;
             }
             BcBody::ModernMsg(ModernMsg {
-                xml: None,
+                extension: None,
                 payload: None,
             }) => return Err(Error::AuthFailed),
             _ => {
