@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # syntax=docker/dockerfile:experimental
 
-FROM --platform=$BUILDPLATFORM docker.io/rust:slim-buster AS build
+FROM --platform=$BUILDPLATFORM docker.io/debian:buster-slim
 ARG TARGETPLATFORM
 ARG REPO
 ARG VERSION
@@ -33,19 +33,25 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:$PATH
 
 RUN --mount=type=tmpfs,destination=/usr/local/cargo/ \
-    echo >&2 "\e[0;32mRUNNING: ${TARGETPLATFORM} ${BUILDPLATFORM} ${arch}\e[0m"; \
+    echo >&2 "\e[0;32mBUILDING FOR: ${TARGETPLATFORM}\e[0m"; \
+    echo >&2 "\e[0;33mUpdating apt\e[0m"; \
     apt-get update && \
+    echo >&2 "\e[0;33mInstalling packages\e[0m"; \
     apt-get install --assume-yes --no-install-recommends \
       build-essential \
       "${gcc}" "${gpp}" \
-      libgstrtspserver-1.0-dev:${arch} \
-      libgstreamer1.0-dev:${arch} \
-      libgtk2.0-dev:${arch} && \
+      curl ca-certificates build-essential \
+      libgstrtspserver-1.0-dev \
+      libgstreamer1.0-dev \
+      libgtk2.0-dev && \
     /bin/rm -rf /var/cache/apt && \
     /bin/rm -rf /var/lib/apt/lists/* && \
-    rustup target add "${rustArch}" && \
+    echo >&2 "\e[0;33mInstalling rust\e[0m"; \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > rustinit.sh && \
+    sh rustinit.sh --verbose -y && \
+    echo >&2 "\e[0;33mBuilding neolink\e[0m"; \
     cargo build --release --all-features && \
-    cp "/usr/local/src/neolink/target/${rustArch}/release/neolink" /neolink
+    cp "/usr/local/src/neolink/target/release/neolink" /neolink
 
 # Create the release container.
 FROM --platform=$TARGETPLATFORM docker.io/debian:buster-slim
@@ -72,7 +78,7 @@ RUN apt-get update && \
   /bin/rm -rf /var/lib/apt/lists/*
 
 COPY --from=build \
-  /neolink \
+  /usr/local/src/neolink/target/release/neolink \
   /usr/local/bin/neolink
 COPY docker/debian/entrypoint.sh /entrypoint.sh
 
