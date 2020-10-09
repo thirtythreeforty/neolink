@@ -75,6 +75,8 @@ jobs:
           file: docker/debian/Dockerfile
           tags: ${{ steps.tags.outputs.DEBTAGS }}
           build-args: VERSION=${{ steps.toml.outputs.version }}, REPO=${{ github.repository }}, OWNER=${{ github.repository_owner }}
+        env:
+          DOCKER_BUILDKIT: 1
       - name: Push to Docker Hub Alpine
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         uses: docker/build-push-action@v2
