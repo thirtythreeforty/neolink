@@ -11,16 +11,17 @@ use indoc::indoc;
 
 #[derive(PartialEq, Eq, Debug, YaDeserialize)]
 #[yaserde(flatten)]
-pub(super) enum AllTopXmls {
+pub enum BcPayloads {
     #[yaserde(rename = "body")]
     BcXml(BcXml),
-    Extension(Extension),
+    #[yaserde(flatten)]
+    Binary(Vec<u8>),
 }
 
 // Required for YaDeserialize
-impl Default for AllTopXmls {
+impl Default for BcPayloads {
     fn default() -> Self {
-        AllTopXmls::BcXml(Default::default())
+        BcPayloads::Binary(Default::default())
     }
 }
 
@@ -41,15 +42,22 @@ pub struct BcXml {
     pub system_general: Option<SystemGeneral>,
     #[yaserde(rename = "Norm")]
     pub norm: Option<Norm>,
-}
-
-impl AllTopXmls {
-    pub fn try_parse(s: impl Read) -> Result<Self, String> {
-        yaserde::de::from_reader(s)
-    }
+    #[yaserde(rename = "AlarmEventList")]
+    pub alarm_event_list: Option<AlarmEventList>,
+    #[yaserde(rename = "LedState")]
+    pub led_state: Option<LedState>,
 }
 
 impl BcXml {
+    pub fn try_parse(s: impl Read) -> Result<Self, String> {
+        yaserde::de::from_reader(s)
+    }
+    pub fn serialize<W: Write>(&self, w: W) -> Result<W, String> {
+        yaserde::ser::serialize_with_writer(self, w, &Config::default())
+    }
+}
+
+impl Extension {
     pub fn try_parse(s: impl Read) -> Result<Self, String> {
         yaserde::de::from_reader(s)
     }
@@ -125,8 +133,15 @@ pub struct Preview {
 
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct Extension {
+    #[yaserde(attribute)]
+    pub version: String,
     #[yaserde(rename = "binaryData")]
-    pub binary_data: u32,
+    pub binary_data: Option<u32>,
+    #[yaserde(rename = "userName")]
+    pub user_name: Option<String>,
+    pub token: Option<String>,
+    #[yaserde(rename = "channelId")]
+    pub channel_id: Option<u32>,
 }
 
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
@@ -160,6 +175,39 @@ pub struct Norm {
     norm: String,
 }
 
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AlarmEventList {
+    #[yaserde(attribute)]
+    pub version: String,
+    #[yaserde(rename = "AlarmEvent")]
+    pub alarm_events: Vec<AlarmEvent>,
+}
+
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct LedState {
+    #[yaserde(attribute)]
+    pub version: String,
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u32,
+    #[yaserde(rename = "ledVersion")]
+    pub led_version: Option<u32>,
+    pub state: String,
+    #[yaserde(rename = "lightState")]
+    pub light_state: String,
+}
+
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AlarmEvent {
+    #[yaserde(attribute)]
+    pub version: String,
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u32,
+    pub status: String,
+    pub recording: i32,
+    #[yaserde(rename = "timeStamp")]
+    pub timeStamp: i32,
+}
+
 pub fn xml_ver() -> String {
     "1.1".to_string()
 }
@@ -183,9 +231,9 @@ fn test_encryption_deser() {
     assert_eq!(enc.nonce, "9E6D1FCB9E69846D");
     assert_eq!(enc.type_, "md5");
 
-    let t = AllTopXmls::try_parse(sample.as_bytes()).unwrap();
+    let t = BcXmls::try_parse(sample.as_bytes()).unwrap();
     match t {
-        AllTopXmls::BcXml(top_b) if top_b == b => assert!(true),
+        BcXmls::BcXml(top_b) if top_b == b => assert!(true),
         _ => assert!(false),
     }
 }
@@ -320,9 +368,9 @@ fn test_binary_deser() {
         </Extension>
     "#
     );
-    let b = AllTopXmls::try_parse(sample.as_bytes()).unwrap();
+    let b = BcXmls::try_parse(sample.as_bytes()).unwrap();
     match b {
-        AllTopXmls::Extension(Extension { binary_data: 1 }) => assert!(true),
+        BcXmls::Extension(Extension { binary_data: 1 }) => assert!(true),
         _ => assert!(false),
     }
 }

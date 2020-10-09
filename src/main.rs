@@ -1,3 +1,5 @@
+use crate::mqtt::{MqttConfig, MQTT};
+use crossbeam_channel::unbounded;
 use env_logger::Env;
 use err_derive::Error;
 use gio::TlsAuthenticationMode;
@@ -7,19 +9,22 @@ use neolink::gst::{MaybeAppSrc, RtspServer, StreamFormat};
 use neolink::Never;
 use std::collections::HashSet;
 use std::fs;
-use std::io::Write;
-use std::sync::Arc;
+use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
 use std::time::Duration;
 use structopt::StructOpt;
 use validator::Validate;
 
 mod cmdline;
 mod config;
+mod mqtt;
+
+pub(crate) use neolink::bc_protocol::MotionStatus;
 
 use cmdline::Opt;
 use config::{CameraConfig, Config, UserConfig};
 
 #[derive(Debug, Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum Error {
     #[error(display = "Configuration parsing error")]
     ConfigError(#[error(source)] toml::de::Error),
@@ -88,6 +93,7 @@ fn main() -> Result<(), Error> {
                     .add_stream(paths, stream_format, &permitted_users)
                     .unwrap();
                 let main_camera = arc_cam.clone();
+
                 s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output, true));
             }
             if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
@@ -108,6 +114,17 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
+fn set_up_mqtt(mqtt_config: &Option<MqttConfig>, name: &str) -> Option<Arc<MQTT>> {
+    // Setup mqtt
+    if mqtt_config.is_none() {
+        return None;
+    }
+    debug!("Setting up mqtt for {}", name);
+    let arc_mqtt = MQTT::new(mqtt_config.as_ref().unwrap(), name);
+
+    Some(arc_mqtt)
+}
+
 fn camera_loop(
     camera_config: &CameraConfig,
     stream_name: &str,
@@ -118,9 +135,32 @@ fn camera_loop(
     let max_backoff = Duration::from_secs(15);
     let mut current_backoff = min_backoff;
 
+    // Create mqtt here only when managment
+    // We do this before the loop so we can senf connect/disconnected message
+    // over mqtt
+    // Mqtt also has its own error recovery and reconnect method so we want to use
+    // that rather than destroy and recreate the mqtt client as part of the loop
+    let arc_mqtt;
+    if manage {
+        arc_mqtt = set_up_mqtt(&camera_config.mqtt, &camera_config.name);
+    } else {
+        arc_mqtt = None;
+    }
+
     loop {
-        let cam_err = camera_main(camera_config, stream_name, output, manage).unwrap_err();
+        let cam_err =
+            camera_main(camera_config, stream_name, output, &arc_mqtt, manage).unwrap_err();
         output.on_stream_error();
+
+        if let Some(mqtt) = arc_mqtt.as_ref() {
+            if mqtt.send_message("status", "disconnected", true).is_err() {
+                error!(
+                    "Failed to post dissconnect over MQTT for {}",
+                    &camera_config.name
+                );
+            }
+        }
+
         // Authentication failures are permanent; we retry everything else
         if cam_err.connected {
             current_backoff = min_backoff;
@@ -199,7 +239,8 @@ fn get_permitted_users<'a>(
 fn camera_main(
     camera_config: &CameraConfig,
     stream_name: &str,
-    output: &mut dyn Write,
+    output: &mut MaybeAppSrc,
+    arc_mqtt: &Option<Arc<MQTT>>,
     manage: bool,
 ) -> Result<Never, CameraErr> {
     let mut connected = false;
@@ -218,10 +259,16 @@ fn camera_main(
 
         camera.login(&camera_config.username, camera_config.password.as_deref())?;
 
+        info!("{}: Connected and logged in on {}", camera_config.name, camera_config.stream);
         connected = true;
-        info!("{}: Connected and logged in", camera_config.name);
 
         if manage {
+            if let Some(mqtt) = arc_mqtt.as_ref() {
+                if mqtt.send_message("status", "connected", true).is_err() {
+                    error!("Failed to post connect over MQTT for {}", camera_config.name);
+                }
+            }
+
             let cam_time = camera.get_time()?;
             if let Some(time) = cam_time {
                 info!(
@@ -251,7 +298,59 @@ fn camera_main(
             "{}: Starting video stream {}",
             camera_config.name, stream_name
         );
-        camera.start_video(output, stream_name, camera_config.channel_id)
+        let channel_id = camera_config.channel_id; // Copy out for the spawn
+
+        crossbeam::scope(|s| {
+            let arc_cam = Arc::new(camera);
+            let cancel_now = Arc::new(AtomicBool::new(false));
+            let recv_wait = Duration::from_millis(500);
+            if manage {
+                if let Some(mqtt) = arc_mqtt.as_ref() {
+                    // Motion
+                    let (motion_write, motion_read) = unbounded::<MotionStatus>();
+                    let motion_cancel = cancel_now.clone();
+                    s.spawn(move |_| while ! (motion_cancel.load(Ordering::Relaxed)) {
+                        if let Ok(motion_status) = motion_read.recv_timeout(recv_wait) {
+                            match motion_status {
+                                MotionStatus::MotionStart => {
+                                    if mqtt.send_message("status/motion", "on", true).is_err() {
+                                        error!("Failed to publish motion start for {}", camera_config.name);
+                                    }
+                                },
+                                MotionStatus::MotionStop => {
+                                    if mqtt.send_message("status/motion", "off", true).is_err() {
+                                        error!("Failed to publish motion stop for {}", camera_config.name);
+                                    }
+                                },
+                                MotionStatus::NoChange => {},
+                            }
+                        }
+                    });
+                    let motion_cam = arc_cam.clone();
+                    s.spawn(move |_| (*motion_cam).start_motion(&motion_write, channel_id, &camera_config.username));
+
+                    // Led
+                    let msg_channel = mqtt.get_message_listener();
+                    let led_cam = arc_cam.clone();
+                    let led_cancel = cancel_now.clone();
+                    s.spawn(move |_| while ! (led_cancel.load(Ordering::Relaxed)) {
+                        if let Ok(msg) = msg_channel.recv_timeout(recv_wait) {
+                            if msg.topic == "control/led" {
+                                match msg.message.as_str() {
+                                    "on" => {let _ = led_cam.enable_led(channel_id, true);},
+                                    "off" => {let _ = led_cam.enable_led(channel_id, false);},
+                                    _ => {},
+                                };
+                            }
+                        }
+                    });
+                }
+            }
+            let video_cam = arc_cam;
+            let err = (*video_cam).start_video(output, stream_name, channel_id);
+            cancel_now.store(true, Ordering::Relaxed);
+            err
+        }).unwrap()
     })()
     .map_err(|err| CameraErr { connected, err })
 }

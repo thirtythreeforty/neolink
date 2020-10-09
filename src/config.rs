@@ -7,6 +7,8 @@ use std::time::Duration;
 use validator::{Validate, ValidationError};
 use validator_derive::Validate;
 
+use crate::mqtt::MqttConfig;
+
 lazy_static! {
     static ref RE_STREAM_FORM: Regex = Regex::new(r"^([hH]26[45]|[ \t]*[!].*)$").unwrap();
     static ref RE_STREAM_SRC: Regex = Regex::new(r"^(mainStream|subStream|both)$").unwrap();
@@ -75,6 +77,10 @@ pub struct CameraConfig {
     #[validate(range(min = 0, max = 31, message = "Invalid channel", code = "channel_id"))]
     #[serde(default = "default_channel_id")]
     pub channel_id: u32,
+
+    #[validate]
+    #[serde(default = "default_mqtt")]
+    pub mqtt: Option<MqttConfig>,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -113,6 +119,10 @@ fn default_tls_client_auth() -> String {
 
 fn default_channel_id() -> u32 {
     0
+}
+
+fn default_mqtt() -> Option<MqttConfig> {
+    None
 }
 
 pub static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];

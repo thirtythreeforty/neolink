@@ -1,10 +1,11 @@
-use super::xml::BcXml;
+pub use super::xml::{BcPayloads, BcXml, Extension};
 use std::collections::HashSet;
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
 pub const MSG_ID_LOGIN: u32 = 1;
 pub const MSG_ID_VIDEO: u32 = 3;
+pub const MSG_ID_MOTION: u32 = 33;
 pub const MSG_ID_PING: u32 = 93;
 pub const MSG_ID_GET_GENERAL: u32 = 104;
 pub const MSG_ID_SET_GENERAL: u32 = 105;
@@ -19,6 +20,7 @@ pub struct Bc {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum BcBody {
     LegacyMsg(LegacyMsg),
     ModernMsg(ModernMsg),
@@ -26,8 +28,8 @@ pub enum BcBody {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ModernMsg {
-    pub xml: Option<BcXml>,
-    pub binary: Option<Vec<u8>>,
+    pub extension: Option<Extension>,
+    pub payload: Option<BcPayloads>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -43,7 +45,7 @@ pub(super) struct BcHeader {
     pub enc_offset: u32,
     pub encrypted: bool,
     pub class: u16,
-    pub bin_offset: Option<u32>,
+    pub payload_offset: Option<u32>,
 }
 
 /// The components of the Baichuan TLV header that are not
@@ -61,7 +63,7 @@ pub struct BcMeta {
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct BcSendInfo {
     pub body_len: u32,
-    pub bin_offset: Option<u32>,
+    pub payload_offset: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -76,8 +78,38 @@ impl Bc {
         Bc {
             meta,
             body: BcBody::ModernMsg(ModernMsg {
-                xml: Some(xml),
-                binary: None,
+                extension: None,
+                payload: Some(BcPayloads::BcXml(xml)),
+            }),
+        }
+    }
+
+    pub fn new_from_ext(meta: BcMeta, xml: Extension) -> Bc {
+        Bc {
+            meta,
+            body: BcBody::ModernMsg(ModernMsg {
+                extension: Some(xml),
+                payload: None,
+            }),
+        }
+    }
+
+    pub fn new_from_meta(meta: BcMeta) -> Bc {
+        Bc {
+            meta,
+            body: BcBody::ModernMsg(ModernMsg {
+                extension: None,
+                payload: None,
+            }),
+        }
+    }
+
+    pub fn new_from_ext_ext(meta: BcMeta, ext: Extension, xml: BcXml) -> Bc {
+        Bc {
+            meta,
+            body: BcBody::ModernMsg(ModernMsg {
+                extension: Some(ext),
+                payload: Some(BcPayloads::BcXml(xml)),
             }),
         }
     }
@@ -125,9 +157,9 @@ impl BcHeader {
         }
     }
 
-    pub fn from_meta(meta: &BcMeta, body_len: u32, bin_offset: Option<u32>) -> BcHeader {
+    pub fn from_meta(meta: &BcMeta, body_len: u32, payload_offset: Option<u32>) -> BcHeader {
         BcHeader {
-            bin_offset,
+            payload_offset,
             body_len,
             msg_id: meta.msg_id,
             enc_offset: meta.client_idx,
@@ -137,7 +169,7 @@ impl BcHeader {
     }
 }
 
-pub(super) fn has_bin_offset(class: u16) -> bool {
+pub(super) fn has_payload_offset(class: u16) -> bool {
     // See BcHeader::is_modern() for a description of which packets have the bin offset
     class == 0x6414 || class == 0x0000
 }
