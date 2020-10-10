@@ -7,10 +7,13 @@ bc_protocol = Proto("Baichuan",  "Baichuan/Reolink IP Camera Protocol")
 magic_bytes = ProtoField.int32("baichuan.magic", "magic", base.DEC)
 message_id =  ProtoField.int32("baichuan.msg_id", "messageId", base.DEC)
 message_len = ProtoField.int32("baichuan.msg_len", "messageLen", base.DEC)
-xml_enc_offset = ProtoField.int8("baichuan.xml_encryption_offset", "xmlEncryptionOffset/ChannelID", base.DEC)
-stream_id = ProtoField.int32("baichuan.stream_id", "streamID", base.DEC)
-msg_handle = ProtoField.int32("baichuan.message_handle", "messageHandle", base.DEC)
-xml_enc_used = ProtoField.bool("baichuan.xml_encryption_used", "encrypted", base.NONE)
+xml_enc_offset = ProtoField.int8("baichuan.xml_encryption_offset", "xmlEncryptionOffset", base.DEC)
+encrypt_xml = ProtoField.bool("baichuan.encrypt_xml", "encrypt_xml", base.NONE)
+channel_id =  ProtoField.int8("baichuan.channel_id", "channel_id", base.DEC)
+stream_id = ProtoField.int8("baichuan.stream_id", "streamID", base.DEC)
+unknown = ProtoField.int8("baichuan.unknown", "unknown", base.DEC)
+msg_handle = ProtoField.int8("baichuan.message_handle", "messageHandle", base.DEC)
+error_code = ProtoField.int16("baichuan.error_code", "error_code", base.DEC)
 message_class = ProtoField.int32("baichuan.msg_class", "messageClass", base.DEC)
 f_bin_offset = ProtoField.int32("baichuan.bin_offset", "binOffset", base.DEC)
 username = ProtoField.string("baichuan.username", "username", base.ASCII)
@@ -21,9 +24,12 @@ bc_protocol.fields = {
   message_id,
   message_len,
   xml_enc_offset,
+  channel_id,
   stream_id,
+  unknown,
   msg_handle,
-  xml_enc_used,
+  encrypt_xml,
+  error_code,
   message_class,
   f_bin_offset,
   username,
@@ -62,7 +68,7 @@ message_types = {
   [47]="<MD> (write)",
   [50]="<VideoLoss>",
   [51]="<VideoLoss> (write)",
-  [52]="<Shelter>",
+  [52]="<Shelter> (priv mask)",
   [53]="<Shelter> (write)",
   [54]="<RecordCfg>",
   [55]="<RecordCfg> (write)",
@@ -78,7 +84,7 @@ message_types = {
   [71]="<FtpTask> (write)",
   [76]="<Ip>", -- <Dhcp>/<AutoDNS>/<Dns>
   [77]="<Ip> (write)",
-  [78]="<VideoInput>",
+  [78]="<VideoInput> (IPC desc)",
   [79]="<Serial> (ptz)",
   [80]="<VersionInfo>",
   [81]="<Record> (schedule)",
@@ -97,7 +103,7 @@ message_types = {
   [105]="<SystemGeneral> (write)",
   [106]="<Dst>",
   [107]="<Dst> (write)",
-  [108]="<ConfigFileInfo>",
+  [108]="<ConfigFileInfo> (log)",
   [114]="<Uid>",
   [115]="<WifiSignal>",
   [120]="<OnlineUserList>",
@@ -163,10 +169,15 @@ function get_header(buffer)
   -- bin_offset is either nil (no binary data) or nonzero
   -- TODO: bin_offset is actually stateful!
   local bin_offset = nil
+  local error_code = nil
+  local encrypt_xml = nil
   local header_len = header_lengths[buffer(18, 2):le_uint()]
   local msg_type = buffer(4, 4):le_uint()
   if header_len == 24 then
     bin_offset = buffer(20, 4):le_uint() -- if NHD-805/806 legacy protocol 30 30 30 30 aka "0000"
+    error_code =  buffer(16, 2):le_uint() 
+  else
+    encrypt_xml = buffer(16, 1):le_uint()
   end
   local msg_type = buffer(4, 4):le_uint()
   local stream_text = "HD (Clear)"
@@ -178,11 +189,14 @@ function get_header(buffer)
     msg_type = buffer(4, 4):le_uint(),
     msg_type_str = message_types[msg_type] or "unknown",
     msg_len = buffer(8, 4):le_uint(),
+    encrypt_xml = encrypt_xml,
+    channel_id = buffer(12, 1):le_uint(),
     enc_offset = buffer(12, 1):le_uint(),
     stream_type = stream_text,
+    unknown = buffer(14, 1):le_uint(),
     msg_handle = buffer(15, 1):le_uint(),
     msg_cls = buffer(18, 2):le_uint(),
-    encrypted = (msg_cls == 0x6414 or buffer(16, 1):le_uint() ~= 0),
+    error_code = error_code,
     class = message_classes[buffer(18, 2):le_uint()],
     header_len = header_lengths[buffer(18, 2):le_uint()],
     bin_offset = bin_offset,
@@ -201,15 +215,23 @@ function process_header(buffer, headers_tree)
   header:add_le(message_id,  buffer(4, 4))
         :append_text(" (" .. header_data.msg_type_str .. ")")
   header:add_le(message_len, buffer(8, 4))
+
   header:add_le(xml_enc_offset, buffer(12, 1))
         :append_text(" (& 0xF == " .. bit32.band(header_data.enc_offset, 0xF) .. ")")
+
+  header:add_le(channel_id, buffer(12, 1))
   header:add_le(stream_id, buffer(13, 1))
         :append_text(stream_text)
+  header:add_le(unknown, buffer(14, 1))        
   header:add_le(msg_handle, buffer(15, 1))
-  header:add_le(xml_enc_used, buffer(16, 1))
+
   header:add_le(message_class, buffer(18, 2)):append_text(" (" .. header_data.class .. ")")
+  
   if header_data.header_len == 24 then
+    header:add_le(error_code, buffer(16, 2))    
     header:add_le(f_bin_offset, buffer(20, 4))
+  else
+    header:add_le(encrypt_xml, buffer(16, 1))
   end
   return header_len
 end
@@ -220,7 +242,7 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
   end
 
   local body = bc_subtree:add(bc_protocol, body_buffer(0,header.msg_len),
-    "Baichuan Message Body, " .. header.class .. ", length: " .. header.msg_len .. ", type " .. header.msg_type .. ", encrypted: " .. tostring(header.encrypted))
+    "Baichuan Message Body, " .. header.class .. ", length: " .. header.msg_len .. ", type " .. header.msg_type)
 
   if header.class == "legacy" then
     if header.msg_type == 1 then
