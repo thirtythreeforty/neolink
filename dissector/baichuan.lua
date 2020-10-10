@@ -7,7 +7,9 @@ bc_protocol = Proto("Baichuan",  "Baichuan/Reolink IP Camera Protocol")
 magic_bytes = ProtoField.int32("baichuan.magic", "magic", base.DEC)
 message_id =  ProtoField.int32("baichuan.msg_id", "messageId", base.DEC)
 message_len = ProtoField.int32("baichuan.msg_len", "messageLen", base.DEC)
-xml_enc_offset = ProtoField.int32("baichuan.xml_encryption_offset", "xmlEncryptionOffset", base.DEC)
+xml_enc_offset = ProtoField.int8("baichuan.xml_encryption_offset", "xmlEncryptionOffset/ChannelID", base.DEC)
+stream_id = ProtoField.int32("baichuan.stream_id", "streamID", base.DEC)
+msg_handle = ProtoField.int32("baichuan.message_handle", "messageHandle", base.DEC)
 xml_enc_used = ProtoField.bool("baichuan.xml_encryption_used", "encrypted", base.NONE)
 message_class = ProtoField.int32("baichuan.msg_class", "messageClass", base.DEC)
 f_bin_offset = ProtoField.int32("baichuan.bin_offset", "binOffset", base.DEC)
@@ -19,6 +21,8 @@ bc_protocol.fields = {
   message_id,
   message_len,
   xml_enc_offset,
+  stream_id,
+  msg_handle,
   xml_enc_used,
   message_class,
   f_bin_offset,
@@ -39,6 +43,7 @@ message_types = {
   [14]="<FileInfoList>",
   [15]="<FileInfoList>",
   [16]="<FileInfoList>",
+  [18]="<PtzControl>",
   [25]="<VideoInput> (write)",
   [26]="<VideoInput>", -- <InputAdvanceCfg>
   [31]="Start Motion Alarm",
@@ -58,6 +63,7 @@ message_types = {
   [50]="<VideoLoss>",
   [51]="<VideoLoss> (write)",
   [52]="<Shelter>",
+  [53]="<Shelter> (write)",
   [54]="<RecordCfg>",
   [55]="<RecordCfg> (write)",
   [56]="<Compression>",
@@ -108,6 +114,7 @@ message_types = {
   [194]="<Ftp> (test)",
   [199]="<Support>",
   [208]="<LedState>",
+  [209]="<LedState> (write)",
   [210]="<PTOP>",
   [211]="<PTOP> (write)",
   [219]="<PushTask>",
@@ -162,12 +169,18 @@ function get_header(buffer)
     bin_offset = buffer(20, 4):le_uint() -- if NHD-805/806 legacy protocol 30 30 30 30 aka "0000"
   end
   local msg_type = buffer(4, 4):le_uint()
+  local stream_text = "HD (Clear)"
+  if buffer(13, 1):le_uint() == 1 then
+    stream_text = "SD (Fluent)"
+  end
   return {
     magic = buffer(0, 4):le_uint(),
     msg_type = buffer(4, 4):le_uint(),
     msg_type_str = message_types[msg_type] or "unknown",
     msg_len = buffer(8, 4):le_uint(),
-    enc_offset = buffer(12, 4):le_uint(),
+    enc_offset = buffer(12, 1):le_uint(),
+    stream_type = stream_text,
+    msg_handle = buffer(15, 1):le_uint(),
     msg_cls = buffer(18, 2):le_uint(),
     encrypted = (msg_cls == 0x6414 or buffer(16, 1):le_uint() ~= 0),
     class = message_classes[buffer(18, 2):le_uint()],
@@ -180,12 +193,19 @@ function process_header(buffer, headers_tree)
   local header_data = get_header(buffer)
   local header = headers_tree:add(bc_protocol, buffer(0, header_len),
     "Baichuan Message Header, length: " .. header_data.header_len .. ", type " .. header_data.msg_type)
+  local stream_text = " HD (Clear)"
+  if buffer(13, 1):le_uint() == 1 then
+    stream_text = " SD (Fluent)"
+  end
   header:add_le(magic_bytes, buffer(0, 4))
   header:add_le(message_id,  buffer(4, 4))
         :append_text(" (" .. header_data.msg_type_str .. ")")
   header:add_le(message_len, buffer(8, 4))
-  header:add_le(xml_enc_offset, buffer(12, 4))
+  header:add_le(xml_enc_offset, buffer(12, 1))
         :append_text(" (& 0xF == " .. bit32.band(header_data.enc_offset, 0xF) .. ")")
+  header:add_le(stream_id, buffer(13, 1))
+        :append_text(stream_text)
+  header:add_le(msg_handle, buffer(15, 1))
   header:add_le(xml_enc_used, buffer(16, 1))
   header:add_le(message_class, buffer(18, 2)):append_text(" (" .. header_data.class .. ")")
   if header_data.header_len == 24 then

@@ -5,7 +5,7 @@ This is an attempt to document the BC messages. It is subject to change
 and some aspects of it may not be correct. Please feel free to submit
 a PR to improve it.
 
-- 1 Login Legacy
+- 1: Login Legacy
 
   - Client
 
@@ -17,7 +17,13 @@ a PR to improve it.
 
     - Body
 
-      Body is hash of user and password and then a lot of zero pads
+      Body is hash of user 32 bytes and password 32 bytes and then a lot of zero pads
+
+      ```hex
+      MD5USERNAME0MD5PASSWORD00000000000000000000000000000000000000000
+      0000000000000000000000000000000000000000000000000000000000000000
+      .......
+      ```
 
   - Camera
 
@@ -43,7 +49,7 @@ a PR to improve it.
     effectively an upgrade request to use the modern xml style over legacy.
     A legacy camera likely replies differently but I don't have one to test on.
 
-- 1 Login Modern
+- 1: Login Modern
 
   - Client
     - Header
@@ -52,7 +58,7 @@ a PR to improve it.
     |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
     | f0 de bc 0a  | 01 00 00 00  |  28 01 00 00   |    00 00 00 01    |       00        |   00    |     14 64     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -77,7 +83,7 @@ a PR to improve it.
     |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
     | f0 de bc 0a  | 01 00 00 00  |  2e 06 00 00   |    00 00 00 01    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -143,9 +149,25 @@ a PR to improve it.
     </StreamInfoList>
     </body>
     ```
-- 2 Not observed
 
-- 3 Stream
+- 2: logout
+
+  - Client
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <LoginUser version="1.1">
+    <userName>PlainTextUsername</userName>
+    <password>PlainTextPASSWORD</password>
+    <userVer>1</userVer>
+    </LoginUser>
+    </body>
+    ```
+
+- 3: Stream
 
   - Client
 
@@ -155,7 +177,7 @@ a PR to improve it.
     |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
     | f0 de bc 0a  | 03 00 00 00  |  aa 00 00 00   |    00 00 00 09    |       00        |   00    |     14 64     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -187,6 +209,12 @@ a PR to improve it.
     </Extension>
     ```
 
+    - Binary
+
+    ```hex
+    31303032200000000009000010050000000F780A06122422780A061224220000
+    ```
+
     - **Notes:** Camera then send the stream as a binary payload in all
     following messages of id 3
 
@@ -203,17 +231,45 @@ a PR to improve it.
       Body is binary. This binary represents an embedded stream which should
       be detailed elsewhere.
 
-- 4-9 Not observed
-
-- 10 Audio back-channel
+- 4: `<Preview>` (stop)
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 0a 00 00 00  |  68 00 00 00   |    00 00 00 0b    |       00        |   00    |     14 64     |  68 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 04  |  00 00 00 86   |    2b 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Preview version="1.1">
+    <channelId>0</channelId>
+    <handle>0</handle>
+    </Preview>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 04  |  00 00 00 00   |    2b 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+- 10: `<TalkAbility>`
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 0a  |  00 00 00 68   |    0b 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -228,11 +284,11 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 0a 00 00 00  |  f7 01 00 00   |    00 00 00 0b    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 0a  |  00 00 01 f7   |    0b 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -258,17 +314,46 @@ a PR to improve it.
     </body>
     ```
 
-- 11-25 Not observed
-
-- 26 Unknown
+- 18: `<PtzControl>`
 
   - Client
 
     - Header
 
-    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 1a 00 00 00  |  68 00 00 00   |    00 00 00 21    |       00        |   00    |     14 64     |  68 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 12  |  00 00 00 a4   |    1e 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <PtzControl version="1.1">
+    <channelId>0</channelId>
+    <speed>32</speed>
+    <command>right</command>
+    </PtzControl>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 12  |  00 00 00 00   |    1e 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+- 25: `<VideoInput>` (write)
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 19  |  00 00 05 c2   |    64 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -278,44 +363,244 @@ a PR to improve it.
     <channelId>0</channelId>
     </Extension>
     ```
-  - **Notes:** No message from camera observed
 
-- 26-30 Not observed
+    - Binary
 
-- 31 Start Motion Alarm
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <VideoInput version="1.1">
+    <channelId>0</channelId>
+    <bright>128</bright>
+    <contrast>128</contrast>
+    <saturation>128</saturation>
+    <hue>128</hue>
+    <sharpen>166</sharpen>
+    </VideoInput>
+    <InputAdvanceCfg version="1.1">
+    <channelId>0</channelId>
+    <digitalChannel>1</digitalChannel>
+    <PowerLineFrequency>
+    <mode>50hz</mode>
+    <enable>0</enable>
+    </PowerLineFrequency>
+    <Exposure>
+    <mode>auto</mode>
+    <Gainctl>
+    <defMin>1</defMin>
+    <defMax>100</defMax>
+    <curMin>1</curMin>
+    <curMax>62</curMax>
+    </Gainctl>
+    <Shutterctl>
+    <defMin>0</defMin>
+    <defMax>125</defMax>
+    <curMin>0</curMin>
+    <curMax>125</curMax>
+    </Shutterctl>
+    <shutterLevel>1/30</shutterLevel>
+    <gainLevel>50</gainLevel>
+    </Exposure>
+    <Scene>
+    <mode>auto</mode>
+    <Redgain>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </Redgain>
+    <Bluegain>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </Bluegain>
+    </Scene>
+    <DayNight>
+    <mode>auto</mode>
+    <IrcutMode>ir</IrcutMode>
+    <Threshold>medium</Threshold>
+    </DayNight>
+    <BLC>
+    <enable>0</enable>
+    <mode>backLight</mode>
+    <dynamicrange>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </dynamicrange>
+    <backlight>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </backlight>
+    </BLC>
+    <mirror>0</mirror>
+    <flip>0</flip>
+    <Iris>
+    <enable>0</enable>
+    <state>success</state>
+    <focusAutoiris>0</focusAutoiris>
+    </Iris>
+    <nr3d>
+    <value>high</value>
+    <enable>1</enable>
+    </nr3d>
+    </InputAdvanceCfg>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 19  |  00 00 00 00   |    64 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+
+- 26: `<VideoInput>`
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 1f 00 00 00  |  00 00 00 00   |    00 00 00 05    |       00        |   00    |     14 64     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 1a  |  00 00 00 68   |    2d 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 1f 00 00 00  |  00 00 00 00   |    00 00 00 05    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 1a  |  00 00 05 7c   |    2d 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <VideoInput version="1.1">
+    <channelId>0</channelId>
+    <bright>128</bright>
+    <contrast>128</contrast>
+    <saturation>128</saturation>
+    <hue>128</hue>
+    <sharpen>128</sharpen>
+    </VideoInput>
+    <InputAdvanceCfg version="1.1">
+    <channelId>0</channelId>
+    <digitalChannel>1</digitalChannel>
+    <PowerLineFrequency>
+    <mode>50hz</mode>
+    <enable>0</enable>
+    </PowerLineFrequency>
+    <Exposure>
+    <mode>auto</mode>
+    <Gainctl>
+    <defMin>1</defMin>
+    <defMax>100</defMax>
+    <curMin>1</curMin>
+    <curMax>62</curMax>
+    </Gainctl>
+    <Shutterctl>
+    <defMin>0</defMin>
+    <defMax>125</defMax>
+    <curMin>0</curMin>
+    <curMax>125</curMax>
+    </Shutterctl>
+    <shutterLevel>1/30</shutterLevel>
+    <gainLevel>50</gainLevel>
+    </Exposure>
+    <Scene>
+    <mode>auto</mode>
+    <modeList>auto, manual</modeList>
+    <Redgain>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </Redgain>
+    <Bluegain>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </Bluegain>
+    </Scene>
+    <DayNight>
+    <mode>auto</mode>
+    <IrcutMode>ir</IrcutMode>
+    <Threshold>medium</Threshold>
+    </DayNight>
+    <BLC>
+    <enable>0</enable>
+    <mode>backLight</mode>
+    <backlight>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </backlight>
+    <dynamicrange>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </dynamicrange>
+    </BLC>
+    <mirror>0</mirror>
+    <flip>0</flip>
+    <Iris>
+    <enable>0</enable>
+    <state>success</state>
+    <focusAutoiris>0</focusAutoiris>
+    </Iris>
+    <nr3d>
+    <value>high</value>
+    <enable>1</enable>
+    </nr3d>
+    </InputAdvanceCfg>
+    </body>
+    ```
+
+- 31: Start Motion Alarm
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 1f  |  00 00 00 00   |    05 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 1f  |  00 00 00 00   |    05 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
   - **Notes:** The camera will not send message 33 to the client until
   after this msg has been recieved
 
-- 32 Not observed
-
-- 33 Motion Detection
+- 33: `<AlarmEventList>`
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 21 00 00 00  |  f0 00 00 00   |    00 00 00 05    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 21  |  00 00 00 f0   |    05 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -323,7 +608,7 @@ a PR to improve it.
     <AlarmEventList version="1.1">
     <AlarmEvent version="1.1">
     <channelId>0</channelId>
-    <status>MD</status> <!-- "MD" for motion "none" for none -->
+    <status>MD</status>
     <recording>0</recording>
     <timeStamp>0</timeStamp>
     </AlarmEvent>
@@ -331,26 +616,22 @@ a PR to improve it.
     </body>
     ```
 
-  - **Notes:** There is no message from the client observed
-
-- 34-57 Not observed
-
-- 58 User capabilities
+- 44: `<OsdChannelName>`
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 3a 00 00 00  |  6b 00 00 00   |    00 00 00 03    |       00        |   00    |     14 64     |  6b 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 2c  |  00 00 00 68   |    30 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
 
     - Body
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <Extension version="1.1">
-    <userName>...</userName> <!-- Plain text username -->
+    <channelId>0</channelId>
     </Extension>
     ```
 
@@ -358,11 +639,422 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 3a 00 00 00  |  a4 03 00 00   |    00 00 00 03    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 2c  |  00 00 01 df   |    30 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <OsdChannelName version="1.1">
+    <channelId>0</channelId>
+    <name>Cammy02</name>
+    <enable>1</enable>
+    <topLeftX>65536</topLeftX>
+    <topLeftY>65536</topLeftY>
+    <enWatermark>0</enWatermark>
+    <enBgcolor>0</enBgcolor>
+    </OsdChannelName>
+    <OsdDatetime version="1.1">
+    <channelId>0</channelId>
+    <enable>1</enable>
+    <topLeftX>65537</topLeftX>
+    <topLeftY>1</topLeftY>
+    <width>0</width>
+    <height>0</height>
+    <language>Chinese</language>
+    </OsdDatetime>
+    </body>
+    ```
+
+- 45: `<OsdChannelName>` (write)
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 2d  |  00 00 02 23   |    32 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
 
     - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <OsdChannelName version="1.1">
+    <channelId>0</channelId>
+    <name>Cammy02</name>
+    <enable>0</enable>
+    <topLeftX>65536</topLeftX>
+    <topLeftY>65536</topLeftY>
+    <enBgcolor>0</enBgcolor>
+    <enWatermark>0</enWatermark>
+    </OsdChannelName>
+    <OsdDatetime version="1.1">
+    <channelId>0</channelId>
+    <enable>1</enable>
+    <topLeftX>65537</topLeftX>
+    <topLeftY>1</topLeftY>
+    <language>Chinese</language>
+    </OsdDatetime>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 2d  |  00 00 00 00   |    32 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+- 52: `<Shelter>`
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 34  |  00 00 00 68   |    36 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 34  |  00 00 00 96   |    36 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Shelter version="1.1">
+    <channelId>0</channelId>
+    <enable>0</enable>
+    <shelterList />
+    </Shelter>
+    </body>
+    ```
+
+- 53: `<Shelter>`
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 35  |  00 00 01 d7   |    38 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Shelter version="1.1">
+    <channelId>0</channelId>
+    <enable>1</enable>
+    <ShelterList>
+    <Shelter>
+    <id>0</id>
+    <enable>0</enable>
+    </Shelter>
+    <Shelter>
+    <id>1</id>
+    <enable>0</enable>
+    </Shelter>
+    <Shelter>
+    <id>2</id>
+    <enable>0</enable>
+    </Shelter>
+    <Shelter>
+    <id>3</id>
+    <enable>0</enable>
+    </Shelter>
+    </ShelterList>
+    </Shelter>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 35  |  00 00 00 00   |    38 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+- 54: `<RecordCfg>`
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 36  |  00 00 00 68   |    14 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 36  |  00 00 00 ed   |    14 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <RecordCfg version="1.1">
+    <channelId>0</channelId>
+    <cycle>1</cycle>
+    <recordDelayTime>15</recordDelayTime>
+    <preRecordTime>10</preRecordTime>
+    <packageTime>5</packageTime>
+    </RecordCfg>
+    </body>
+    ```
+
+- 55: `<RecordCfg>` (write)
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 37  |  00 00 01 3b   |    16 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <RecordCfg version="1.1">
+    <cycle>0</cycle>
+    <recordDelayTime>15</recordDelayTime>
+    <preRecordTime>1</preRecordTime>
+    <packageTime>5</packageTime>
+    </RecordCfg>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 37  |  00 00 00 00   |    16 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+- 56: `<Compression>`
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 38  |  00 00 00 68   |    1d 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 38  |  00 00 03 61   |    1d 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Compression version="1.1">
+    <channelId>0</channelId>
+    <isNoTranslateFrame>1</isNoTranslateFrame>
+    <mainStream>
+    <audio>1</audio>
+    <resolutionName>2304*1296</resolutionName>
+    <width>2304</width>
+    <height>1296</height>
+    <encoderType>cbr</encoderType>
+    <frame>15</frame>
+    <bitRate>2560</bitRate>
+    <encoderProfile>high</encoderProfile>
+    </mainStream>
+    <subStream>
+    <audio>1</audio>
+    <resolutionName>896*512</resolutionName>
+    <width>896</width>
+    <height>512</height>
+    <encoderType>cbr</encoderType>
+    <frame>15</frame>
+    <bitRate>512</bitRate>
+    <encoderProfile>high</encoderProfile>
+    </subStream>
+    <thirdStream>
+    <audio>0</audio>
+    <resolutionName></resolutionName>
+    <width>0</width>
+    <height>0</height>
+    <encoderType>vbr</encoderType>
+    <frame>0</frame>
+    <bitRate>0</bitRate>
+    <encoderProfile>default</encoderProfile>
+    </thirdStream>
+    </Compression>
+    </body>
+    ```
+
+- 57: `<Compression>` (write)
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 39  |  00 00 02 bc   |    1f 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Compression version="1.1">
+    <channelId>0</channelId>
+    <mainStream>
+    <audio>0</audio>
+    <resolutionName>2304*1296</resolutionName>
+    <width>2304</width>
+    <height>1296</height>
+    <encoderType>vbr</encoderType>
+    <frame>15</frame>
+    <bitRate>2560</bitRate>
+    <encoderProfile>high</encoderProfile>
+    </mainStream>
+    <subStream>
+    <audio>0</audio>
+    <resolutionName>896*512</resolutionName>
+    <width>896</width>
+    <height>512</height>
+    <encoderType>vbr</encoderType>
+    <frame>15</frame>
+    <bitRate>512</bitRate>
+    <encoderProfile>high</encoderProfile>
+    </subStream>
+    </Compression>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 39  |  00 00 00 00   |    1f 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+- 58: `<AbilitySupport>`
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 3a  |  00 00 00 6b   |    03 00 00 00    |       00        |   00    |     64 14     |  00 00 00 6b  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <userName>PlainTextUsername</userName>
+    </Extension>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 3a  |  00 00 03 a4   |    03 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -386,24 +1078,24 @@ a PR to improve it.
     <UserList version="1.1">
     <User>
     <userId>0</userId>
-    <userName>...</userName> <!-- Plain text user names and passwords -->
-    <password>...</password> <!-- For all accounts even admins -->
-    <userLevel>1</userLevel> <!-- 1 for admin 0 for normal -->
+    <userName>PlainTextUsername</userName>
+    <password>PlainTextPASSWORD</password>
+    <userLevel>1</userLevel>
     <loginState>0</loginState>
     <userSetState>none</userSetState>
     </User>
     <User>
     <userId>0</userId>
-    <userName>...</userName> <!-- Yes this is horrible security -->
-    <password>...</password>
+    <userName>PlainTextUsername</userName>
+    <password>PlainTextPASSWORD]VX</password>
     <userLevel>0</userLevel>
     <loginState>0</loginState>
     <userSetState>none</userSetState>
     </User>
     <User>
     <userId>0</userId>
-    <userName>...</userName>
-    <password>...</password>
+    <userName>PlainTextUsername</userName>
+    <password>PlainTextPASSWORD</password>
     <userLevel>1</userLevel>
     <loginState>1</loginState>
     <userSetState>none</userSetState>
@@ -411,26 +1103,108 @@ a PR to improve it.
     </UserList>
     </body>
     ```
-  - **Notes:** The passwords are not sent in some models of cameras namely
-  RLC-410 4mp, RLC-410 5mp, RLC-520 (fw 200710) in these cases the passwords
-  are blank. In some older cameras that do not use encryption at all these
-  passwords are completely visible to any network sniffers. Even the "encrypted"
-  cameras only have weak encryption that is easily broken since the
-  decryption key is fixed and well-known.
+  - **Notes:** The passwords are not sent in some models of cameras   namely
+    RLC-410 4mp, RLC-410 5mp, RLC-520 (fw 200710) in these cases the passwords
+    are blank. In some older cameras that do not use encryption at all these
+    passwords are completely visible to any network sniffers. Even the "encrypted"
+    cameras only have weak encryption that is easily broken since the
+    decryption key is fixed and well-known.
 
-- 59-77 Not observed
+- 76: `<Ip>`
 
-- 78 Stream brightness/contrast etc
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4c  |  00 00 00 00   |    22 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 4e 00 00 00  |  d3 00 00 00   |    08 db 9c 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4c  |  00 00 01 69   |    22 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Dhcp version="1.1">
+    <enable>1</enable>
+    </Dhcp>
+    <AutoDns version="1.1">
+    <enable>1</enable>
+    </AutoDns>
+    <Ip version="1.1">
+    <ip>192.168.1.101</ip>
+    <mask>255.255.255.0</mask>
+    <mac>94:E0:D6:E9:89:86</mac>
+    <gateway>192.168.1.1</gateway>
+    </Ip>
+    <Dns version="1.1">
+    <dns1>1.1.1.1</dns1>
+    <dns2>8.8.8.8</dns2>
+    </Dns>
+    </body>
+    ```
+
+- 77: `<Ip>` (write)
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4d  |  00 00 01 5b   |    25 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Dhcp version="1.1">
+    <enable>1</enable>
+    </Dhcp>
+    <AutoDns>
+    <enable>0</enable>
+    </AutoDns>
+    <Ip version="1.1">
+    <ip>192.168.1.101</ip>
+    <mask>255.255.255.0</mask>
+    <mac>94:E0:D6:E9:89:86</mac>
+    <gateway>192.168.1.1</gateway>
+    </Ip>
+    <Dns version="1.1">
+    <dns1>1.1.1.1</dns1>
+    <dns2>8.8.8.8</dns2>
+    </Dns>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4d  |  00 00 00 00   |    14 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+- 78: `<VideoInput>`
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4e  |  00 00 00 d3   |    1b 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -445,19 +1219,17 @@ a PR to improve it.
     </body>
     ```
 
-  - **Notes:** No message from client
-
-- 79 PTZ Details
+- 79: `<Serial>` (ptz)
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 4f 00 00 00  |  3b 01 00 00   |    08 db 9c 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4f  |  00 00 01 3b   |    1b 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -475,25 +1247,25 @@ a PR to improve it.
     </body>
     ```
 
-- 80 Camera Model
+- 80: `<VersionInfo>`
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 50 00 00 00  |  00 00 00 00   |    00 00 00 08    |       00        |   00    |     14 64     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 50  |  00 00 00 00   |    08 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 50 00 00 00  |  f0 01 00 00   |    00 00 00 08    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 50  |  00 00 01 f0   |    08 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -514,27 +1286,228 @@ a PR to improve it.
     </body>
     ```
 
-- 81-101 Not observed
-
-- 102 HDD Info
+- 81: `<Record>` (schedule)
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 66 00 00 00  |  00 00 00 00   |    00 00 00 07    |       00        |   00    |     14 64     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 51  |  00 00 00 68   |    19 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 66 00 00 00  |  55 00 00 00   |    00 00 00 07    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 51  |  00 00 04 30   |    19 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Record version="1.1">
+    <channelId>0</channelId>
+    <enable>1</enable>
+    <ScheduleList>
+    <Schedule>
+    <alarmType>MD</alarmType>
+    <timeBlockList>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Sunday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Monday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Tuesday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Wednesday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Thursday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Friday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Saturday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    </timeBlockList>
+    </Schedule>
+    </ScheduleList>
+    </Record>
+    </body>
+    ```
+
+- 82: `<Record>` (write)
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 52  |  00 00 05 da   |    1a 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
 
     - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Record version="1.1">
+    <channelId>0</channelId>
+    <enable>1</enable>
+    <ScheduleList>
+    <Schedule>
+    <alarmType>MD</alarmType>
+    <timeBlockList>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Sunday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Monday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Tuesday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>12</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Tuesday</weekDay>
+    <beginHour>14</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Wednesday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Thursday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Friday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Saturday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    </timeBlockList>
+    </Schedule>
+    <Schedule>
+    <alarmType>none</alarmType>
+    <timeBlockList>
+    <timeBlock>
+    <enable>1</enable>
+    <weekDay>Tuesday</weekDay>
+    <beginHour>13</beginHour>
+    <endHour>13</endHour>
+    </timeBlock>
+    </timeBlockList>
+    </Schedule>
+    </ScheduleList>
+    </Record>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 52  |  00 00 00 00   |    1a 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+- 93: `<LinkType>`
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 5d  |  00 00 00 00   |    17 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+
+- 102: `<HDDInfoList>`
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 66  |  00 00 00 00   |    07 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 66  |  00 00 00 55   |    07 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -543,29 +1516,25 @@ a PR to improve it.
     </body>
     ```
 
-- 102-103 Not observed
-
-- 104 Camera DateTime
+- 104: `<SystemGeneral>`
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 68 00 00 00  |  00 00 00 00   |    00 00 00 0a    |       00        |   00    |     14 64     |  00 00 00 00  |
-
-    - Body
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 68  |  00 00 00 00   |    0a 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 68 00 00 00  |  a4 01 00 00   |    00 00 00 0a    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 68  |  00 00 01 a5   |    0a 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -574,10 +1543,10 @@ a PR to improve it.
     <timeZone>-25200</timeZone>
     <osdFormat>DMY</osdFormat>
     <year>2020</year>
-    <month>9</month>
-    <day>29</day>
-    <hour>8</hour>
-    <minute>10</minute>
+    <month>10</month>
+    <day>6</day>
+    <hour>18</hour>
+    <minute>36</minute>
     <second>34</second>
     <deviceId>0</deviceId>
     <timeFormat>0</timeFormat>
@@ -590,27 +1559,25 @@ a PR to improve it.
     </body>
     ```
 
-- 105-114 Not observed
-
-- 115 Camera Wifi Signal Strength
+- 115: `<WifiSignal>`
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 73 00 00 00  |  00 00 00 00   |    00 00 00 0c    |       00        |   00    |     14 64     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 73  |  00 00 00 00   |    0c 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 73 00 00 00  |  75 00 00 00   |    00 00 00 0c    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 73  |  00 00 00 75   |    0c 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -620,30 +1587,138 @@ a PR to improve it.
     </WifiSignal>
     </body>
     ```
-  - **Notes:** Client polls this message repeatedly by resending the request
-  header and getting back a new reply from the camera
 
-- 116-132 Not observed
-
-- 133 RF Alarm
+- 132: `<VideoInput>`
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 85 00 00 00  |  00 00 00 00   |    00 00 00 06    |       00        |   00    |     14 64     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 84  |  00 00 00 68   |    65 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 85 00 00 00  |  7f 00 00 00   |    00 00 00 06    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 84  |  00 00 05 7c   |    65 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <VideoInput version="1.1">
+    <channelId>0</channelId>
+    <bright>128</bright>
+    <contrast>128</contrast>
+    <saturation>128</saturation>
+    <hue>128</hue>
+    <sharpen>128</sharpen>
+    </VideoInput>
+    <InputAdvanceCfg version="1.1">
+    <channelId>0</channelId>
+    <digitalChannel>1</digitalChannel>
+    <PowerLineFrequency>
+    <mode>50hz</mode>
+    <enable>0</enable>
+    </PowerLineFrequency>
+    <Exposure>
+    <mode>auto</mode>
+    <Gainctl>
+    <defMin>1</defMin>
+    <defMax>100</defMax>
+    <curMin>1</curMin>
+    <curMax>62</curMax>
+    </Gainctl>
+    <Shutterctl>
+    <defMin>0</defMin>
+    <defMax>125</defMax>
+    <curMin>0</curMin>
+    <curMax>125</curMax>
+    </Shutterctl>
+    <shutterLevel>1/30</shutterLevel>
+    <gainLevel>50</gainLevel>
+    </Exposure>
+    <Scene>
+    <mode>auto</mode>
+    <modeList>auto, manual</modeList>
+    <Redgain>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </Redgain>
+    <Bluegain>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </Bluegain>
+    </Scene>
+    <DayNight>
+    <mode>auto</mode>
+    <IrcutMode>ir</IrcutMode>
+    <Threshold>medium</Threshold>
+    </DayNight>
+    <BLC>
+    <enable>0</enable>
+    <mode>backLight</mode>
+    <backlight>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </backlight>
+    <dynamicrange>
+    <min>0</min>
+    <max>255</max>
+    <cur>128</cur>
+    </dynamicrange>
+    </BLC>
+    <mirror>0</mirror>
+    <flip>0</flip>
+    <Iris>
+    <enable>0</enable>
+    <state>success</state>
+    <focusAutoiris>0</focusAutoiris>
+    </Iris>
+    <nr3d>
+    <value>high</value>
+    <enable>1</enable>
+    </nr3d>
+    </InputAdvanceCfg>
+    </body>
+    ```
+
+- 133: `<RfAlarm>`
+
+  - Client
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 85  |  00 00 00 00   |    06 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 85  |  00 00 00 7f   |    06 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -655,31 +1730,25 @@ a PR to improve it.
     </body>
     ```
 
-  - **Notes:** I think this is a setting for should it wake up wifi and transmit
-  when motion detected or not. The reolink website says this applies to battery
-  camera models.
-
-- 134-145 Not observed
-
-- 146 Stream Info
+- 146: `<StreamInfoList>`
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 92 00 00 00  |  00 00 00 00   |    00 00 00 04    |       00        |   00    |     14 64     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 92  |  00 00 00 00   |    04 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 92 00 00 00  |  fc 02 00 00   |    00 00 00 04    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 92  |  00 00 02 fc   |    04 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -714,24 +1783,22 @@ a PR to improve it.
     </body>
     ```
 
-- 147-150 Not observed
-
-- 151 User Ability Info
+- 151: `<AbilityInfo>`
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 97 00 00 00  |  a7 00 00 00   |    00 00 00 02    |       00        |   00    |     14 64     |  a7 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 97  |  00 00 00 a7   |    02 00 00 00    |       00        |   00    |     64 14     |  00 00 00 a7  |
 
     - Body
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <Extension version="1.1">
-    <userName>...</userName> <!-- Plain text username -->
+    <userName>PlainTextUsername</userName>
     <token>system, network, alarm, record, video, image</token>
     </Extension>
     ```
@@ -740,17 +1807,17 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 97 00 00 00  |  ac 03 00 00   |    00 00 00 02    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 97  |  00 00 03 ac   |    02 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <body>
     <AbilityInfo version="1.1">
-    <userName>...</userName> <!-- Plain text username -->
+    <userName>PlainTextUsername</userName>
     <system>
     <subModule>
     <abilityValue>general_rw, norm_rw, version_ro, uid_ro, autoReboot_rw, restore_rw, reboot_rw, shutdown_rw, dst_rw, log_ro, performance_ro, upgrade_rw, export_rw, import_rw, bootPwd_rw</abilityValue>
@@ -783,17 +1850,15 @@ a PR to improve it.
     </body>
     ```
 
-- 152-189 Not observed
-
-- 190 PTZ Preset
+- 190: PTZ Preset
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | be 00 00 00  |  68 00 00 00   |    00 00 00 0d    |       00        |   00    |     14 64     |  68 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 be  |  00 00 00 68   |    0d 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -808,11 +1873,11 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | be 00 00 00  |  86 00 00 00   |    00 00 00 0d    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 be  |  00 00 00 86   |    0d 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -824,51 +1889,43 @@ a PR to improve it.
     </body>
     ```
 
-- 191 Not observed
-
-- 192 Unknown
+- 192:
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | c0 00 00 00  |  00 00 00 00   |    00 00 00 05    |       00        |   00    |     14 64     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 c0  |  00 00 00 00   |    05 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | c0 00 00 00  |  00 00 00 00   |    00 00 00 05    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 c0  |  00 00 00 00   |    05 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-    - **Notes:** Header only reply so cannot determine what this does without
-    active analysis
-
-- 193-198 Not observed
-
-- 199 Camera Ability Info
+- 199: `<Support>`
 
   - Client
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | c7 00 00 00  |  00 00 00 00   |    00 00 00 02    |       00        |   00    |     14 64     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 c7  |  00 00 00 00   |    02 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | c7 00 00 00  |  f6 05 00 00   |    00 00 00 02    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 c7  |  00 00 05 f6   |    02 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
-
-    - Body
+    - Binary
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -944,17 +2001,15 @@ a PR to improve it.
     </body>
     ```
 
-- 207 Not observed
-
-- 208 Unknown
+- 208: `<LedState>`
 
   - Client
 
     - Header
 
-    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | d0 00 00 00  |  68 00 00 00   |    00 00 00 22    |       00        |   00    |     14 64     |  68 00 00 00  |
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 d0  |  00 00 00 68   |    2e 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -965,33 +2020,64 @@ a PR to improve it.
     </Extension>
     ```
 
-  - **Notes:** No message observed from camera
+  - Camera
 
-- 209+ Not observed
+    - Header
 
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 d0  |  00 00 00 c2   |    2e 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
 
----
-# Ancillary
+    - Binary
 
-I used these regex replace to make the header tables in this document
-from the wireshark hex dump. It may be useful for others working on this.
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <LedState version="1.1">
+    <channelId>0</channelId>
+    <ledVersion>2</ledVersion>
+    <state>auto</state>
+    <lightState>open</lightState>
+    </LedState>
+    </body>
+    ```
 
-```
-^0000   ([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9])\n0010   ([a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9])
-```
+- 209: `<LedState>` (write)
 
-```
-|    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class |
-|--------------|--------------|----------------|-------------------|-----------------|---------|---------------|
-| $1 | $2 |  $3  |    $4    |       $5       |   $6   |     $7     |
-```
+  - Client
 
-```
-^0000   ([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9])\n0010   ([a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] )([a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9] [a-f0-9][a-f0-9])
-```
+    - Header
 
-```
-|    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-|--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-| $1 | $2 |  $3  |    $4    |       $5       |   $6   |     $7    |  $8  |
-```
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 d1  |  00 00 01 10   |    85 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+
+    - Body
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <LedState version="1.1">
+    <channelId>0</channelId>
+    <state>close</state>
+    <lightState>open</lightState>
+    </LedState>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 d1  |  00 00 00 00   |    85 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
