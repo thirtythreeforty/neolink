@@ -256,21 +256,21 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
     end
     local xml_buffer = body_buffer(0, xml_len)
     if xml_len > 0 then
-      local body_tvb = xml_buffer:tvb("Description")
-      body:add(body_tvb(), "Description")
+      local body_tvb = xml_buffer:tvb("Meta Payload")
+      body:add(body_tvb(), "Meta Payload")
       if xml_len >= 4 then
         if xml_encrypt(xml_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
           local ba = xml_buffer:bytes()
           local decrypted = xml_encrypt(ba, header.enc_offset)
-          body_tvb = decrypted:tvb("Decrypted XML (in description)")
+          body_tvb = decrypted:tvb("Decrypted XML (in Meta Payload)")
           -- Create a tree item that, when clicked, automatically shows the tab we just created
-          body:add(body_tvb(), "Decrypted XML (in description)")
+          body:add(body_tvb(), "Decrypted XML (in Meta Payload)")
           Dissector.get("xml"):call(body_tvb, pinfo, body)
         elseif xml_buffer(0,5):string() == "<?xml" then  -- Unencrypted xml
-          body:add(body_tvb(), "XML (in description)")
+          body:add(body_tvb(), "XML (in Meta Payload)")
           Dissector.get("xml"):call(body_tvb, pinfo, body)
         else
-          body:add(body_tvb(), "Binary (in description)")
+          body:add(body_tvb(), "Binary (in Meta Payload)")
         end
       end
     end
@@ -279,20 +279,20 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
       local bin_len = header.msg_len - header.bin_offset
       if bin_len > 0 then
         local binary_buffer = body_buffer(header.bin_offset, bin_len) -- Don't extend beyond msg size
-        body_tvb = binary_buffer:tvb("Payload");
-        body:add(body_tvb(), "Payload")
+        body_tvb = binary_buffer:tvb("Main Payload");
+        body:add(body_tvb(), "Main Payload")
         if bin_len > 4 then
           if xml_encrypt(binary_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
             local decrypted = xml_encrypt(binary_buffer:bytes(), header.enc_offset)
-            body_tvb = decrypted:tvb("Decrypted XML (in payload)")
+            body_tvb = decrypted:tvb("Decrypted XML (in Main Payload)")
             -- Create a tree item that, when clicked, automatically shows the tab we just created
-            body:add(body_tvb(), "Decrypted XML (in payload)")
+            body:add(body_tvb(), "Decrypted XML (in Main Payload)")
             Dissector.get("xml"):call(body_tvb, pinfo, body)
           elseif binary_buffer(0,5):string() == "<?xml" then  -- Unencrypted xml
-            body:add(body_tvb(), "XML (in payload)")
+            body:add(body_tvb(), "XML (in Main Payload)")
             Dissector.get("xml"):call(body_tvb, pinfo, body)
           else
-            body:add(body_tvb(), "Binary (in payload)")
+            body:add(body_tvb(), "Binary (in Main Payload)")
           end
         end
       end
