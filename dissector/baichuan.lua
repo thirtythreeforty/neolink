@@ -13,7 +13,7 @@ channel_id =  ProtoField.int8("baichuan.channel_id", "channel_id", base.DEC)
 stream_id = ProtoField.int8("baichuan.stream_id", "streamID", base.DEC)
 unknown = ProtoField.int8("baichuan.unknown", "unknown", base.DEC)
 msg_handle = ProtoField.int8("baichuan.message_handle", "messageHandle", base.DEC)
-error_code = ProtoField.int16("baichuan.error_code", "error_code", base.DEC)
+status_code = ProtoField.int16("baichuan.status_code", "status_code", base.DEC)
 message_class = ProtoField.int32("baichuan.msg_class", "messageClass", base.DEC)
 f_bin_offset = ProtoField.int32("baichuan.bin_offset", "binOffset", base.DEC)
 username = ProtoField.string("baichuan.username", "username", base.ASCII)
@@ -29,7 +29,7 @@ bc_protocol.fields = {
   unknown,
   msg_handle,
   encrypt_xml,
-  error_code,
+  status_code,
   message_class,
   f_bin_offset,
   username,
@@ -169,13 +169,13 @@ function get_header(buffer)
   -- bin_offset is either nil (no binary data) or nonzero
   -- TODO: bin_offset is actually stateful!
   local bin_offset = nil
-  local error_code = nil
+  local status_code = nil
   local encrypt_xml = nil
   local header_len = header_lengths[buffer(18, 2):le_uint()]
   local msg_type = buffer(4, 4):le_uint()
   if header_len == 24 then
     bin_offset = buffer(20, 4):le_uint() -- if NHD-805/806 legacy protocol 30 30 30 30 aka "0000"
-    error_code =  buffer(16, 2):le_uint() 
+    status_code =  buffer(16, 2):le_uint() 
   else
     encrypt_xml = buffer(16, 1):le_uint()
   end
@@ -196,7 +196,7 @@ function get_header(buffer)
     unknown = buffer(14, 1):le_uint(),
     msg_handle = buffer(15, 1):le_uint(),
     msg_cls = buffer(18, 2):le_uint(),
-    error_code = error_code,
+    status_code = status_code,
     class = message_classes[buffer(18, 2):le_uint()],
     header_len = header_lengths[buffer(18, 2):le_uint()],
     bin_offset = bin_offset,
@@ -228,7 +228,7 @@ function process_header(buffer, headers_tree)
   header:add_le(message_class, buffer(18, 2)):append_text(" (" .. header_data.class .. ")")
   
   if header_data.header_len == 24 then
-    header:add_le(error_code, buffer(16, 2))    
+    header:add_le(status_code, buffer(16, 2))    
     header:add_le(f_bin_offset, buffer(20, 4))
   else
     header:add_le(encrypt_xml, buffer(16, 1))
@@ -256,20 +256,21 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
     end
     local xml_buffer = body_buffer(0, xml_len)
     if xml_len > 0 then
-      local body_tvb = xml_buffer:tvb("Payload")
+      local body_tvb = xml_buffer:tvb("Description")
+      body:add(body_tvb(), "Description")
       if xml_len >= 4 then
         if xml_encrypt(xml_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
           local ba = xml_buffer:bytes()
           local decrypted = xml_encrypt(ba, header.enc_offset)
-          body_tvb = decrypted:tvb("Decrypted XML")
+          body_tvb = decrypted:tvb("Decrypted XML (in description)")
           -- Create a tree item that, when clicked, automatically shows the tab we just created
-          body:add(body_tvb(), "Decrypted XML")
+          body:add(body_tvb(), "Decrypted XML (in description)")
           Dissector.get("xml"):call(body_tvb, pinfo, body)
         elseif xml_buffer(0,5):string() == "<?xml" then  -- Unencrypted xml
-          body:add(body_tvb(), "XML")
+          body:add(body_tvb(), "XML (in description)")
           Dissector.get("xml"):call(body_tvb, pinfo, body)
         else
-          body:add(body_tvb(), "Binary")
+          body:add(body_tvb(), "Binary (in description)")
         end
       end
     end
@@ -278,19 +279,20 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
       local bin_len = header.msg_len - header.bin_offset
       if bin_len > 0 then
         local binary_buffer = body_buffer(header.bin_offset, bin_len) -- Don't extend beyond msg size
-        body_tvb = binary_buffer:tvb("Binary Payload");
+        body_tvb = binary_buffer:tvb("Payload");
+        body:add(body_tvb(), "Payload")
         if bin_len > 4 then
           if xml_encrypt(binary_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
             local decrypted = xml_encrypt(binary_buffer:bytes(), header.enc_offset)
-            body_tvb = decrypted:tvb("Decrypted XML (in binary block)")
+            body_tvb = decrypted:tvb("Decrypted XML (in payload)")
             -- Create a tree item that, when clicked, automatically shows the tab we just created
-            body:add(body_tvb(), "Decrypted XML (in binary block)")
+            body:add(body_tvb(), "Decrypted XML (in payload)")
             Dissector.get("xml"):call(body_tvb, pinfo, body)
           elseif binary_buffer(0,5):string() == "<?xml" then  -- Unencrypted xml
-            body:add(body_tvb(), "XML (in binary block)")
+            body:add(body_tvb(), "XML (in payload)")
             Dissector.get("xml"):call(body_tvb, pinfo, body)
           else
-            body:add(body_tvb(), "Binary")
+            body:add(body_tvb(), "Binary (in payload)")
           end
         end
       end
