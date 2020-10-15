@@ -133,11 +133,9 @@ impl BcCamera {
 
         sub_login.send(legacy_login)?;
 
-        let legacy_reply = sub_login.rx.recv_timeout(RX_TIMEOUT).map_err(|e| {
-            match e {
-                std::sync::mpsc::RecvTimeoutError::Timeout => {Error::TimeoutTimeout}
-                std::sync::mpsc::RecvTimeoutError::Disconnected => {Error::TimeoutDropped}
-            }
+        let legacy_reply = sub_login.rx.recv_timeout(RX_TIMEOUT).map_err(|e| match e {
+            std::sync::mpsc::RecvTimeoutError::Timeout => Error::TimeoutTimeout,
+            std::sync::mpsc::RecvTimeoutError::Disconnected => Error::TimeoutDropped,
         })?;
 
         let nonce;
@@ -193,11 +191,9 @@ impl BcCamera {
         );
 
         sub_login.send(modern_login)?;
-        let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT).map_err(|e| {
-            match e {
-                std::sync::mpsc::RecvTimeoutError::Timeout => {Error::TimeoutTimeout}
-                std::sync::mpsc::RecvTimeoutError::Disconnected => {Error::TimeoutDropped}
-            }
+        let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT).map_err(|e| match e {
+            std::sync::mpsc::RecvTimeoutError::Timeout => Error::TimeoutTimeout,
+            std::sync::mpsc::RecvTimeoutError::Disconnected => Error::TimeoutDropped,
         })?;
 
         let device_info;
@@ -255,11 +251,9 @@ impl BcCamera {
 
         sub_ping.send(ping)?;
 
-        sub_ping.rx.recv_timeout(RX_TIMEOUT).map_err(|e| {
-            match e {
-                std::sync::mpsc::RecvTimeoutError::Timeout => {Error::TimeoutTimeout}
-                std::sync::mpsc::RecvTimeoutError::Disconnected => {Error::TimeoutDropped}
-            }
+        sub_ping.rx.recv_timeout(RX_TIMEOUT).map_err(|e| match e {
+            std::sync::mpsc::RecvTimeoutError::Timeout => Error::TimeoutTimeout,
+            std::sync::mpsc::RecvTimeoutError::Disconnected => Error::TimeoutDropped,
         })?;
 
         Ok(())

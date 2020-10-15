@@ -1,5 +1,5 @@
 use super::model::*;
-use super::xml::{BcPayloads};
+use super::xml::BcPayloads;
 use super::xml_crypto;
 use cookie_factory::bytes::*;
 use cookie_factory::sequence::tuple;
@@ -15,7 +15,6 @@ impl Bc {
         // serialize the XML to have the metadata to build the header
         let body_buf;
         let payload_offset;
-
 
         match &self.body {
             BcBody::ModernMsg(ref modern) => {
@@ -39,11 +38,13 @@ impl Bc {
 
                 // Now get the payload part of the body and add to ext_buf
                 let (temp_buf, _) = gen(
-                    opt_ref(&modern.payload, |payload_offset| bc_payload(self.meta.client_idx, payload_offset)),
+                    opt_ref(&modern.payload, |payload_offset| {
+                        bc_payload(self.meta.client_idx, payload_offset)
+                    }),
                     temp_buf,
                 )?;
                 body_buf = temp_buf;
-            },
+            }
 
             BcBody::LegacyMsg(ref legacy) => {
                 let (buf, _) = gen(bc_legacy(legacy), vec![])?;
@@ -56,7 +57,6 @@ impl Bc {
         let header = BcHeader::from_meta(&self.meta, body_buf.len() as u32, payload_offset);
 
         let (buf, _n) = gen(tuple((bc_header(&header), slice(body_buf))), buf)?;
-
 
         Ok(buf)
     }
@@ -73,7 +73,7 @@ fn bc_payload<W: Write>(enc_offset: u32, payload: &BcPayloads) -> impl Serialize
         BcPayloads::BcXml(x) => {
             let xml_bytes = x.serialize(vec![]).unwrap();
             xml_crypto::crypt(enc_offset, &xml_bytes)
-        },
+        }
         BcPayloads::Binary(x) => x.to_owned(),
     };
     slice(payload_bytes)
