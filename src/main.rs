@@ -28,6 +28,8 @@ pub enum Error {
     IoError(#[error(source)] std::io::Error),
     #[error(display = "Validation error")]
     ValidationError(#[error(source)] validator::ValidationErrors),
+    #[error(display = "ADPCM Decoding Error")]
+    AdpcmDecodingError(&'static str),
 }
 
 fn main() -> Result<(), Error> {

@@ -55,6 +55,9 @@ pub enum Error {
     #[error(display = "Credential error")]
     AuthFailed,
 
+    #[error(display = "ADPCM Decoding Error")]
+    AdpcmDecodingError(&'static str),
+
     #[error(display = "Other error")]
     Other(&'static str),
 }
@@ -296,7 +299,7 @@ impl BcCamera {
                     let media_format = binary_data.media_format();
                     data_outs.set_format(media_format);
                     let adpcm = binary_data.body();
-                    let pcm = adpcm_to_pcm(adpcm);
+                    let pcm = adpcm_to_pcm(adpcm)?;
                     data_outs.audsrc.write_all(&pcm)?;
                 }
                 _ => {}

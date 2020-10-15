@@ -3,6 +3,7 @@
 */
 use log::error;
 use std::convert::TryInto;
+use crate::Error;
 
 struct AdpcmSetup {
     max_step_index: usize,
@@ -81,7 +82,7 @@ impl Nibble {
     }
 }
 
-pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
+pub fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     let context = AdpcmSetup::new_ima();
 
     let mut result: Vec<u8> = vec![]; // Stores the PCM byte array
@@ -96,11 +97,17 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
     // 0xZZ which is the step index of the last output
     // We must initialise our decoder with this data
 
+    if bytes.len() < 4 {
+        error!("ADPCM data is too short for even the magic.");
+        return Err(Error::AdpcmDecodingError("ADPCM data is too short for even the magic."));
+    }
+
     // Check for valid number of frame type
     let frame_type_bytes = &bytes[0..2];
     const FRAME_TYPE_HISILICON: &[u8] = &[0x00, 0x01];
     if frame_type_bytes != FRAME_TYPE_HISILICON {
-        error!("Unexpected adpcm frame type: {:x?}", frame_type_bytes);
+        error!("Unexpected ADPCM frame type: {:x?}", frame_type_bytes);
+        return Err(Error::AdpcmDecodingError("Unexpected ADPCM frame type"));
     }
 
     // Check for valid block size
@@ -114,11 +121,16 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
     let full_block_size = block_size + 4; // block_size + magic (2 bytes) + size (2 bytes)
     if !bytes.len() % full_block_size == 0 {
         error!("ADPCM Data is not a multiple of the block size");
+        return Err(Error::AdpcmDecodingError("ADPCM block size does not match data length."));
     }
 
     // Chunk on block size
     for bytes in bytes.chunks(full_block_size) {
         // Get predictor state from block header using DVI 4 format.
+        if bytes.len() <8 {
+            error!("ADPCM Block size is not long enough for header");
+            return Err(Error::AdpcmDecodingError("ADPCM has insufficent block size"));
+        }
         let step_output_bytes = &bytes[4..6];
         let mut last_output = i16::from_le_bytes(
             step_output_bytes
@@ -222,5 +234,5 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Vec<u8> {
             }
         }
     }
-    result
+    Ok(result)
 }
