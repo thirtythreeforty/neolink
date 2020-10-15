@@ -6,10 +6,10 @@ use std::convert::TryInto;
 use crate::Error;
 
 struct AdpcmSetup {
-    max_step_index: usize,
-    steps: &'static [usize],
-    max_sample_size: isize,
-    changes: &'static [isize],
+    max_step_index: u32,
+    steps: &'static [u32],
+    max_sample_size: i32,
+    changes: &'static [i32],
 }
 
 impl AdpcmSetup {
@@ -51,21 +51,21 @@ struct Nibble {
 }
 
 impl Nibble {
-    // Use u/isize throughout to ensure that we always have enough
+    // Use u/i32 throughout to ensure that we always have enough
     // Headroom to do the math without needing `as` casting everywhere
-    fn unsigned(&self) -> usize {
-        (self.data & 0b00001111) as usize // Mask first 4 bits it just to be sure its in nibble range
+    fn unsigned(&self) -> u32 {
+        (self.data & 0b00001111) as u32 // Mask first 4 bits it just to be sure its in nibble range
     }
 
-    fn signed_magnitude(&self) -> usize {
-        (self.data & 0b00000111) as usize // Mask of first 3 bits which are the magnitiude bits in signed int
+    fn signed_magnitude(&self) -> u32 {
+        (self.data & 0b00000111) as u32 // Mask of first 3 bits which are the magnitiude bits in signed int
     }
 
-    fn signed(&self) -> isize {
+    fn signed(&self) -> i32 {
         match self.data & 0b00001000 {
             // Sign bit is at the 4th bit
-            0b00001000 => -(self.signed_magnitude() as isize),
-            _ => self.signed_magnitude() as isize,
+            0b00001000 => -(self.signed_magnitude() as i32),
+            _ => self.signed_magnitude() as i32,
         }
     }
 
@@ -116,16 +116,16 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
         block_size_bytes
             .try_into()
             .expect("slice with incorrect length"),
-    ) as usize)
+    ) as u32)
         * 2; // Block size is stored as 1/2 (don't know why)
     let full_block_size = block_size + 4; // block_size + magic (2 bytes) + size (2 bytes)
-    if !bytes.len() % full_block_size == 0 {
+    if !bytes.len() % full_block_size as usize == 0 {
         error!("ADPCM Data is not a multiple of the block size");
         return Err(Error::AdpcmDecodingError("ADPCM block size does not match data length."));
     }
 
     // Chunk on block size
-    for bytes in bytes.chunks(full_block_size) {
+    for bytes in bytes.chunks(full_block_size  as usize) {
         // Get predictor state from block header using DVI 4 format.
         if bytes.len() <8 {
             error!("ADPCM Block size is not long enough for header");
@@ -136,18 +136,18 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
             step_output_bytes
                 .try_into()
                 .expect("slice with incorrect length"),
-        ) as isize;
+        ) as i32;
         let step_index_bytes = &bytes[6..8];
         let mut step_index = u16::from_le_bytes(
             step_index_bytes
                 .try_into()
                 .expect("slice with incorrect length"),
-        ) as isize;
+        ) as i32;
 
-        // To avoid casting to u8 <-> u16 <-> u32 and back all the time I just do all maths in u/isize
+        // To avoid casting to u8 <-> u16 <-> u32 and back all the time I just do all maths in u/i32
         // This gives enough headroom to do all calculations without overflow because adpcm puts artifical
         // limits on the sample sizes
-        let mut step: usize;
+        let mut step: u32;
 
         // The rest is all data to be decoded
         let data = &bytes[8..];
@@ -160,7 +160,7 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
                 // Specifications say: Clamp it in max index range 0..context.max_step_index
                 step_index = match step_index {
                     n if n < 0 => 0,
-                    n if n > context.max_step_index as isize => context.max_step_index as isize,
+                    n if n > context.max_step_index as i32 => context.max_step_index as i32,
                     n => n,
                 };
 
@@ -180,7 +180,7 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
                 // Calculate the delta (which is really what adpcm is all about)
                 // Adaptive **Differential** PCM
                 // Differential: Becuase its all about the difference (gradient)
-                let diff = (step as isize) * (inibble) / 2 + (step as isize) / 8;
+                let diff = (step as i32) * (inibble) / 2 + (step as i32) / 8;
 
                 // Eulers approxiation
                 // Sample = Previous_Sample + difference*step_size
@@ -203,9 +203,9 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
                 }
                 // Sign test
                 if (unibble & 0b1000) == 0b1000 {
-                    raw_sample = last_output - (diff as isize);
+                    raw_sample = last_output - (diff as i32);
                 } else {
-                    raw_sample = last_output + (diff as isize);
+                    raw_sample = last_output + (diff as i32);
                 }
 
                 // Specifications say: Clamp it in max sample range -context.max_sample_size..context.max_sample_size
@@ -219,15 +219,15 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
                 // Some formats e.g. OKI are not in the full PCM range of values
                 // To convert we must scale it to the i16 range
                 // We also cast to i16 at this point ready for the conversion to u8 bytes of the output
-                let scaled_sample = (sample as isize * (i16::MAX as isize)
-                    / (context.max_sample_size - 1) as isize)
+                let scaled_sample = (sample as i32 * (i16::MAX as i32)
+                    / (context.max_sample_size - 1) as i32)
                     as i16;
 
                 // Get the results in bytes
                 result.extend(scaled_sample.to_le_bytes().iter());
 
                 // Increment the step index
-                step_index = step_index as isize + context.changes[unibble];
+                step_index = step_index as i32 + context.changes[unibble as usize];
 
                 // cache the last_output ready for next run
                 last_output = sample;
