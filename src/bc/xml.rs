@@ -53,6 +53,15 @@ impl BcXml {
     }
 }
 
+impl Extension {
+    pub fn try_parse(s: impl Read) -> Result<Self, String> {
+        yaserde::de::from_reader(s)
+    }
+    pub fn serialize<W: Write>(&self, w: W) -> Result<W, String> {
+        yaserde::ser::serialize_with_writer(self, w, &Config::default())
+    }
+}
+
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct Encryption {
     #[yaserde(attribute)]
@@ -123,7 +132,12 @@ pub struct Extension {
     #[yaserde(attribute)]
     pub version: String,
     #[yaserde(rename = "binaryData")]
-    pub binary_data: u32,
+    pub binary_data: Option<u32>,
+    #[yaserde(rename = "userName")]
+    pub user_name: Option<String>,
+    pub token: Option<String>,
+    #[yaserde(rename = "channelId")]
+    pub channel_id: Option<u32>,
 }
 
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]

@@ -147,7 +147,7 @@ impl BcCamera {
                     Some(BcPayloads::BcXml(BcXml {
                         encryption: Some(encryption),
                         ..
-                    }),
+                    })),
                 ..
             }) => {
                 nonce = encryption.nonce;
@@ -207,7 +207,7 @@ impl BcCamera {
                     Some(BcPayloads::BcXml(BcXml {
                         device_info: Some(info),
                         ..
-                    }),
+                    })),
                 ..
             }) => {
                 // Login succeeded!

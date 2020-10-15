@@ -42,7 +42,7 @@ impl BcCamera {
                             ..
                         }),
                     ..
-                }),
+                })),
             ..
         }) = msg.body
         {
