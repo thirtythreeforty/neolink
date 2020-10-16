@@ -2,9 +2,10 @@
 # Copyright (c) 2020 George Hilliard
 # SPDX-License-Identifier: AGPL-3.0-only
 
-FROM docker.io/rust:1-alpine AS build
+FROM docker.io/alpine AS build
 MAINTAINER thirtythreeforty@gmail.com
 
+RUN apk add rust cargo
 RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
   gst-rtsp-server-dev
 RUN apk add --no-cache musl-dev gcc
@@ -34,7 +35,9 @@ COPY --from=build \
   /usr/local/src/neolink/target/release/neolink \
   /usr/local/bin/neolink
 COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 CMD ["/usr/local/bin/neolink", "--config", "/etc/neolink.toml"]
 ENTRYPOINT ["/entrypoint.sh"]
-EXPOSE 8554 
+EXPOSE 8554
+
