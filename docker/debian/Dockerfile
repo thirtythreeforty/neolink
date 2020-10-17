@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # syntax=docker/dockerfile:experimental
 
-FROM --platform=$BUILDPLATFORM docker.io/debian:buster-slim
+FROM docker.io/debian:buster-slim AS build
 ARG TARGETPLATFORM
 ARG REPO
 ARG VERSION
@@ -30,26 +30,31 @@ COPY . /usr/local/src/neolink
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH
+    PATH=/usr/local/cargo/bin:$PATH \
+    CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
-RUN --mount=type=tmpfs,destination=/usr/local/cargo/ \
+RUN --mount=type=tmpfs,destination=/usr/local/cargo/registry/ \
+    --mount=type=tmpfs,destination=/usr/local/cargo/git/ \
     echo >&2 "\e[0;32mBUILDING FOR: ${TARGETPLATFORM}\e[0m"; \
     echo >&2 "\e[0;33mUpdating apt\e[0m"; \
     apt-get update && \
     echo >&2 "\e[0;33mInstalling packages\e[0m"; \
     apt-get install --assume-yes --no-install-recommends \
       build-essential \
-      "${gcc}" "${gpp}" \
       curl ca-certificates build-essential \
       libgstrtspserver-1.0-dev \
       libgstreamer1.0-dev \
       libgtk2.0-dev && \
     /bin/rm -rf /var/cache/apt && \
     /bin/rm -rf /var/lib/apt/lists/* && \
+    update-ca-certificates && \
     echo >&2 "\e[0;33mInstalling rust\e[0m"; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > rustinit.sh && \
     sh rustinit.sh --verbose -y && \
     echo >&2 "\e[0;33mBuilding neolink\e[0m"; \
+    echo >&2 "\e[0;34mPATH: ${PATH} \e[0m"; \
+    echo >&2 "\e[0;35mmount: $(mount | grep tmpfs) \e[0m"; \
+    echo >&2 "\e[0;36mls: $(ls -lha /usr/local/cargo/bin) \e[0m"; \
     cargo build --release --all-features && \
     cp "/usr/local/src/neolink/target/release/neolink" /neolink
 
