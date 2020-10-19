@@ -29,12 +29,35 @@ jobs:
         uses: ASzc/change-string-case-action@v1
         with:
           string: ${{ github.repository }}
-      - name: Push to Docker Hub
-        uses: docker/build-push-action@v1
+      - name: Set up QEMU
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/setup-buildx-action@v1
+      - name: Login to dockerhub
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/login-action@v1
         with:
           username: ${{ steps.string_user.outputs.lowercase }}
           password: ${{ secrets.DOCKER_TOKEN }}
-          registry: docker.io
-          repository: ${{ steps.string_repo.outputs.lowercase }}
-          tag_with_ref: true
+      - name: Get tag name
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        id: tags
+        run: |
+          branch="${GITHUB_REF#refs/heads/}"
+          tags="${REPO_NAME}:${branch}"
+          if [ "${branch}" == "master" ]; then
+            tags="${tags},${REPO_NAME}:latest"
+          fi
+          echo "::set-output name=TAGS::${tags}"
+        env:
+          REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
+      - name: Push to Docker Hub Debian
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/build-push-action@v2
+        with:
+          platforms: linux/arm/v7,linux/amd64
+          push: true
+          file: Dockerfile
+          tags: ${{ steps.tags.outputs.TAGS }}
