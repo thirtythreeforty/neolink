@@ -139,6 +139,9 @@ impl BcCamera {
         })?;
 
         let nonce;
+        if let BcMeta {encrypted: true,..} = legacy_reply.meta {
+                connection.set_encrypted(true);
+        }
         match legacy_reply.body {
             BcBody::ModernMsg(ModernMsg {
                 payload:

@@ -7,7 +7,7 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -20,6 +20,7 @@ pub struct BcConnection {
     connection: Arc<Mutex<TcpStream>>,
     subscribers: Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
     rx_thread: Option<JoinHandle<()>>,
+    is_encrypted: Arc<AtomicBool>,
 }
 
 pub struct BcSubscription<'a> {
@@ -53,8 +54,11 @@ impl BcConnection {
         let mut subs = subscribers.clone();
         let conn = tcp_conn.try_clone()?;
 
+        let is_encrypted = Arc::new(AtomicBool::new(false));
+        let connections_isencrypted = is_encrypted.clone();
         let rx_thread = std::thread::spawn(move || {
             let mut context = BcContext::new();
+            context.set_encrypted(connections_isencrypted);
             while BcConnection::poll(&mut context, &conn, &mut subs).is_ok() {}
         });
 
@@ -62,6 +66,7 @@ impl BcConnection {
             connection: Arc::new(Mutex::new(tcp_conn)),
             subscribers,
             rx_thread: Some(rx_thread),
+            is_encrypted,
         })
     }
 
@@ -110,6 +115,14 @@ impl BcConnection {
 
         Ok(())
     }
+
+    pub fn set_encrypted(&self, value: bool) {
+        self.is_encrypted.store(value, Ordering::Relaxed);
+    }
+
+    pub fn get_encrypted(&self) -> bool {
+        self.is_encrypted.load(Ordering::Relaxed)
+    }
 }
 
 impl Drop for BcConnection {
@@ -136,7 +149,7 @@ impl<'a> BcSubscription<'a> {
     pub fn send(&self, bc: Bc) -> Result<()> {
         assert!(bc.meta.msg_id == self.msg_id);
 
-        bc.serialize(&*self.conn.connection.lock().unwrap())?;
+        bc.serialize(&*self.conn.connection.lock().unwrap(), self.conn.get_encrypted())?;
         Ok(())
     }
 }

@@ -1,5 +1,6 @@
 pub use super::xml::{BcPayloads, BcXml, Extension};
 use std::collections::HashSet;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -68,6 +69,7 @@ pub(super) struct BcSendInfo {
 #[derive(Debug)]
 pub struct BcContext {
     pub(super) in_bin_mode: HashSet<u32>,
+    pub(super) is_encrypted: Arc<AtomicBool>,
 }
 
 impl Bc {
@@ -124,7 +126,16 @@ impl BcContext {
     pub fn new() -> BcContext {
         BcContext {
             in_bin_mode: HashSet::new(),
+            is_encrypted: Default::default(),
         }
+    }
+
+    pub fn set_encrypted(&mut self, is_encrypted: Arc<AtomicBool>) {
+        self.is_encrypted = is_encrypted;
+    }
+
+    pub fn get_encrypted(&self) -> bool {
+        self.is_encrypted.load(Ordering::Relaxed)
     }
 }
 

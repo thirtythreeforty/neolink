@@ -126,7 +126,7 @@ fn bc_modern_msg<'a, 'b>(
     let (buf, payload_buf) = take(payload_len)(buf)?;
 
     let decrypted;
-    let processed_ext_buf = if !header.is_encrypted() {
+    let processed_ext_buf = if !context.get_encrypted() {
         ext_buf
     } else {
         decrypted = xml_crypto::crypt(header.enc_offset, ext_buf);
@@ -153,7 +153,7 @@ fn bc_modern_msg<'a, 'b>(
     if payload_len > 0 {
         // Extract remainder of message as binary, if it exists
         let decrypted;
-        let processed_payload_buf = if !header.is_encrypted() {
+        let processed_payload_buf = if !context.get_encrypted() {
             payload_buf
         } else {
             decrypted = xml_crypto::crypt(header.enc_offset, payload_buf);
