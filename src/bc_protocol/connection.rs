@@ -59,7 +59,7 @@ impl BcConnection {
                 match BcConnection::poll(&mut context, &conn, &mut subs) {
                     Ok(_) => true,
                     Err(err) => {
-                        error!("Deserialization error: {}", err);
+                        error!("Deserialization error: {:?}", err);
                         false
                     }
                 }
