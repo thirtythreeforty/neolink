@@ -20,7 +20,7 @@ impl Bc {
             BcBody::ModernMsg(ref modern) => {
                 // First serialize ext
                 let (temp_buf, ext_len) = gen(
-                    opt_ref(&modern.extension, |ext| bc_ext(self.meta.client_idx, ext, encrypted)),
+                    opt_ref(&modern.extension, |ext| bc_ext(self.meta.channel_id as u32, ext, encrypted)),
                     vec![],
                 )?;
 
@@ -39,7 +39,7 @@ impl Bc {
                 // Now get the payload part of the body and add to ext_buf
                 let (temp_buf, _) = gen(
                     opt_ref(&modern.payload, |payload_offset| {
-                        bc_payload(self.meta.client_idx, payload_offset, encrypted)
+                        bc_payload(self.meta.channel_id as u32, payload_offset, encrypted)
                     }),
                     temp_buf,
                 )?;
@@ -92,13 +92,17 @@ fn bc_header<W: Write>(header: &BcHeader) -> impl SerializeFn<W> {
     let (signaled_encryption, spare) = if header.class == 0x0000 {
         (0x00, 0x00)
     } else {
-        (header.encrypted as u8, 0xdc)
+        // Client is always 01dc
+        // Camera may reply with 01dd (encrypted) or 00dd (unencrypted)
+        (0x01, 0xdc)
     };
     tuple((
         le_u32(MAGIC_HEADER),
         le_u32(header.msg_id),
         le_u32(header.body_len),
-        le_u32(header.enc_offset),
+        le_u8(header.channel_id),
+        le_u8(header.stream_type),
+        le_u16(header.msg_num),
         le_u8(signaled_encryption),
         le_u8(spare), // skipped byte
         le_u16(header.class),

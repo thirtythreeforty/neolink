@@ -129,7 +129,7 @@ fn bc_modern_msg<'a, 'b>(
     let processed_ext_buf = if !context.get_encrypted() {
         ext_buf
     } else {
-        decrypted = xml_crypto::crypt(header.enc_offset, ext_buf);
+        decrypted = xml_crypto::crypt(header.channel_id as u32, ext_buf);
         &decrypted
     };
 
@@ -156,7 +156,7 @@ fn bc_modern_msg<'a, 'b>(
         let processed_payload_buf = if !context.get_encrypted() {
             payload_buf
         } else {
-            decrypted = xml_crypto::crypt(header.enc_offset, payload_buf);
+            decrypted = xml_crypto::crypt(header.channel_id as u32, payload_buf);
             &decrypted
         };
         if let Ok(xml) = BcXml::try_parse(processed_payload_buf) {
@@ -175,7 +175,9 @@ fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
     let (buf, _magic) = verify(le_u32, |x| *x == MAGIC_HEADER)(buf)?;
     let (buf, msg_id) = le_u32(buf)?;
     let (buf, body_len) = le_u32(buf)?;
-    let (buf, enc_offset) = le_u32(buf)?;
+    let (buf, channel_id) = le_u8(buf)?;
+    let (buf, stream_type) = le_u8(buf)?;
+    let (buf, msg_num) = le_u16(buf)?;
     let (buf, (response_code, _ignored, class)) = tuple((le_u8, le_u8, le_u16))(buf)?;
 
     // All modern messages are encrypted.  In addition, it seems that the camera firmware checks
@@ -190,8 +192,9 @@ fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
         BcHeader {
             msg_id,
             body_len,
-            enc_offset,
-            encrypted,
+            channel_id,
+            stream_type,
+            msg_num,
             class,
             payload_offset,
         },

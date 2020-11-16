@@ -42,8 +42,9 @@ pub enum LegacyMsg {
 pub(super) struct BcHeader {
     pub body_len: u32,
     pub msg_id: u32,
-    pub enc_offset: u32,
-    pub encrypted: bool,
+    pub channel_id: u8,
+    pub stream_type: u8,
+    pub msg_num: u16,
     pub class: u16,
     pub payload_offset: Option<u32>,
 }
@@ -53,9 +54,10 @@ pub(super) struct BcHeader {
 #[derive(Debug, PartialEq, Eq)]
 pub struct BcMeta {
     pub msg_id: u32,
-    pub client_idx: u32,
+    pub channel_id: u8,
+    pub stream_type: u8,
+    pub msg_num: u16,
     pub class: u16,
-    pub encrypted: bool,
 }
 
 /// The components of the Baichuan header that must be filled out after the body is serialized, or
@@ -142,28 +144,25 @@ impl BcContext {
 impl BcHeader {
     pub fn is_modern(&self) -> bool {
         // Most modern messages have an extra word at the end of the header; this
-        // serves as the start offset of the appended binary data, if any.
+        // serves as the start offset of the appended payload data, if any.
         // A notable exception is the encrypted reply to the login message;
         // in this case the message is modern (with XML encryption etc), but there is
         // no extra word.
         // Here are the message classes:
         // 0x6514: legacy, no  bin offset (initial login message, encrypted or not)
         // 0x6614: modern, no  bin offset (reply to encrypted 0x6514 login)
-        // 0x6414: modern, has bin offset, always encrypted (re-sent login message)
+        // 0x6414: modern, has bin offset, encrypted if supported (re-sent login message)
         // 0x0000, modern, has bin offset (most modern messages)
         self.class != 0x6514
-    }
-
-    pub fn is_encrypted(&self) -> bool {
-        self.encrypted || self.class == 0x6414
     }
 
     pub fn to_meta(&self) -> BcMeta {
         BcMeta {
             msg_id: self.msg_id,
-            client_idx: self.enc_offset,
+            msg_num: self.msg_num,
+            channel_id: self.channel_id,
+            stream_type: self.stream_type,
             class: self.class,
-            encrypted: self.encrypted,
         }
     }
 
@@ -172,9 +171,10 @@ impl BcHeader {
             payload_offset,
             body_len,
             msg_id: meta.msg_id,
-            enc_offset: meta.client_idx,
+            channel_id: meta.channel_id,
+            stream_type: meta.stream_type,
+            msg_num: meta.msg_num,
             class: meta.class,
-            encrypted: meta.encrypted,
         }
     }
 }
