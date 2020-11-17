@@ -22,8 +22,8 @@ jobs:
           choco install -y --no-progress gstreamer --version=1.16.2.20200527
           choco install -y --no-progress gstreamer-devel --version=1.16.2
           echo "Updating Cargo environment"
-          echo "::add-path::C:\gstreamer\1.0\x86_64\bin"
-          echo "::set-env name=GSTREAMER_1_0_ROOT_X86_64::C:\gstreamer\1.0\x86_64\"
+          echo "C:\gstreamer\1.0\x86_64\bin" >> $GITHUB_PATH
+          echo "GSTREAMER_1_0_ROOT_X86_64=C:\gstreamer\1.0\x86_64\" >> $GITHUB_ENV
       - name: Cache cargo registry
         uses: actions/cache@v1
         with:
