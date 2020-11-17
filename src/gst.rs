@@ -86,7 +86,7 @@ impl GstOutputs {
 
         let launch_aud = match self.audio_format {
             Some(StreamFormat::ADPCM) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! rawaudioparse format=pcm pcm-format=s16le sample-rate=8000 num-channels=1 interleaved=true ! audioconvert ! rtpL16pay name=pay1", // DVI4 is converted to pcm in the appsrc
-            Some(StreamFormat::AAC) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! aacparse ! decodebin ! audioconvert ! rtpmp4apay name=pay1",
+            Some(StreamFormat::AAC) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! aacparse ! decodebin ! audioconvert ! rtpL16pay name=pay1 name=pay1",
             _ => "! fakesink",
         };
 
