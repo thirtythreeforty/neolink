@@ -165,7 +165,12 @@ end
 
 function get_header_len(buffer)
   local magic = buffer(0, 4):le_uint()
-  if magic ~= 0x0abcdef0 then
+  if magic == 0x0abcdef0 then
+    -- Client <-> BC
+  elseif magic == 0x0fedcba0 then
+    -- BC <-> BC
+  else
+    -- Unknown magic
     return -1 -- No header found
   end
   local header_len = header_lengths[buffer(18, 2):le_uint()]
