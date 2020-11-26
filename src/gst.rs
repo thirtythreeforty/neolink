@@ -1,7 +1,6 @@
 //! This module provides an "RtspServer" abstraction that allows consumers of its API to feed it
 //! data using an ordinary std::io::Write interface.
 pub use self::maybe_app_src::MaybeAppSrc;
-
 use gstreamer::prelude::Cast;
 use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
@@ -27,10 +26,82 @@ pub struct RtspServer {
     server: GstRTSPServer,
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum StreamFormat {
     H264,
     H265,
-    Custom(String),
+    AAC,
+    ADPCM,
+}
+
+pub struct GstOutputs {
+    pub audsrc: MaybeAppSrc,
+    pub vidsrc: MaybeAppSrc,
+    video_format: Option<StreamFormat>,
+    audio_format: Option<StreamFormat>,
+    factory: RTSPMediaFactory,
+}
+
+impl GstOutputs {
+    pub fn from_appsrcs(vidsrc: MaybeAppSrc, audsrc: MaybeAppSrc) -> GstOutputs {
+        let result = GstOutputs {
+            vidsrc,
+            audsrc,
+            video_format: None,
+            audio_format: None,
+            factory: RTSPMediaFactory::new(),
+        };
+        result.apply_format();
+        result
+    }
+
+    pub fn set_format(&mut self, format: Option<StreamFormat>) {
+        match format {
+            Some(StreamFormat::H264) | Some(StreamFormat::H265) => {
+                if format != self.video_format {
+                    self.video_format = format;
+                    self.apply_format();
+                }
+            }
+            Some(StreamFormat::AAC) | Some(StreamFormat::ADPCM) => {
+                if format != self.audio_format {
+                    self.audio_format = format;
+                    self.apply_format();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn apply_format(&self) {
+        let launch_vid = match self.video_format {
+            Some(StreamFormat::H264) => {
+                "! queue silent=true max-size-bytes=10485760  min-threshold-bytes=1024 ! h264parse ! rtph264pay name=pay0"
+            }
+            Some(StreamFormat::H265) => {
+                "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! h265parse ! rtph265pay name=pay0"
+            }
+            _ => "! fakesink",
+        };
+
+        let launch_aud = match self.audio_format {
+            Some(StreamFormat::ADPCM) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! rawaudioparse format=pcm pcm-format=s16le sample-rate=8000 num-channels=1 interleaved=true ! audioconvert ! rtpL16pay name=pay1", // DVI4 is converted to pcm in the appsrc
+            Some(StreamFormat::AAC) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! aacparse ! rtpmp4apay name=pay1",
+            _ => "! fakesink",
+        };
+
+        self.factory.set_launch(
+            &vec![
+            "( ",
+            "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
+            launch_vid,
+            "appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
+            launch_aud,
+            ")"
+        ]
+            .join(" "),
+        );
+    }
 }
 
 impl Default for RtspServer {
@@ -50,21 +121,23 @@ impl RtspServer {
     pub fn add_stream(
         &self,
         paths: &[&str],
-        stream_format: StreamFormat,
         permitted_users: &HashSet<&str>,
-    ) -> Result<MaybeAppSrc> {
+    ) -> Result<GstOutputs> {
         let mounts = self
             .server
             .get_mount_points()
             .expect("The server should have mountpoints");
 
-        let launch_str = match stream_format {
-            StreamFormat::H264 => "! h264parse ! rtph264pay name=pay0",
-            StreamFormat::H265 => "! h265parse ! rtph265pay name=pay0",
-            StreamFormat::Custom(ref custom_format) => custom_format,
-        };
+        // Create a MaybeAppSrc: Write which we will give the caller.  When the backing AppSrc is
+        // created by the factory, fish it out and give it to the waiting MaybeAppSrc via the
+        // channel it provided.  This callback may be called more than once by Gstreamer if it is
+        // unhappy with the pipeline, so keep updating the MaybeAppSrc.
+        let (maybe_app_src, tx) = MaybeAppSrc::new_with_tx();
+        let (maybe_app_src_aud, tx_aud) = MaybeAppSrc::new_with_tx();
 
-        let factory = RTSPMediaFactory::new();
+        let outputs = GstOutputs::from_appsrcs(maybe_app_src, maybe_app_src_aud);
+
+        let factory = &outputs.factory;
 
         debug!(
             "Permitting {} to access {}",
@@ -76,25 +149,10 @@ impl RtspServer {
                 .collect::<String>(),
             paths.join(", ")
         );
-        self.add_permitted_roles(&factory, permitted_users);
+        self.add_permitted_roles(factory, permitted_users);
 
-        //factory.set_protocols(RTSPLowerTrans::TCP);
-        factory.set_launch(&format!("{}{}{}{}",
-            "( ",
-            "appsrc name=writesrc is-live=true block=true emit-signals=false max-bytes=0 do-timestamp=true ",
-            launch_str,
-            " )"
-        ));
         factory.set_shared(true);
 
-        // TODO maybe set video format via
-        // https://gitlab.freedesktop.org/gstreamer/gstreamer-rs/-/blob/master/examples/src/bin/appsrc.rs#L66
-
-        // Create a MaybeAppSrc: Write which we will give the caller.  When the backing AppSrc is
-        // created by the factory, fish it out and give it to the waiting MaybeAppSrc via the
-        // channel it provided.  This callback may be called more than once by Gstreamer if it is
-        // unhappy with the pipeline, so keep updating the MaybeAppSrc.
-        let (maybe_app_src, tx) = MaybeAppSrc::new_with_tx();
         factory.connect_media_configure(move |_factory, media| {
             debug!("RTSP: media was configured");
             let bin = media
@@ -103,18 +161,25 @@ impl RtspServer {
                 .dynamic_cast::<Bin>()
                 .expect("Media source's element should be a bin");
             let app_src = bin
-                .get_by_name_recurse_up("writesrc")
+                .get_by_name_recurse_up("vidsrc")
                 .expect("write_src must be present in created bin")
                 .dynamic_cast::<AppSrc>()
                 .expect("Source element is expected to be an appsrc!");
             let _ = tx.send(app_src); // Receiver may be dropped, don't panic if so
+
+            let app_src_aud = bin
+                .get_by_name_recurse_up("audsrc")
+                .expect("write_src must be present in created bin")
+                .dynamic_cast::<AppSrc>()
+                .expect("Source element is expected to be an appsrc!");
+            let _ = tx_aud.send(app_src_aud); // Receiver may be dropped, don't panic if so
         });
 
         for path in paths {
-            mounts.add_factory(path, &factory);
+            mounts.add_factory(path, factory);
         }
 
-        Ok(maybe_app_src)
+        Ok(outputs)
     }
 
     pub fn add_permitted_roles(&self, factory: &RTSPMediaFactory, permitted_roles: &HashSet<&str>) {
@@ -241,12 +306,14 @@ mod maybe_app_src {
                 Some(src) => src,
                 None => return Ok(buf.len()),
             };
+
             let mut gst_buf = gstreamer::Buffer::with_size(buf.len()).unwrap();
             {
                 let gst_buf_mut = gst_buf.get_mut().unwrap();
                 let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
                 gst_buf_data.copy_from_slice(buf);
             }
+
             let res = app_src.push_buffer(gst_buf); //.map_err(|e| io::Error::new(io::ErrorKind::Other, Box::new(e)))?;
             if res.is_err() {
                 self.app_src = None;
