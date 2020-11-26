@@ -3,11 +3,10 @@ use err_derive::Error;
 use gio::TlsAuthenticationMode;
 use log::*;
 use neolink::bc_protocol::BcCamera;
-use neolink::gst::{MaybeAppSrc, RtspServer, StreamFormat};
+use neolink::gst::{GstOutputs, RtspServer};
 use neolink::Never;
 use std::collections::HashSet;
 use std::fs;
-use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 use structopt::StructOpt;
@@ -30,6 +29,8 @@ pub enum Error {
     IoError(#[error(source)] std::io::Error),
     #[error(display = "Validation error")]
     ValidationError(#[error(source)] validator::ValidationErrors),
+    #[error(display = "ADPCM Decoding Error")]
+    AdpcmDecodingError(&'static str),
 }
 
 fn main() -> Result<(), Error> {
@@ -60,22 +61,14 @@ fn main() -> Result<(), Error> {
 
     crossbeam::scope(|s| {
         for camera in config.cameras {
-            let stream_format = match &*camera.format {
-                "h264" | "H264" => StreamFormat::H264,
-                "h265" | "H265" => StreamFormat::H265,
-                custom_format => StreamFormat::Custom(custom_format.to_string()),
-            };
-
+            if camera.format.is_some() {
+                warn!("The format config option of the camera has been removed in favour of auto detection.")
+            }
             // Let subthreads share the camera object; in principle I think they could share
             // the object as it sits in the config.cameras block, but I have not figured out the
             // syntax for that.
             let arc_cam = Arc::new(camera);
 
-            // The substream always seems to be H264, even on B800 cameras
-            let substream_format = match &*arc_cam.format {
-                "h264" | "H264" | "h265" | "H265" => StreamFormat::H264,
-                custom_format => StreamFormat::Custom(custom_format.to_string()),
-            };
             let permitted_users =
                 get_permitted_users(config.users.as_slice(), &arc_cam.permitted_users);
 
@@ -85,20 +78,20 @@ fn main() -> Result<(), Error> {
                     &*format!("/{}", arc_cam.name),
                     &*format!("/{}/mainStream", arc_cam.name),
                 ];
-                let mut output = rtsp
-                    .add_stream(paths, stream_format, &permitted_users)
+                let mut outputs = rtsp
+                    .add_stream(paths, &permitted_users)
                     .unwrap();
                 let main_camera = arc_cam.clone();
-                s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut output, true));
+                s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut outputs, true));
             }
             if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
-                let mut output = rtsp
-                    .add_stream(paths, substream_format, &permitted_users)
+                let mut outputs = rtsp
+                    .add_stream(paths, &permitted_users)
                     .unwrap();
                 let sub_camera = arc_cam.clone();
                 let manage = arc_cam.stream == "subStream";
-                s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut output, manage));
+                s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut outputs, manage));
             }
         }
 
@@ -112,7 +105,7 @@ fn main() -> Result<(), Error> {
 fn camera_loop(
     camera_config: &CameraConfig,
     stream_name: &str,
-    output: &mut MaybeAppSrc,
+    outputs: &mut GstOutputs,
     manage: bool,
 ) -> Result<Never, Error> {
     let min_backoff = Duration::from_secs(1);
@@ -120,8 +113,9 @@ fn camera_loop(
     let mut current_backoff = min_backoff;
 
     loop {
-        let cam_err = camera_main(camera_config, stream_name, output, manage).unwrap_err();
-        output.on_stream_error();
+        let cam_err = camera_main(camera_config, stream_name, outputs, manage).unwrap_err();
+        outputs.vidsrc.on_stream_error();
+        outputs.audsrc.on_stream_error();
         // Authentication failures are permanent; we retry everything else
         if cam_err.connected {
             current_backoff = min_backoff;
@@ -200,7 +194,7 @@ fn get_permitted_users<'a>(
 fn camera_main(
     camera_config: &CameraConfig,
     stream_name: &str,
-    output: &mut dyn Write,
+    outputs: &mut GstOutputs,
     manage: bool,
 ) -> Result<Never, CameraErr> {
     let mut connected = false;
@@ -252,7 +246,7 @@ fn camera_main(
             "{}: Starting video stream {}",
             camera_config.name, stream_name
         );
-        camera.start_video(output, stream_name, camera_config.channel_id)
+        camera.start_video(outputs, stream_name, camera_config.channel_id)
     })()
     .map_err(|err| CameraErr { connected, err })
 }

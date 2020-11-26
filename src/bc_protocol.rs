@@ -2,6 +2,8 @@ use self::connection::BcConnection;
 use self::media_packet::{MediaDataKind, MediaDataSubscriber};
 use crate::bc;
 use crate::bc::{model::*, xml::*};
+use crate::gst::GstOutputs;
+use adpcm::adpcm_to_pcm;
 use err_derive::Error;
 use log::*;
 use std::io::Write;
@@ -11,6 +13,7 @@ use std::sync::atomic::{AtomicU16, Ordering};
 
 use Md5Trunc::*;
 
+mod adpcm;
 mod connection;
 mod media_packet;
 mod time;
@@ -53,16 +56,11 @@ pub enum Error {
     #[error(display = "Timeout")]
     Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
 
-    // We map std::sync::mpsc::RecvTimeoutError onto one of these based on
-    // the errors enum
-    #[error(display = "Dropped connection")]
-    TimeoutDropped,
-
-    #[error(display = "Timeout")]
-    TimeoutTimeout,
-
     #[error(display = "Credential error")]
     AuthFailed,
+
+    #[error(display = "ADPCM Decoding Error")]
+    AdpcmDecodingError(&'static str),
 
     #[error(display = "Other error")]
     Other(&'static str),
@@ -279,7 +277,7 @@ impl BcCamera {
 
     pub fn start_video(
         &self,
-        data_out: &mut dyn Write,
+        data_outs: &mut GstOutputs,
         stream_name: &str,
         channel_id: u32,
     ) -> Result<Never> {
@@ -320,12 +318,26 @@ impl BcCamera {
         let mut media_sub = MediaDataSubscriber::from_bc_sub(&sub_video);
 
         loop {
-            let binary_data = media_sub.next_media_packet(RX_TIMEOUT)?;
+            let binary_data = media_sub.next_media_packet()?;
             // We now have a complete interesting packet. Send it to gst.
             // Process the packet
             match binary_data.kind() {
                 MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
-                    data_out.write_all(binary_data.body())?;
+                    let media_format = binary_data.media_format();
+                    data_outs.set_format(media_format);
+                    data_outs.vidsrc.write_all(binary_data.body())?;
+                }
+                MediaDataKind::AudioDataAac => {
+                    let media_format = binary_data.media_format();
+                    data_outs.set_format(media_format);
+                    data_outs.audsrc.write_all(binary_data.body())?;
+                }
+                MediaDataKind::AudioDataAdpcm => {
+                    let media_format = binary_data.media_format();
+                    data_outs.set_format(media_format);
+                    let adpcm = binary_data.body();
+                    let pcm = adpcm_to_pcm(adpcm)?;
+                    data_outs.audsrc.write_all(&pcm)?;
                 }
                 _ => {}
             };
