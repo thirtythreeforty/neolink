@@ -205,7 +205,7 @@ fn camera_main(
 ) -> Result<Never, CameraErr> {
     let mut connected = false;
     (|| {
-        let mut camera = BcCamera::new_with_addr(camera_config.camera_addr)?;
+        let mut camera = BcCamera::new_with_addr(camera_config.camera_addr, camera_config.channel_id)?;
         if camera_config.timeout.is_some() {
             warn!("The undocumented `timeout` config option has been removed and is no longer needed.");
             warn!("Please update your config file.");

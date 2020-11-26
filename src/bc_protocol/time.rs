@@ -12,8 +12,9 @@ impl BcCamera {
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_GET_GENERAL,
-                client_idx: 0,
-                encrypted: true,
+                channel_id: self.channel_id,
+                msg_num: self.new_message_num(),
+                stream_type: 0,
                 class: 0x6414,
             },
             body: BcBody::ModernMsg(ModernMsg::default()),
@@ -88,8 +89,9 @@ impl BcCamera {
         let set = Bc::new_from_xml(
             BcMeta {
                 msg_id: MSG_ID_SET_GENERAL,
-                client_idx: 0,
-                encrypted: true,
+                channel_id: self.channel_id,
+                msg_num: self.new_message_num(),
+                stream_type: 0,
                 class: 0x6414,
             },
             BcXml {

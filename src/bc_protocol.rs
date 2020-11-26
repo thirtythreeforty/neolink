@@ -7,6 +7,7 @@ use log::*;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
+use std::sync::atomic::{AtomicU16, Ordering};
 
 use Md5Trunc::*;
 
@@ -16,8 +17,10 @@ mod time;
 
 pub struct BcCamera {
     address: SocketAddr,
+    channel_id: u8,
     connection: Option<BcConnection>,
     logged_in: bool,
+    message_num: AtomicU16
 }
 
 use crate::Never;
@@ -72,7 +75,7 @@ impl Drop for BcCamera {
 }
 
 impl BcCamera {
-    pub fn new_with_addr<T: ToSocketAddrs>(hostname: T) -> Result<Self> {
+    pub fn new_with_addr<T: ToSocketAddrs>(hostname: T, channel_id: u8) -> Result<Self> {
         let address = hostname
             .to_socket_addrs()?
             .next()
@@ -80,9 +83,15 @@ impl BcCamera {
 
         Ok(Self {
             address,
+            channel_id,
+            message_num: AtomicU16::new(0),
             connection: None,
             logged_in: false,
         })
+    }
+
+    pub fn new_message_num(&self) -> u16 {
+        self.message_num.fetch_add(1, Ordering::Relaxed)
     }
 
     pub fn connect(&mut self) -> Result<()> {
@@ -121,8 +130,9 @@ impl BcCamera {
         let legacy_login = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_LOGIN,
-                client_idx: 0,
-                encrypted: true,
+                channel_id: self.channel_id,
+                msg_num: self.new_message_num(),
+                stream_type: 0,
                 class: 0x6514,
             },
             body: BcBody::LegacyMsg(LegacyMsg::LoginMsg {
@@ -177,8 +187,9 @@ impl BcCamera {
         let modern_login = Bc::new_from_xml(
             BcMeta {
                 msg_id: MSG_ID_LOGIN,
-                client_idx: 0, // TODO
-                encrypted: true,
+                channel_id: self.channel_id,
+                msg_num: self.new_message_num(),
+                stream_type: 0,
                 class: 0x6414,
             },
             BcXml {
@@ -243,8 +254,9 @@ impl BcCamera {
         let ping = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_PING,
-                client_idx: 0,
-                encrypted: true,
+                channel_id: self.channel_id,
+                msg_num: self.new_message_num(),
+                stream_type: 0,
                 class: 0x6414,
             },
             body: BcBody::ModernMsg(ModernMsg {
@@ -274,11 +286,18 @@ impl BcCamera {
             .expect("Must be connected to start video");
         let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
 
+        let stream_num = match stream_name {
+            "mainStream" => 0,
+            "subStream" => 1,
+            _ => 0,
+        };
+
         let start_video = Bc::new_from_xml(
             BcMeta {
                 msg_id: MSG_ID_VIDEO,
-                client_idx: 0, // TODO
-                encrypted: true,
+                channel_id: self.channel_id,
+                msg_num: self.new_message_num(),
+                stream_type: stream_num,
                 class: 0x6414, // IDK why
             },
             BcXml {
