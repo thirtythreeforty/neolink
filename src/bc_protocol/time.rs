@@ -24,11 +24,7 @@ impl BcCamera {
         sub_get_general.send(get)?;
         let msg = sub_get_general
             .rx
-            .recv_timeout(RX_TIMEOUT)
-            .map_err(|e| match e {
-                std::sync::mpsc::RecvTimeoutError::Timeout => Error::TimeoutTimeout,
-                std::sync::mpsc::RecvTimeoutError::Disconnected => Error::TimeoutDropped,
-            })?;
+            .recv_timeout(RX_TIMEOUT)?;
 
         if let BcBody::ModernMsg(ModernMsg {
             payload:
@@ -118,11 +114,7 @@ impl BcCamera {
         sub_set_general.send(set)?;
         let msg = sub_set_general
             .rx
-            .recv_timeout(RX_TIMEOUT)
-            .map_err(|e| match e {
-                std::sync::mpsc::RecvTimeoutError::Timeout => Error::TimeoutTimeout,
-                std::sync::mpsc::RecvTimeoutError::Disconnected => Error::TimeoutDropped,
-            })?;
+            .recv_timeout(RX_TIMEOUT)?;
 
         Ok(())
     }

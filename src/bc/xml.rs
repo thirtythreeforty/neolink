@@ -121,7 +121,7 @@ pub struct Preview {
     pub version: String,
 
     #[yaserde(rename = "channelId")]
-    pub channel_id: u32,
+    pub channel_id: u8,
     pub handle: u32,
     #[yaserde(rename = "streamType")]
     pub stream_type: String,
@@ -137,7 +137,7 @@ pub struct Extension {
     pub user_name: Option<String>,
     pub token: Option<String>,
     #[yaserde(rename = "channelId")]
-    pub channel_id: Option<u32>,
+    pub channel_id: Option<u8>,
 }
 
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]

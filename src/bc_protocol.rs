@@ -154,10 +154,7 @@ impl BcCamera {
 
         sub_login.send(legacy_login)?;
 
-        let legacy_reply = sub_login.rx.recv_timeout(RX_TIMEOUT).map_err(|e| match e {
-            std::sync::mpsc::RecvTimeoutError::Timeout => Error::TimeoutTimeout,
-            std::sync::mpsc::RecvTimeoutError::Disconnected => Error::TimeoutDropped,
-        })?;
+        let legacy_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
 
         let nonce;
         if let BcMeta {response_code: 0x01dd,..} = legacy_reply.meta {
@@ -217,10 +214,7 @@ impl BcCamera {
         );
 
         sub_login.send(modern_login)?;
-        let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT).map_err(|e| match e {
-            std::sync::mpsc::RecvTimeoutError::Timeout => Error::TimeoutTimeout,
-            std::sync::mpsc::RecvTimeoutError::Disconnected => Error::TimeoutDropped,
-        })?;
+        let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
 
         let device_info;
         match modern_reply.body {
@@ -279,10 +273,7 @@ impl BcCamera {
 
         sub_ping.send(ping)?;
 
-        sub_ping.rx.recv_timeout(RX_TIMEOUT).map_err(|e| match e {
-            std::sync::mpsc::RecvTimeoutError::Timeout => Error::TimeoutTimeout,
-            std::sync::mpsc::RecvTimeoutError::Disconnected => Error::TimeoutDropped,
-        })?;
+        sub_ping.rx.recv_timeout(RX_TIMEOUT)?;
 
         Ok(())
     }
@@ -291,7 +282,6 @@ impl BcCamera {
         &self,
         data_outs: &mut GstOutputs,
         stream_name: &str,
-        channel_id: u32,
     ) -> Result<Never> {
         let connection = self
             .connection
@@ -317,7 +307,7 @@ impl BcCamera {
             BcXml {
                 preview: Some(Preview {
                     version: xml_ver(),
-                    channel_id,
+                    channel_id: self.channel_id,
                     handle: 0,
                     stream_type: stream_name.to_string(),
                 }),

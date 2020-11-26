@@ -101,7 +101,7 @@ fn default_tls_client_auth() -> String {
     "none".to_string()
 }
 
-fn default_channel_id() -> u32 {
+fn default_channel_id() -> u8 {
     0
 }
 
