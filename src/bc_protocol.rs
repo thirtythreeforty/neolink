@@ -54,7 +54,10 @@ pub enum Error {
     DroppedConnection(#[error(source)] std::sync::mpsc::RecvError),
 
     #[error(display = "Timeout")]
-    Timeout(#[error(source)] std::sync::mpsc::RecvTimeoutError),
+    Timeout,
+
+    #[error(display = "Dropped connection")]
+    TimeoutDisconnected,
 
     #[error(display = "Credential error")]
     AuthFailed,
@@ -64,6 +67,15 @@ pub enum Error {
 
     #[error(display = "Other error")]
     Other(&'static str),
+}
+
+impl<'a> From<std::sync::mpsc::RecvTimeoutError> for Error {
+    fn from(k: std::sync::mpsc::RecvTimeoutError) -> Self {
+        match k {
+            std::sync::mpsc::RecvTimeoutError::Timeout => Error::Timeout,
+            std::sync::mpsc::RecvTimeoutError::Disconnected => Error::TimeoutDisconnected,
+        }
+    }
 }
 
 impl Drop for BcCamera {

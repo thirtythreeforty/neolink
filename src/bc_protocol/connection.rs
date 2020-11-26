@@ -58,8 +58,15 @@ impl BcConnection {
         let connections_isencrypted = is_encrypted.clone();
         let rx_thread = std::thread::spawn(move || {
             let mut context = BcContext::new();
-            context.set_encrypted(connections_isencrypted);
-            while BcConnection::poll(&mut context, &conn, &mut subs).is_ok() {}
+            while {
+                match BcConnection::poll(&mut context, &conn, &mut subs) {
+                    Ok(_) => true,
+                    Err(err) => {
+                        error!("Deserialization error: {:?}", err);
+                        false
+                    }
+                }
+            } {}
         });
 
         Ok(BcConnection {
