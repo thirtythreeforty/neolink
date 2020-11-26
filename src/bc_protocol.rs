@@ -133,6 +133,7 @@ impl BcCamera {
                 channel_id: self.channel_id,
                 msg_num: self.new_message_num(),
                 stream_type: 0,
+                response_code: 0x01dc,
                 class: 0x6514,
             },
             body: BcBody::LegacyMsg(LegacyMsg::LoginMsg {
@@ -149,7 +150,7 @@ impl BcCamera {
         })?;
 
         let nonce;
-        if let BcMeta {encrypted: true,..} = legacy_reply.meta {
+        if let BcMeta {response_code: 0x01dd,..} = legacy_reply.meta {
                 connection.set_encrypted(true);
         }
         match legacy_reply.body {
@@ -190,6 +191,7 @@ impl BcCamera {
                 channel_id: self.channel_id,
                 msg_num: self.new_message_num(),
                 stream_type: 0,
+                response_code: 0,
                 class: 0x6414,
             },
             BcXml {
@@ -257,6 +259,7 @@ impl BcCamera {
                 channel_id: self.channel_id,
                 msg_num: self.new_message_num(),
                 stream_type: 0,
+                response_code: 0,
                 class: 0x6414,
             },
             body: BcBody::ModernMsg(ModernMsg {
@@ -298,6 +301,7 @@ impl BcCamera {
                 channel_id: self.channel_id,
                 msg_num: self.new_message_num(),
                 stream_type: stream_num,
+                response_code: 0,
                 class: 0x6414, // IDK why
             },
             BcXml {

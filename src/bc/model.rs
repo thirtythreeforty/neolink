@@ -45,6 +45,7 @@ pub(super) struct BcHeader {
     pub channel_id: u8,
     pub stream_type: u8,
     pub msg_num: u16,
+    pub response_code: u16,
     pub class: u16,
     pub payload_offset: Option<u32>,
 }
@@ -56,6 +57,7 @@ pub struct BcMeta {
     pub msg_id: u32,
     pub channel_id: u8,
     pub stream_type: u8,
+    pub response_code: u16,
     pub msg_num: u16,
     pub class: u16,
 }
@@ -161,6 +163,7 @@ impl BcHeader {
             msg_id: self.msg_id,
             msg_num: self.msg_num,
             channel_id: self.channel_id,
+            response_code: self.response_code,
             stream_type: self.stream_type,
             class: self.class,
         }
@@ -173,6 +176,7 @@ impl BcHeader {
             msg_id: meta.msg_id,
             channel_id: meta.channel_id,
             stream_type: meta.stream_type,
+            response_code: meta.response_code,
             msg_num: meta.msg_num,
             class: meta.class,
         }

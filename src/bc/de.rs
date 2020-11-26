@@ -178,7 +178,7 @@ fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
     let (buf, channel_id) = le_u8(buf)?;
     let (buf, stream_type) = le_u8(buf)?;
     let (buf, msg_num) = le_u16(buf)?;
-    let (buf, (response_code, _ignored, class)) = tuple((le_u8, le_u8, le_u16))(buf)?;
+    let (buf, (response_code, class)) = tuple((le_u16, le_u16))(buf)?;
 
     // All modern messages are encrypted.  In addition, it seems that the camera firmware checks
     // this field to see if some other messages should be encrypted.  This is still somewhat fuzzy.
@@ -195,6 +195,7 @@ fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
             channel_id,
             stream_type,
             msg_num,
+            response_code,
             class,
             payload_offset,
         },
