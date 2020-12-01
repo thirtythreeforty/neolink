@@ -55,7 +55,12 @@ impl BcConnection {
 
         let rx_thread = std::thread::spawn(move || {
             let mut context = BcContext::new();
-            while BcConnection::poll(&mut context, &conn, &mut subs).is_ok() {}
+            let mut result;
+            while {
+                result = BcConnection::poll(&mut context, &conn, &mut subs);
+                result.is_ok()
+            } {}
+            error!("Deserialization error: {:?}", result.unwrap_err());
         });
 
         Ok(BcConnection {
