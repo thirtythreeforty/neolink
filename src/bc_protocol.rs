@@ -58,6 +58,9 @@ pub enum Error {
     #[error(display = "Credential error")]
     AuthFailed,
 
+    #[error(display = "Failed to translate camera address")]
+    AddrResolutionError,
+
     #[error(display = "ADPCM Decoding Error")]
     AdpcmDecodingError(&'static str),
 
@@ -81,22 +84,34 @@ impl Drop for BcCamera {
 }
 
 impl BcCamera {
-    pub fn new_with_addr<T: ToSocketAddrs>(hostname: T) -> Result<Self> {
-        let address = hostname
-            .to_socket_addrs()?
-            .next()
-            .ok_or(Error::Other("Address resolution failed"))?;
+    pub fn connect<T: ToSocketAddrs>(host: T) -> Result<BcCamera> {
+        let addr_iter = match host.to_socket_addrs() {
+            Ok(iter) => iter,
+            Err(_) => return Err(Error::AddrResolutionError),
+        };
 
-        Ok(Self {
-            address,
-            connection: None,
-            logged_in: false,
-        })
-    }
+        for addr in addr_iter {
+            debug!("Trying {}", addr);
+            let conn = match BcConnection::new(addr, RX_TIMEOUT) {
+                Ok(conn) => conn,
+                Err(err) => match err {
+                    connection::Error::CommunicationError(ref err) => {
+                        debug!("Assuming timeout from {}", err);
+                        continue;
+                    }
+                    err => return Err(err.into()),
+                },
+            };
 
-    pub fn connect(&mut self) -> Result<()> {
-        self.connection = Some(BcConnection::new(self.address, RX_TIMEOUT)?);
-        Ok(())
+            debug!("Success: {}", addr);
+            return Ok(Self {
+                address: addr,
+                connection: Some(conn),
+                logged_in: false,
+            });
+        }
+
+        return Err(Error::Timeout);
     }
 
     pub fn disconnect(&mut self) {

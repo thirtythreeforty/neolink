@@ -2,7 +2,6 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Deserialize;
 use std::clone::Clone;
-use std::net::SocketAddr;
 use std::time::Duration;
 use validator::{Validate, ValidationError};
 use validator_derive::Validate;
@@ -45,7 +44,7 @@ pub struct CameraConfig {
     pub name: String,
 
     #[serde(rename = "address")]
-    pub camera_addr: SocketAddr,
+    pub camera_addr: String,
 
     pub username: String,
     pub password: Option<String>,
