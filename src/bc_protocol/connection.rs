@@ -1,5 +1,6 @@
 use crate::bc;
 use crate::bc::model::*;
+use std::error::Error as StdErr; // Just need the traits
 use err_derive::Error;
 use log::*;
 use socket2::{Domain, Socket, Type};
@@ -63,7 +64,14 @@ impl BcConnection {
                 result = BcConnection::poll(&mut context, &conn, &mut subs);
                 result.is_ok()
             } {}
-            error!("Deserialization error: {:?}", result.unwrap_err());
+            let e = result.unwrap_err();
+            error!("Deserialization error: {}", e);
+            let mut cause = e.source();
+            while let Some(e) = cause {
+                error!("caused by: {}", e);
+                cause = e.source();
+
+            }
         });
 
         Ok(BcConnection {
