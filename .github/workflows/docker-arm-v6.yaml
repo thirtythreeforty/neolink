@@ -1,10 +1,10 @@
 # A single-shot build-n-pack on Alpine Linux
-name: Publish Docker image
+name: Publish Docker image (ARM v6)
 on: [push]
 
 jobs:
   push_to_registry:
-    name: Build Docker image
+    name: Build Docker image (ARM v6)
     runs-on: ubuntu-latest
     steps:
       - name: Check token is set
@@ -57,7 +57,7 @@ jobs:
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         uses: docker/build-push-action@v2
         with:
-          platforms: linux/arm/v7,linux/arm64/v8,linux/amd64
+          platforms: linux/arm/v6
           push: true
           file: Dockerfile
           tags: ${{ steps.tags.outputs.TAGS }}
