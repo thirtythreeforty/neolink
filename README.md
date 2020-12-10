@@ -27,6 +27,13 @@ Neolink does not support other cameras such as the RLC-420, since they already [
 
 In the future Neolink will be much easier to install.
 For now, follow these steps.
+Builds are provided for the following platforms:
+
+- Windows x86_64
+- macOS x86_64
+- Ubuntu x86_64
+- Debian x86, x86_64, aarch64, armhf
+- Docker
 
 ### Windows/Linux
 
@@ -39,7 +46,10 @@ For now, follow these steps.
 
 Note that if you use Chocolatey to install Gstreamer, it does this automatically.
 
-3. Download and extract a [prebuilt binary from continuous integration][ci-download] (click on the topmost commit for the most recent build).
+3. Download and extract a [prebuilt binary from continuous integration][ci-download]
+   1. Click on this link to go to the list of commits.
+   2. Click on the topmost commit to go to the most recent build's artifacts.
+   3. Scroll to the bottom of the build results page and click on the artifact you want.
 4. Write a configuration file for your cameras.  See the section below.
 5. Launch Neolink from a shell, passing your configuration file:
 
