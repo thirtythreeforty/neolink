@@ -43,6 +43,7 @@ jobs:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
       - name: Cache cargo build
+        if: runner.os != 'macOS' # Random missing crates on macOS, unclear why
         uses: actions/cache@v1
         with:
           path: target
