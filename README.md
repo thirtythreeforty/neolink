@@ -29,11 +29,13 @@ In the future Neolink will be much easier to install.
 For now, follow these steps.
 Builds are provided for the following platforms:
 
-- Windows x86_64
-- macOS x86_64
-- Ubuntu x86_64
-- Debian x86, x86_64, aarch64, armhf
-- Docker
+- Windows x86_64 ([download][win-ci-download])
+- macOS x86_64 ([download][macos-ci-download])
+- Ubuntu x86_64 ([download][ubuntu-ci-download])
+- Debian x86 ([download][debian-x86-ci-download])
+- Debian aarch64 ([download][debian-aarch-ci-download])
+- Debian armhf ([download][debian-armhf-ci-download])
+- Docker x86 (see below)
 
 ### Windows/Linux
 
@@ -46,10 +48,9 @@ Builds are provided for the following platforms:
 
 Note that if you use Chocolatey to install Gstreamer, it does this automatically.
 
-3. Download and extract a [prebuilt binary from continuous integration][ci-download]
-   1. Click on this link to go to the list of commits.
-   2. Click on the topmost commit to go to the most recent build's artifacts.
-   3. Scroll to the bottom of the build results page and click on the artifact you want.
+3. Download and unpack Neolink from the links above.
+   1. Note: you can also click on [this link][ci-download] to see all historical builds.
+  You will need to be logged in to GitHub to download directly from the builds page.
 4. Write a configuration file for your cameras.  See the section below.
 5. Launch Neolink from a shell, passing your configuration file:
 
@@ -64,6 +65,13 @@ neolink --config my_config.toml
 
 [gstreamer]: https://gstreamer.freedesktop.org/documentation/installing/index.html
 [ci-download]: https://github.com/thirtythreeforty/neolink/actions?query=workflow%3ACI+branch%3Amaster+
+
+[win-ci-download]:          https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-ubuntu-18.04.zip
+[macos-ci-download]:        https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-macos-10.15.zip
+[ubuntu-ci-download]:       https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-ubuntu-18.04.zip
+[debian-x86-ci-download]:   https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-arm64-buster.zip
+[debian-armhf-ci-download]: https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-armhf-buster.zip
+[debian-aarch-ci-download]: https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-arm64-buster.zip
 
 ### Docker
 
