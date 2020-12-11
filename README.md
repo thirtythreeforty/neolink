@@ -66,10 +66,10 @@ neolink --config my_config.toml
 [gstreamer]: https://gstreamer.freedesktop.org/documentation/installing/index.html
 [ci-download]: https://github.com/thirtythreeforty/neolink/actions?query=workflow%3ACI+branch%3Amaster+
 
-[win-ci-download]:          https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-ubuntu-18.04.zip
+[win-ci-download]:          https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-windows-2019.zip
 [macos-ci-download]:        https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-macos-10.15.zip
 [ubuntu-ci-download]:       https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-ubuntu-18.04.zip
-[debian-x86-ci-download]:   https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-arm64-buster.zip
+[debian-x86-ci-download]:   https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-i386-buster.zip
 [debian-armhf-ci-download]: https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-armhf-buster.zip
 [debian-aarch-ci-download]: https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-arm64-buster.zip
 
