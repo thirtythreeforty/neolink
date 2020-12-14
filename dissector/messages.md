@@ -11,9 +11,9 @@ a PR to improve it.
 
     - Header
 
-    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|
-    | f0 de bc 0a  | 01 00 00 00  |  2c 07 00 00   |    00 00 00 01    |       01        |   dc    |     14 65     |
+    |    magic     |  message id  | message length | encryption offset | encrypt | unknown | message class |
+    |--------------|--------------|----------------|-------------------|---------|---------|---------------|
+    | f0 de bc 0a  | 01 00 00 00  |  2c 07 00 00   |    00 00 00 01    |    01   |    dc   |     14 65     |
 
     - Body
 
@@ -29,9 +29,9 @@ a PR to improve it.
 
     - Header
 
-    |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|
-    | f0 de bc 0a  | 01 00 00 00  |  91 00 00 00   |    00 00 00 01    |       01        |   dd    |     14 66     |
+    |    magic     |  message id  | message length | encryption offset | encrypt | unknown | message class |
+    |--------------|--------------|----------------|-------------------|---------|---------|---------------|
+    | f0 de bc 0a  | 01 00 00 00  |  91 00 00 00   |    00 00 00 01    |    01   |    dd   |     14 66     |
 
     - Body
 
@@ -47,16 +47,17 @@ a PR to improve it.
 
     - **Notes:** Sends back a NONCE used for the modern login message. This is
     effectively an upgrade request to use the modern xml style over legacy.
-    A legacy camera likely replies differently but I don't have one to test on.
+    Legacy cameras respond with status code `c8 00`, message class `00 00` and a basic camera description payload.
+    The legacy protocol beyond this point is not documented and not implemented in Neolink.
 
 - 1: Login Modern
 
   - Client
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 01 00 00 00  |  28 01 00 00   |    00 00 00 01    |       00        |   00    |     14 64     |  00 00 00 00  |
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+    |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+    | f0 de bc 0a  | 01 00 00 00  |  28 01 00 00   |    00 00 00 01    |       00 00       |     14 64     |  00 00 00 00  |
 
     - Binary
 
@@ -79,9 +80,9 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 01 00 00 00  |  2e 06 00 00   |    00 00 00 01    |       c8        |   00    |     00 00     |  00 00 00 00  |
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+    |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+    | f0 de bc 0a  | 01 00 00 00  |  2e 06 00 00   |    00 00 00 01    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -173,9 +174,9 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 03 00 00 00  |  aa 00 00 00   |    00 00 00 09    |       00        |   00    |     14 64     |  00 00 00 00  |
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+    |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+    | f0 de bc 0a  | 03 00 00 00  |  aa 00 00 00   |    00 00 00 09    |       00 00       |     14 64     |  00 00 00 00  |
 
     - Binary
 
@@ -196,9 +197,9 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 03 00 00 00  |  8a 00 00 00   |    00 00 00 09    |       c8        |   00    |     00 00     |  6a 00 00 00  |
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+    |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+    | f0 de bc 0a  | 03 00 00 00  |  8a 00 00 00   |    00 00 00 09    |       c8 00       |     00 00     |  6a 00 00 00  |
 
     - Body
 
@@ -222,9 +223,9 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-    |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-    | f0 de bc 0a  | 03 00 00 00  |  e8 5e 00 00   |    00 00 00 09    |       c8        |   00    |     00 00     |  00 00 00 00  |
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+    |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+    | f0 de bc 0a  | 03 00 00 00  |  e8 5e 00 00   |    00 00 00 09    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Body
 
@@ -237,9 +238,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 04  |  00 00 00 86   |    2b 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 04  |  00 00 00 86   |    2b 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
     - Binary
 
@@ -257,9 +258,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 04  |  00 00 00 00   |    2b 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 04  |  00 00 00 00   |    2b 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
 - 10: `<TalkAbility>`
 
@@ -267,9 +268,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 0a  |  00 00 00 68   |    0b 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 0a  |  00 00 00 68   |    0b 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -284,9 +285,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 0a  |  00 00 01 f7   |    0b 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 0a  |  00 00 01 f7   |    0b 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -320,9 +321,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 12  |  00 00 00 a4   |    1e 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 12  |  00 00 00 a4   |    1e 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
     - Binary
 
@@ -341,9 +342,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 12  |  00 00 00 00   |    1e 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 12  |  00 00 00 00   |    1e 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
 - 25: `<VideoInput>` (write)
 
@@ -351,9 +352,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 19  |  00 00 05 c2   |    64 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 19  |  00 00 05 c2   |    64 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -452,9 +453,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 19  |  00 00 00 00   |    64 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 19  |  00 00 00 00   |    64 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
 
 - 26: `<VideoInput>`
@@ -463,9 +464,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 1a  |  00 00 00 68   |    2d 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 1a  |  00 00 00 68   |    2d 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -480,9 +481,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 1a  |  00 00 05 7c   |    2d 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 1a  |  00 00 05 7c   |    2d 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -575,17 +576,17 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 1f  |  00 00 00 00   |    05 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 1f  |  00 00 00 00   |    05 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 1f  |  00 00 00 00   |    05 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 1f  |  00 00 00 00   |    05 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
   - **Notes:** The camera will not send message 33 to the client until
   after this msg has been recieved
@@ -596,9 +597,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 21  |  00 00 00 f0   |    05 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 21  |  00 00 00 f0   |    05 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -622,9 +623,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 2c  |  00 00 00 68   |    30 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 2c  |  00 00 00 68   |    30 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -639,9 +640,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 2c  |  00 00 01 df   |    30 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 2c  |  00 00 01 df   |    30 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -675,9 +676,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 2d  |  00 00 02 23   |    32 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 2d  |  00 00 02 23   |    32 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -716,9 +717,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 2d  |  00 00 00 00   |    32 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 2d  |  00 00 00 00   |    32 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
 - 52: `<Shelter>`
 
@@ -726,9 +727,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 34  |  00 00 00 68   |    36 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 34  |  00 00 00 68   |    36 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -743,9 +744,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 34  |  00 00 00 96   |    36 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 34  |  00 00 00 96   |    36 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -766,9 +767,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 35  |  00 00 01 d7   |    38 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 35  |  00 00 01 d7   |    38 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -813,9 +814,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 35  |  00 00 00 00   |    38 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 35  |  00 00 00 00   |    38 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
 - 54: `<RecordCfg>`
 
@@ -823,9 +824,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 36  |  00 00 00 68   |    14 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 36  |  00 00 00 68   |    14 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -840,9 +841,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 36  |  00 00 00 ed   |    14 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 36  |  00 00 00 ed   |    14 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -865,9 +866,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 37  |  00 00 01 3b   |    16 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 37  |  00 00 01 3b   |    16 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -896,9 +897,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 37  |  00 00 00 00   |    16 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 37  |  00 00 00 00   |    16 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
 - 56: `<Compression>`
 
@@ -906,9 +907,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 38  |  00 00 00 68   |    1d 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 38  |  00 00 00 68   |    1d 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -923,9 +924,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 38  |  00 00 03 61   |    1d 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 38  |  00 00 03 61   |    1d 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -975,9 +976,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 39  |  00 00 02 bc   |    1f 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 39  |  00 00 02 bc   |    1f 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -1023,9 +1024,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 39  |  00 00 00 00   |    1f 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 39  |  00 00 00 00   |    1f 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
 - 58: `<AbilitySupport>`
 
@@ -1033,9 +1034,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 3a  |  00 00 00 6b   |    03 00 00 00    |       00        |   00    |     64 14     |  00 00 00 6b  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 3a  |  00 00 00 6b   |    03 00 00 00    |       00 00       |     64 14     |  00 00 00 6b  |
 
     - Body
 
@@ -1050,9 +1051,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 3a  |  00 00 03 a4   |    03 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 3a  |  00 00 03 a4   |    03 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1116,17 +1117,17 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 4c  |  00 00 00 00   |    22 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4c  |  00 00 00 00   |    22 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 4c  |  00 00 01 69   |    22 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4c  |  00 00 01 69   |    22 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1158,9 +1159,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 4d  |  00 00 01 5b   |    25 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4d  |  00 00 01 5b   |    25 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
     - Binary
 
@@ -1190,9 +1191,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 4d  |  00 00 00 00   |    14 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4d  |  00 00 00 00   |    14 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
 - 78: `<VideoInput>`
 
@@ -1200,9 +1201,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 4e  |  00 00 00 d3   |    1b 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4e  |  00 00 00 d3   |    1b 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1225,9 +1226,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 4f  |  00 00 01 3b   |    1b 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 4f  |  00 00 01 3b   |    1b 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1253,17 +1254,17 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 50  |  00 00 00 00   |    08 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 50  |  00 00 00 00   |    08 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 50  |  00 00 01 f0   |    08 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 50  |  00 00 01 f0   |    08 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1292,9 +1293,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 51  |  00 00 00 68   |    19 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 51  |  00 00 00 68   |    19 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -1309,9 +1310,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 51  |  00 00 04 30   |    19 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 51  |  00 00 04 30   |    19 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1380,9 +1381,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 52  |  00 00 05 da   |    1a 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 52  |  00 00 05 da   |    1a 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -1475,9 +1476,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 52  |  00 00 00 00   |    1a 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 52  |  00 00 00 00   |    1a 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
 - 93: `<LinkType>`
 
@@ -1485,9 +1486,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 5d  |  00 00 00 00   |    17 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 5d  |  00 00 00 00   |    17 00 00 00    |       00  00      |     64 14     |  00 00 00 00  |
 
 - 102: `<HDDInfoList>`
 
@@ -1495,17 +1496,17 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 66  |  00 00 00 00   |    07 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 66  |  00 00 00 00   |    07 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 66  |  00 00 00 55   |    07 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 66  |  00 00 00 55   |    07 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1522,17 +1523,17 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 68  |  00 00 00 00   |    0a 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 68  |  00 00 00 00   |    0a 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 68  |  00 00 01 a5   |    0a 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 68  |  00 00 01 a5   |    0a 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1565,17 +1566,17 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 73  |  00 00 00 00   |    0c 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 73  |  00 00 00 00   |    0c 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 73  |  00 00 00 75   |    0c 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 73  |  00 00 00 75   |    0c 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1594,9 +1595,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 84  |  00 00 00 68   |    65 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 84  |  00 00 00 68   |    65 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -1611,9 +1612,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 84  |  00 00 05 7c   |    65 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 84  |  00 00 05 7c   |    65 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1706,17 +1707,17 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 85  |  00 00 00 00   |    06 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 85  |  00 00 00 00   |    06 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 85  |  00 00 00 7f   |    06 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 85  |  00 00 00 7f   |    06 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1736,17 +1737,17 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 92  |  00 00 00 00   |    04 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 92  |  00 00 00 00   |    04 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 92  |  00 00 02 fc   |    04 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 92  |  00 00 02 fc   |    04 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1789,9 +1790,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 97  |  00 00 00 a7   |    02 00 00 00    |       00        |   00    |     64 14     |  00 00 00 a7  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 97  |  00 00 00 a7   |    02 00 00 00    |       00 00       |     64 14     |  00 00 00 a7  |
 
     - Body
 
@@ -1807,9 +1808,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 97  |  00 00 03 ac   |    02 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 97  |  00 00 03 ac   |    02 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1856,9 +1857,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 be  |  00 00 00 68   |    0d 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 be  |  00 00 00 68   |    0d 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -1873,9 +1874,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 be  |  00 00 00 86   |    0d 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 be  |  00 00 00 86   |    0d 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -1895,17 +1896,17 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 c0  |  00 00 00 00   |    05 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 c0  |  00 00 00 00   |    05 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 c0  |  00 00 00 00   |    05 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 c0  |  00 00 00 00   |    05 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
 - 199: `<Support>`
 
@@ -1913,17 +1914,17 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 c7  |  00 00 00 00   |    02 00 00 00    |       00        |   00    |     64 14     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 c7  |  00 00 00 00   |    02 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
   - Camera
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 c7  |  00 00 05 f6   |    02 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 c7  |  00 00 05 f6   |    02 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -2007,9 +2008,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 d0  |  00 00 00 68   |    2e 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 d0  |  00 00 00 68   |    2e 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -2024,9 +2025,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 d0  |  00 00 00 c2   |    2e 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 d0  |  00 00 00 c2   |    2e 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
     - Binary
 
@@ -2048,9 +2049,9 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 d1  |  00 00 01 10   |    85 00 00 00    |       00        |   00    |     64 14     |  00 00 00 68  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 d1  |  00 00 01 10   |    85 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
     - Body
 
@@ -2078,6 +2079,6 @@ a PR to improve it.
 
     - Header
 
-        |    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class | Binary Offset |
-        |--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-        | 0a bc de f0  | 00 00 00 d1  |  00 00 00 00   |    85 00 00 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 d1  |  00 00 00 00   |    85 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
