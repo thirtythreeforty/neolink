@@ -33,7 +33,7 @@ pub enum Error {
 }
 
 fn main() -> Result<(), Error> {
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     info!(
         "Neolink {} {}",
