@@ -5,7 +5,11 @@
 FROM docker.io/rust:1-alpine AS build
 MAINTAINER thirtythreeforty@gmail.com
 
-RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
+# Until Alpine merges gst-rtsp-server into a release, pull all Gstreamer packages
+# from the "testing" release
+RUN apk add --no-cache \
+    -X http://dl-cdn.alpinelinux.org/alpine/edge/main \
+    -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
   gst-rtsp-server-dev
 RUN apk add --no-cache musl-dev gcc
 
