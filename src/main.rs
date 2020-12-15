@@ -242,7 +242,8 @@ fn do_camera_management(
         use time::OffsetDateTime;
         // We'd like now_local() but it's deprecated - try to get the local time, but if no
         // time zone, fall back to UTC.
-        let new_time = OffsetDateTime::try_now_local().unwrap_or(OffsetDateTime::now_utc());
+        let new_time =
+            OffsetDateTime::try_now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
 
         warn!(
             "{}: Camera has no time set, setting to {}",

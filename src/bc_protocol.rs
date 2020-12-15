@@ -111,7 +111,7 @@ impl BcCamera {
             });
         }
 
-        return Err(Error::Timeout);
+        Err(Error::Timeout)
     }
 
     pub fn disconnect(&mut self) {
