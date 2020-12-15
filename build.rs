@@ -18,6 +18,10 @@ fn build_ver() {
 }
 
 fn git_ver() -> Option<String> {
+    github_ver().or_else(git_cmd_ver)
+}
+
+fn git_cmd_ver() -> Option<String> {
     let mut git_cmd = Command::new("git");
     git_cmd.args(&["describe", "--tags"]);
 
@@ -27,6 +31,15 @@ fn git_ver() -> Option<String> {
             .output()
             .ok()
             .map(|o| String::from_utf8(o.stdout).unwrap())
+    } else {
+        None
+    }
+}
+
+fn github_ver() -> Option<String> {
+    if let Ok(sha1) = env::var("GITHUB_SHA") {
+        println!("cargo:rerun-if-env-changed=GITHUB_SHA");
+        Some(sha1)
     } else {
         None
     }
