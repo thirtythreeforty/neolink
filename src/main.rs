@@ -216,29 +216,7 @@ fn camera_main(
         info!("{}: Connected and logged in", camera_config.name);
 
         if manage {
-            let cam_time = camera.get_time()?;
-            if let Some(time) = cam_time {
-                info!(
-                    "{}: Camera time is already set: {}",
-                    camera_config.name, time
-                );
-            } else {
-                let new_time = time::OffsetDateTime::now_local();
-                warn!(
-                    "{}: Camera has no time set, setting to {}",
-                    camera_config.name, new_time
-                );
-                camera.set_time(new_time)?;
-                let cam_time = camera.get_time()?;
-                if let Some(time) = cam_time {
-                    info!(
-                        "{}: Camera time is now set: {}",
-                        camera_config.name, time
-                    );
-                } else {
-                    error!("{}: Camera did not accept new time (is {} an admin?)", camera_config.name, camera_config.username);
-                }
-            }
+            do_camera_management(&mut camera, camera_config)?;
         }
 
         info!(
@@ -248,4 +226,34 @@ fn camera_main(
         camera.start_video(outputs, stream_name, camera_config.channel_id)
     })()
     .map_err(|err| CameraErr { connected, err })
+}
+
+fn do_camera_management(
+    camera: &mut BcCamera,
+    camera_config: &CameraConfig,
+) -> Result<(), neolink::Error> {
+    let cam_time = camera.get_time()?;
+    if let Some(time) = cam_time {
+        info!(
+            "{}: Camera time is already set: {}",
+            camera_config.name, time
+        );
+    } else {
+        let new_time = time::OffsetDateTime::now_local();
+        warn!(
+            "{}: Camera has no time set, setting to {}",
+            camera_config.name, new_time
+        );
+        camera.set_time(new_time)?;
+        let cam_time = camera.get_time()?;
+        if let Some(time) = cam_time {
+            info!("{}: Camera time is now set: {}", camera_config.name, time);
+        } else {
+            error!(
+                "{}: Camera did not accept new time (is {} an admin?)",
+                camera_config.name, camera_config.username
+            );
+        }
+    }
+    Ok(())
 }
