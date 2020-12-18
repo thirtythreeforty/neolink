@@ -5,6 +5,9 @@
 #################################
 ##            SETUP            ##
 #################################
+# This is the generic base for  #
+# all other dockers to follow   #
+#################################
 FROM docker.io/alpine:edge AS setup
 ARG TARGETPLATFORM
 
@@ -20,6 +23,9 @@ RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing libg
 
 #################################
 ##            BUILD            ##
+#################################
+# Install dev packages and      #
+# with cargo                    #
 #################################
 FROM setup AS build
 ARG TARGETPLATFORM
@@ -46,7 +52,9 @@ RUN cargo build --release
 #################################
 ##            PUBLISH          ##
 #################################
-# Create the release container. Match the base OS used to build
+# Copy from build neolink and   #
+# prepares for execution        #
+#################################
 FROM setup
 ARG TARGETPLATFORM
 ARG REPO
