@@ -260,5 +260,20 @@ fn do_camera_management(
             );
         }
     }
+
+    let version_info = camera.version();
+    if version_info.is_ok() {
+        info!(
+            "{}: Camera reports firmware version {}",
+            camera_config.name,
+            version_info.unwrap().firmwareVersion
+        );
+    } else {
+        info!(
+            "{}: Could not fetch version information",
+            camera_config.name
+        );
+    }
+
     Ok(())
 }
