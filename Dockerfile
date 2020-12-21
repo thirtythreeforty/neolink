@@ -25,7 +25,10 @@ RUN cargo build --release
 # Create the release container. Match the base OS used to build
 FROM docker.io/alpine:latest
 
-RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing libgcc \
+RUN apk add --no-cache \
+    -X http://dl-cdn.alpinelinux.org/alpine/edge/main \
+    -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
+  libgcc \
   tzdata \
   gstreamer \
   gst-plugins-base \
