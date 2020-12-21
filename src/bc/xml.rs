@@ -35,6 +35,8 @@ pub struct BcXml {
     pub login_net: Option<LoginNet>,
     #[yaserde(rename = "DeviceInfo")]
     pub device_info: Option<DeviceInfo>,
+    #[yaserde(rename = "VersionInfo")]
+    pub version_info: Option<VersionInfo>,
     #[yaserde(rename = "Preview")]
     pub preview: Option<Preview>,
     #[yaserde(rename = "SystemGeneral")]
@@ -101,6 +103,17 @@ impl Default for LoginNet {
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct DeviceInfo {
     pub resolution: Resolution,
+}
+
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct VersionInfo {
+    pub name: String,
+    pub serialNumber: String,
+    pub buildDay: String,
+    pub hardwareVersion: String,
+    pub cfgVersion: String,
+    pub firmwareVersion: String,
+    pub detail: String,
 }
 
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
