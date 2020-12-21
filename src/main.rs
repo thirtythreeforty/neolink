@@ -261,12 +261,15 @@ fn do_camera_management(
         }
     }
 
-    let version_info = camera.version();
-    if version_info.is_ok() {
+    use neolink::bc::xml::VersionInfo;
+    if let Ok(VersionInfo {
+        firmwareVersion: firmware_version,
+        ..
+    }) = camera.version()
+    {
         info!(
             "{}: Camera reports firmware version {}",
-            camera_config.name,
-            version_info.unwrap().firmwareVersion
+            camera_config.name, firmware_version
         );
     } else {
         info!(
