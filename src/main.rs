@@ -260,5 +260,23 @@ fn do_camera_management(
             );
         }
     }
+
+    use neolink::bc::xml::VersionInfo;
+    if let Ok(VersionInfo {
+        firmwareVersion: firmware_version,
+        ..
+    }) = camera.version()
+    {
+        info!(
+            "{}: Camera reports firmware version {}",
+            camera_config.name, firmware_version
+        );
+    } else {
+        info!(
+            "{}: Could not fetch version information",
+            camera_config.name
+        );
+    }
+
     Ok(())
 }

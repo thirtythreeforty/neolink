@@ -225,7 +225,7 @@ pub fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
                 // Some formats e.g. OKI are not in the full PCM range of values
                 // To convert we must scale it to the i16 range
                 // We also cast to i16 at this point ready for the conversion to u8 bytes of the output
-                let scaled_sample = (sample as i32 * (i16::MAX as i32)
+                let scaled_sample = (sample as i32 * (std::i16::MAX as i32)
                     / (context.max_sample_size - 1) as i32)
                     as i16;
 

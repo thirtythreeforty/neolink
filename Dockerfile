@@ -12,6 +12,7 @@ FROM docker.io/alpine:edge AS setup
 ARG TARGETPLATFORM
 
 RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing libgcc \
+  libgcc \
   tzdata \
   gstreamer \
   gst-plugins-base \

@@ -250,6 +250,51 @@ impl BcCamera {
         Ok(())
     }
 
+    pub fn version(&self) -> Result<VersionInfo> {
+        let connection = self
+            .connection
+            .as_ref()
+            .expect("Must be connected to get version info");
+        let sub_version = connection.subscribe(MSG_ID_VERSION)?;
+
+        let version = Bc {
+            meta: BcMeta {
+                msg_id: MSG_ID_VERSION,
+                client_idx: 0,
+                encrypted: true,
+                class: 0x6414,
+            },
+            body: BcBody::ModernMsg(ModernMsg {
+                ..Default::default()
+            }),
+        };
+
+        sub_version.send(version)?;
+
+        let modern_reply = sub_version.rx.recv_timeout(RX_TIMEOUT)?;
+        let version_info;
+        match modern_reply.body {
+            BcBody::ModernMsg(ModernMsg {
+                xml:
+                    Some(BcXml {
+                        version_info: Some(info),
+                        ..
+                    }),
+                ..
+            }) => {
+                version_info = info;
+            }
+            _ => {
+                return Err(Error::UnintelligibleReply {
+                    reply: modern_reply,
+                    why: "Expected a VersionInfo message",
+                })
+            }
+        }
+
+        Ok(version_info)
+    }
+
     pub fn ping(&self) -> Result<()> {
         let connection = self.connection.as_ref().expect("Must be connected to ping");
         let sub_ping = connection.subscribe(MSG_ID_PING)?;
