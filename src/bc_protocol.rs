@@ -8,8 +8,8 @@ use err_derive::Error;
 use log::*;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::time::Duration;
 use std::sync::atomic::{AtomicU16, Ordering};
+use std::time::Duration;
 
 use Md5Trunc::*;
 
@@ -23,7 +23,7 @@ pub struct BcCamera {
     channel_id: u8,
     connection: Option<BcConnection>,
     logged_in: bool,
-    message_num: AtomicU16
+    message_num: AtomicU16,
 }
 
 use crate::Never;
@@ -157,9 +157,6 @@ impl BcCamera {
         let legacy_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
 
         let nonce;
-        if let BcMeta {response_code: 0x01dd,..} = legacy_reply.meta {
-                connection.set_encrypted(true);
-        }
         match legacy_reply.body {
             BcBody::ModernMsg(ModernMsg {
                 payload:
@@ -278,11 +275,7 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(
-        &self,
-        data_outs: &mut GstOutputs,
-        stream_name: &str,
-    ) -> Result<Never> {
+    pub fn start_video(&self, data_outs: &mut GstOutputs, stream_name: &str) -> Result<Never> {
         let connection = self
             .connection
             .as_ref()

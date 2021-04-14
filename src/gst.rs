@@ -13,7 +13,6 @@ use gstreamer_rtsp_server::{
     RTSP_PERM_MEDIA_FACTORY_ACCESS, RTSP_PERM_MEDIA_FACTORY_CONSTRUCT,
     RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
-use itertools::Itertools;
 use log::*;
 use std::collections::HashSet;
 use std::fs;
@@ -142,10 +141,7 @@ impl RtspServer {
         debug!(
             "Permitting {} to access {}",
             // This is hashmap or (iter) equivalent of join, it requres itertools
-            permitted_users
-                .iter()
-                .cloned()
-                .intersperse(", ")
+            itertools::Itertools::intersperse(permitted_users.iter().cloned(), ", ")
                 .collect::<String>(),
             paths.join(", ")
         );

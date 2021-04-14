@@ -99,7 +99,7 @@ fn hex32<'a>() -> impl Fn(&'a [u8]) -> IResult<&'a [u8], String> {
     })
 }
 
-fn bc_legacy_login_msg<'a>(buf: &'a [u8]) -> IResult<&'a [u8], LegacyMsg> {
+fn bc_legacy_login_msg(buf: &'_ [u8]) -> IResult<&'_ [u8], LegacyMsg> {
     let (buf, username) = hex32()(buf)?;
     let (buf, password) = hex32()(buf)?;
 
@@ -121,16 +121,29 @@ fn bc_modern_msg<'a, 'b>(
         _ => 0, // If missing payload_offset treat all as payload
     };
 
+    if header.msg_id == 1 && (header.response_code >> 8) == 0xdd {
+        // Login reply has the encryption info
+        // Set that the encryption type now
+        let encryption_protocol_byte = (header.response_code & 0xff) as usize;
+        match encryption_protocol_byte {
+            0x00 => context.set_encrypted(EncryptionProtocol::Unencrypted),
+            0x01 => context.set_encrypted(EncryptionProtocol::VersionOne),
+            0x03 => context.set_encrypted(EncryptionProtocol::VersionThree),
+            _ => context.set_encrypted(EncryptionProtocol::Unknown),
+        }
+    }
+
     let (buf, ext_buf) = take(ext_len)(buf)?;
     let payload_len = header.body_len - ext_len;
     let (buf, payload_buf) = take(payload_len)(buf)?;
 
     let decrypted;
-    let processed_ext_buf = if !context.get_encrypted() {
-        ext_buf
-    } else {
-        decrypted = xml_crypto::crypt(header.channel_id as u32, ext_buf);
-        &decrypted
+    let processed_ext_buf = match context.get_encrypted() {
+        EncryptionProtocol::Unencrypted => ext_buf,
+        encryption_protocol => {
+            decrypted = xml_crypto::crypt(header.channel_id as u32, ext_buf, encryption_protocol);
+            &decrypted
+        }
     };
 
     // Now we'll take the buffer that Nom gave a ref to and parse it.
@@ -152,14 +165,10 @@ fn bc_modern_msg<'a, 'b>(
     let payload;
     if payload_len > 0 {
         // Extract remainder of message as binary, if it exists
-        let decrypted;
-        let processed_payload_buf = if !context.get_encrypted() {
-            payload_buf
-        } else {
-            decrypted = xml_crypto::crypt(header.channel_id as u32, payload_buf);
-            &decrypted
-        };
-        if let Ok(xml) = BcXml::try_parse(processed_payload_buf) {
+        let encryption_protocol = context.get_encrypted();
+        let processed_payload_buf =
+            xml_crypto::crypt(header.channel_id as u32, payload_buf, encryption_protocol);
+        if let Ok(xml) = BcXml::try_parse(processed_payload_buf.as_slice()) {
             payload = Some(BcPayloads::BcXml(xml));
         } else {
             payload = Some(BcPayloads::Binary(payload_buf.to_vec()));

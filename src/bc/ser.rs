@@ -5,12 +5,17 @@ use cookie_factory::bytes::*;
 use cookie_factory::sequence::tuple;
 use cookie_factory::{combinator::*, gen};
 use cookie_factory::{GenError, SerializeFn, WriteContext};
+use log::error;
 use std::io::Write;
 
 pub type Error = GenError;
 
 impl Bc {
-    pub fn serialize<W: Write>(&self, buf: W, encrypted: bool) -> Result<W, GenError> {
+    pub fn serialize<W: Write>(
+        &self,
+        buf: W,
+        encryption_protocol: EncryptionProtocol,
+    ) -> Result<W, GenError> {
         // Ideally this would be a combinator, but that would be hairy because we have to
         // serialize the XML to have the metadata to build the header
         let body_buf;
@@ -20,7 +25,9 @@ impl Bc {
             BcBody::ModernMsg(ref modern) => {
                 // First serialize ext
                 let (temp_buf, ext_len) = gen(
-                    opt_ref(&modern.extension, |ext| bc_ext(self.meta.channel_id as u32, ext, encrypted)),
+                    opt_ref(&modern.extension, |ext| {
+                        bc_ext(self.meta.channel_id as u32, ext, encryption_protocol)
+                    }),
                     vec![],
                 )?;
 
@@ -39,7 +46,11 @@ impl Bc {
                 // Now get the payload part of the body and add to ext_buf
                 let (temp_buf, _) = gen(
                     opt_ref(&modern.payload, |payload_offset| {
-                        bc_payload(self.meta.channel_id as u32, payload_offset, encrypted)
+                        bc_payload(
+                            self.meta.channel_id as u32,
+                            payload_offset,
+                            encryption_protocol,
+                        )
                     }),
                     temp_buf,
                 )?;
@@ -47,7 +58,10 @@ impl Bc {
             }
 
             BcBody::LegacyMsg(ref legacy) => {
-                let (buf, _) = gen(bc_legacy(legacy), vec![])?;
+                let (buf, _) = gen(bc_legacy(legacy), vec![]).map_err(|e| {
+                    error!("Send error: {}", e);
+                    e
+                })?;
                 body_buf = buf;
                 payload_offset = None;
             }
@@ -62,25 +76,25 @@ impl Bc {
     }
 }
 
-fn bc_ext<W: Write>(enc_offset: u32, xml: &Extension, encrypted: bool) -> impl SerializeFn<W> {
+fn bc_ext<W: Write>(
+    enc_offset: u32,
+    xml: &Extension,
+    encryption_protocol: EncryptionProtocol,
+) -> impl SerializeFn<W> {
     let xml_bytes = xml.serialize(vec![]).unwrap();
-    if encrypted {
-        let enc_bytes = xml_crypto::crypt(enc_offset, &xml_bytes);
-        slice(enc_bytes)
-    } else {
-        slice(xml_bytes)
-    }
+    let enc_bytes = xml_crypto::crypt(enc_offset, &xml_bytes, encryption_protocol);
+    slice(enc_bytes)
 }
 
-fn bc_payload<W: Write>(enc_offset: u32, payload: &BcPayloads, encrypted: bool) -> impl SerializeFn<W> {
+fn bc_payload<W: Write>(
+    enc_offset: u32,
+    payload: &BcPayloads,
+    encryption_protocol: EncryptionProtocol,
+) -> impl SerializeFn<W> {
     let payload_bytes = match payload {
         BcPayloads::BcXml(x) => {
             let xml_bytes = x.serialize(vec![]).unwrap();
-            if encrypted {
-                xml_crypto::crypt(enc_offset, &xml_bytes)
-            } else {
-                xml_bytes
-            }
+            xml_crypto::crypt(enc_offset, &xml_bytes, encryption_protocol)
         }
         BcPayloads::Binary(x) => x.to_owned(),
     };
@@ -110,7 +124,7 @@ fn bc_header<W: Write>(header: &BcHeader) -> impl SerializeFn<W> {
     ))
 }
 
-fn bc_legacy<'a, W: Write>(legacy: &'a LegacyMsg) -> impl SerializeFn<W> + 'a {
+fn bc_legacy<W: Write>(legacy: &'_ LegacyMsg) -> impl SerializeFn<W> + '_ {
     move |out: WriteContext<W>| {
         use LegacyMsg::*;
         match legacy {

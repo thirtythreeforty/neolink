@@ -1,6 +1,7 @@
 pub use super::xml::{BcPayloads, BcXml, Extension};
+use atomic_enum::atomic_enum;
 use std::collections::HashSet;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{atomic::Ordering, Arc};
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -70,10 +71,21 @@ pub(super) struct BcSendInfo {
     pub payload_offset: Option<u32>,
 }
 
+#[atomic_enum]
+#[derive(PartialEq)]
+pub enum EncryptionProtocol {
+    Unencrypted = 0,
+    VersionOne,
+    VersionThree,
+    Unknown,
+}
+
 #[derive(Debug)]
 pub struct BcContext {
     pub(super) in_bin_mode: HashSet<u32>,
-    pub(super) is_encrypted: Arc<AtomicBool>,
+    // Arc<AtomicEncryptionProtocol> because it is shared between context
+    // and connection for deserialisation and serialistion respectivly
+    pub(super) encryption_protocol: Arc<AtomicEncryptionProtocol>,
 }
 
 impl Bc {
@@ -130,16 +142,28 @@ impl BcContext {
     pub fn new() -> BcContext {
         BcContext {
             in_bin_mode: HashSet::new(),
-            is_encrypted: Default::default(),
+            encryption_protocol: Arc::new(AtomicEncryptionProtocol::new(
+                EncryptionProtocol::Unencrypted,
+            )),
         }
     }
 
-    pub fn set_encrypted(&mut self, is_encrypted: Arc<AtomicBool>) {
-        self.is_encrypted = is_encrypted;
+    pub fn new_with_encryption_protocol(
+        encryption_protocol: Arc<AtomicEncryptionProtocol>,
+    ) -> BcContext {
+        BcContext {
+            in_bin_mode: HashSet::new(),
+            encryption_protocol,
+        }
     }
 
-    pub fn get_encrypted(&self) -> bool {
-        self.is_encrypted.load(Ordering::Relaxed)
+    pub fn set_encrypted(&mut self, encryption_protocol: EncryptionProtocol) {
+        self.encryption_protocol
+            .store(encryption_protocol, Ordering::Relaxed);
+    }
+
+    pub fn get_encrypted(&self) -> EncryptionProtocol {
+        self.encryption_protocol.load(Ordering::Relaxed)
     }
 }
 

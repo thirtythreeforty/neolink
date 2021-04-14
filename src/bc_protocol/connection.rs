@@ -1,14 +1,14 @@
 use crate::bc;
 use crate::bc::model::*;
-use std::error::Error as StdErr; // Just need the traits
 use err_derive::Error;
 use log::*;
 use socket2::{Domain, Socket, Type};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
+use std::error::Error as StdErr; // Just need the traits
 use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::{atomic::Ordering, Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -21,7 +21,9 @@ pub struct BcConnection {
     connection: Arc<Mutex<TcpStream>>,
     subscribers: Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
     rx_thread: Option<JoinHandle<()>>,
-    is_encrypted: Arc<AtomicBool>,
+    // Arc<AtomicEncryptionProtocol> because it is shared between context
+    // and connection for deserialisation and serialistion respectivly
+    encryption_protocol: Arc<AtomicEncryptionProtocol>,
 }
 
 pub struct BcSubscription<'a> {
@@ -55,10 +57,13 @@ impl BcConnection {
         let mut subs = subscribers.clone();
         let conn = tcp_conn.try_clone()?;
 
-        let is_encrypted = Arc::new(AtomicBool::new(false));
-        let connections_isencrypted = is_encrypted.clone();
+        let encryption_protocol = Arc::new(AtomicEncryptionProtocol::new(
+            EncryptionProtocol::Unencrypted,
+        ));
+        let connections_encryption_protocol = encryption_protocol.clone();
         let rx_thread = std::thread::spawn(move || {
-            let mut context = BcContext::new();
+            let mut context =
+                BcContext::new_with_encryption_protocol(connections_encryption_protocol);
             let mut result;
             while {
                 result = BcConnection::poll(&mut context, &conn, &mut subs);
@@ -70,7 +75,6 @@ impl BcConnection {
             while let Some(e) = cause {
                 error!("caused by: {}", e);
                 cause = e.source();
-
             }
         });
 
@@ -78,7 +82,7 @@ impl BcConnection {
             connection: Arc::new(Mutex::new(tcp_conn)),
             subscribers,
             rx_thread: Some(rx_thread),
-            is_encrypted,
+            encryption_protocol,
         })
     }
 
@@ -128,12 +132,12 @@ impl BcConnection {
         Ok(())
     }
 
-    pub fn set_encrypted(&self, value: bool) {
-        self.is_encrypted.store(value, Ordering::Relaxed);
+    pub fn set_encrypted(&self, value: EncryptionProtocol) {
+        self.encryption_protocol.store(value, Ordering::Relaxed);
     }
 
-    pub fn get_encrypted(&self) -> bool {
-        self.is_encrypted.load(Ordering::Relaxed)
+    pub fn get_encrypted(&self) -> EncryptionProtocol {
+        self.encryption_protocol.load(Ordering::Relaxed)
     }
 }
 
@@ -161,7 +165,10 @@ impl<'a> BcSubscription<'a> {
     pub fn send(&self, bc: Bc) -> Result<()> {
         assert!(bc.meta.msg_id == self.msg_id);
 
-        bc.serialize(&*self.conn.connection.lock().unwrap(), self.conn.get_encrypted())?;
+        bc.serialize(
+            &*self.conn.connection.lock().unwrap(),
+            self.conn.get_encrypted(),
+        )?;
         Ok(())
     }
 }
