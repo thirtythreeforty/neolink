@@ -1111,6 +1111,72 @@ a PR to improve it.
     cameras only have weak encryption that is easily broken since the
     decryption key is fixed and well-known.
 
+    - 67: `<ConfigFileInfo> (FW Upgrade)`
+
+      - Client
+
+        - Header
+
+            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+            |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+            | 0a bc de f0  | 00 00 00 43  |  00 00 01 00   |    00 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
+
+        - Body
+
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <ConfigFileInfo version="1.1">
+        <fileName>FIRMWAREFILE.pak</fileName>
+        <fileSize>SIZE_IN_BYTES</fileSize>
+        <updateParameter>0</updateParameter>
+        </ConfigFileInfo>
+        </body>
+        ```
+
+      - **Notes:** updateParameter refers to updating the settings. If 1 it will restore factory settings. If 0 it will keep current.
+
+      - Camera
+
+        - Header
+
+            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+            |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+            | 0a bc de f0  | 00 00 00 43  |  00 00 00 00   |    00 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
+
+      - Client
+
+        - Header
+
+            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+            |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+            | 0a bc de f0  | 00 00 00 43  |  00 00 94 58   |    00 00 00 00    |       00 00       |     64 14     |  00 00 00 6a  |
+
+        - Body
+
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <Extension version="1.1">
+        <binaryData>1</binaryData>
+        </Extension>
+        ```
+
+        - Binary
+
+          This contains binary data of the file but stops once the message size reaches
+          38000 bytes and continues in another packet. There does not appear to
+          be a checksum or hash and this part contains only the raw bytes of the file.
+
+      - Camera
+
+        - Header
+
+            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+            |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+            | 0a bc de f0  | 00 00 00 43  |  00 00 00 00   |    00 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
+
+      - **Notes:** Last two messages repeat until all data is sent
+
 - 76: `<Ip>`
 
   - Client
