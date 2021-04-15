@@ -34,7 +34,7 @@ pub enum Error {
 }
 
 fn main() -> Result<(), Error> {
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     info!(
         "Neolink {} {}",
@@ -199,7 +199,7 @@ fn camera_main(
 ) -> Result<Never, CameraErr> {
     let mut connected = false;
     (|| {
-        let mut camera = BcCamera::new_with_addr(camera_config.camera_addr, camera_config.channel_id)?;
+        let mut camera = BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)?;
         if camera_config.timeout.is_some() {
             warn!("The undocumented `timeout` config option has been removed and is no longer needed.");
             warn!("Please update your config file.");
@@ -209,7 +209,6 @@ fn camera_main(
             "{}: Connecting to camera at {}",
             camera_config.name, camera_config.camera_addr
         );
-        camera.connect()?;
 
         camera.login(&camera_config.username, camera_config.password.as_deref())?;
 
@@ -217,29 +216,7 @@ fn camera_main(
         info!("{}: Connected and logged in", camera_config.name);
 
         if manage {
-            let cam_time = camera.get_time()?;
-            if let Some(time) = cam_time {
-                info!(
-                    "{}: Camera time is already set: {}",
-                    camera_config.name, time
-                );
-            } else {
-                let new_time = time::OffsetDateTime::now_local();
-                warn!(
-                    "{}: Camera has no time set, setting to {}",
-                    camera_config.name, new_time
-                );
-                camera.set_time(new_time)?;
-                let cam_time = camera.get_time()?;
-                if let Some(time) = cam_time {
-                    info!(
-                        "{}: Camera time is now set: {}",
-                        camera_config.name, time
-                    );
-                } else {
-                    error!("{}: Camera did not accept new time (is {} an admin?)", camera_config.name, camera_config.username);
-                }
-            }
+            do_camera_management(&mut camera, camera_config)?;
         }
 
         info!(
@@ -249,4 +226,57 @@ fn camera_main(
         camera.start_video(outputs, stream_name)
     })()
     .map_err(|err| CameraErr { connected, err })
+}
+
+fn do_camera_management(
+    camera: &mut BcCamera,
+    camera_config: &CameraConfig,
+) -> Result<(), neolink::Error> {
+    let cam_time = camera.get_time()?;
+    if let Some(time) = cam_time {
+        info!(
+            "{}: Camera time is already set: {}",
+            camera_config.name, time
+        );
+    } else {
+        use time::OffsetDateTime;
+        // We'd like now_local() but it's deprecated - try to get the local time, but if no
+        // time zone, fall back to UTC.
+        let new_time =
+            OffsetDateTime::try_now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
+
+        warn!(
+            "{}: Camera has no time set, setting to {}",
+            camera_config.name, new_time
+        );
+        camera.set_time(new_time)?;
+        let cam_time = camera.get_time()?;
+        if let Some(time) = cam_time {
+            info!("{}: Camera time is now set: {}", camera_config.name, time);
+        } else {
+            error!(
+                "{}: Camera did not accept new time (is {} an admin?)",
+                camera_config.name, camera_config.username
+            );
+        }
+    }
+
+    use neolink::bc::xml::VersionInfo;
+    if let Ok(VersionInfo {
+        firmwareVersion: firmware_version,
+        ..
+    }) = camera.version()
+    {
+        info!(
+            "{}: Camera reports firmware version {}",
+            camera_config.name, firmware_version
+        );
+    } else {
+        info!(
+            "{}: Could not fetch version information",
+            camera_config.name
+        );
+    }
+
+    Ok(())
 }

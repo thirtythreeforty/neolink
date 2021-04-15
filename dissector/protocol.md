@@ -16,29 +16,38 @@ Each message has the general format:
 
 The header has the format:
 
-|    magic     |  message id  | message length | encryption offset | Encryption flag | Unknown | message class |
-|--------------|--------------|----------------|-------------------|-----------------|---------|---------------|
-| f0 de bc 0a  | 01 00 00 00  |  2c 07 00 00   |    00 00 00 01    |       01        |   dc    |     14 65     |
+|    magic     |  message id  | message length | encryption offset | encrypt | unknown | message class |
+|--------------|--------------|----------------|-------------------|---------|---------|---------------|
+| f0 de bc 0a  | 01 00 00 00  |  2c 07 00 00   |    00 00 00 01    |    01   |   dc    |     14 65     |
+
+- Magic 4 bytes
+- ID 4 bytes
+- Message length 4 bytes
+- Encryption offset 4 bytes
+- Encryption flag 1 byte
+- Unknown 1 byte
+- Message class 2 bytes
 
 Or
 
-|    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-|--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-| f0 de bc 0a  | 01 00 00 00  |  28 01 00 00   |    00 00 00 01    |       00        |   00    |     14 64     |  00 00 00 00  |
+|    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+|--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+| f0 de bc 0a  | 01 00 00 00  |  28 01 00 00   |    00 00 00 01    |       c8 00       |     14 64     |  00 00 00 00  |
 
 
 - Magic 4 bytes
 - ID 4 bytes
 - Message length 4 bytes
 - Encryption offset 4 bytes
-- Encryption flag (not always honoured by clients) 1 byte
-- Unknown 1 byte (always zero)
+- Status Code 2 bytes
+- Message class 2 bytes
 - Binary offset 4 bytes (Presence depend on message class)
 
 #### Magic
 
-The magic bytes for BC messages is always `f0 de bc 0a`. When receiving packet
-this should be used to quickly discard invalid packets.
+The magic bytes for BC messages is always `f0 de bc 0a` for client <-> device.
+Or magic `a0 cd ed 0f` for device <-> device, eg NVR <-> IPC.
+When receiving packet these should be used to quickly discard invalid packets.
 
 #### Message ID
 
@@ -80,19 +89,32 @@ The key is the same for all cameras.
 
 Older cameras do not use encryption and all messages are sent as plain text.
 
+The offset bytes are actually made up of other useful information
+channel_id 1 byte - NVR channel related to request/response or `00` if N/A.
+stream_id 1 byte - `00`=clear, `01`=fluent, `04`=balanced
+unknown 1 byte  - Always `00`
+message_handle 1 byte - client increments per request, replies use request handle
+
 #### Encryption Flag
 
-This flag is 0 for unencrypted or non zero for encrypted. This flag seems
-only to be valid during the login step, and seems to be arbitrary otherwise.
+This flag is 0 for unencrypted or non zero for encrypted.
 
 Clients should decide to use encryption or not based on this byte that the
-camera send during login. Then should use that same setting for all further
+camera sent during login. Then should use that same setting for all further
 messages with the camera.
 
 #### Unknown
 
-The purpose of this byte is unknown but is always zero. If you figure out
-what it does please submit a PR.
+The purpose of this byte is unknown.
+Observed - `dc` = client request, `dd` = device reply
+If you figure out what it does please submit a PR.
+
+#### Status Code
+
+In a request this is set to `00 00`.
+In a reply this is a http style response code.
+`c8 00` = 200 OK
+`90 01` = 400 Bad Request
 
 #### Message class
 
@@ -191,9 +213,9 @@ the [docs](dissector/mediapacket.md)
 Other data can be received from the camera by sending the appropriate header to
 the camera. For example sending the header for ID 78
 
-|    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-|--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-| f0 de bc 0a  | 4e 00 00 00  |  d3 00 00 00   |    08 db 9c 00    |       c8        |   00    |     00 00     |  00 00 00 00  |
+|    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+|--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+| f0 de bc 0a  | 4e 00 00 00  |  d3 00 00 00   |    08 db 9c 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
 The camera will reply with an xml with brightness and contrast
 
@@ -214,9 +236,9 @@ Some message IDs also require input along with the request header. For example
 
 ID 151 which is the users ability info requires the header
 
-|    Magic     |  Message ID  | Message Length | Encryption Offset | Encryption Flag | Unknown | Message Class | Binary Offset |
-|--------------|--------------|----------------|-------------------|-----------------|---------|---------------|---------------|
-| f0 de bc 0a  | 97 00 00 00  |  a7 00 00 00   |    00 00 00 02    |       00        |   00    |     14 64     |  a7 00 00 00  |
+|    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+|--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+| f0 de bc 0a  | 97 00 00 00  |  a7 00 00 00   |    00 00 00 02    |       00 00       |     14 64     |  a7 00 00 00  |
 
 and the body of
 

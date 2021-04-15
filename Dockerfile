@@ -5,7 +5,11 @@
 FROM docker.io/rust:1-alpine AS build
 MAINTAINER thirtythreeforty@gmail.com
 
-RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
+# Until Alpine merges gst-rtsp-server into a release, pull all Gstreamer packages
+# from the "testing" release
+RUN apk add --no-cache \
+    -X http://dl-cdn.alpinelinux.org/alpine/edge/main \
+    -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
   gst-rtsp-server-dev
 RUN apk add --no-cache musl-dev gcc
 
@@ -21,7 +25,10 @@ RUN cargo build --release
 # Create the release container. Match the base OS used to build
 FROM docker.io/alpine:latest
 
-RUN apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing libgcc \
+RUN apk add --no-cache \
+    -X http://dl-cdn.alpinelinux.org/alpine/edge/main \
+    -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
+  libgcc \
   tzdata \
   gstreamer \
   gst-plugins-base \

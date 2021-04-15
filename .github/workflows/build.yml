@@ -1,0 +1,120 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  native:
+    name: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-18.04, windows-2019, macos-10.15]
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout onto ${{ runner.os }}
+      - if: runner.os == 'Linux'
+        name: apt install gstreamer
+        run: |
+          sudo apt update
+          sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev
+      - if: runner.os == 'Windows'
+        name: Install Gstreamer
+        run: |
+          choco install -y --no-progress gstreamer --version=1.16.2.20200527
+          choco install -y --no-progress gstreamer-devel --version=1.16.2
+          echo "Updating Cargo environment"
+          echo "C:\gstreamer\1.0\x86_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "GSTREAMER_1_0_ROOT_X86_64=C:\gstreamer\1.0\x86_64\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - if: runner.os == 'macOS'
+        name: Install Gstreamer on macOS
+        run: |
+          curl -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/gstreamer-1.0-devel-1.16.2-x86_64.pkg' -o "$(pwd)/gstreamer-devel.pkg"
+          sudo installer -verbose -pkg "$(pwd)/gstreamer-devel.pkg" -target /
+          PKG_CONFIG_PATH="/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "${GITHUB_ENV}"
+      - name: Cache cargo registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo index
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo build
+        if: runner.os != 'macOS' # Random missing crates on macOS, unclear why
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release-${{ matrix.os }}
+          path: "target/release/neolink*"
+  cross:
+    name: cross
+    runs-on: ubuntu-latest
+    container: "node:current-buster-slim"
+    strategy:
+      fail-fast: false
+      matrix:
+        # Everyone has a slightly different screwball naming scheme;
+        # Rust uses the target triple, GCC generally targets a family
+        # with a specific prefix, and dpkg's arch does its own thing
+        include:
+          - arch: armhf
+            target: armv7-unknown-linux-gnueabihf
+            gcc: arm-linux-gnueabihf
+            pkgconfig: arm-linux-gnueabihf
+          - arch: arm64
+            target: aarch64-unknown-linux-gnu
+            gcc: aarch64-linux-gnu
+            pkgconfig: aarch64-linux-gnu
+          - arch: i386
+            target: i686-unknown-linux-gnu
+            gcc: i686-linux-gnu
+            # on i686, the pkgconfig path doesn't match the prefix!
+            pkgconfig: i386-linux-gnu
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install basic tools
+        run: |
+          apt-get update
+          apt-get install --assume-yes --no-install-recommends curl ca-certificates
+      - name: Install ${{ matrix.arch }} cross compiler and gstreamer
+        id: setup
+        run: |
+          dpkg --add-architecture ${{ matrix.arch }}
+          apt-get update
+          apt-get install --assume-yes --no-install-recommends \
+          build-essential \
+          gcc-${{ matrix.gcc }} \
+          libgstrtspserver-1.0-dev:${{ matrix.arch }} \
+          libgstreamer1.0-dev:${{ matrix.arch }} \
+          libgtk2.0-dev:${{ matrix.arch }} \
+          libglib2.0-dev:${{ matrix.arch }}
+      - name: Install ${{ matrix.arch }} Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            override: true
+            target: ${{ matrix.target }}
+            profile: minimal
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features --target=${{ matrix.target }}
+        env:
+          # Retarget pkg-config as described in https://www.freedesktop.org/wiki/Software/pkg-config/CrossCompileProposal/
+          PKG_CONFIG_ALLOW_CROSS: 1
+          PKG_CONFIG_LIBDIR: /usr/lib/${{ matrix.pkgconfig }}/pkgconfig
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release-${{ matrix.arch }}-buster
+          path: "target/${{ matrix.target }}/release/neolink*"

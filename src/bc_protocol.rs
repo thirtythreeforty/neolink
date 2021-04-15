@@ -62,6 +62,9 @@ pub enum Error {
     #[error(display = "Credential error")]
     AuthFailed,
 
+    #[error(display = "Failed to translate camera address")]
+    AddrResolutionError,
+
     #[error(display = "ADPCM Decoding Error")]
     AdpcmDecodingError(&'static str),
 
@@ -85,28 +88,40 @@ impl Drop for BcCamera {
 }
 
 impl BcCamera {
-    pub fn new_with_addr<T: ToSocketAddrs>(hostname: T, channel_id: u8) -> Result<Self> {
-        let address = hostname
-            .to_socket_addrs()?
-            .next()
-            .ok_or(Error::Other("Address resolution failed"))?;
+    pub fn new_with_addr<T: ToSocketAddrs>(host: T, channel_id: u8) -> Result<Self> {
+        let addr_iter = match host.to_socket_addrs() {
+            Ok(iter) => iter,
+            Err(_) => return Err(Error::AddrResolutionError),
+        };
 
-        Ok(Self {
-            address,
-            channel_id,
-            message_num: AtomicU16::new(0),
-            connection: None,
-            logged_in: false,
-        })
+        for addr in addr_iter {
+            debug!("Trying {}", addr);
+            let conn = match BcConnection::new(addr, RX_TIMEOUT) {
+                Ok(conn) => conn,
+                Err(err) => match err {
+                    connection::Error::CommunicationError(ref err) => {
+                        debug!("Assuming timeout from {}", err);
+                        continue;
+                    }
+                    err => return Err(err.into()),
+                },
+            };
+
+            debug!("Success: {}", addr);
+            return Ok(Self {
+                address: addr,
+                connection: Some(conn),
+                message_num: AtomicU16::new(0),
+                channel_id,
+                logged_in: false,
+            });
+        }
+
+        Err(Error::Timeout)
     }
 
     pub fn new_message_num(&self) -> u16 {
         self.message_num.fetch_add(1, Ordering::Relaxed)
-    }
-
-    pub fn connect(&mut self) -> Result<()> {
-        self.connection = Some(BcConnection::new(self.address, RX_TIMEOUT)?);
-        Ok(())
     }
 
     pub fn disconnect(&mut self) {
@@ -248,6 +263,53 @@ impl BcCamera {
         }
         self.logged_in = false;
         Ok(())
+    }
+
+    pub fn version(&self) -> Result<VersionInfo> {
+        let connection = self
+            .connection
+            .as_ref()
+            .expect("Must be connected to get version info");
+        let sub_version = connection.subscribe(MSG_ID_VERSION)?;
+
+        let version = Bc {
+            meta: BcMeta {
+                msg_id: MSG_ID_VERSION,
+                channel_id: self.channel_id,
+                msg_num: self.new_message_num(),
+                stream_type: 0,
+                response_code: 0,
+                class: 0x6414, // IDK why
+            },
+            body: BcBody::ModernMsg(ModernMsg {
+                ..Default::default()
+            }),
+        };
+
+        sub_version.send(version)?;
+
+        let modern_reply = sub_version.rx.recv_timeout(RX_TIMEOUT)?;
+        let version_info;
+        match modern_reply.body {
+            BcBody::ModernMsg(ModernMsg {
+                payload:
+                    Some(BcPayloads::BcXml(BcXml {
+                        version_info: Some(info),
+                        ..
+                    })),
+                ..
+            }) => {
+                version_info = info;
+            }
+            _ => {
+                return Err(Error::UnintelligibleReply {
+                    reply: modern_reply,
+                    why: "Expected a VersionInfo message",
+                })
+            }
+        }
+
+        Ok(version_info)
     }
 
     pub fn ping(&self) -> Result<()> {

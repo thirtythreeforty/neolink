@@ -33,6 +33,15 @@ Neolink does not support other cameras such as the RLC-420, since they already
 
 In the future Neolink will be much easier to install.
 For now, follow these steps.
+Builds are provided for the following platforms:
+
+- Windows x86_64 ([download][win-ci-download])
+- macOS x86_64 ([download][macos-ci-download])
+- Ubuntu x86_64 ([download][ubuntu-ci-download])
+- Debian x86 ([download][debian-x86-ci-download])
+- Debian aarch64 ([download][debian-aarch-ci-download])
+- Debian armhf ([download][debian-armhf-ci-download])
+- Docker x86 (see below)
 
 ### Windows/Linux
 
@@ -51,6 +60,9 @@ or your package manager on Linux.
 3. Download and extract a [prebuilt binary from continuous integration][ci-download]
 (click on the topmost commit for the most recent build).
 
+3. Download and unpack Neolink from the links above.
+   1. Note: you can also click on [this link][ci-download] to see all historical builds.
+  You will need to be logged in to GitHub to download directly from the builds page.
 4. Write a configuration file for your cameras.  See the section below.
 
 5. Launch Neolink from a shell, passing your configuration file:
@@ -68,6 +80,13 @@ or your package manager on Linux.
 
 [gstreamer]: https://gstreamer.freedesktop.org/documentation/installing/index.html
 [ci-download]: https://github.com/thirtythreeforty/neolink/actions?query=workflow%3ACI+branch%3Amaster+
+
+[win-ci-download]:          https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-windows-2019.zip
+[macos-ci-download]:        https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-macos-10.15.zip
+[ubuntu-ci-download]:       https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-ubuntu-18.04.zip
+[debian-x86-ci-download]:   https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-i386-buster.zip
+[debian-armhf-ci-download]: https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-armhf-buster.zip
+[debian-aarch-ci-download]: https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-arm64-buster.zip
 
 ### Docker
 
