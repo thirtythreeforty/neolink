@@ -22,9 +22,7 @@ impl BcCamera {
         };
 
         sub_get_general.send(get)?;
-        let msg = sub_get_general
-            .rx
-            .recv_timeout(RX_TIMEOUT)?;
+        let msg = sub_get_general.rx.recv_timeout(RX_TIMEOUT)?;
 
         if let BcBody::ModernMsg(ModernMsg {
             payload:
@@ -112,9 +110,7 @@ impl BcCamera {
         );
 
         sub_set_general.send(set)?;
-        let msg = sub_set_general
-            .rx
-            .recv_timeout(RX_TIMEOUT)?;
+        let msg = sub_set_general.rx.recv_timeout(RX_TIMEOUT)?;
 
         Ok(())
     }

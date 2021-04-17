@@ -1,7 +1,7 @@
 use super::model::EncryptionProtocol;
 use aes::Aes128;
-use cfb_mode::Cfb;
 use cfb_mode::cipher::{NewStreamCipher, StreamCipher};
+use cfb_mode::Cfb;
 
 const XML_KEY: [u8; 8] = [0x1F, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, 0x78, 0xFF];
 const IV: &[u8] = b"0123456789abcdef";
