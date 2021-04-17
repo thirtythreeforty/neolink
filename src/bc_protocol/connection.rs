@@ -60,8 +60,7 @@ impl BcConnection {
         let encryption_protocol = Arc::new(Mutex::new(EncryptionProtocol::Unencrypted));
         let connections_encryption_protocol = encryption_protocol.clone();
         let rx_thread = std::thread::spawn(move || {
-            let mut context =
-                BcContext::new_with_encryption_protocol(connections_encryption_protocol);
+            let mut context = BcContext::new(connections_encryption_protocol);
             let mut result;
             while {
                 result = BcConnection::poll(&mut context, &conn, &mut subs);

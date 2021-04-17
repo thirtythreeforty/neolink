@@ -130,23 +130,8 @@ impl Bc {
     }
 }
 
-impl Default for BcContext {
-    fn default() -> BcContext {
-        Self::new()
-    }
-}
-
 impl BcContext {
-    pub fn new() -> BcContext {
-        BcContext {
-            in_bin_mode: HashSet::new(),
-            encryption_protocol: Arc::new(Mutex::new(EncryptionProtocol::Unencrypted)),
-        }
-    }
-
-    pub fn new_with_encryption_protocol(
-        encryption_protocol: Arc<Mutex<EncryptionProtocol>>,
-    ) -> BcContext {
+    pub fn new(encryption_protocol: Arc<Mutex<EncryptionProtocol>>) -> BcContext {
         BcContext {
             in_bin_mode: HashSet::new(),
             encryption_protocol,
