@@ -1,5 +1,7 @@
 use super::model::EncryptionProtocol;
-use openssl::symm::*;
+use aes::Aes128;
+use cfb_mode::Cfb;
+use cfb_mode::cipher::{NewStreamCipher, StreamCipher};
 
 const XML_KEY: [u8; 8] = [0x1F, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, 0x78, 0xFF];
 const IV: &[u8] = b"0123456789abcdef";
@@ -17,8 +19,9 @@ pub fn decrypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol
         EncryptionProtocol::Aes(key) => {
             // AES decryption
             if let Some(aeskey) = key {
-                let t = Cipher::aes_128_cfb128();
-                openssl::symm::decrypt(t, aeskey, Some(IV), &buf).unwrap()
+                let mut decrypted = buf.to_vec();
+                Cfb::<Aes128>::new(aeskey.into(), IV.into()).decrypt(&mut decrypted);
+                decrypted
             } else {
                 // Not yet ready to decrypt (still in login phase)
                 // Use BCEncrypt
@@ -41,8 +44,9 @@ pub fn encrypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol
         EncryptionProtocol::Aes(key) => {
             // AES encryption
             if let Some(aeskey) = key {
-                let t = Cipher::aes_128_cfb128();
-                openssl::symm::encrypt(t, aeskey, Some(IV), &buf).unwrap()
+                let mut encrypted = buf.to_vec();
+                Cfb::<Aes128>::new(aeskey.into(), IV.into()).encrypt(&mut encrypted);
+                encrypted
             } else {
                 // Not yet ready to decrypt (still in login phase)
                 // Use BCEncrypt
