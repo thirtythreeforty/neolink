@@ -4,7 +4,7 @@ use openssl::symm::*;
 const XML_KEY: [u8; 8] = [0x1F, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, 0x78, 0xFF];
 const IV: &[u8] = b"0123456789abcdef";
 
-pub fn crypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol) -> Vec<u8> {
+pub fn decrypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol) -> Vec<u8> {
     match encryption_protocol {
         EncryptionProtocol::Unencrypted => buf.to_vec(),
         EncryptionProtocol::BCEncrypt => {
@@ -15,14 +15,38 @@ pub fn crypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol) 
                 .collect()
         }
         EncryptionProtocol::Aes(key) => {
-            // New protocol here
+            // AES decryption
             if let Some(aeskey) = key {
                 let t = Cipher::aes_128_cfb128();
-                decrypt(t, aeskey, Some(IV), &buf).unwrap()
+                openssl::symm::decrypt(t, aeskey, Some(IV), &buf).unwrap()
             } else {
                 // Not yet ready to decrypt (still in login phase)
                 // Use BCEncrypt
-                crypt(offset, buf, &EncryptionProtocol::BCEncrypt)
+                decrypt(offset, buf, &EncryptionProtocol::BCEncrypt)
+            }
+        }
+    }
+}
+
+pub fn encrypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol) -> Vec<u8> {
+    match encryption_protocol {
+        EncryptionProtocol::Unencrypted => {
+            // Encrypt is the same as decrypt
+            decrypt(offset, buf, encryption_protocol)
+        }
+        EncryptionProtocol::BCEncrypt => {
+            // Encrypt is the same as decrypt
+            decrypt(offset, buf, encryption_protocol)
+        }
+        EncryptionProtocol::Aes(key) => {
+            // AES encryption
+            if let Some(aeskey) = key {
+                let t = Cipher::aes_128_cfb128();
+                openssl::symm::encrypt(t, aeskey, Some(IV), &buf).unwrap()
+            } else {
+                // Not yet ready to decrypt (still in login phase)
+                // Use BCEncrypt
+                encrypt(offset, buf, &EncryptionProtocol::BCEncrypt)
             }
         }
     }
@@ -33,7 +57,7 @@ fn test_xml_crypto() {
     let sample = include_bytes!("samples/xml_crypto_sample1.bin");
     let should_be = include_bytes!("samples/xml_crypto_sample1_plaintext.bin");
 
-    let decrypted = crypt(0, &sample[..]);
+    let decrypted = decrypt(0, &sample[..]);
     assert_eq!(decrypted, &should_be[..]);
 }
 
@@ -41,7 +65,7 @@ fn test_xml_crypto() {
 fn test_xml_crypto_roundtrip() {
     let zeros: [u8; 256] = [0; 256];
 
-    let decrypted = crypt(0, &zeros[..]);
-    let encrypted = crypt(0, &decrypted[..]);
+    let decrypted = encrypt(0, &zeros[..]);
+    let encrypted = decrypt(0, &decrypted[..]);
     assert_eq!(encrypted, &zeros[..]);
 }
