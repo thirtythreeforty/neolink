@@ -154,6 +154,13 @@ fn bc_modern_msg<'a, 'b>(
         // Err case. This error-error-error thing is the same idiom Nom uses internally.
         let parsed = Extension::try_parse(processed_ext_buf)
             .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
+        if let Extension {
+            binary_data: Some(1),
+            ..
+        } = &parsed
+        {
+            context.in_bin_mode.insert(header.msg_num as u32);
+        }
         extension = Some(parsed);
     } else {
         extension = None;
@@ -169,10 +176,12 @@ fn bc_modern_msg<'a, 'b>(
         let encryption_protocol = context.get_encrypted();
         let processed_payload_buf =
             xml_crypto::decrypt(header.channel_id as u32, payload_buf, &encryption_protocol);
-        if let Ok(xml) = BcXml::try_parse(processed_payload_buf.as_slice()) {
-            payload = Some(BcPayloads::BcXml(xml));
-        } else {
+        if context.in_bin_mode.contains(&(header.msg_num as u32)) {
             payload = Some(BcPayloads::Binary(payload_buf.to_vec()));
+        } else {
+            let xml = BcXml::try_parse(processed_payload_buf.as_slice())
+                .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
+            payload = Some(BcPayloads::BcXml(xml));
         }
     } else {
         payload = None;
