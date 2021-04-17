@@ -31,7 +31,7 @@ use crate::Never;
 
 type Result<T> = std::result::Result<T, Error>;
 
-const RX_TIMEOUT: Duration = Duration::from_secs(500);
+const RX_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
