@@ -81,7 +81,7 @@ pub enum EncryptionProtocol {
 #[derive(Debug)]
 pub struct BcContext {
     pub(super) in_bin_mode: HashSet<u32>,
-    // Arc<AtomicEncryptionProtocol> because it is shared between context
+    // Arc<Mutex<EncryptionProtocol>> because it is shared between context
     // and connection for deserialisation and serialistion respectivly
     pub(super) encryption_protocol: Arc<Mutex<EncryptionProtocol>>,
 }

@@ -21,7 +21,7 @@ pub struct BcConnection {
     connection: Arc<Mutex<TcpStream>>,
     subscribers: Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
     rx_thread: Option<JoinHandle<()>>,
-    // Arc<AtomicEncryptionProtocol> because it is shared between context
+    // Arc<Mutex<EncryptionProtocol>> because it is shared between context
     // and connection for deserialisation and serialistion respectivly
     encryption_protocol: Arc<Mutex<EncryptionProtocol>>,
 }
@@ -165,7 +165,7 @@ impl<'a> BcSubscription<'a> {
 
         bc.serialize(
             &*self.conn.connection.lock().unwrap(),
-            self.conn.get_encrypted(),
+            &self.conn.get_encrypted(),
         )?;
         Ok(())
     }

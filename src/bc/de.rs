@@ -128,7 +128,7 @@ fn bc_modern_msg<'a, 'b>(
         match encryption_protocol_byte {
             0x00 => context.set_encrypted(EncryptionProtocol::Unencrypted),
             0x01 => context.set_encrypted(EncryptionProtocol::BCEncrypt),
-            0x03 => context.set_encrypted(EncryptionProtocol::Aes(None)),
+            0x02 => context.set_encrypted(EncryptionProtocol::Aes(None)),
             _ => return Err(Err::Error(make_error(buf, ErrorKind::MapRes))),
         }
     }
@@ -188,11 +188,6 @@ fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
     let (buf, stream_type) = le_u8(buf)?;
     let (buf, msg_num) = le_u16(buf)?;
     let (buf, (response_code, class)) = tuple((le_u16, le_u16))(buf)?;
-
-    // All modern messages are encrypted.  In addition, it seems that the camera firmware checks
-    // this field to see if some other messages should be encrypted.  This is still somewhat fuzzy.
-    // A copy of the source code for the camera would be very useful.
-    let encrypted = response_code != 0;
 
     let (buf, payload_offset) = cond(has_payload_offset(class), le_u32)(buf)?;
 
