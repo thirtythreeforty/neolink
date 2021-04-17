@@ -209,46 +209,6 @@ must have a receive buffer large enough to store the entire frame.
 If your client's buffer size is configurable (like Blue Iris), ensure it's set
 to 20MB, which should ensure plenty of headroom.
 
-## Motion Detection and MQTT
-
-If your camera supports motion detection you can have neolink post MQTT
-messages to an MQTT server whenever your camera detects motion. To enable this
-add the following to your `[[cameras]]` table in the config toml.
-
-```toml
-[cameras.mqtt]
-# The address of the mqtt server
-server = "127.0.0.1"
-
-# The port of the mqtt server
-port = 1883
-
-# Optional: User name and password for mqtt
-credentials = ["User4MQTT", "Pass4MQTT"]
-
-# Optional: The servers encryption certificate
-# Enabling this WILL turn on encryption
-# You cannot use both ca and client_auth
-ca = "/path/to/cert"
-
-# Optional: The clients encryption certificate and key
-# Enabling this WILL turn on encryption
-# You cannot use both ca and client_auth
-client_auth = ["/Path/to/client/cert", "/Path/to/client/key"]
-```
-
-Each camera creates its own client with the id `Neolink-CameraName` and each
-camera in the config needs a mqtt table to enable it.
-
-The topic of the message is:
-
-```mqtt
-/neolink/CAMERANAME/status/motion
-```
-
-With a message of either `on` for motion detected or `off` for motion no longer
-detected.
-
 ## Stability
 
 Neolink has had minimal testing, but it seems to be very reliable in multiple
