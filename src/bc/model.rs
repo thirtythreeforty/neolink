@@ -1,7 +1,6 @@
 pub use super::xml::{BcPayloads, BcXml, Extension};
-use atomic_enum::atomic_enum;
 use std::collections::HashSet;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, Mutex};
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -72,12 +71,32 @@ pub(super) struct BcSendInfo {
     pub payload_offset: Option<u32>,
 }
 
-#[atomic_enum]
-#[derive(PartialEq)]
+#[derive(Debug, Clone)]
+pub struct AesKey {
+    pub nonce: Option<String>,
+    pub passwd: Option<String>,
+}
+
+impl AesKey {
+    pub fn get_key(&self) -> Option<Vec<u8>> {
+        if let (Some(nonce), Some(passwd)) = (&self.nonce, &self.passwd) {
+            let key_phrase = format!("{}-{}", nonce, passwd);
+            let key_phrase_hash = format!("{:X}\0", md5::compute(&key_phrase))
+                .to_uppercase()
+                .into_bytes();
+            let key = &key_phrase_hash[0..16];
+            Some(key.to_vec())
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum EncryptionProtocol {
-    Unencrypted = 0,
-    VersionOne,
-    VersionThree,
+    Unencrypted,
+    BCEncrypt,
+    Aes(AesKey),
     Unknown,
 }
 
@@ -86,7 +105,7 @@ pub struct BcContext {
     pub(super) in_bin_mode: HashSet<u32>,
     // Arc<AtomicEncryptionProtocol> because it is shared between context
     // and connection for deserialisation and serialistion respectivly
-    pub(super) encryption_protocol: Arc<AtomicEncryptionProtocol>,
+    pub(super) encryption_protocol: Arc<Mutex<EncryptionProtocol>>,
 }
 
 impl Bc {
@@ -122,7 +141,7 @@ impl Bc {
         }
     }
 
-    pub fn new_from_ext_ext(meta: BcMeta, ext: Extension, xml: BcXml) -> Bc {
+    pub fn new_from_ext_xml(meta: BcMeta, ext: Extension, xml: BcXml) -> Bc {
         Bc {
             meta,
             body: BcBody::ModernMsg(ModernMsg {
@@ -143,14 +162,12 @@ impl BcContext {
     pub fn new() -> BcContext {
         BcContext {
             in_bin_mode: HashSet::new(),
-            encryption_protocol: Arc::new(AtomicEncryptionProtocol::new(
-                EncryptionProtocol::Unencrypted,
-            )),
+            encryption_protocol: Arc::new(Mutex::new(EncryptionProtocol::Unencrypted)),
         }
     }
 
     pub fn new_with_encryption_protocol(
-        encryption_protocol: Arc<AtomicEncryptionProtocol>,
+        encryption_protocol: Arc<Mutex<EncryptionProtocol>>,
     ) -> BcContext {
         BcContext {
             in_bin_mode: HashSet::new(),
@@ -159,12 +176,11 @@ impl BcContext {
     }
 
     pub fn set_encrypted(&mut self, encryption_protocol: EncryptionProtocol) {
-        self.encryption_protocol
-            .store(encryption_protocol, Ordering::Relaxed);
+        *(self.encryption_protocol.lock().unwrap()) = encryption_protocol;
     }
 
     pub fn get_encrypted(&self) -> EncryptionProtocol {
-        self.encryption_protocol.load(Ordering::Relaxed)
+        (*(self.encryption_protocol.lock().unwrap())).clone()
     }
 }
 

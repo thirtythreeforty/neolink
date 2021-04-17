@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::error::Error as StdErr; // Just need the traits
 use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{atomic::Ordering, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -23,7 +23,7 @@ pub struct BcConnection {
     rx_thread: Option<JoinHandle<()>>,
     // Arc<AtomicEncryptionProtocol> because it is shared between context
     // and connection for deserialisation and serialistion respectivly
-    encryption_protocol: Arc<AtomicEncryptionProtocol>,
+    encryption_protocol: Arc<Mutex<EncryptionProtocol>>,
 }
 
 pub struct BcSubscription<'a> {
@@ -57,9 +57,7 @@ impl BcConnection {
         let mut subs = subscribers.clone();
         let conn = tcp_conn.try_clone()?;
 
-        let encryption_protocol = Arc::new(AtomicEncryptionProtocol::new(
-            EncryptionProtocol::Unencrypted,
-        ));
+        let encryption_protocol = Arc::new(Mutex::new(EncryptionProtocol::Unencrypted));
         let connections_encryption_protocol = encryption_protocol.clone();
         let rx_thread = std::thread::spawn(move || {
             let mut context =
@@ -133,11 +131,11 @@ impl BcConnection {
     }
 
     pub fn set_encrypted(&self, value: EncryptionProtocol) {
-        self.encryption_protocol.store(value, Ordering::Relaxed);
+        *(self.encryption_protocol.lock().unwrap()) = value;
     }
 
     pub fn get_encrypted(&self) -> EncryptionProtocol {
-        self.encryption_protocol.load(Ordering::Relaxed)
+        (*self.encryption_protocol.lock().unwrap()).clone()
     }
 }
 

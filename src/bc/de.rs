@@ -127,8 +127,11 @@ fn bc_modern_msg<'a, 'b>(
         let encryption_protocol_byte = (header.response_code & 0xff) as usize;
         match encryption_protocol_byte {
             0x00 => context.set_encrypted(EncryptionProtocol::Unencrypted),
-            0x01 => context.set_encrypted(EncryptionProtocol::VersionOne),
-            0x03 => context.set_encrypted(EncryptionProtocol::VersionThree),
+            0x01 => context.set_encrypted(EncryptionProtocol::BCEncrypt),
+            0x03 => context.set_encrypted(EncryptionProtocol::Aes(AesKey {
+                nonce: None,
+                passwd: None,
+            })),
             _ => context.set_encrypted(EncryptionProtocol::Unknown),
         }
     }

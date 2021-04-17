@@ -158,7 +158,7 @@ impl BcCamera {
                 channel_id: self.channel_id,
                 msg_num: self.new_message_num(),
                 stream_type: 0,
-                response_code: 0x01dc,
+                response_code: 0x03dc,
                 class: 0x6514,
             },
             body: BcBody::LegacyMsg(LegacyMsg::LoginMsg {
@@ -252,6 +252,15 @@ impl BcCamera {
                     why: "Expected a DeviceInfo message back from login",
                 })
             }
+        }
+
+        if let EncryptionProtocol::Aes(_) = connection.get_encrypted() {
+            // We setup the data for the AES key now
+            // as all subsequent communications will use it
+            let nonce = Some(nonce);
+            let passwd = Some(password.unwrap_or("").to_string());
+            let full_key = AesKey { nonce, passwd };
+            connection.set_encrypted(EncryptionProtocol::Aes(full_key));
         }
 
         Ok(device_info)

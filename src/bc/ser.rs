@@ -26,7 +26,11 @@ impl Bc {
                 // First serialize ext
                 let (temp_buf, ext_len) = gen(
                     opt_ref(&modern.extension, |ext| {
-                        bc_ext(self.meta.channel_id as u32, ext, encryption_protocol)
+                        bc_ext(
+                            self.meta.channel_id as u32,
+                            ext,
+                            encryption_protocol.clone(),
+                        )
                     }),
                     vec![],
                 )?;
@@ -49,7 +53,7 @@ impl Bc {
                         bc_payload(
                             self.meta.channel_id as u32,
                             payload_offset,
-                            encryption_protocol,
+                            encryption_protocol.clone(),
                         )
                     }),
                     temp_buf,
