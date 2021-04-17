@@ -14,7 +14,7 @@ impl Bc {
     pub fn serialize<W: Write>(
         &self,
         buf: W,
-        encryption_protocol: EncryptionProtocol,
+        encryption_protocol: &EncryptionProtocol,
     ) -> Result<W, GenError> {
         // Ideally this would be a combinator, but that would be hairy because we have to
         // serialize the XML to have the metadata to build the header
@@ -29,7 +29,7 @@ impl Bc {
                         bc_ext(
                             self.meta.channel_id as u32,
                             ext,
-                            encryption_protocol.clone(),
+                            encryption_protocol,
                         )
                     }),
                     vec![],
@@ -53,7 +53,7 @@ impl Bc {
                         bc_payload(
                             self.meta.channel_id as u32,
                             payload_offset,
-                            encryption_protocol.clone(),
+                            encryption_protocol,
                         )
                     }),
                     temp_buf,
@@ -83,7 +83,7 @@ impl Bc {
 fn bc_ext<W: Write>(
     enc_offset: u32,
     xml: &Extension,
-    encryption_protocol: EncryptionProtocol,
+    encryption_protocol: &EncryptionProtocol,
 ) -> impl SerializeFn<W> {
     let xml_bytes = xml.serialize(vec![]).unwrap();
     let enc_bytes = xml_crypto::crypt(enc_offset, &xml_bytes, encryption_protocol);
@@ -93,7 +93,7 @@ fn bc_ext<W: Write>(
 fn bc_payload<W: Write>(
     enc_offset: u32,
     payload: &BcPayloads,
-    encryption_protocol: EncryptionProtocol,
+    encryption_protocol: &EncryptionProtocol,
 ) -> impl SerializeFn<W> {
     let payload_bytes = match payload {
         BcPayloads::BcXml(x) => {

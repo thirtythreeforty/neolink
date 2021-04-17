@@ -72,32 +72,10 @@ pub(super) struct BcSendInfo {
 }
 
 #[derive(Debug, Clone)]
-pub struct AesKey {
-    pub nonce: Option<String>,
-    pub passwd: Option<String>,
-}
-
-impl AesKey {
-    pub fn get_key(&self) -> Option<Vec<u8>> {
-        if let (Some(nonce), Some(passwd)) = (&self.nonce, &self.passwd) {
-            let key_phrase = format!("{}-{}", nonce, passwd);
-            let key_phrase_hash = format!("{:X}\0", md5::compute(&key_phrase))
-                .to_uppercase()
-                .into_bytes();
-            let key = &key_phrase_hash[0..16];
-            Some(key.to_vec())
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub enum EncryptionProtocol {
     Unencrypted,
     BCEncrypt,
-    Aes(AesKey),
-    Unknown,
+    Aes(Option<[u8; 16]>),
 }
 
 #[derive(Debug)]

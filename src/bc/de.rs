@@ -128,11 +128,8 @@ fn bc_modern_msg<'a, 'b>(
         match encryption_protocol_byte {
             0x00 => context.set_encrypted(EncryptionProtocol::Unencrypted),
             0x01 => context.set_encrypted(EncryptionProtocol::BCEncrypt),
-            0x03 => context.set_encrypted(EncryptionProtocol::Aes(AesKey {
-                nonce: None,
-                passwd: None,
-            })),
-            _ => context.set_encrypted(EncryptionProtocol::Unknown),
+            0x03 => context.set_encrypted(EncryptionProtocol::Aes(None)),
+            _ => return Err(Err::Error(make_error(buf, ErrorKind::MapRes))),
         }
     }
 
@@ -144,7 +141,7 @@ fn bc_modern_msg<'a, 'b>(
     let processed_ext_buf = match context.get_encrypted() {
         EncryptionProtocol::Unencrypted => ext_buf,
         encryption_protocol => {
-            decrypted = xml_crypto::crypt(header.channel_id as u32, ext_buf, encryption_protocol);
+            decrypted = xml_crypto::crypt(header.channel_id as u32, ext_buf, &encryption_protocol);
             &decrypted
         }
     };
@@ -170,7 +167,7 @@ fn bc_modern_msg<'a, 'b>(
         // Extract remainder of message as binary, if it exists
         let encryption_protocol = context.get_encrypted();
         let processed_payload_buf =
-            xml_crypto::crypt(header.channel_id as u32, payload_buf, encryption_protocol);
+            xml_crypto::crypt(header.channel_id as u32, payload_buf, &encryption_protocol);
         if let Ok(xml) = BcXml::try_parse(processed_payload_buf.as_slice()) {
             payload = Some(BcPayloads::BcXml(xml));
         } else {

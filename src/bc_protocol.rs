@@ -6,6 +6,7 @@ use crate::gst::GstOutputs;
 use adpcm::adpcm_to_pcm;
 use err_derive::Error;
 use log::*;
+use std::convert::TryInto;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -257,10 +258,9 @@ impl BcCamera {
         if let EncryptionProtocol::Aes(_) = connection.get_encrypted() {
             // We setup the data for the AES key now
             // as all subsequent communications will use it
-            let nonce = Some(nonce);
-            let passwd = Some(password.unwrap_or("").to_string());
-            let full_key = AesKey { nonce, passwd };
-            connection.set_encrypted(EncryptionProtocol::Aes(full_key));
+            let passwd = password.unwrap_or("");
+            let full_key = make_aes_key(&nonce, passwd);
+            connection.set_encrypted(EncryptionProtocol::Aes(Some(full_key)));
         }
 
         Ok(device_info)
@@ -429,6 +429,14 @@ fn md5_string(input: &str, trunc: Md5Trunc) -> String {
     let mut md5 = format!("{:X}\0", md5::compute(input));
     md5.replace_range(31.., if trunc == Truncate { "" } else { "\0" });
     md5
+}
+
+pub fn make_aes_key(nonce: &str, passwd: &str) -> [u8; 16] {
+    let key_phrase = format!("{}-{}", nonce, passwd);
+    let key_phrase_hash = format!("{:X}\0", md5::compute(&key_phrase))
+        .to_uppercase()
+        .into_bytes();
+    key_phrase_hash[0..16].try_into().unwrap()
 }
 
 #[test]
