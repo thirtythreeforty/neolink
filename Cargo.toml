@@ -8,6 +8,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+aes = "0.6"
+cfb-mode = "0.6"
 cookie-factory = "0.3"
 crossbeam = "0.7"
 env_logger = "*"
@@ -23,7 +25,7 @@ log = { version = "0.4" }
 indoc = "0.3"
 itertools = "0.9"
 md5 = "0.7"
-nom = "5.1"
+nom = "6.1.2"
 regex = "1"
 serde = { version = "1.0", features = ["derive"] }
 socket2 = "0.3"

@@ -67,7 +67,7 @@ pub struct CameraConfig {
 
     #[validate(range(min = 0, max = 31, message = "Invalid channel", code = "channel_id"))]
     #[serde(default = "default_channel_id")]
-    pub channel_id: u32,
+    pub channel_id: u8,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -100,7 +100,7 @@ fn default_tls_client_auth() -> String {
     "none".to_string()
 }
 
-fn default_channel_id() -> u32 {
+fn default_channel_id() -> u8 {
     0
 }
 

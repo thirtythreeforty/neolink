@@ -5,6 +5,7 @@ use log::*;
 use socket2::{Domain, Socket, Type};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
+use std::error::Error as StdErr; // Just need the traits
 use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -20,6 +21,9 @@ pub struct BcConnection {
     connection: Arc<Mutex<TcpStream>>,
     subscribers: Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
     rx_thread: Option<JoinHandle<()>>,
+    // Arc<Mutex<EncryptionProtocol>> because it is shared between context
+    // and connection for deserialisation and serialistion respectivly
+    encryption_protocol: Arc<Mutex<EncryptionProtocol>>,
 }
 
 pub struct BcSubscription<'a> {
@@ -53,20 +57,29 @@ impl BcConnection {
         let mut subs = subscribers.clone();
         let conn = tcp_conn.try_clone()?;
 
+        let encryption_protocol = Arc::new(Mutex::new(EncryptionProtocol::Unencrypted));
+        let connections_encryption_protocol = encryption_protocol.clone();
         let rx_thread = std::thread::spawn(move || {
-            let mut context = BcContext::new();
+            let mut context = BcContext::new(connections_encryption_protocol);
             let mut result;
             while {
                 result = BcConnection::poll(&mut context, &conn, &mut subs);
                 result.is_ok()
             } {}
-            error!("Deserialization error: {:?}", result.unwrap_err());
+            let e = result.unwrap_err();
+            error!("Deserialization error: {}", e);
+            let mut cause = e.source();
+            while let Some(e) = cause {
+                error!("caused by: {}", e);
+                cause = e.source();
+            }
         });
 
         Ok(BcConnection {
             connection: Arc::new(Mutex::new(tcp_conn)),
             subscribers,
             rx_thread: Some(rx_thread),
+            encryption_protocol,
         })
     }
 
@@ -115,6 +128,14 @@ impl BcConnection {
 
         Ok(())
     }
+
+    pub fn set_encrypted(&self, value: EncryptionProtocol) {
+        *(self.encryption_protocol.lock().unwrap()) = value;
+    }
+
+    pub fn get_encrypted(&self) -> EncryptionProtocol {
+        (*self.encryption_protocol.lock().unwrap()).clone()
+    }
 }
 
 impl Drop for BcConnection {
@@ -141,7 +162,10 @@ impl<'a> BcSubscription<'a> {
     pub fn send(&self, bc: Bc) -> Result<()> {
         assert!(bc.meta.msg_id == self.msg_id);
 
-        bc.serialize(&*self.conn.connection.lock().unwrap())?;
+        bc.serialize(
+            &*self.conn.connection.lock().unwrap(),
+            &self.conn.get_encrypted(),
+        )?;
         Ok(())
     }
 }

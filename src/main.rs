@@ -19,6 +19,7 @@ use cmdline::Opt;
 use config::{CameraConfig, Config, UserConfig};
 
 #[derive(Debug, Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum Error {
     #[error(display = "Configuration parsing error")]
     ConfigError(#[error(source)] toml::de::Error),
@@ -198,6 +199,7 @@ fn camera_main(
 ) -> Result<Never, CameraErr> {
     let mut connected = false;
     (|| {
+        let mut camera = BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)?;
         if camera_config.timeout.is_some() {
             warn!("The undocumented `timeout` config option has been removed and is no longer needed.");
             warn!("Please update your config file.");
@@ -207,8 +209,6 @@ fn camera_main(
             "{}: Connecting to camera at {}",
             camera_config.name, camera_config.camera_addr
         );
-
-        let mut camera = BcCamera::connect(&camera_config.camera_addr)?;
 
         camera.login(&camera_config.username, camera_config.password.as_deref())?;
 
@@ -223,7 +223,7 @@ fn camera_main(
             "{}: Starting video stream {}",
             camera_config.name, stream_name
         );
-        camera.start_video(outputs, stream_name, camera_config.channel_id)
+        camera.start_video(outputs, stream_name)
     })()
     .map_err(|err| CameraErr { connected, err })
 }

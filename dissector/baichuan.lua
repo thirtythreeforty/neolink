@@ -15,7 +15,7 @@ unknown = ProtoField.int8("baichuan.unknown", "unknown", base.DEC)
 msg_handle = ProtoField.int8("baichuan.message_handle", "messageHandle", base.DEC)
 status_code = ProtoField.int16("baichuan.status_code", "status_code", base.DEC)
 message_class = ProtoField.int32("baichuan.msg_class", "messageClass", base.DEC)
-f_bin_offset = ProtoField.int32("baichuan.bin_offset", "binOffset", base.DEC)
+f_payload_offset = ProtoField.int32("baichuan.payload_offset", "binOffset", base.DEC)
 username = ProtoField.string("baichuan.username", "username", base.ASCII)
 password = ProtoField.string("baichuan.password", "password", base.ASCII)
 
@@ -31,7 +31,7 @@ bc_protocol.fields = {
   encrypt_xml,
   status_code,
   message_class,
-  f_bin_offset,
+  f_payload_offset,
   username,
   password,
 }
@@ -187,7 +187,7 @@ function get_header(buffer)
   local msg_type = buffer(4, 4):le_uint()
   if header_len == 24 then
     bin_offset = buffer(20, 4):le_uint() -- if NHD-805/806 legacy protocol 30 30 30 30 aka "0000"
-    status_code =  buffer(16, 2):le_uint() 
+    status_code =  buffer(16, 2):le_uint()
   else
     encrypt_xml = buffer(16, 1):le_uint()
   end
@@ -234,13 +234,13 @@ function process_header(buffer, headers_tree)
   header:add_le(channel_id, buffer(12, 1))
   header:add_le(stream_id, buffer(13, 1))
         :append_text(stream_text)
-  header:add_le(unknown, buffer(14, 1))        
+  header:add_le(unknown, buffer(14, 1))
   header:add_le(msg_handle, buffer(15, 1))
 
   header:add_le(message_class, buffer(18, 2)):append_text(" (" .. header_data.class .. ")")
-  
+
   if header_data.header_len == 24 then
-    header:add_le(status_code, buffer(16, 2))    
+    header:add_le(status_code, buffer(16, 2))
     header:add_le(f_bin_offset, buffer(20, 4))
   else
     header:add_le(encrypt_xml, buffer(16, 1))

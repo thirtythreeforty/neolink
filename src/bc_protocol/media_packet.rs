@@ -216,7 +216,7 @@ impl<'a> MediaDataSubscriber<'a> {
         loop {
             let msg = self.bc_sub.rx.recv_timeout(RX_TIMEOUT)?;
             if let BcBody::ModernMsg(ModernMsg {
-                binary: Some(binary),
+                payload: Some(BcPayloads::Binary(binary)),
                 ..
             }) = msg.body
             {

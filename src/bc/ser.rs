@@ -1,90 +1,121 @@
 use super::model::*;
-use super::xml::BcXml;
+use super::xml::BcPayloads;
 use super::xml_crypto;
 use cookie_factory::bytes::*;
 use cookie_factory::sequence::tuple;
 use cookie_factory::{combinator::*, gen};
 use cookie_factory::{GenError, SerializeFn, WriteContext};
+use log::error;
 use std::io::Write;
 
 pub type Error = GenError;
 
 impl Bc {
-    pub fn serialize<W: Write>(&self, buf: W) -> Result<W, GenError> {
+    pub fn serialize<W: Write>(
+        &self,
+        buf: W,
+        encryption_protocol: &EncryptionProtocol,
+    ) -> Result<W, GenError> {
         // Ideally this would be a combinator, but that would be hairy because we have to
         // serialize the XML to have the metadata to build the header
         let body_buf;
-        let bin_offset;
+        let payload_offset;
+
         match &self.body {
             BcBody::ModernMsg(ref modern) => {
-                let (buf, xml_len) = gen(
-                    opt_ref(&modern.xml, |xml| bc_xml(self.meta.client_idx, xml)),
+                // First serialize ext
+                let (temp_buf, ext_len) = gen(
+                    opt_ref(&modern.extension, |ext| {
+                        bc_ext(self.meta.channel_id as u32, ext, encryption_protocol)
+                    }),
                     vec![],
                 )?;
-                body_buf = buf;
-                bin_offset = if has_bin_offset(self.meta.class) {
+
+                // Now get the offset of the payload
+                payload_offset = if has_payload_offset(self.meta.class) {
                     // If we're required to put binary length, put 0 if we have no binary
-                    Some(if modern.binary.is_some() {
-                        xml_len as u32
+                    Some(if modern.payload.is_some() {
+                        ext_len as u32
                     } else {
                         0
                     })
                 } else {
                     None
                 };
+
+                // Now get the payload part of the body and add to ext_buf
+                let (temp_buf, _) = gen(
+                    opt_ref(&modern.payload, |payload_offset| {
+                        bc_payload(
+                            self.meta.channel_id as u32,
+                            payload_offset,
+                            encryption_protocol,
+                        )
+                    }),
+                    temp_buf,
+                )?;
+                body_buf = temp_buf;
             }
+
             BcBody::LegacyMsg(ref legacy) => {
-                let (buf, _) = gen(bc_legacy(legacy), vec![])?;
+                let (buf, _) = gen(bc_legacy(legacy), vec![]).map_err(|e| {
+                    error!("Send error: {}", e);
+                    e
+                })?;
                 body_buf = buf;
-                bin_offset = None;
+                payload_offset = None;
             }
-        }
+        };
 
         // Now have enough info to create the header
-        let header = BcHeader::from_meta(&self.meta, body_buf.len() as u32, bin_offset);
+        let header = BcHeader::from_meta(&self.meta, body_buf.len() as u32, payload_offset);
 
-        let (mut buf, _n) = gen(tuple((bc_header(&header), slice(body_buf))), buf)?;
-
-        // Put the binary part of the body, TODO this is poorly written
-        if let BcBody::ModernMsg(ModernMsg {
-            binary: Some(ref binary),
-            ..
-        }) = self.body
-        {
-            let (buf2, _) = gen(slice(binary), buf)?;
-            buf = buf2
-        }
+        let (buf, _n) = gen(tuple((bc_header(&header), slice(body_buf))), buf)?;
 
         Ok(buf)
     }
 }
 
-fn bc_xml<W: Write>(enc_offset: u32, xml: &BcXml) -> impl SerializeFn<W> {
+fn bc_ext<W: Write>(
+    enc_offset: u32,
+    xml: &Extension,
+    encryption_protocol: &EncryptionProtocol,
+) -> impl SerializeFn<W> {
     let xml_bytes = xml.serialize(vec![]).unwrap();
-    let enc_bytes = xml_crypto::crypt(enc_offset, &xml_bytes);
+    let enc_bytes = xml_crypto::encrypt(enc_offset, &xml_bytes, encryption_protocol);
     slice(enc_bytes)
 }
 
-fn bc_header<W: Write>(header: &BcHeader) -> impl SerializeFn<W> {
-    // TODO this is actually a u16 "response code" in modern messages
-    let (signaled_encryption, spare) = if header.class == 0x0000 {
-        (0x00, 0x00)
-    } else {
-        (header.encrypted as u8, 0xdc)
+fn bc_payload<W: Write>(
+    enc_offset: u32,
+    payload: &BcPayloads,
+    encryption_protocol: &EncryptionProtocol,
+) -> impl SerializeFn<W> {
+    let payload_bytes = match payload {
+        BcPayloads::BcXml(x) => {
+            let xml_bytes = x.serialize(vec![]).unwrap();
+            xml_crypto::encrypt(enc_offset, &xml_bytes, encryption_protocol)
+        }
+        BcPayloads::Binary(x) => x.to_owned(),
     };
+    slice(payload_bytes)
+}
+
+fn bc_header<W: Write>(header: &BcHeader) -> impl SerializeFn<W> {
     tuple((
         le_u32(MAGIC_HEADER),
         le_u32(header.msg_id),
         le_u32(header.body_len),
-        le_u32(header.enc_offset),
-        le_u8(signaled_encryption),
-        le_u8(spare), // skipped byte
+        le_u8(header.channel_id),
+        le_u8(header.stream_type),
+        le_u16(header.msg_num),
+        le_u16(header.response_code),
         le_u16(header.class),
-        opt(header.bin_offset, le_u32),
+        opt(header.payload_offset, le_u32),
     ))
 }
 
-fn bc_legacy<'a, W: Write>(legacy: &'a LegacyMsg) -> impl SerializeFn<W> + 'a {
+fn bc_legacy<W: Write>(legacy: &'_ LegacyMsg) -> impl SerializeFn<W> + '_ {
     move |out: WriteContext<W>| {
         use LegacyMsg::*;
         match legacy {
@@ -146,13 +177,17 @@ fn do_nothing<W>() -> impl SerializeFn<W> {
 
 #[test]
 fn test_legacy_login_roundtrip() {
-    let mut context = BcContext::new();
+    let encryption_protocol =
+        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+    let mut context = BcContext::new(encryption_protocol);
 
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_legacy_login.bin");
     let msg = Bc::deserialize::<&[u8]>(&mut context, &sample[..]).unwrap();
 
-    let ser_buf = msg.serialize(vec![]).unwrap();
+    let ser_buf = msg
+        .serialize(vec![], &EncryptionProtocol::BCEncrypt)
+        .unwrap();
     let msg2 = Bc::deserialize::<&[u8]>(&mut context, ser_buf.as_ref()).unwrap();
     assert_eq!(msg, msg2);
     assert_eq!(&sample[..], ser_buf.as_slice());
@@ -160,14 +195,18 @@ fn test_legacy_login_roundtrip() {
 
 #[test]
 fn test_modern_login_roundtrip() {
-    let mut context = BcContext::new();
+    let encryption_protocol =
+        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+    let mut context = BcContext::new(encryption_protocol);
 
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_modern_login.bin");
 
     let msg = Bc::deserialize::<&[u8]>(&mut context, &sample[..]).unwrap();
 
-    let ser_buf = msg.serialize(vec![]).unwrap();
+    let ser_buf = msg
+        .serialize(vec![], &EncryptionProtocol::BCEncrypt)
+        .unwrap();
     let msg2 = Bc::deserialize::<&[u8]>(&mut context, ser_buf.as_ref()).unwrap();
     assert_eq!(msg, msg2);
 }
