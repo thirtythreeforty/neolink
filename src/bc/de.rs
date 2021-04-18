@@ -15,10 +15,10 @@ pub enum Error {
     IoError(#[error(source)] std::io::Error),
 }
 
-type NomErrorTuple<'a> = (&'a [u8], nom::error::ErrorKind);
+type NomErrorType<'a> = nom::error::Error<&'a [u8]>;
 
-impl<'a> From<nom::Err<NomErrorTuple<'a>>> for Error {
-    fn from(k: nom::Err<NomErrorTuple<'a>>) -> Self {
+impl<'a> From<nom::Err<NomErrorType<'a>>> for Error {
+    fn from(k: nom::Err<NomErrorType<'a>>) -> Self {
         let reason = match k {
             nom::Err::Error(_) => "Nom Error",
             nom::Err::Failure(_) => "Nom Failure",
@@ -38,7 +38,7 @@ impl Bc {
 fn read_from_reader<P, O, E, R>(mut parser: P, mut rdr: R) -> Result<O, E>
 where
     R: Read,
-    E: for<'a> From<nom::Err<NomErrorTuple<'a>>> + From<std::io::Error>,
+    E: for<'a> From<nom::Err<NomErrorType<'a>>> + From<std::io::Error>,
     P: FnMut(&[u8]) -> nom::IResult<&[u8], O>,
 {
     let mut input: Vec<u8> = Vec::new();
@@ -47,14 +47,17 @@ where
             Ok((_, parsed)) => return Ok(parsed),
             Err(nom::Err::Incomplete(needed)) => {
                 match needed {
-                    nom::Needed::Unknown => 1, // read one byte
+                    nom::Needed::Unknown => std::num::NonZeroUsize::new(1).unwrap(), // read one byte
                     nom::Needed::Size(len) => len,
                 }
             }
             Err(e) => return Err(e.into()),
         };
 
-        if 0 == (&mut rdr).take(to_read as u64).read_to_end(&mut input)? {
+        if 0 == (&mut rdr)
+            .take(to_read.get() as u64)
+            .read_to_end(&mut input)?
+        {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 "Read returned 0 bytes",
@@ -93,7 +96,7 @@ fn bc_body<'a, 'b, 'c>(
     }
 }
 
-fn hex32<'a>() -> impl Fn(&'a [u8]) -> IResult<&'a [u8], String> {
+fn hex32<'a>() -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], String> {
     map_res(take(32usize), |slice: &'a [u8]| {
         String::from_utf8(slice.to_vec())
     })
