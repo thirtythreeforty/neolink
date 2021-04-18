@@ -162,7 +162,7 @@ fn bc_modern_msg<'a, 'b>(
             ..
         } = &parsed
         {
-            context.in_bin_mode.insert(header.msg_num as u32);
+            context.in_bin_mode.insert(header.msg_num);
         }
         extension = Some(parsed);
     } else {
@@ -179,7 +179,7 @@ fn bc_modern_msg<'a, 'b>(
         let encryption_protocol = context.get_encrypted();
         let processed_payload_buf =
             xml_crypto::decrypt(header.channel_id as u32, payload_buf, &encryption_protocol);
-        if context.in_bin_mode.contains(&(header.msg_num as u32)) {
+        if context.in_bin_mode.contains(&(header.msg_num)) {
             payload = Some(BcPayloads::Binary(payload_buf.to_vec()));
         } else {
             let xml = BcXml::try_parse(processed_payload_buf.as_slice())
@@ -223,20 +223,28 @@ fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
 fn test_bc_modern_login() {
     let sample = include_bytes!("samples/model_sample_modern_login.bin");
 
-    let mut context = BcContext::new();
+    let encryption_protocol =
+        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+    let mut context = BcContext::new(encryption_protocol);
 
     let (buf, header) = bc_header(&sample[..]).unwrap();
     let (_, body) = bc_body(&mut context, &header, buf).unwrap();
     assert_eq!(header.msg_id, 1);
     assert_eq!(header.body_len, 145);
-    assert_eq!(header.enc_offset, 0x1000000);
-    assert_eq!(header.encrypted, true);
+    assert_eq!(header.channel_id, 0);
+    assert_eq!(header.stream_type, 0);
+    assert_eq!(header.payload_offset, None);
+    assert_eq!(header.response_code, 0xdd01);
     assert_eq!(header.class, 0x6614);
     match body {
         BcBody::ModernMsg(ModernMsg {
-            xml: Some(ref xml),
-            binary: None,
-        }) => assert_eq!(xml.encryption.as_ref().unwrap().nonce, "9E6D1FCB9E69846D"),
+            payload:
+                Some(BcPayloads::BcXml(BcXml {
+                    encryption: Some(encryption),
+                    ..
+                })),
+            ..
+        }) => assert_eq!(encryption.nonce, "9E6D1FCB9E69846D"),
         _ => assert!(false),
     }
 }
@@ -245,14 +253,18 @@ fn test_bc_modern_login() {
 fn test_bc_legacy_login() {
     let sample = include_bytes!("samples/model_sample_legacy_login.bin");
 
-    let mut context = BcContext::new();
+    let encryption_protocol =
+        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+    let mut context = BcContext::new(encryption_protocol);
 
     let (buf, header) = bc_header(&sample[..]).unwrap();
     let (_, body) = bc_body(&mut context, &header, buf).unwrap();
     assert_eq!(header.msg_id, 1);
     assert_eq!(header.body_len, 1836);
-    assert_eq!(header.enc_offset, 0x1000000);
-    assert_eq!(header.encrypted, true);
+    assert_eq!(header.channel_id, 0);
+    assert_eq!(header.stream_type, 0);
+    assert_eq!(header.payload_offset, None);
+    assert_eq!(header.response_code, 0xdc01);
     assert_eq!(header.class, 0x6514);
     match body {
         BcBody::LegacyMsg(LegacyMsg::LoginMsg { username, password }) => {
@@ -267,19 +279,23 @@ fn test_bc_legacy_login() {
 fn test_bc_modern_login_failed() {
     let sample = include_bytes!("samples/modern_login_failed.bin");
 
-    let mut context = BcContext::new();
+    let encryption_protocol =
+        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+    let mut context = BcContext::new(encryption_protocol);
 
     let (buf, header) = bc_header(&sample[..]).unwrap();
     let (_, body) = bc_body(&mut context, &header, buf).unwrap();
     assert_eq!(header.msg_id, 1);
     assert_eq!(header.body_len, 0);
-    assert_eq!(header.enc_offset, 0x0);
-    assert_eq!(header.encrypted, true);
+    assert_eq!(header.channel_id, 0);
+    assert_eq!(header.stream_type, 0);
+    assert_eq!(header.payload_offset, Some(0x0));
+    assert_eq!(header.response_code, 0x190); // 400
     assert_eq!(header.class, 0x0000);
     match body {
         BcBody::ModernMsg(ModernMsg {
-            xml: None,
-            binary: None,
+            extension: None,
+            payload: None,
         }) => {
             assert!(true);
         }
@@ -291,22 +307,26 @@ fn test_bc_modern_login_failed() {
 fn test_bc_modern_login_success() {
     let sample = include_bytes!("samples/modern_login_success.bin");
 
-    let mut context = BcContext::new();
+    let encryption_protocol =
+        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+    let mut context = BcContext::new(encryption_protocol);
 
     let (buf, header) = bc_header(&sample[..]).unwrap();
     let (_, body) = bc_body(&mut context, &header, buf).unwrap();
     assert_eq!(header.msg_id, 1);
     assert_eq!(header.body_len, 2949);
-    assert_eq!(header.enc_offset, 0x0);
-    assert_eq!(header.encrypted, true);
+    assert_eq!(header.channel_id, 0);
+    assert_eq!(header.stream_type, 0);
+    assert_eq!(header.payload_offset, Some(0x0));
+    assert_eq!(header.response_code, 0xc8); // 200
     assert_eq!(header.class, 0x0000);
 
     // Previously, we were not handling payload_offset == 0 (no bin offset) correctly.
     // Test that we decoded XML and no binary.
     match body {
         BcBody::ModernMsg(ModernMsg {
-            xml: Some(_),
-            binary: None,
+            extension: None,
+            payload: Some(_),
         }) => assert!(true),
         _ => assert!(false),
     }
@@ -317,23 +337,31 @@ fn test_bc_binary_mode() {
     let sample1 = include_bytes!("samples/modern_video_start1.bin");
     let sample2 = include_bytes!("samples/modern_video_start2.bin");
 
-    let mut context = BcContext::new();
+    let encryption_protocol =
+        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+    let mut context = BcContext::new(encryption_protocol);
 
     let msg1 = Bc::deserialize(&mut context, &sample1[..]).unwrap();
-    let msg2 = Bc::deserialize(&mut context, &sample2[..]).unwrap();
     match msg1.body {
         BcBody::ModernMsg(ModernMsg {
-            xml: None,
-            binary: Some(bin),
+            extension:
+                Some(Extension {
+                    binary_data: Some(1),
+                    ..
+                }),
+            payload: Some(BcPayloads::Binary(bin)),
         }) => {
             assert_eq!(bin.len(), 32);
         }
         _ => assert!(false),
     }
+
+    context.in_bin_mode.insert(msg1.meta.msg_num);
+    let msg2 = Bc::deserialize(&mut context, &sample2[..]).unwrap();
     match msg2.body {
         BcBody::ModernMsg(ModernMsg {
-            xml: None,
-            binary: Some(bin),
+            extension: None,
+            payload: Some(BcPayloads::Binary(bin)),
         }) => {
             assert_eq!(bin.len(), 30344);
         }

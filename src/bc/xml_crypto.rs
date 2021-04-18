@@ -61,7 +61,7 @@ fn test_xml_crypto() {
     let sample = include_bytes!("samples/xml_crypto_sample1.bin");
     let should_be = include_bytes!("samples/xml_crypto_sample1_plaintext.bin");
 
-    let decrypted = decrypt(0, &sample[..]);
+    let decrypted = decrypt(0, &sample[..], &EncryptionProtocol::BCEncrypt);
     assert_eq!(decrypted, &should_be[..]);
 }
 
@@ -69,7 +69,7 @@ fn test_xml_crypto() {
 fn test_xml_crypto_roundtrip() {
     let zeros: [u8; 256] = [0; 256];
 
-    let decrypted = encrypt(0, &zeros[..]);
-    let encrypted = decrypt(0, &decrypted[..]);
+    let decrypted = encrypt(0, &zeros[..], &EncryptionProtocol::BCEncrypt);
+    let encrypted = decrypt(0, &decrypted[..], &EncryptionProtocol::BCEncrypt);
     assert_eq!(encrypted, &zeros[..]);
 }

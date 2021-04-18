@@ -207,9 +207,9 @@ fn test_encryption_deser() {
     assert_eq!(enc.nonce, "9E6D1FCB9E69846D");
     assert_eq!(enc.type_, "md5");
 
-    let t = BcXmls::try_parse(sample.as_bytes()).unwrap();
+    let t = BcXml::try_parse(sample.as_bytes()).unwrap();
     match t {
-        BcXmls::BcXml(top_b) if top_b == b => assert!(true),
+        top_b if top_b == b => assert!(true),
         _ => assert!(false),
     }
 }
@@ -344,9 +344,12 @@ fn test_binary_deser() {
         </Extension>
     "#
     );
-    let b = BcXmls::try_parse(sample.as_bytes()).unwrap();
+    let b = Extension::try_parse(sample.as_bytes()).unwrap();
     match b {
-        BcXmls::Extension(Extension { binary_data: 1 }) => assert!(true),
+        Extension {
+            binary_data: Some(1),
+            ..
+        } => assert!(true),
         _ => assert!(false),
     }
 }

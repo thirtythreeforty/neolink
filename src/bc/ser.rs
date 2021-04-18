@@ -177,13 +177,17 @@ fn do_nothing<W>() -> impl SerializeFn<W> {
 
 #[test]
 fn test_legacy_login_roundtrip() {
-    let mut context = BcContext::new();
+    let encryption_protocol =
+        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+    let mut context = BcContext::new(encryption_protocol);
 
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_legacy_login.bin");
     let msg = Bc::deserialize::<&[u8]>(&mut context, &sample[..]).unwrap();
 
-    let ser_buf = msg.serialize(vec![]).unwrap();
+    let ser_buf = msg
+        .serialize(vec![], &EncryptionProtocol::BCEncrypt)
+        .unwrap();
     let msg2 = Bc::deserialize::<&[u8]>(&mut context, ser_buf.as_ref()).unwrap();
     assert_eq!(msg, msg2);
     assert_eq!(&sample[..], ser_buf.as_slice());
@@ -191,14 +195,18 @@ fn test_legacy_login_roundtrip() {
 
 #[test]
 fn test_modern_login_roundtrip() {
-    let mut context = BcContext::new();
+    let encryption_protocol =
+        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+    let mut context = BcContext::new(encryption_protocol);
 
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_modern_login.bin");
 
     let msg = Bc::deserialize::<&[u8]>(&mut context, &sample[..]).unwrap();
 
-    let ser_buf = msg.serialize(vec![]).unwrap();
+    let ser_buf = msg
+        .serialize(vec![], &EncryptionProtocol::BCEncrypt)
+        .unwrap();
     let msg2 = Bc::deserialize::<&[u8]>(&mut context, ser_buf.as_ref()).unwrap();
     assert_eq!(msg, msg2);
 }
