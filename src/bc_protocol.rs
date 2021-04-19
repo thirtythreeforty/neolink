@@ -9,7 +9,10 @@ use log::*;
 use std::convert::TryInto;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU16, Ordering},
+    Arc,
+};
 use std::time::Duration;
 
 use Md5Trunc::*;
@@ -25,9 +28,8 @@ pub struct BcCamera {
     connection: Option<BcConnection>,
     logged_in: bool,
     message_num: AtomicU16,
+    credentials: Option<(String, String)>, // Required for login AND logout
 }
-
-use crate::Never;
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -118,6 +120,7 @@ impl BcCamera {
                 message_num: AtomicU16::new(0),
                 channel_id,
                 logged_in: false,
+                credentials: None,
             });
         }
 
@@ -270,12 +273,44 @@ impl BcCamera {
             connection.set_encrypted(EncryptionProtocol::Aes(Some(full_key)));
         }
 
+        // Cache these so that logout can work
+        self.credentials = Some((username.to_string(), password.unwrap_or("").to_string()));
+
         Ok(device_info)
     }
 
     pub fn logout(&mut self) -> Result<()> {
         if self.logged_in {
-            // TODO: Send message ID 2
+            // Why does reolink bother with hashing the password during
+            // login if they just send it plain text during logout.....
+            if let Some((username, password)) = &self.credentials {
+                if let Some(connection) = self.connection.as_ref() {
+                    let msg_num = self.new_message_num();
+                    let sub = connection.subscribe(msg_num)?;
+
+                    let msg = Bc::new_from_xml(
+                        BcMeta {
+                            msg_id: MSG_ID_LOGOUT,
+                            channel_id: self.channel_id,
+                            msg_num,
+                            stream_type: 0,
+                            response_code: 0,
+                            class: 0x6414, // IDK why
+                        },
+                        BcXml {
+                            login_user: Some(LoginUser {
+                                version: xml_ver(),
+                                user_name: username.clone(),
+                                password: password.clone(),
+                                user_ver: 1,
+                            }),
+                            ..Default::default()
+                        },
+                    );
+
+                    sub.send(msg)?;
+                }
+            }
         }
         self.logged_in = false;
         Ok(())
@@ -377,8 +412,6 @@ impl BcCamera {
             _ => 0,
         };
 
-        let message_num = self.new_message_num();
-
         let start_video = Bc::new_from_xml(
             BcMeta {
                 msg_id: MSG_ID_VIDEO,
@@ -428,6 +461,51 @@ impl BcCamera {
                 _ => {}
             };
         }
+
+    }
+
+    pub fn stop_video(&self, stream_name: &str) -> Result<()> {
+        let connection = self
+            .connection
+            .as_ref()
+            .expect("Must be connected to stop video");
+        let msg_num = self.new_message_num();
+        let sub_video = connection.subscribe(msg_num)?;
+
+        let stream_num = match stream_name {
+            "mainStream" => 0,
+            "subStream" => 1,
+            _ => 0,
+        };
+
+        let stop_video = Bc::new_from_xml(
+            BcMeta {
+                msg_id: MSG_ID_VIDEO_STOP,
+                channel_id: self.channel_id,
+                msg_num,
+                stream_type: stream_num,
+                response_code: 0,
+                class: 0x6414, // IDK why
+            },
+            BcXml {
+                preview: Some(Preview {
+                    version: xml_ver(),
+                    channel_id: self.channel_id,
+                    handle: stream_num,
+                    stream_type: stream_name.to_string(),
+                }),
+                ..Default::default()
+            },
+        );
+
+        sub_video.send(stop_video)?;
+
+        let reply = sub_video.rx.recv_timeout(RX_TIMEOUT)?;
+        if reply.meta.response_code != 200 {
+            return Err(Error::CameraServiceUnavaliable);
+        }
+
+        Ok(())
     }
 }
 
