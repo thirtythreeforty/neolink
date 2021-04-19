@@ -69,6 +69,9 @@ pub enum Error {
     #[error(display = "ADPCM Decoding Error")]
     AdpcmDecodingError(&'static str),
 
+    #[error(display = "Camera responded with Service Unavaliable")]
+    CameraServiceUnavaliable,
+
     #[error(display = "Other error")]
     Other(&'static str),
 }
@@ -229,6 +232,9 @@ impl BcCamera {
 
         sub_login.send(modern_login)?;
         let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
+        if modern_reply.meta.response_code != 200 {
+            return Err(Error::CameraServiceUnavaliable);
+        }
 
         let device_info;
         match modern_reply.body {
@@ -301,6 +307,9 @@ impl BcCamera {
         sub_version.send(version)?;
 
         let modern_reply = sub_version.rx.recv_timeout(RX_TIMEOUT)?;
+        if modern_reply.meta.response_code != 200 {
+            return Err(Error::CameraServiceUnavaliable);
+        }
         let version_info;
         match modern_reply.body {
             BcBody::ModernMsg(ModernMsg {
@@ -356,6 +365,10 @@ impl BcCamera {
             .as_ref()
             .expect("Must be connected to start video");
         let msg_num = self.new_message_num();
+        debug!(
+            "Subscribing to {} with message number {}, ",
+            stream_name, msg_num
+        );
         let sub_video = connection.subscribe(msg_num)?;
 
         let stream_num = match stream_name {

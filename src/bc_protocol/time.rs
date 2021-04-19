@@ -24,6 +24,9 @@ impl BcCamera {
 
         sub_get_general.send(get)?;
         let msg = sub_get_general.rx.recv_timeout(RX_TIMEOUT)?;
+        if msg.meta.response_code != 200 {
+            return Err(Error::CameraServiceUnavaliable);
+        }
 
         if let BcBody::ModernMsg(ModernMsg {
             payload:
@@ -113,6 +116,9 @@ impl BcCamera {
 
         sub_set_general.send(set)?;
         let msg = sub_set_general.rx.recv_timeout(RX_TIMEOUT)?;
+        if msg.meta.response_code != 200 {
+            return Err(Error::CameraServiceUnavaliable);
+        }
 
         Ok(())
     }
