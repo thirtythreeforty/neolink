@@ -394,7 +394,12 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(&self, data_outs: &mut GstOutputs, stream_name: &str) -> Result<Never> {
+    pub fn start_video(
+        &self,
+        data_outs: &mut GstOutputs,
+        stream_name: &str,
+        abort_handle: Arc<AtomicBool>,
+    ) -> Result<()> {
         let connection = self
             .connection
             .as_ref()
@@ -436,7 +441,7 @@ impl BcCamera {
 
         let mut media_sub = MediaDataSubscriber::from_bc_sub(&sub_video);
 
-        loop {
+        while !abort_handle.load(Ordering::Relaxed) {
             let binary_data = media_sub.next_media_packet()?;
             // We now have a complete interesting packet. Send it to gst.
             // Process the packet
@@ -462,6 +467,7 @@ impl BcCamera {
             };
         }
 
+        Ok(())
     }
 
     pub fn stop_video(&self, stream_name: &str) -> Result<()> {

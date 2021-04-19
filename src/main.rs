@@ -7,7 +7,10 @@ use neolink::gst::{GstOutputs, RtspServer};
 use neolink::Never;
 use std::collections::HashSet;
 use std::fs;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::time::Duration;
 use structopt::StructOpt;
 use validator::Validate;
@@ -199,7 +202,7 @@ fn camera_main(
     camera_config: &CameraConfig,
     outputs: &[(&str, Arc<Mutex<GstOutputs>>)],
     manage: bool,
-) -> Result<Never, CameraErr> {
+) -> Result<(), CameraErr> {
     let mut connected = false;
     (|| {
         let mut camera = BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)?;
@@ -222,10 +225,11 @@ fn camera_main(
             do_camera_management(&mut camera, camera_config)?;
         }
 
-        let arc_camera_results: Arc<Mutex<Vec<Result<neolink::Never, neolink::Error>>>> = Default::default();
+        let arc_camera_results: Arc<Mutex<Vec<Result<(), neolink::Error>>>> = Default::default();
         let arc_camera = Arc::new(camera);
 
         crossbeam::scope(|s| {
+            let arc_abort_handle = Arc::new(AtomicBool::new(false));
             for (stream_name, arc_output) in outputs {
                 info!(
                     "{}: Starting video stream {}",
@@ -234,9 +238,13 @@ fn camera_main(
                 let camera_results = arc_camera_results.clone();
                 let camera = arc_camera.clone();
                 let output = arc_output.clone();
+                let abort_handle = arc_abort_handle.clone();
                 s.spawn(move |_| {
-                    let camera_result = camera.start_video(&mut *output.lock().unwrap(), stream_name);
+                    let camera_result = camera.start_video(&mut *output.lock().unwrap(), stream_name, abort_handle.clone());
                     (*camera_results.lock().unwrap()).push(camera_result);
+                    debug!("Stopping video on {}", stream_name);
+                    let _ = camera.stop_video(stream_name);
+                    abort_handle.store(true, Ordering::Relaxed);
                 });
             }
         }).unwrap();
