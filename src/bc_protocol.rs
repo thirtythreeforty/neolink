@@ -137,7 +137,8 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to log in");
-        let sub_login = connection.subscribe(MSG_ID_LOGIN)?;
+        let msg_num = self.new_message_num();
+        let sub_login = connection.subscribe(msg_num)?;
 
         // Login flow is: Send legacy login message, expect back a modern message with Encryption
         // details.  Then, re-send the login as a modern login message.  Expect back a device info
@@ -157,7 +158,7 @@ impl BcCamera {
             meta: BcMeta {
                 msg_id: MSG_ID_LOGIN,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0xdc03,
                 class: 0x6514,
@@ -209,7 +210,7 @@ impl BcCamera {
             BcMeta {
                 msg_id: MSG_ID_LOGIN,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414,
@@ -279,13 +280,15 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to get version info");
-        let sub_version = connection.subscribe(MSG_ID_VERSION)?;
+
+        let msg_num = self.new_message_num();
+        let sub_version = connection.subscribe(msg_num)?;
 
         let version = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_VERSION,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414, // IDK why
@@ -323,13 +326,14 @@ impl BcCamera {
 
     pub fn ping(&self) -> Result<()> {
         let connection = self.connection.as_ref().expect("Must be connected to ping");
-        let sub_ping = connection.subscribe(MSG_ID_PING)?;
+        let msg_num = self.new_message_num();
+        let sub_ping = connection.subscribe(msg_num)?;
 
         let ping = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_PING,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414,
@@ -351,7 +355,8 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to start video");
-        let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
+        let msg_num = self.new_message_num();
+        let sub_video = connection.subscribe(msg_num)?;
 
         let stream_num = match stream_name {
             "mainStream" => 0,
@@ -359,11 +364,13 @@ impl BcCamera {
             _ => 0,
         };
 
+        let message_num = self.new_message_num();
+
         let start_video = Bc::new_from_xml(
             BcMeta {
                 msg_id: MSG_ID_VIDEO,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: stream_num,
                 response_code: 0,
                 class: 0x6414, // IDK why

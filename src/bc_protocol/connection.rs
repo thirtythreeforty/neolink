@@ -19,7 +19,7 @@ use std::time::Duration;
 /// There can be only one subscriber per kind of message at a time.
 pub struct BcConnection {
     connection: Arc<Mutex<TcpStream>>,
-    subscribers: Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
+    subscribers: Arc<Mutex<BTreeMap<u16, Sender<Bc>>>>,
     rx_thread: Option<JoinHandle<()>>,
     // Arc<Mutex<EncryptionProtocol>> because it is shared between context
     // and connection for deserialisation and serialistion respectivly
@@ -28,7 +28,7 @@ pub struct BcConnection {
 
 pub struct BcSubscription<'a> {
     pub rx: Receiver<Bc>,
-    msg_id: u32,
+    msg_num: u16,
     conn: &'a BcConnection,
 }
 
@@ -46,13 +46,13 @@ pub enum Error {
     SerializationError(#[error(source)] bc::ser::Error),
 
     #[error(display = "Simultaneous subscription")]
-    SimultaneousSubscription { msg_id: u32 },
+    SimultaneousSubscription { msg_num: u16 },
 }
 
 impl BcConnection {
     pub fn new(addr: SocketAddr, timeout: Duration) -> Result<BcConnection> {
         let tcp_conn = connect_to(addr, timeout)?;
-        let subscribers: Arc<Mutex<BTreeMap<u32, Sender<Bc>>>> = Default::default();
+        let subscribers: Arc<Mutex<BTreeMap<u16, Sender<Bc>>>> = Default::default();
 
         let mut subs = subscribers.clone();
         let conn = tcp_conn.try_clone()?;
@@ -83,23 +83,23 @@ impl BcConnection {
         })
     }
 
-    pub fn subscribe(&self, msg_id: u32) -> Result<BcSubscription> {
+    pub fn subscribe(&self, msg_num: u16) -> Result<BcSubscription> {
         let (tx, rx) = channel();
-        match self.subscribers.lock().unwrap().entry(msg_id) {
+        match self.subscribers.lock().unwrap().entry(msg_num) {
             Entry::Vacant(vac_entry) => vac_entry.insert(tx),
-            Entry::Occupied(_) => return Err(Error::SimultaneousSubscription { msg_id }),
+            Entry::Occupied(_) => return Err(Error::SimultaneousSubscription { msg_num }),
         };
         Ok(BcSubscription {
             rx,
             conn: self,
-            msg_id,
+            msg_num,
         })
     }
 
     fn poll(
         context: &mut BcContext,
         connection: &TcpStream,
-        subscribers: &mut Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
+        subscribers: &mut Arc<Mutex<BTreeMap<u16, Sender<Bc>>>>,
     ) -> Result<()> {
         // Don't hold the lock during deserialization so we don't poison the subscribers mutex if
         // something goes wrong
@@ -109,19 +109,19 @@ impl BcConnection {
             subscribers.lock().unwrap().clear();
             err
         })?;
-        let msg_id = response.meta.msg_id;
+        let msg_num = response.meta.msg_num;
 
         let mut locked_subs = subscribers.lock().unwrap();
-        match locked_subs.entry(msg_id) {
+        match locked_subs.entry(msg_num) {
             Entry::Occupied(mut occ) => {
                 if occ.get_mut().send(response).is_err() {
                     // Exceedingly unlikely, unless you mishandle the subscription object
-                    warn!("Subscriber to ID {} dropped their channel", msg_id);
+                    warn!("Subscriber to ID {} dropped their channel", msg_num);
                     occ.remove();
                 }
             }
             Entry::Vacant(_) => {
-                debug!("Ignoring uninteresting message ID {}", msg_id);
+                debug!("Ignoring uninteresting message ID {}", msg_num);
                 trace!("Contents: {:?}", response);
             }
         }
@@ -160,7 +160,7 @@ impl Drop for BcConnection {
 
 impl<'a> BcSubscription<'a> {
     pub fn send(&self, bc: Bc) -> Result<()> {
-        assert!(bc.meta.msg_id == self.msg_id);
+        assert!(bc.meta.msg_num == self.msg_num);
 
         bc.serialize(
             &*self.conn.connection.lock().unwrap(),
@@ -173,7 +173,7 @@ impl<'a> BcSubscription<'a> {
 /// Makes it difficult to avoid unsubscribing when you're finished
 impl<'a> Drop for BcSubscription<'a> {
     fn drop(&mut self) {
-        self.conn.subscribers.lock().unwrap().remove(&self.msg_id);
+        self.conn.subscribers.lock().unwrap().remove(&self.msg_num);
     }
 }
 
