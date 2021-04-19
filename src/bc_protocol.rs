@@ -392,7 +392,7 @@ impl BcCamera {
                 preview: Some(Preview {
                     version: xml_ver(),
                     channel_id: self.channel_id,
-                    handle: 0,
+                    handle: stream_num,
                     stream_type: stream_name.to_string(),
                 }),
                 ..Default::default()

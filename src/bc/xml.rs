@@ -135,7 +135,10 @@ pub struct Preview {
 
     #[yaserde(rename = "channelId")]
     pub channel_id: u8,
-    pub handle: u32,
+    // Handle: Should be unique for each camera stream e.g. HD=0, SD=1.
+    // If not then the camera will refuse to play the first stream requested
+    // with this handle until it is restart (camera returns 400 response_code)
+    pub handle: u8,
     #[yaserde(rename = "streamType")]
     pub stream_type: String,
 }
