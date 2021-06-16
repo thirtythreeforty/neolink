@@ -41,6 +41,7 @@ Builds are provided for the following platforms:
 - Debian x86 ([download][debian-x86-ci-download])
 - Debian aarch64 ([download][debian-aarch-ci-download])
 - Debian armhf ([download][debian-armhf-ci-download])
+- Arch Linux ([AUR](https://aur.archlinux.org/packages/neolink-git/))
 - Docker x86 (see below)
 
 ### Windows/Linux
