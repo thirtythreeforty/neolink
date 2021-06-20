@@ -215,14 +215,18 @@ impl<'a> MediaDataSubscriber<'a> {
         // Loop messages until we get binary add that data and return
         loop {
             let msg = self.bc_sub.rx.recv_timeout(RX_TIMEOUT)?;
-            if let BcBody::ModernMsg(ModernMsg {
-                payload: Some(BcPayloads::Binary(binary)),
-                ..
-            }) = msg.body
-            {
-                // Add the new binary to the buffer and return
-                self.binary_buffer.extend(binary);
-                break;
+            if msg.meta.response_code == 200 {
+                if let BcBody::ModernMsg(ModernMsg {
+                    payload: Some(BcPayloads::Binary(binary)),
+                    ..
+                }) = msg.body
+                {
+                    // Add the new binary to the buffer and return
+                    self.binary_buffer.extend(binary);
+                    break;
+                }
+            } else {
+                return Err(Error::CameraServiceUnavaliable);
             }
         }
         Ok(())

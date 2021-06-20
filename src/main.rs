@@ -7,7 +7,10 @@ use neolink::gst::{GstOutputs, RtspServer};
 use neolink::Never;
 use std::collections::HashSet;
 use std::fs;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::time::Duration;
 use structopt::StructOpt;
 use validator::Validate;
@@ -73,26 +76,29 @@ fn main() -> Result<(), Error> {
                 get_permitted_users(config.users.as_slice(), &arc_cam.permitted_users);
 
             // Set up each main and substream according to all the RTSP mount paths we support
+
+            let mut stream_outputs: Vec<(&str, Arc<Mutex<GstOutputs>>)> = vec![];
+
             if ["both", "mainStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[
                     &*format!("/{}", arc_cam.name),
                     &*format!("/{}/mainStream", arc_cam.name),
                 ];
-                let mut outputs = rtsp
+                let outputs = rtsp
                     .add_stream(paths, &permitted_users)
                     .unwrap();
-                let main_camera = arc_cam.clone();
-                s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut outputs, true));
+                stream_outputs.push(("mainStream", Arc::new(Mutex::new(outputs))));
             }
             if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
-                let mut outputs = rtsp
+                let outputs = rtsp
                     .add_stream(paths, &permitted_users)
                     .unwrap();
-                let sub_camera = arc_cam.clone();
-                let manage = arc_cam.stream == "subStream";
-                s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut outputs, manage));
+                stream_outputs.push(("subStream", Arc::new(Mutex::new(outputs))));
             }
+
+            let main_camera = arc_cam.clone();
+            s.spawn(move |_| camera_loop(&*main_camera, &stream_outputs, true));
         }
 
         rtsp.run(&config.bind_addr, config.bind_port);
@@ -104,8 +110,7 @@ fn main() -> Result<(), Error> {
 
 fn camera_loop(
     camera_config: &CameraConfig,
-    stream_name: &str,
-    outputs: &mut GstOutputs,
+    outputs: &[(&str, Arc<Mutex<GstOutputs>>)],
     manage: bool,
 ) -> Result<Never, Error> {
     let min_backoff = Duration::from_secs(1);
@@ -113,9 +118,11 @@ fn camera_loop(
     let mut current_backoff = min_backoff;
 
     loop {
-        let cam_err = camera_main(camera_config, stream_name, outputs, manage).unwrap_err();
-        outputs.vidsrc.on_stream_error();
-        outputs.audsrc.on_stream_error();
+        let cam_err = camera_main(camera_config, outputs, manage).unwrap_err();
+        for (_, output) in outputs {
+            (*output.lock().unwrap()).vidsrc.on_stream_error();
+            (*output.lock().unwrap()).audsrc.on_stream_error();
+        }
         // Authentication failures are permanent; we retry everything else
         if cam_err.connected {
             current_backoff = min_backoff;
@@ -193,10 +200,9 @@ fn get_permitted_users<'a>(
 
 fn camera_main(
     camera_config: &CameraConfig,
-    stream_name: &str,
-    outputs: &mut GstOutputs,
+    outputs: &[(&str, Arc<Mutex<GstOutputs>>)],
     manage: bool,
-) -> Result<Never, CameraErr> {
+) -> Result<(), CameraErr> {
     let mut connected = false;
     (|| {
         let mut camera = BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)?;
@@ -219,13 +225,39 @@ fn camera_main(
             do_camera_management(&mut camera, camera_config)?;
         }
 
-        info!(
-            "{}: Starting video stream {}",
-            camera_config.name, stream_name
-        );
-        camera.start_video(outputs, stream_name)
-    })()
-    .map_err(|err| CameraErr { connected, err })
+        let arc_camera_results: Arc<Mutex<Vec<Result<(), neolink::Error>>>> = Default::default();
+        let arc_camera = Arc::new(camera);
+
+        crossbeam::scope(|s| {
+            let arc_abort_handle = Arc::new(AtomicBool::new(false));
+            for (stream_name, arc_output) in outputs {
+                info!(
+                    "{}: Starting video stream {}",
+                    camera_config.name, stream_name
+                );
+                let camera_results = arc_camera_results.clone();
+                let camera = arc_camera.clone();
+                let output = arc_output.clone();
+                let abort_handle = arc_abort_handle.clone();
+                s.spawn(move |_| {
+                    let camera_result = camera.start_video(&mut *output.lock().unwrap(), stream_name, abort_handle.clone());
+                    (*camera_results.lock().unwrap()).push(camera_result);
+                    debug!("Stopping video on {}", stream_name);
+                    let _ = camera.stop_video(stream_name);
+                    abort_handle.store(true, Ordering::Relaxed);
+                });
+            }
+        }).unwrap();
+
+        let mut camera_results = arc_camera_results.lock().unwrap();
+        while camera_results.len() > 0 {
+            let result = camera_results.pop().unwrap(); // Need to take ownership
+            if result.is_err() {
+                return result;
+            }
+        }
+        unreachable!(); // Should always error before this
+    })().map_err(|err| CameraErr { connected, err })
 }
 
 fn do_camera_management(

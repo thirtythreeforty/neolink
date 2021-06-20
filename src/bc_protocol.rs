@@ -9,7 +9,10 @@ use log::*;
 use std::convert::TryInto;
 use std::io::Write;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU16, Ordering},
+    Arc,
+};
 use std::time::Duration;
 
 use Md5Trunc::*;
@@ -25,9 +28,8 @@ pub struct BcCamera {
     connection: Option<BcConnection>,
     logged_in: bool,
     message_num: AtomicU16,
+    credentials: Option<(String, String)>, // Required for login AND logout
 }
-
-use crate::Never;
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -68,6 +70,9 @@ pub enum Error {
 
     #[error(display = "ADPCM Decoding Error")]
     AdpcmDecodingError(&'static str),
+
+    #[error(display = "Camera responded with Service Unavaliable")]
+    CameraServiceUnavaliable,
 
     #[error(display = "Other error")]
     Other(&'static str),
@@ -115,6 +120,7 @@ impl BcCamera {
                 message_num: AtomicU16::new(0),
                 channel_id,
                 logged_in: false,
+                credentials: None,
             });
         }
 
@@ -137,7 +143,8 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to log in");
-        let sub_login = connection.subscribe(MSG_ID_LOGIN)?;
+        let msg_num = self.new_message_num();
+        let sub_login = connection.subscribe(msg_num)?;
 
         // Login flow is: Send legacy login message, expect back a modern message with Encryption
         // details.  Then, re-send the login as a modern login message.  Expect back a device info
@@ -157,7 +164,7 @@ impl BcCamera {
             meta: BcMeta {
                 msg_id: MSG_ID_LOGIN,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0xdc03,
                 class: 0x6514,
@@ -209,7 +216,7 @@ impl BcCamera {
             BcMeta {
                 msg_id: MSG_ID_LOGIN,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414,
@@ -228,6 +235,9 @@ impl BcCamera {
 
         sub_login.send(modern_login)?;
         let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
+        if modern_reply.meta.response_code != 200 {
+            return Err(Error::CameraServiceUnavaliable);
+        }
 
         let device_info;
         match modern_reply.body {
@@ -263,12 +273,44 @@ impl BcCamera {
             connection.set_encrypted(EncryptionProtocol::Aes(Some(full_key)));
         }
 
+        // Cache these so that logout can work
+        self.credentials = Some((username.to_string(), password.unwrap_or("").to_string()));
+
         Ok(device_info)
     }
 
     pub fn logout(&mut self) -> Result<()> {
         if self.logged_in {
-            // TODO: Send message ID 2
+            // Why does reolink bother with hashing the password during
+            // login if they just send it plain text during logout.....
+            if let Some((username, password)) = &self.credentials {
+                if let Some(connection) = self.connection.as_ref() {
+                    let msg_num = self.new_message_num();
+                    let sub = connection.subscribe(msg_num)?;
+
+                    let msg = Bc::new_from_xml(
+                        BcMeta {
+                            msg_id: MSG_ID_LOGOUT,
+                            channel_id: self.channel_id,
+                            msg_num,
+                            stream_type: 0,
+                            response_code: 0,
+                            class: 0x6414, // IDK why
+                        },
+                        BcXml {
+                            login_user: Some(LoginUser {
+                                version: xml_ver(),
+                                user_name: username.clone(),
+                                password: password.clone(),
+                                user_ver: 1,
+                            }),
+                            ..Default::default()
+                        },
+                    );
+
+                    sub.send(msg)?;
+                }
+            }
         }
         self.logged_in = false;
         Ok(())
@@ -279,13 +321,15 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to get version info");
-        let sub_version = connection.subscribe(MSG_ID_VERSION)?;
+
+        let msg_num = self.new_message_num();
+        let sub_version = connection.subscribe(msg_num)?;
 
         let version = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_VERSION,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414, // IDK why
@@ -298,6 +342,9 @@ impl BcCamera {
         sub_version.send(version)?;
 
         let modern_reply = sub_version.rx.recv_timeout(RX_TIMEOUT)?;
+        if modern_reply.meta.response_code != 200 {
+            return Err(Error::CameraServiceUnavaliable);
+        }
         let version_info;
         match modern_reply.body {
             BcBody::ModernMsg(ModernMsg {
@@ -323,13 +370,14 @@ impl BcCamera {
 
     pub fn ping(&self) -> Result<()> {
         let connection = self.connection.as_ref().expect("Must be connected to ping");
-        let sub_ping = connection.subscribe(MSG_ID_PING)?;
+        let msg_num = self.new_message_num();
+        let sub_ping = connection.subscribe(msg_num)?;
 
         let ping = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_PING,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414,
@@ -346,12 +394,22 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(&self, data_outs: &mut GstOutputs, stream_name: &str) -> Result<Never> {
+    pub fn start_video(
+        &self,
+        data_outs: &mut GstOutputs,
+        stream_name: &str,
+        abort_handle: Arc<AtomicBool>,
+    ) -> Result<()> {
         let connection = self
             .connection
             .as_ref()
             .expect("Must be connected to start video");
-        let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
+        let msg_num = self.new_message_num();
+        debug!(
+            "Subscribing to {} with message number {}, ",
+            stream_name, msg_num
+        );
+        let sub_video = connection.subscribe(msg_num)?;
 
         let stream_num = match stream_name {
             "mainStream" => 0,
@@ -363,7 +421,7 @@ impl BcCamera {
             BcMeta {
                 msg_id: MSG_ID_VIDEO,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: stream_num,
                 response_code: 0,
                 class: 0x6414, // IDK why
@@ -372,7 +430,7 @@ impl BcCamera {
                 preview: Some(Preview {
                     version: xml_ver(),
                     channel_id: self.channel_id,
-                    handle: 0,
+                    handle: stream_num,
                     stream_type: stream_name.to_string(),
                 }),
                 ..Default::default()
@@ -383,7 +441,7 @@ impl BcCamera {
 
         let mut media_sub = MediaDataSubscriber::from_bc_sub(&sub_video);
 
-        loop {
+        while !abort_handle.load(Ordering::Relaxed) {
             let binary_data = media_sub.next_media_packet()?;
             // We now have a complete interesting packet. Send it to gst.
             // Process the packet
@@ -408,6 +466,52 @@ impl BcCamera {
                 _ => {}
             };
         }
+
+        Ok(())
+    }
+
+    pub fn stop_video(&self, stream_name: &str) -> Result<()> {
+        let connection = self
+            .connection
+            .as_ref()
+            .expect("Must be connected to stop video");
+        let msg_num = self.new_message_num();
+        let sub_video = connection.subscribe(msg_num)?;
+
+        let stream_num = match stream_name {
+            "mainStream" => 0,
+            "subStream" => 1,
+            _ => 0,
+        };
+
+        let stop_video = Bc::new_from_xml(
+            BcMeta {
+                msg_id: MSG_ID_VIDEO_STOP,
+                channel_id: self.channel_id,
+                msg_num,
+                stream_type: stream_num,
+                response_code: 0,
+                class: 0x6414, // IDK why
+            },
+            BcXml {
+                preview: Some(Preview {
+                    version: xml_ver(),
+                    channel_id: self.channel_id,
+                    handle: stream_num,
+                    stream_type: stream_name.to_string(),
+                }),
+                ..Default::default()
+            },
+        );
+
+        sub_video.send(stop_video)?;
+
+        let reply = sub_video.rx.recv_timeout(RX_TIMEOUT)?;
+        if reply.meta.response_code != 200 {
+            return Err(Error::CameraServiceUnavaliable);
+        }
+
+        Ok(())
     }
 }
 
