@@ -107,6 +107,22 @@ docker run \
   thirtythreeforty/neolink
 ```
 
+Here is an example docker-compose:
+
+```
+---
+version: "2"
+services:
+  neolink:
+    image: thirtythreeforty/neolink
+    container_name: neolink
+    ports:
+      - 8554:8554
+    volumes:
+      - $PWD/neolink.toml:/etc/neolink.toml
+    restart: unless-stopped
+```
+
 The Docker image is "best effort" and intended for advanced users; questions
 about running Docker are outside the scope of Neolink.
 
