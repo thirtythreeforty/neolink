@@ -109,7 +109,7 @@ docker run \
 
 Here is an example docker-compose:
 
-```
+```yml
 ---
 version: "2"
 services:
