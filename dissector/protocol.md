@@ -16,9 +16,9 @@ Each message has the general format:
 
 The header has the format:
 
-|    magic     |  message id  | message length | encryption offset | encrypt | unknown | message class |
-|--------------|--------------|----------------|-------------------|---------|---------|---------------|
-| f0 de bc 0a  | 01 00 00 00  |  2c 07 00 00   |    00 00 00 01    |    01   |   dc    |     14 65     |
+|    magic     |  message id  | message length | encryption offset |   encrypt  | message class |
+|--------------|--------------|----------------|-------------------|------------|---------------|
+| f0 de bc 0a  | 01 00 00 00  |  2c 07 00 00   |    00 00 00 01    |    01  dc  |     14 65     |
 
 - Magic 4 bytes
 - ID 4 bytes
@@ -30,9 +30,9 @@ The header has the format:
 
 Or
 
-|    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
-|--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
-| f0 de bc 0a  | 01 00 00 00  |  28 01 00 00   |    00 00 00 01    |       c8 00       |     14 64     |  00 00 00 00  |
+|    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
+|--------------|--------------|----------------|-------------------|-------------------|---------------|----------------|
+| f0 de bc 0a  | 01 00 00 00  |  28 01 00 00   |    00 00 00 01    |       c8 00       |     14 64     |   00 00 00 00  |
 
 
 - Magic 4 bytes
@@ -97,17 +97,24 @@ message_handle 1 byte - client increments per request, replies use request handl
 
 #### Encryption Flag
 
-This flag is 0 for unencrypted or non zero for encrypted.
+Client will send the number `0xXXdc` and the server will reply `0xXXdd`.
+Where `XX` is one of the following.
 
-Clients should decide to use encryption or not based on this byte that the
-camera sent during login. Then should use that same setting for all further
-messages with the camera.
+- 0 Unencrypted
+- 1 BC Encryption
+- 2 AES Encryption (Camera)
+- 3 AES Encryption (Client)
 
-#### Unknown
+`dc` means this encryption protol or lower. So `0x01dc` means BC on no encryption
+whereas `0x03dc` means AES, BC or Unencrypted.
 
-The purpose of this byte is unknown.
-Observed - `dc` = client request, `dd` = device reply
-If you figure out what it does please submit a PR.
+`dd` is the reply that the camera sends to the `dc` request. It is the chosen
+protocol that will be used.
+
+**Note:** When requesting AES the client sends `0x03dc` and the camera replies `0x02dc`.
+We are not sure why.
+
+Encryption is negotiated in the login request.
 
 #### Status Code
 
@@ -129,20 +136,13 @@ and header lengths are known.
 
 - 0x0000: "modern" 24 bytes
 
-#### Binary offset
+#### Payload offset
 
-For messages that contain the binary offset field this represents where to start
-the binary part of the message. The total length of XML + binary is equal
-to the message length in the header so Binary Offset is
-total_length - this_offset. Where as this field also represents the end of the
-XML part of the message.
-
-Some messages seems to not set this field correctly. For example message ID 1
-sets this to zero meaning that all data in the message is binary, however
-it contains XML. This best way to tell is this is binary or XML is to check the
-message ID and determine from there. Alternatively you could look for `<xml?` at
-the beginning of the message (although may need to decrypt first for this to
-work)
+For messages that contain the payload offset field this represents where to start
+the payload part of the message. The total length of the message
+(extension XML + payload) is equal to the message length in the header
+so Payload Offset is total_length - this_offset. Where as this field also represents the end of the
+extension XML part of the message.
 
 # Login
 
@@ -189,10 +189,12 @@ streamType can be either
 channelId is part of the NVR when multiple cameras use the same IP. In this
 case each camera has its own channelId.
 
-Not sure what handle does.
+The `handle` is used when multiple streams are requested in a single login.
+This number should be unique for each stream. If not then that stream
+(Clear or Fluent) will not work until the camera is reset.
 
 
-The reply is first a message with the following xml
+The reply is first a message with the following Extension Xml
 
 ```xml
 <?xml version="1.0" encoding="UTF-8" ?>
@@ -203,7 +205,7 @@ The reply is first a message with the following xml
 
 After which all message bodies of type id 3 are binary.
 
-The binary represents a stream of data. It can be interrupted by packet
+The binary represents a stream of data that can be interrupted by packet
 boundaries. Clients should create a buffer and pop bytes for processing when
 complete media packets are received. Media packets descriptions can be found in
 the [docs](dissector/mediapacket.md)
@@ -213,9 +215,9 @@ the [docs](dissector/mediapacket.md)
 Other data can be received from the camera by sending the appropriate header to
 the camera. For example sending the header for ID 78
 
-|    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
-|--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
-| f0 de bc 0a  | 4e 00 00 00  |  d3 00 00 00   |    08 db 9c 00    |       c8 00       |     00 00     |  00 00 00 00  |
+|    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
+|--------------|--------------|----------------|-------------------|-------------------|---------------|----------------|
+| f0 de bc 0a  | 4e 00 00 00  |  d3 00 00 00   |    08 db 9c 00    |       c8 00       |     00 00     |   00 00 00 00  |
 
 The camera will reply with an xml with brightness and contrast
 
@@ -236,9 +238,9 @@ Some message IDs also require input along with the request header. For example
 
 ID 151 which is the users ability info requires the header
 
-|    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
-|--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
-| f0 de bc 0a  | 97 00 00 00  |  a7 00 00 00   |    00 00 00 02    |       00 00       |     14 64     |  a7 00 00 00  |
+|    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
+|--------------|--------------|----------------|-------------------|-------------------|---------------|----------------|
+| f0 de bc 0a  | 97 00 00 00  |  a7 00 00 00   |    00 00 00 02    |       00 00       |     14 64     |   a7 00 00 00  |
 
 and the body of
 
@@ -255,3 +257,34 @@ abilities you want to know about.
 
 Details of expected formats should be found from the
 [docs](dissector/messages.md)
+
+#### AES Encryption
+
+If the encryption flag returned from the camera is `0x02dd` then AES encryption will be used.
+
+The cameras use AES cfb128 with an IV of `0123456789abcdef` the key is made as follows
+
+- Concatenated the `NONCE` from login with a `-` then with your plain text password
+- MD5 Hash this concatenated string
+- Represent the hash as hex string in all caps
+- Take the first 16 characters as the encryption key
+
+
+Here is an example:
+
+```rust
+use aes::Aes128;
+use cfb_mode::cipher::{NewStreamCipher, StreamCipher};
+use cfb_mode::Cfb;
+
+const IV: &[u8] = b"0123456789abcdef";
+let key_phrase = format!("{}-{}", nonce, passwd);
+let key_phrase_hash = format!("{:X}\0", md5::compute(&key_phrase))
+    .to_uppercase()
+    .into_bytes();
+let key = key_phrase_hash[0..16];
+
+let mut decrypted = encrypted.to_vec();
+Cfb::<Aes128>::new(key.into(), IV.into()).decrypt(&mut decrypted);
+return decrypted;
+```

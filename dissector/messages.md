@@ -5,6 +5,17 @@ This is an attempt to document the BC messages. It is subject to change
 and some aspects of it may not be correct. Please feel free to submit
 a PR to improve it.
 
+Message have zero to two payloads.
+- The first payload is after the header and before the payload offset
+  - This payload always contains Extension xml and so is called `Extension`
+    in this doc
+- The second payload is after the payload offset
+  - This is either Body xml or binary data.
+  - If it is binary the extension xml will contain the `<binary>1</binary>`
+    tag
+  - This is called `Payload` in this doc
+
+
 - 1: Login Legacy
 
   - Client
@@ -15,7 +26,7 @@ a PR to improve it.
     |--------------|--------------|----------------|-------------------|---------|---------|---------------|
     | f0 de bc 0a  | 01 00 00 00  |  2c 07 00 00   |    00 00 00 01    |    01   |    dc   |     14 65     |
 
-    - Body
+    - Payload
 
       Body is hash of user 32 bytes and password 32 bytes and then a lot of zero pads
 
@@ -33,7 +44,7 @@ a PR to improve it.
     |--------------|--------------|----------------|-------------------|---------|---------|---------------|
     | f0 de bc 0a  | 01 00 00 00  |  91 00 00 00   |    00 00 00 01    |    01   |    dd   |     14 66     |
 
-    - Body
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -55,11 +66,11 @@ a PR to improve it.
   - Client
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
     |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
     | f0 de bc 0a  | 01 00 00 00  |  28 01 00 00   |    00 00 00 01    |       00 00       |     14 64     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -80,11 +91,11 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
     |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
     | f0 de bc 0a  | 01 00 00 00  |  2e 06 00 00   |    00 00 00 01    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -155,7 +166,13 @@ a PR to improve it.
 
   - Client
 
-    - Binary
+    - Header
+
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
+    |--------------|--------------|----------------|-------------------|-------------------|---------------|----------------|
+    | f0 de bc 0a  | 02 00 00 00  |  af 00 00 00   |    00 00 00 09    |       00 00       |     14 64     |   00 00 00 00  |
+
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -174,11 +191,11 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
     |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
     | f0 de bc 0a  | 03 00 00 00  |  aa 00 00 00   |    00 00 00 09    |       00 00       |     14 64     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -197,11 +214,11 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
     |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
     | f0 de bc 0a  | 03 00 00 00  |  8a 00 00 00   |    00 00 00 09    |       c8 00       |     00 00     |  6a 00 00 00  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -210,7 +227,7 @@ a PR to improve it.
     </Extension>
     ```
 
-    - Binary
+    - Payload
 
     ```hex
     31303032200000000009000010050000000F780A06122422780A061224220000
@@ -223,14 +240,14 @@ a PR to improve it.
 
     - Header
 
-    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
     |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
     | f0 de bc 0a  | 03 00 00 00  |  e8 5e 00 00   |    00 00 00 09    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Body
+    - Payload
 
       Body is binary. This binary represents an embedded stream which should
-      be detailed elsewhere.
+      is detailed in [mediapacket.md](dissector/mediapacket.md).
 
 - 4: `<Preview>` (stop)
 
@@ -238,11 +255,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 04  |  00 00 00 86   |    2b 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -258,7 +275,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 04  |  00 00 00 00   |    2b 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -268,11 +285,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 0a  |  00 00 00 68   |    0b 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -285,11 +302,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 0a  |  00 00 01 f7   |    0b 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -321,11 +338,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 12  |  00 00 00 a4   |    1e 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -342,7 +359,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 12  |  00 00 00 00   |    1e 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -352,11 +369,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 19  |  00 00 05 c2   |    64 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -365,7 +382,7 @@ a PR to improve it.
     </Extension>
     ```
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -453,7 +470,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 19  |  00 00 00 00   |    64 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -464,11 +481,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 1a  |  00 00 00 68   |    2d 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -481,11 +498,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 1a  |  00 00 05 7c   |    2d 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -576,7 +593,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 1f  |  00 00 00 00   |    05 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
@@ -584,12 +601,12 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 1f  |  00 00 00 00   |    05 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-  - **Notes:** The camera will not send message 33 to the client until
-  after this msg has been recieved
+  - **Notes:** Some cameras will not send message 33 to the client until
+  after this msg has been received
 
 - 33: `<AlarmEventList>`
 
@@ -597,11 +614,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 21  |  00 00 00 f0   |    05 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -623,11 +640,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 2c  |  00 00 00 68   |    30 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -640,11 +657,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 2c  |  00 00 01 df   |    30 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -676,11 +693,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 2d  |  00 00 02 23   |    32 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -689,7 +706,7 @@ a PR to improve it.
     </Extension>
     ```
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -717,7 +734,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 2d  |  00 00 00 00   |    32 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -727,11 +744,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 34  |  00 00 00 68   |    36 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -744,11 +761,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 34  |  00 00 00 96   |    36 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -767,11 +784,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 35  |  00 00 01 d7   |    38 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -780,7 +797,7 @@ a PR to improve it.
     </Extension>
     ```
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -814,7 +831,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 35  |  00 00 00 00   |    38 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -824,11 +841,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 36  |  00 00 00 68   |    14 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -841,11 +858,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 36  |  00 00 00 ed   |    14 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -866,11 +883,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 37  |  00 00 01 3b   |    16 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -879,7 +896,7 @@ a PR to improve it.
     </Extension>
     ```
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -897,7 +914,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 37  |  00 00 00 00   |    16 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -907,11 +924,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 38  |  00 00 00 68   |    1d 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -924,11 +941,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 38  |  00 00 03 61   |    1d 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -976,11 +993,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 39  |  00 00 02 bc   |    1f 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -989,7 +1006,7 @@ a PR to improve it.
     </Extension>
     ```
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1024,7 +1041,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 39  |  00 00 00 00   |    1f 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -1034,11 +1051,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 3a  |  00 00 00 6b   |    03 00 00 00    |       00 00       |     64 14     |  00 00 00 6b  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1051,11 +1068,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 3a  |  00 00 03 a4   |    03 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1117,11 +1134,11 @@ a PR to improve it.
 
         - Header
 
-            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
             |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
             | 0a bc de f0  | 00 00 00 43  |  00 00 01 00   |    00 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
-        - Body
+        - Extension
 
         ```xml
         <?xml version="1.0" encoding="UTF-8" ?>
@@ -1140,7 +1157,7 @@ a PR to improve it.
 
         - Header
 
-            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
             |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
             | 0a bc de f0  | 00 00 00 43  |  00 00 00 00   |    00 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -1148,11 +1165,11 @@ a PR to improve it.
 
         - Header
 
-            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
             |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
             | 0a bc de f0  | 00 00 00 43  |  00 00 94 58   |    00 00 00 00    |       00 00       |     64 14     |  00 00 00 6a  |
 
-        - Body
+        - Extension
 
         ```xml
         <?xml version="1.0" encoding="UTF-8" ?>
@@ -1161,7 +1178,7 @@ a PR to improve it.
         </Extension>
         ```
 
-        - Binary
+        - Payload
 
           This contains binary data of the file but stops once the message size reaches
           38000 bytes and continues in another packet. There does not appear to
@@ -1171,7 +1188,7 @@ a PR to improve it.
 
         - Header
 
-            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+            |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
             |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
             | 0a bc de f0  | 00 00 00 43  |  00 00 00 00   |    00 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -1183,7 +1200,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 4c  |  00 00 00 00   |    22 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
@@ -1191,11 +1208,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 4c  |  00 00 01 69   |    22 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1225,11 +1242,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 4d  |  00 00 01 5b   |    25 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1257,7 +1274,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 4d  |  00 00 00 00   |    14 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -1267,11 +1284,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 4e  |  00 00 00 d3   |    1b 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1292,11 +1309,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 4f  |  00 00 01 3b   |    1b 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1320,7 +1337,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 50  |  00 00 00 00   |    08 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
@@ -1328,11 +1345,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 50  |  00 00 01 f0   |    08 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1359,11 +1376,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 51  |  00 00 00 68   |    19 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1376,11 +1393,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 51  |  00 00 04 30   |    19 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1447,11 +1464,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 52  |  00 00 05 da   |    1a 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1460,7 +1477,7 @@ a PR to improve it.
     </Extension>
     ```
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1542,7 +1559,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 52  |  00 00 00 00   |    1a 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -1552,7 +1569,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 5d  |  00 00 00 00   |    17 00 00 00    |       00  00      |     64 14     |  00 00 00 00  |
 
@@ -1562,7 +1579,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 66  |  00 00 00 00   |    07 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
@@ -1570,11 +1587,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 66  |  00 00 00 55   |    07 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1589,7 +1606,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 68  |  00 00 00 00   |    0a 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
@@ -1597,11 +1614,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 68  |  00 00 01 a5   |    0a 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1632,7 +1649,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 73  |  00 00 00 00   |    0c 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
@@ -1640,11 +1657,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 73  |  00 00 00 75   |    0c 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1661,11 +1678,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 84  |  00 00 00 68   |    65 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1678,11 +1695,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 84  |  00 00 05 7c   |    65 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1773,7 +1790,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 85  |  00 00 00 00   |    06 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
@@ -1781,11 +1798,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 85  |  00 00 00 7f   |    06 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1803,7 +1820,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 92  |  00 00 00 00   |    04 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
@@ -1811,11 +1828,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 92  |  00 00 02 fc   |    04 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1856,11 +1873,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 97  |  00 00 00 a7   |    02 00 00 00    |       00 00       |     64 14     |  00 00 00 a7  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1874,11 +1891,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 97  |  00 00 03 ac   |    02 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1923,11 +1940,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 be  |  00 00 00 68   |    0d 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1940,11 +1957,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 be  |  00 00 00 86   |    0d 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -1962,7 +1979,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 c0  |  00 00 00 00   |    05 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
@@ -1970,7 +1987,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 c0  |  00 00 00 00   |    05 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
@@ -1980,7 +1997,7 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 c7  |  00 00 00 00   |    02 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
 
@@ -1988,11 +2005,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 c7  |  00 00 05 f6   |    02 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -2074,11 +2091,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 d0  |  00 00 00 68   |    2e 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -2091,11 +2108,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 d0  |  00 00 00 c2   |    2e 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -2115,11 +2132,11 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 d1  |  00 00 01 10   |    85 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
 
-    - Body
+    - Extension
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -2128,7 +2145,7 @@ a PR to improve it.
     </Extension>
     ```
 
-    - Binary
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -2145,6 +2162,6 @@ a PR to improve it.
 
     - Header
 
-        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 d1  |  00 00 00 00   |    85 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
