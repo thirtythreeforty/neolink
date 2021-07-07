@@ -1,0 +1,357 @@
+name: Packages
+
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    #tags:
+    #  - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+
+jobs:
+  # X86_64 Debian
+  package_deb_ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: apt install gstreamer
+        run: |
+          sudo apt update
+          sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+      - name: Install cargo deb
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-deb
+          version: latest
+      - name: Build deb
+        run: |
+          cargo deb
+      - name: Install toml-cli
+        uses: actions-rs/install@v0.1
+        with:
+          crate: toml-cli
+          version: latest
+      - name: Get project version
+        id: toml
+        run: |
+          NEOLINK_VERSION="$(toml get Cargo.toml  package.version | sed 's|"||g')"
+          echo "::set-output name=version::${NEOLINK_VERSION}"
+      - uses: actions/upload-artifact@v2
+        with:
+          name: amd64_deb_package_ubuntu
+          path: "target/debian/neolink_${{ steps.toml.outputs.version }}_amd64.deb"
+  # ARMHF Debian
+  package_deb_armhf:
+    runs-on: ubuntu-latest
+    container: node:current-buster-slim
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install basic tools
+        run: |
+          apt-get update
+          apt-get install --assume-yes --no-install-recommends sudo curl ca-certificates build-essential
+      - name: Add armhf as a foreign architecture
+        run: |
+          sudo dpkg --add-architecture armhf
+      - name: Install cross compile tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --assume-yes --no-install-recommends gcc-arm-linux-gnueabihf
+      - name: Install armhf gstreamer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --assume-yes --no-install-recommends \
+          libgstrtspserver-1.0-dev:armhf \
+          libgstreamer1.0-dev:armhf \
+          libgtk2.0-dev:armhf
+      - name: Install rustup armv7
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            override: true
+            target: armv7-unknown-linux-gnueabihf
+      - uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-deb
+          version: latest
+      - name: Build deb
+        run: |
+          cargo deb --target=armv7-unknown-linux-gnueabihf
+        env:
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+          CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
+          PKG_CONFIG_ALLOW_CROSS: 1
+          PKG_CONFIG_PATH: /usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig/
+          PKG_CONFIG_LIBDIR: /usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig/
+      - name: Install toml-cli
+        uses: actions-rs/install@v0.1
+        with:
+          crate: toml-cli
+          version: latest
+      - name: Get project version
+        id: toml
+        run: |
+          NEOLINK_VERSION="$(toml get Cargo.toml  package.version | sed 's|"||g')"
+          echo "::set-output name=version::${NEOLINK_VERSION}"
+      - uses: actions/upload-artifact@v2
+        with:
+          name: armhf_deb_package_buster
+          path: "target/armv7-unknown-linux-gnueabihf/debian/neolink_${{ steps.toml.outputs.version }}_armhf.deb"
+  # X86_64 Fedora
+  # Notes: Centos 8 does not have rtsp-server
+  #        Centos 7 does have rtsp-server but its glib2 is too old
+  #        As a result we only support fedora
+  package_rpm:
+    runs-on: ubuntu-latest
+    container: fedora:32
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install basic tools
+        run: |
+          yum install -y sudo curl ca-certificates fedora-packager
+          yum groupinstall -y "Development Tools"  # This installs a lot of things just gcc and make may be enough
+      - name: apt install gstreamer
+        run: |
+          sudo yum install -y gstreamer1-devel gstreamer1-plugins-base-devel gstreamer1-rtsp-server-devel glib2-devel glibc-devel
+      - name: Install latest rust
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+      - name: Install cargo rpm
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-rpm
+          version: latest
+      - name: Build rpm
+        run: |
+          cargo rpm build
+      - name: Install toml-cli
+        uses: actions-rs/install@v0.1
+        with:
+          crate: toml-cli
+          version: latest
+      - name: Get project version
+        id: toml
+        run: |
+          NEOLINK_VERSION="$(toml get Cargo.toml  package.version | sed 's|"||g')"
+          echo "::set-output name=version::${NEOLINK_VERSION}"
+      - uses: actions/upload-artifact@v2
+        with:
+          name: amd64_rpm_package_fc32
+          path: "target/release/rpmbuild/RPMS/x86_64/neolink-${{ steps.toml.outputs.version }}-1.fc32.x86_64.rpm"
+  # X86_64 Macos
+  # Notes: Uses the packagebuild app http://s.sudre.free.fr/Software/documentation/Packages
+  package_osx:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          curl -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/gstreamer-1.0-devel-1.16.2-x86_64.pkg' -o "$(pwd)/gstreamer-devel.pkg"
+          sudo installer -verbose -pkg "$(pwd)/gstreamer-devel.pkg" -target /
+          PKG_CONFIG_PATH="/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+      - name: Install latest rust
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
+        env:
+          PKG_CONFIG_PATH: "/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig"
+      - name: Make pkg
+        run: |
+          gst_version="1.16.2"
+          echo "Install packaging tools"
+          brew cask install packages
+          brew install pandoc
+
+          echo "Prepare deployment paths"
+          mkdir -p target/pkg_root/usr/local/{bin,etc,share/neolink}
+          cp target/release/neolink target/pkg_root/usr/local/bin
+          cp ./sample_config.toml target/pkg_root/usr/local/share/neolink/sample_config.toml
+          chmod 755 target/pkg_root/usr/local/bin/neolink
+          chmod 644 target/pkg_root/usr/local/etc/neolink.toml
+          sudo chown -R root:wheel target/pkg_root/usr
+
+          echo "Prepare aux files"
+          pandoc -f markdown LICENSE -o target/pkg_root/LICENSE.txt
+          pandoc README.md  -o target/pkg_root/README.html
+
+          echo "Download gstreamer runtime pkg"
+          curl -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/gstreamer-1.0-${gst_version}-x86_64.pkg' -o "target/pkg_root/gstreamer-runtime.pkg"
+
+          echo "Build pkg"
+          packagesbuild macos_packager/NeolinkDist.pkgproj
+      - uses: actions/upload-artifact@v2
+        with:
+          name: amd64_pkg_package_macos
+          path: "target/release/neolink.pkg"
+  package_win:
+    runs-on: windows-2019
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Gstreamer
+        run: |
+          choco install -y --no-progress gstreamer --version=1.16.2.20200527
+          choco install -y --no-progress gstreamer-devel --version=1.16.2
+          echo "Updating Cargo environment"
+          echo "::add-path::C:\gstreamer\1.0\x86_64\bin"
+          echo "::set-env name=GSTREAMER_1_0_ROOT_X86_64::C:\gstreamer\1.0\x86_64\"
+      - name: Build neolink
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
+      - name: Install pandoc
+        run: |
+          choco install pandoc
+      - name: Install wix
+        run: |
+          choco install wixtoolset
+      - name: Install cargo wix
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-wix
+          version: latest
+      - name: Get gstreamer merge modules
+        run: |
+          $version = "1.16.2"
+          $minor_version = "1.16"
+          Invoke-WebRequest "https://gstreamer.freedesktop.org/data/pkg/windows/$version/gstreamer-1.0-msvc-x86_64-$version-merge-modules.zip" -OutFile "gstreamer-merge-modules.zip"
+          Expand-Archive -LiteralPath "gstreamer-merge-modules.zip" -DestinationPath "."
+          echo "Moving files to version independant path"
+          Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/base-system-1.0-msvc-x86_64-$version.msm base-system.msm # Always required
+          Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/base-crypto-msvc-x86_64-$version.msm base-crypto.msm # Needed by net and codecs modules
+          Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/gstreamer-1.0-core-msvc-x86_64-$version.msm gstreamer-1.0-core.msm # Always required, rawparse appsrc
+          Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/gstreamer-1.0-net-msvc-x86_64-$version.msm gstreamer-1.0-net.msm # For rtph264pay rtph265pay rtpmp4apay rtpL16pay rtsp-server
+          Move-Item MinGW/msys/1.0/home/cerbero/cerbero-$minor_version/gstreamer-1.0-codecs-msvc-x86_64-$version.msm gstreamer-1.0-codecs.msm # For h264parse h265parse aacparse
+      - name: Build installer
+        run: |
+          pandoc -f markdown LICENSE -o target/LICENSE.rtf
+          cargo wix --nocapture --no-build
+      - name: Install toml-cli
+        uses: actions-rs/install@v0.1
+        with:
+          crate: toml-cli
+          version: latest
+      - name: Get project version
+        id: toml
+        run: |
+          $NEOLINK_VERSION = (toml get Cargo.toml  package.version) -replace '"'
+          echo "::set-output name=version::$NEOLINK_VERSION"
+      - uses: actions/upload-artifact@v2
+        with:
+          name: x86_64_msi_package_win
+          path: "target\\wix\\neolink-${{ steps.toml.outputs.version }}-x86_64.msi"
+  ###################
+  # Create Releases #
+  ###################
+  create_release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') # Ensure this only runs on a tag or expect issues
+    needs:
+      - "package_deb_ubuntu"
+      - "package_deb_armhf"
+      - "package_rpm"
+      - "package_osx"
+      - "package_win"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+            Neolink ${{ github.ref }}
+          draft: false
+          prerelease: false
+      - name: Install latest rust
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+      - name: Install toml-cli
+        uses: actions-rs/install@v0.1
+        with:
+          crate: toml-cli
+          version: latest
+      - name: Get project version
+        id: toml
+        run: |
+          NEOLINK_VERSION="$(toml get Cargo.toml  package.version | sed 's|"||g')"
+          echo "::set-output name=version::${NEOLINK_VERSION}"
+      - name: Download Ubuntu Deb
+        uses: actions/download-artifact@v2
+        with:
+          name: amd64_deb_package_ubuntu
+      - name: Upload Release Ubuntu Deb
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./neolink_${{ steps.toml.outputs.version }}_amd64.deb
+          asset_name: neolink_${{ steps.toml.outputs.version }}_amd64.deb
+          asset_content_type: application/octet-stream
+      - name: Download Buster armhf Deb
+        uses: actions/download-artifact@v2
+        with:
+          name: armhf_deb_package_buster
+      - name: Upload Release Buster armhf Deb
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./neolink_${{ steps.toml.outputs.version }}_armhf.deb
+          asset_name: neolink_${{ steps.toml.outputs.version }}_armhf.deb
+          asset_content_type: application/octet-stream
+      - name: Download Fedora Rpm
+        uses: actions/download-artifact@v2
+        with:
+          name: amd64_rpm_package_fc32
+      - name: Upload Release Fedor Rpm
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./neolink-${{ steps.toml.outputs.version }}-1.fc32.x86_64.rpm
+          asset_name: neolink-${{ steps.toml.outputs.version }}-1.fc32.x86_64.rpm
+          asset_content_type: application/octet-stream
+      - name: Download macos pkg
+        uses: actions/download-artifact@v2
+        with:
+          name: amd64_pkg_package_macos
+      - name: Upload Release macos pkg
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./neolink.pkg
+          asset_name: neolink-${{ steps.toml.outputs.version }}.pkg
+          asset_content_type: application/octet-stream
+      - name: Download Windows MSI
+        uses: actions/download-artifact@v2
+        with:
+          name: x86_64_msi_package_win
+      - name: Upload Release Windows MSI
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./neolink-${{ steps.toml.outputs.version }}-x86_64.msi
+          asset_name: neolink-${{ steps.toml.outputs.version }}-x86_64.msi
+          asset_content_type: application/octet-stream
