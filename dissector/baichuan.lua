@@ -16,6 +16,7 @@ msg_handle = ProtoField.int8("baichuan.message_handle", "messageHandle", base.DE
 status_code = ProtoField.int16("baichuan.status_code", "status_code", base.DEC)
 message_class = ProtoField.int32("baichuan.msg_class", "messageClass", base.DEC)
 f_payload_offset = ProtoField.int32("baichuan.payload_offset", "binOffset", base.DEC)
+f_bin_offset = ProtoField.int32("baichuan.bin_offset", "binOffset", base.DEC)
 username = ProtoField.string("baichuan.username", "username", base.ASCII)
 password = ProtoField.string("baichuan.password", "password", base.ASCII)
 
@@ -32,6 +33,7 @@ bc_protocol.fields = {
   status_code,
   message_class,
   f_payload_offset,
+  f_bin_offset
   username,
   password,
 }
