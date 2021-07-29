@@ -33,7 +33,7 @@ bc_protocol.fields = {
   status_code,
   message_class,
   f_payload_offset,
-  f_bin_offset
+  f_bin_offset,
   username,
   password,
 }
