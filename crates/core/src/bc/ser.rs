@@ -8,10 +8,11 @@ use cookie_factory::{GenError, SerializeFn, WriteContext};
 use log::error;
 use std::io::Write;
 
+/// The error types used during serialisation
 pub type Error = GenError;
 
 impl Bc {
-    pub fn serialize<W: Write>(
+    pub(crate) fn serialize<W: Write>(
         &self,
         buf: W,
         encryption_protocol: &EncryptionProtocol,

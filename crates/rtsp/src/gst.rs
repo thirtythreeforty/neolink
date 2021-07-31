@@ -1,6 +1,7 @@
 //! This module provides an "RtspServer" abstraction that allows consumers of its API to feed it
 //! data using an ordinary std::io::Write interface.
 pub use self::maybe_app_src::MaybeAppSrc;
+use super::adpcm::adpcm_to_pcm;
 use gstreamer::prelude::Cast;
 use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
@@ -35,13 +36,35 @@ pub struct GstOutputs {
 }
 
 impl StreamOutput for GstOutputs {
-    fn write_audio(&mut self, data: &[u8]) -> StreamOutputError {
-        self.audsrc.write_all(data)?;
+    fn write_audio(&mut self, data: &[u8], format: StreamFormat) -> StreamOutputError {
+        self.set_format(Some(format));
+        if let StreamFormat::ADPCM = format {
+            let pcm = adpcm_to_pcm(data)
+                .map_err(|_| neolink_core::Error::Other("ADPCM decoding error"))?;
+            self.vidsrc.write_all(&pcm)?;
+        } else {
+            self.vidsrc.write_all(data)?;
+        }
         Ok(())
     }
-    fn write_video(&mut self, data: &[u8]) -> StreamOutputError {
+    fn write_video(&mut self, data: &[u8], format: StreamFormat) -> StreamOutputError {
+        self.set_format(Some(format));
         self.vidsrc.write_all(data)?;
         Ok(())
+    }
+}
+
+impl GstOutputs {
+    pub fn from_appsrcs(vidsrc: MaybeAppSrc, audsrc: MaybeAppSrc) -> GstOutputs {
+        let result = GstOutputs {
+            vidsrc,
+            audsrc,
+            video_format: None,
+            audio_format: None,
+            factory: RTSPMediaFactory::new(),
+        };
+        result.apply_format();
+        result
     }
 
     fn set_format(&mut self, format: Option<StreamFormat>) {
@@ -60,20 +83,6 @@ impl StreamOutput for GstOutputs {
             }
             _ => {}
         }
-    }
-}
-
-impl GstOutputs {
-    pub fn from_appsrcs(vidsrc: MaybeAppSrc, audsrc: MaybeAppSrc) -> GstOutputs {
-        let result = GstOutputs {
-            vidsrc,
-            audsrc,
-            video_format: None,
-            audio_format: None,
-            factory: RTSPMediaFactory::new(),
-        };
-        result.apply_format();
-        result
     }
 
     fn apply_format(&self) {

@@ -7,10 +7,13 @@ use nom::IResult;
 use nom::{bytes::streaming::take, combinator::*, number::streaming::*, sequence::*};
 use std::io::Read;
 
+/// The error types used during deserialisation
 #[derive(Debug, Error)]
 pub enum Error {
+    /// A Nom parsing error usually a malformed packet
     #[error(display = "Parsing error")]
     NomError(&'static str),
+    /// An IO error such as the stream being dropped
     #[error(display = "I/O error")]
     IoError(#[error(source)] std::io::Error),
 }
@@ -29,7 +32,7 @@ impl<'a> From<nom::Err<NomErrorType<'a>>> for Error {
 }
 
 impl Bc {
-    pub fn deserialize<R: Read>(context: &mut BcContext, r: R) -> Result<Bc, Error> {
+    pub(crate) fn deserialize<R: Read>(context: &mut BcContext, r: R) -> Result<Bc, Error> {
         // Throw away the nom-specific return types
         read_from_reader(|reader| bc_msg(context, reader), r)
     }

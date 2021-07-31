@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use validator::Validate;
 
+mod adpcm;
 pub mod cmdline;
 pub mod config;
 pub mod errors;

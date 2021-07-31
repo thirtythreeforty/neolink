@@ -3,6 +3,13 @@ use crate::bc::{model::*, xml::*};
 use time::{date, Date, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
 
 impl BcCamera {
+    ///
+    /// Get the time from the camera
+    ///
+    /// # Returns
+    ///
+    /// returns either an error or an option with the offsetted date time
+    ///
     pub fn get_time(&self) -> Result<Option<OffsetDateTime>> {
         let connection = self
             .connection
@@ -75,6 +82,17 @@ impl BcCamera {
         }
     }
 
+    ///
+    /// Sets the time of the camera
+    ///
+    /// # Parameters
+    ///
+    /// * `timestamp` - The time to set the camera to
+    ///
+    /// # Returns
+    ///
+    /// returns Ok(()) or error
+    ///
     pub fn set_time(&self, timestamp: OffsetDateTime) -> Result<()> {
         let connection = self
             .connection

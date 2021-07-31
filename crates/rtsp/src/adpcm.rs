@@ -1,7 +1,7 @@
 /*
  This is a rust implementation of OKI and DVI/IMA ADPCM.
 */
-use crate::Error;
+use super::errors::Error;
 use log::error;
 use std::convert::TryInto;
 
