@@ -245,7 +245,7 @@ fn test_bc_modern_login() {
                 })),
             ..
         }) => assert_eq!(encryption.nonce, "9E6D1FCB9E69846D"),
-        _ => assert!(false),
+        _ => panic!(),
     }
 }
 
@@ -271,7 +271,7 @@ fn test_bc_legacy_login() {
             assert_eq!(username, "21232F297A57A5A743894A0E4A801FC\0");
             assert_eq!(password, EMPTY_LEGACY_PASSWORD);
         }
-        _ => assert!(false),
+        _ => panic!(),
     }
 }
 
@@ -296,10 +296,8 @@ fn test_bc_modern_login_failed() {
         BcBody::ModernMsg(ModernMsg {
             extension: None,
             payload: None,
-        }) => {
-            assert!(true);
-        }
-        _ => assert!(false),
+        }) => {}
+        _ => panic!(),
     }
 }
 
@@ -327,8 +325,8 @@ fn test_bc_modern_login_success() {
         BcBody::ModernMsg(ModernMsg {
             extension: None,
             payload: Some(_),
-        }) => assert!(true),
-        _ => assert!(false),
+        }) => {}
+        _ => panic!(),
     }
 }
 
@@ -353,7 +351,7 @@ fn test_bc_binary_mode() {
         }) => {
             assert_eq!(bin.len(), 32);
         }
-        _ => assert!(false),
+        _ => panic!(),
     }
 
     context.in_bin_mode.insert(msg1.meta.msg_num);
@@ -365,6 +363,6 @@ fn test_bc_binary_mode() {
         }) => {
             assert_eq!(bin.len(), 30344);
         }
-        _ => assert!(false),
+        _ => panic!(),
     }
 }

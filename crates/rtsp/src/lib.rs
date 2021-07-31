@@ -27,9 +27,9 @@ pub fn main(opt: Opt) -> Result<(), Error> {
 
     let rtsp = &RtspServer::new();
 
-    set_up_tls(&config, &rtsp);
+    set_up_tls(&config, rtsp);
 
-    set_up_users(&config.users, &rtsp);
+    set_up_users(&config.users, rtsp);
 
     if config.certificate == None && !config.users.is_empty() {
         warn!(
@@ -132,7 +132,7 @@ fn set_up_tls(config: &Config, rtsp: &RtspServer) {
         _ => unreachable!(),
     };
     if let Some(cert_path) = &config.certificate {
-        rtsp.set_tls(&cert_path, tls_client_auth)
+        rtsp.set_tls(cert_path, tls_client_auth)
             .expect("Failed to set up TLS");
     }
 }

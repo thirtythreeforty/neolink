@@ -14,6 +14,7 @@ struct AdpcmSetup {
 
 impl AdpcmSetup {
     // Unused, originally we thought BC might be using OKI but it is actually DVI4
+    #[allow(dead_code)]
     fn new_oki() -> Self {
         Self {
             max_step_index: 48,
@@ -57,10 +58,12 @@ impl Nibble {
         (self.data & 0b00001111) as u32 // Mask first 4 bits it just to be sure its in nibble range
     }
 
+    #[allow(dead_code)]
     fn signed_magnitude(&self) -> u32 {
         (self.data & 0b00000111) as u32 // Mask of first 3 bits which are the magnitiude bits in signed int
     }
 
+    #[allow(dead_code)]
     fn signed(&self) -> i32 {
         match self.data & 0b00001000 {
             // Sign bit is at the 4th bit

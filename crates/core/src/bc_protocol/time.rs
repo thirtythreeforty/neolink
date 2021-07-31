@@ -46,7 +46,7 @@ impl BcCamera {
             let datetime =
                 match try_build_timestamp(time_zone, year, month, day, hour, minute, second) {
                     Ok(dt) => dt,
-                    Err(e) => {
+                    Err(_) => {
                         return Err(Error::UnintelligibleReply {
                             reply: msg,
                             why: "Could not parse date",
@@ -110,7 +110,7 @@ impl BcCamera {
         );
 
         sub_set_general.send(set)?;
-        let msg = sub_set_general.rx.recv_timeout(RX_TIMEOUT)?;
+        let _ = sub_set_general.rx.recv_timeout(RX_TIMEOUT)?;
 
         Ok(())
     }

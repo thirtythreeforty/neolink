@@ -52,10 +52,14 @@ impl MediaData {
         MediaData::header_size_from_kind(kind)
     }
 
+    // Unused was part of debug code
+    #[allow(dead_code)]
     pub fn header(&self) -> &[u8] {
         &self.data[0..self.header_size()]
     }
 
+    // Unused was part of debug code
+    #[allow(dead_code)]
     pub fn header_dump(&self) {
         info!("{:?}-hex: {:02?}", self.kind(), self.header());
         let mut result = vec![];
@@ -184,6 +188,8 @@ impl MediaData {
         }
     }
 
+    // Unused. TODO: Use this to time stamp video streams correctly
+    #[allow(dead_code)]
     pub fn timestamp(&self) -> Option<u64> {
         let kind = self.kind();
         match kind {

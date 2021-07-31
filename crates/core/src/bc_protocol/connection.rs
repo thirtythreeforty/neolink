@@ -37,13 +37,13 @@ type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(display = "Communication error")]
-    CommunicationError(#[error(source)] std::io::Error),
+    Communication(#[error(source)] std::io::Error),
 
     #[error(display = "Deserialization error")]
-    DeserializationError(#[error(source)] bc::de::Error),
+    Deserialization(#[error(source)] bc::de::Error),
 
     #[error(display = "Serialization error")]
-    SerializationError(#[error(source)] bc::ser::Error),
+    Serialization(#[error(source)] bc::ser::Error),
 
     #[error(display = "Simultaneous subscription")]
     SimultaneousSubscription { msg_id: u32 },

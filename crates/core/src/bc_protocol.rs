@@ -6,8 +6,7 @@ use adpcm::adpcm_to_pcm;
 use err_derive::Error;
 use log::*;
 use std::convert::TryInto;
-use std::io::Write;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 
@@ -28,13 +27,13 @@ const RX_TIMEOUT: Duration = Duration::from_secs(5);
 #[allow(clippy::large_enum_variant)]
 pub enum Error {
     #[error(display = "Communication error")]
-    CommunicationError(#[error(source)] std::io::Error),
+    Communication(#[error(source)] std::io::Error),
 
     #[error(display = "Deserialization error")]
-    DeserializationError(#[error(source)] bc::de::Error),
+    Deserialization(#[error(source)] bc::de::Error),
 
     #[error(display = "Serialization error")]
-    SerializationError(#[error(source)] bc::ser::Error),
+    Serialization(#[error(source)] bc::ser::Error),
 
     #[error(display = "Connection error")]
     ConnectionError(#[error(source)] self::connection::Error),
@@ -74,7 +73,6 @@ impl<'a> From<std::sync::mpsc::RecvTimeoutError> for Error {
 }
 
 pub struct BcCamera {
-    address: SocketAddr,
     channel_id: u8,
     connection: Option<BcConnection>,
     logged_in: bool,
@@ -114,7 +112,7 @@ impl BcCamera {
             let conn = match BcConnection::new(addr, RX_TIMEOUT) {
                 Ok(conn) => conn,
                 Err(err) => match err {
-                    connection::Error::CommunicationError(ref err) => {
+                    connection::Error::Communication(ref err) => {
                         debug!("Assuming timeout from {}", err);
                         continue;
                     }
@@ -124,7 +122,6 @@ impl BcCamera {
 
             debug!("Success: {}", addr);
             return Ok(Self {
-                address: addr,
                 connection: Some(conn),
                 message_num: AtomicU16::new(0),
                 channel_id,

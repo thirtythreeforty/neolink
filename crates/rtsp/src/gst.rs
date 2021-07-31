@@ -14,7 +14,7 @@ use gstreamer_rtsp_server::{
     RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
-use neolink_core::bc_protocol::{Error, StreamFormat, StreamOutput, StreamOutputError};
+use neolink_core::bc_protocol::{StreamFormat, StreamOutput, StreamOutputError};
 use std::collections::HashSet;
 use std::fs;
 use std::io;

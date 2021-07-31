@@ -209,8 +209,8 @@ fn test_encryption_deser() {
 
     let t = BcXml::try_parse(sample.as_bytes()).unwrap();
     match t {
-        top_b if top_b == b => assert!(true),
-        _ => assert!(false),
+        top_b if top_b == b => {},
+        _ => panic!(),
     }
 }
 
@@ -327,8 +327,8 @@ fn test_deviceinfo_partial_deser() {
                     ..
                 }),
             ..
-        } => assert!(true),
-        _ => assert!(false),
+        } => {},
+        _ => panic!(),
     }
 }
 
@@ -349,7 +349,7 @@ fn test_binary_deser() {
         Extension {
             binary_data: Some(1),
             ..
-        } => assert!(true),
-        _ => assert!(false),
+        } => {},
+        _ => panic!(),
     }
 }
