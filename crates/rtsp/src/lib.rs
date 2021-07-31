@@ -19,8 +19,6 @@ use config::{CameraConfig, Config, UserConfig};
 use errors::Error;
 use gst::{GstOutputs, RtspServer};
 
-pub struct Rtsp;
-
 pub fn main(opt: Opt) -> Result<(), Error> {
     let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 

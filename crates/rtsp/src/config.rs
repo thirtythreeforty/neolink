@@ -12,19 +12,19 @@ lazy_static! {
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
-pub struct Config {
+pub(crate) struct Config {
     #[validate]
-    pub cameras: Vec<CameraConfig>,
+    pub(crate) cameras: Vec<CameraConfig>,
 
     #[serde(rename = "bind", default = "default_bind_addr")]
-    pub bind_addr: String,
+    pub(crate) bind_addr: String,
 
     #[validate(range(min = 0, max = 65535, message = "Invalid port", code = "bind_port"))]
     #[serde(default = "default_bind_port")]
-    pub bind_port: u16,
+    pub(crate) bind_port: u16,
 
     #[serde(default = "default_certificate")]
-    pub certificate: Option<String>,
+    pub(crate) certificate: Option<String>,
 
     #[validate(regex(
         path = "RE_TLS_CLIENT_AUTH",
@@ -32,28 +32,28 @@ pub struct Config {
         code = "tls_client_auth"
     ))]
     #[serde(default = "default_tls_client_auth")]
-    pub tls_client_auth: String,
+    pub(crate) tls_client_auth: String,
 
     #[validate]
     #[serde(default)]
-    pub users: Vec<UserConfig>,
+    pub(crate) users: Vec<UserConfig>,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
-pub struct CameraConfig {
-    pub name: String,
+pub(crate) struct CameraConfig {
+    pub(crate) name: String,
 
     #[serde(rename = "address")]
-    pub camera_addr: String,
+    pub(crate) camera_addr: String,
 
-    pub username: String,
-    pub password: Option<String>,
-
-    // no longer used, but still here so we can warn users:
-    pub timeout: Option<Duration>,
+    pub(crate) username: String,
+    pub(crate) password: Option<String>,
 
     // no longer used, but still here so we can warn users:
-    pub format: Option<String>,
+    pub(crate) timeout: Option<Duration>,
+
+    // no longer used, but still here so we can warn users:
+    pub(crate) format: Option<String>,
 
     #[validate(regex(
         path = "RE_STREAM_SRC",
@@ -61,23 +61,23 @@ pub struct CameraConfig {
         code = "stream"
     ))]
     #[serde(default = "default_stream")]
-    pub stream: String,
+    pub(crate) stream: String,
 
-    pub permitted_users: Option<Vec<String>>,
+    pub(crate) permitted_users: Option<Vec<String>>,
 
     #[validate(range(min = 0, max = 31, message = "Invalid channel", code = "channel_id"))]
     #[serde(default = "default_channel_id")]
-    pub channel_id: u8,
+    pub(crate) channel_id: u8,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
-pub struct UserConfig {
+pub(crate) struct UserConfig {
     #[validate(custom = "validate_username")]
     #[serde(alias = "username")]
-    pub name: String,
+    pub(crate) name: String,
 
     #[serde(alias = "password")]
-    pub pass: String,
+    pub(crate) pass: String,
 }
 
 fn default_bind_addr() -> String {
@@ -104,7 +104,7 @@ fn default_channel_id() -> u8 {
     0
 }
 
-pub static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];
+pub(crate) static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];
 fn validate_username(name: &str) -> Result<(), ValidationError> {
     if name.trim().is_empty() {
         return Err(ValidationError::new("username cannot be empty"));

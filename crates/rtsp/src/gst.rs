@@ -1,6 +1,6 @@
 //! This module provides an "RtspServer" abstraction that allows consumers of its API to feed it
 //! data using an ordinary std::io::Write interface.
-pub use self::maybe_app_src::MaybeAppSrc;
+pub(crate) use self::maybe_app_src::MaybeAppSrc;
 use super::adpcm::adpcm_to_pcm;
 use gstreamer::prelude::Cast;
 use gstreamer::{Bin, Structure};
@@ -23,13 +23,13 @@ use std::io::Write;
 
 type Result<T> = std::result::Result<T, ()>;
 
-pub struct RtspServer {
+pub(crate) struct RtspServer {
     server: GstRTSPServer,
 }
 
-pub struct GstOutputs {
-    pub audsrc: MaybeAppSrc,
-    pub vidsrc: MaybeAppSrc,
+pub(crate) struct GstOutputs {
+    pub(crate) audsrc: MaybeAppSrc,
+    pub(crate) vidsrc: MaybeAppSrc,
     video_format: Option<StreamFormat>,
     audio_format: Option<StreamFormat>,
     factory: RTSPMediaFactory,
@@ -55,7 +55,7 @@ impl StreamOutput for GstOutputs {
 }
 
 impl GstOutputs {
-    pub fn from_appsrcs(vidsrc: MaybeAppSrc, audsrc: MaybeAppSrc) -> GstOutputs {
+    pub(crate) fn from_appsrcs(vidsrc: MaybeAppSrc, audsrc: MaybeAppSrc) -> GstOutputs {
         let result = GstOutputs {
             vidsrc,
             audsrc,
@@ -123,14 +123,14 @@ impl Default for RtspServer {
 }
 
 impl RtspServer {
-    pub fn new() -> RtspServer {
+    pub(crate) fn new() -> RtspServer {
         gstreamer::init().expect("Gstreamer should not explode");
         RtspServer {
             server: GstRTSPServer::new(),
         }
     }
 
-    pub fn add_stream(
+    pub(crate) fn add_stream(
         &self,
         paths: &[&str],
         permitted_users: &HashSet<&str>,
@@ -191,7 +191,11 @@ impl RtspServer {
         Ok(outputs)
     }
 
-    pub fn add_permitted_roles(&self, factory: &RTSPMediaFactory, permitted_roles: &HashSet<&str>) {
+    pub(crate) fn add_permitted_roles(
+        &self,
+        factory: &RTSPMediaFactory,
+        permitted_roles: &HashSet<&str>,
+    ) {
         for permitted_role in permitted_roles {
             factory.add_role_from_structure(&Structure::new(
                 permitted_role,
@@ -223,7 +227,7 @@ impl RtspServer {
         }
     }
 
-    pub fn set_credentials(&self, credentials: &[(&str, &str)]) -> Result<()> {
+    pub(crate) fn set_credentials(&self, credentials: &[(&str, &str)]) -> Result<()> {
         let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new);
         auth.set_supported_methods(RTSPAuthMethod::Basic);
 
@@ -242,7 +246,11 @@ impl RtspServer {
         Ok(())
     }
 
-    pub fn set_tls(&self, cert_file: &str, client_auth: TlsAuthenticationMode) -> Result<()> {
+    pub(crate) fn set_tls(
+        &self,
+        cert_file: &str,
+        client_auth: TlsAuthenticationMode,
+    ) -> Result<()> {
         debug!("Setting up TLS using {}", cert_file);
         let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new);
 
@@ -256,7 +264,7 @@ impl RtspServer {
         Ok(())
     }
 
-    pub fn run(&self, bind_addr: &str, bind_port: u16) {
+    pub(crate) fn run(&self, bind_addr: &str, bind_port: u16) {
         self.server.set_address(bind_addr);
         self.server.set_service(&format!("{}", bind_port));
         // Attach server to default Glib context
@@ -274,7 +282,7 @@ mod maybe_app_src {
 
     /// A Write implementation around AppSrc that also allows delaying the creation of the AppSrc
     /// until later, discarding written data until the AppSrc is provided.
-    pub struct MaybeAppSrc {
+    pub(crate) struct MaybeAppSrc {
         rx: Receiver<AppSrc>,
         app_src: Option<AppSrc>,
     }
@@ -283,13 +291,13 @@ mod maybe_app_src {
         /// Creates a MaybeAppSrc.  Also returns a Sender that you must use to provide an AppSrc as
         /// soon as one is available.  When it is received, the MaybeAppSrc will start pushing data
         /// into the AppSrc when write() is called.
-        pub fn new_with_tx() -> (Self, SyncSender<AppSrc>) {
+        pub(crate) fn new_with_tx() -> (Self, SyncSender<AppSrc>) {
             let (tx, rx) = sync_channel(3); // The sender should not send very often
             (MaybeAppSrc { rx, app_src: None }, tx)
         }
 
         /// Flushes data to Gstreamer on a problem communicating with the underlying video source.
-        pub fn on_stream_error(&mut self) {
+        pub(crate) fn on_stream_error(&mut self) {
             if let Some(src) = self.try_get_src() {
                 // Ignore "errors" from Gstreamer such as FLUSHING, which are not really errors.
                 let _ = src.end_of_stream();

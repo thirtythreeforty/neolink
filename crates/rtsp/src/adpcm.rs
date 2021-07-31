@@ -85,7 +85,7 @@ impl Nibble {
     }
 }
 
-pub fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
+pub(crate) fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     let context = AdpcmSetup::new_ima();
 
     let mut result: Vec<u8> = vec![]; // Stores the PCM byte array
