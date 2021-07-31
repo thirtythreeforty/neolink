@@ -1,3 +1,12 @@
+#![warn(missing_docs)]
+//!
+//! # Neolink
+//!
+//! Neolink is a small program that acts a general contol interface for Reolink IP cameras.
+//!
+//! It contains sub commands for running an rtsp proxy which can be used on Reolink cameras
+//! that do not nativly support RTSP.
+//!
 use env_logger::Env;
 use log::*;
 use structopt::StructOpt;

@@ -1,3 +1,10 @@
+#![warn(missing_docs)]
+//!
+//! # Neolink RTSP
+//!
+//! This crate serves as the rtsp source for the
+//! `neolink rtsp` subcommand
+//!
 use gio::TlsAuthenticationMode;
 use log::*;
 use neolink_core::bc_protocol::BcCamera;
@@ -9,8 +16,10 @@ use std::time::Duration;
 use validator::Validate;
 
 mod adpcm;
+/// The command line parameters for this subcommand
 pub mod cmdline;
-pub mod config;
+mod config;
+/// The errors this subcommand can raise
 pub mod errors;
 mod gst;
 
@@ -19,6 +28,9 @@ use config::{CameraConfig, Config, UserConfig};
 use errors::Error;
 use gst::{GstOutputs, RtspServer};
 
+/// Entry point for the rtsp subcommand
+///
+/// Opt is the command line options
 pub fn main(opt: Opt) -> Result<(), Error> {
     let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 

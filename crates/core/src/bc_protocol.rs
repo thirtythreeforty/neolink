@@ -74,6 +74,10 @@ pub enum Error {
     /// A generic catch all error
     #[error(display = "Other error")]
     Other(&'static str),
+
+    /// A generic catch all error
+    #[error(display = "Other error")]
+    OtherString(String),
 }
 
 impl<'a> From<std::sync::mpsc::RecvTimeoutError> for Error {

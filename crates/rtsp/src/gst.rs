@@ -2,6 +2,7 @@
 //! data using an ordinary std::io::Write interface.
 pub(crate) use self::maybe_app_src::MaybeAppSrc;
 use super::adpcm::adpcm_to_pcm;
+use super::errors::Error;
 use gstreamer::prelude::Cast;
 use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
@@ -39,8 +40,13 @@ impl StreamOutput for GstOutputs {
     fn write_audio(&mut self, data: &[u8], format: StreamFormat) -> StreamOutputError {
         self.set_format(Some(format));
         if let StreamFormat::ADPCM = format {
-            let pcm = adpcm_to_pcm(data)
-                .map_err(|_| neolink_core::Error::Other("ADPCM decoding error"))?;
+            let pcm = adpcm_to_pcm(data).map_err(|e| {
+                if let Error::AdpcmDecodingError(msg) = e {
+                    neolink_core::Error::OtherString(format!("ADPCM decoding error: {}", msg))
+                } else {
+                    neolink_core::Error::Other("Generic error during ADPCM decoding")
+                }
+            })?;
             self.vidsrc.write_all(&pcm)?;
         } else {
             self.vidsrc.write_all(data)?;
