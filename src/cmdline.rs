@@ -10,5 +10,5 @@ pub struct Opt {
 
 #[derive(StructOpt, Debug)]
 pub enum Command {
-    Rtsp(neolink_rtsp::cmdline::Opt),
+    Rtsp(super::rtsp::Opt),
 }

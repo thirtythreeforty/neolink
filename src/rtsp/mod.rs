@@ -1,10 +1,9 @@
-#![warn(missing_docs)]
-//!
-//! # Neolink RTSP
-//!
-//! This crate serves as the rtsp source for the
-//! `neolink rtsp` subcommand
-//!
+///
+/// # Neolink RTSP
+///
+/// This crate serves as the rtsp source for the
+/// `neolink rtsp` subcommand
+///
 use gio::TlsAuthenticationMode;
 use log::*;
 use neolink_core::bc_protocol::BcCamera;
@@ -17,15 +16,15 @@ use validator::Validate;
 
 mod adpcm;
 /// The command line parameters for this subcommand
-pub mod cmdline;
+mod cmdline;
 mod config;
 /// The errors this subcommand can raise
-pub mod errors;
+mod errors;
 mod gst;
 
-use cmdline::Opt;
+pub(crate) use cmdline::Opt;
 use config::{CameraConfig, Config, UserConfig};
-use errors::Error;
+pub(crate) use errors::Error;
 use gst::{GstOutputs, RtspServer};
 
 /// Entry point for the rtsp subcommand

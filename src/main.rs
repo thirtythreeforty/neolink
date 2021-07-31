@@ -13,6 +13,7 @@ use structopt::StructOpt;
 
 mod cmdline;
 mod errors;
+mod rtsp;
 
 use cmdline::{Command, Opt};
 use errors::Error;
@@ -30,7 +31,7 @@ fn main() -> Result<(), Error> {
 
     match opt.cmd {
         Command::Rtsp(opts) => {
-            neolink_rtsp::main(opts)?;
+            rtsp::main(opts)?;
         }
     }
 

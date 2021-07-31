@@ -946,42 +946,11 @@ checksum = "0419348c027fa7be448d2ae7ea0e4e04c2334c31dc4e74ab29f00a2a7ca69204"
 name = "neolink"
 version = "0.4.0"
 dependencies = [
- "env_logger",
- "err-derive",
- "log",
- "neolink_core",
- "neolink_rtsp",
- "structopt",
-]
-
-[[package]]
-name = "neolink_core"
-version = "0.4.0"
-dependencies = [
- "aes",
- "cfb-mode",
- "cookie-factory",
- "env_logger",
- "err-derive",
- "indoc",
- "log",
- "md5",
- "nom",
- "socket2",
- "time",
- "xml-rs",
- "yaserde",
- "yaserde_derive",
-]
-
-[[package]]
-name = "neolink_rtsp"
-version = "0.4.0"
-dependencies = [
  "aes",
  "cfb-mode",
  "cookie-factory",
  "crossbeam",
+ "env_logger",
  "err-derive",
  "gio",
  "glib 0.14.2",
@@ -1003,6 +972,26 @@ dependencies = [
  "toml",
  "validator",
  "validator_derive",
+ "xml-rs",
+ "yaserde",
+ "yaserde_derive",
+]
+
+[[package]]
+name = "neolink_core"
+version = "0.4.0"
+dependencies = [
+ "aes",
+ "cfb-mode",
+ "cookie-factory",
+ "env_logger",
+ "err-derive",
+ "indoc",
+ "log",
+ "md5",
+ "nom",
+ "socket2",
+ "time",
  "xml-rs",
  "yaserde",
  "yaserde_derive",
