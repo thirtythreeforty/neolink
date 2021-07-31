@@ -40,4 +40,4 @@ jobs:
           override: true
     - name: rustfmt
       run: |
-        cargo +nightly fmt -- --check
+        cargo +nightly fmt --all -- --check
