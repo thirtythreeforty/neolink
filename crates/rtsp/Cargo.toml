@@ -6,6 +6,7 @@ authors = ["George Hilliard <thirtythreeforty@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+neolink_core = { path = "../core", version = "0.4.0" }
 aes = "0.6"
 cfb-mode = "0.6"
 cookie-factory = "0.3"

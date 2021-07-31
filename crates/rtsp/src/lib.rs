@@ -1,48 +1,26 @@
-use env_logger::Env;
-use err_derive::Error;
 use gio::TlsAuthenticationMode;
 use log::*;
-use neolink::bc_protocol::BcCamera;
-use neolink::gst::{GstOutputs, RtspServer};
-use neolink::Never;
+use neolink_core::bc_protocol::BcCamera;
+use neolink_core::Never;
 use std::collections::HashSet;
 use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
-use structopt::StructOpt;
 use validator::Validate;
 
-mod cmdline;
-mod config;
+pub mod cmdline;
+pub mod config;
+pub mod errors;
+mod gst;
 
 use cmdline::Opt;
 use config::{CameraConfig, Config, UserConfig};
+use errors::Error;
+use gst::{GstOutputs, RtspServer};
 
-#[derive(Debug, Error)]
-#[allow(clippy::large_enum_variant)]
-pub enum Error {
-    #[error(display = "Configuration parsing error")]
-    ConfigError(#[error(source)] toml::de::Error),
-    #[error(display = "Communication error")]
-    ProtocolError(#[error(source)] neolink::Error),
-    #[error(display = "I/O error")]
-    IoError(#[error(source)] std::io::Error),
-    #[error(display = "Validation error")]
-    ValidationError(#[error(source)] validator::ValidationErrors),
-    #[error(display = "ADPCM Decoding Error")]
-    AdpcmDecodingError(&'static str),
-}
+pub struct Rtsp;
 
-fn main() -> Result<(), Error> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-
-    info!(
-        "Neolink {} {}",
-        env!("NEOLINK_VERSION"),
-        env!("NEOLINK_PROFILE")
-    );
-
-    let opt = Opt::from_args();
+pub fn main(opt: Opt) -> Result<(), Error> {
     let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
 
     config.validate()?;
@@ -121,7 +99,7 @@ fn camera_loop(
             current_backoff = min_backoff;
         }
         match cam_err.err {
-            neolink::Error::AuthFailed => {
+            neolink_core::Error::AuthFailed => {
                 error!(
                     "Authentication failed to camera {}, not retrying",
                     camera_config.name
@@ -143,7 +121,7 @@ fn camera_loop(
 
 struct CameraErr {
     connected: bool,
-    err: neolink::Error,
+    err: neolink_core::Error,
 }
 
 fn set_up_tls(config: &Config, rtsp: &RtspServer) {
@@ -231,7 +209,7 @@ fn camera_main(
 fn do_camera_management(
     camera: &mut BcCamera,
     camera_config: &CameraConfig,
-) -> Result<(), neolink::Error> {
+) -> Result<(), neolink_core::Error> {
     let cam_time = camera.get_time()?;
     if let Some(time) = cam_time {
         info!(
@@ -261,7 +239,7 @@ fn do_camera_management(
         }
     }
 
-    use neolink::bc::xml::VersionInfo;
+    use neolink_core::bc::xml::VersionInfo;
     if let Ok(VersionInfo {
         firmwareVersion: firmware_version,
         ..

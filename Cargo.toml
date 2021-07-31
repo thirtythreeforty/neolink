@@ -9,3 +9,11 @@ edition = "2018"
 members = [
   "crates/*",
 ]
+
+[dependencies]
+neolink_core = { path = "crates/core", version = "0.4.0" }
+neolink_rtsp = { path = "crates/rtsp", version = "0.4.0" }
+env_logger = "*"
+err-derive = "0.2"
+log = { version = "0.4" }
+structopt = "0.3"

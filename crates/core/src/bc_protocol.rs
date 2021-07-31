@@ -2,7 +2,6 @@ use self::connection::BcConnection;
 use self::media_packet::{MediaDataKind, MediaDataSubscriber};
 use crate::bc;
 use crate::bc::{model::*, xml::*};
-use crate::gst::GstOutputs;
 use adpcm::adpcm_to_pcm;
 use err_derive::Error;
 use log::*;
@@ -18,14 +17,6 @@ mod adpcm;
 mod connection;
 mod media_packet;
 mod time;
-
-pub struct BcCamera {
-    address: SocketAddr,
-    channel_id: u8,
-    connection: Option<BcConnection>,
-    logged_in: bool,
-    message_num: AtomicU16,
-}
 
 use crate::Never;
 
@@ -80,6 +71,29 @@ impl<'a> From<std::sync::mpsc::RecvTimeoutError> for Error {
             std::sync::mpsc::RecvTimeoutError::Disconnected => Error::TimeoutDisconnected,
         }
     }
+}
+
+pub struct BcCamera {
+    address: SocketAddr,
+    channel_id: u8,
+    connection: Option<BcConnection>,
+    logged_in: bool,
+    message_num: AtomicU16,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
+pub enum StreamFormat {
+    H264,
+    H265,
+    AAC,
+    ADPCM,
+}
+
+pub type StreamOutputError = Result<()>;
+pub trait StreamOutput {
+    fn write_audio(&mut self, data: &[u8]) -> StreamOutputError;
+    fn write_video(&mut self, data: &[u8]) -> StreamOutputError;
+    fn set_format(&mut self, format: Option<StreamFormat>);
 }
 
 impl Drop for BcCamera {
@@ -346,7 +360,10 @@ impl BcCamera {
         Ok(())
     }
 
-    pub fn start_video(&self, data_outs: &mut GstOutputs, stream_name: &str) -> Result<Never> {
+    pub fn start_video<Outputs>(&self, data_outs: &mut Outputs, stream_name: &str) -> Result<Never>
+    where
+        Outputs: StreamOutput,
+    {
         let connection = self
             .connection
             .as_ref()
@@ -391,19 +408,19 @@ impl BcCamera {
                 MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe => {
                     let media_format = binary_data.media_format();
                     data_outs.set_format(media_format);
-                    data_outs.vidsrc.write_all(binary_data.body())?;
+                    data_outs.write_video(binary_data.body())?;
                 }
                 MediaDataKind::AudioDataAac => {
                     let media_format = binary_data.media_format();
                     data_outs.set_format(media_format);
-                    data_outs.audsrc.write_all(binary_data.body())?;
+                    data_outs.write_audio(binary_data.body())?;
                 }
                 MediaDataKind::AudioDataAdpcm => {
                     let media_format = binary_data.media_format();
                     data_outs.set_format(media_format);
                     let adpcm = binary_data.body();
                     let pcm = adpcm_to_pcm(adpcm)?;
-                    data_outs.audsrc.write_all(&pcm)?;
+                    data_outs.write_audio(&pcm)?;
                 }
                 _ => {}
             };

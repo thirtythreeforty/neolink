@@ -1,7 +1,6 @@
-use super::{Error, Result, RX_TIMEOUT};
+use super::{Error, Result, StreamFormat, RX_TIMEOUT};
 use crate::bc::model::*;
 use crate::bc_protocol::connection::BcSubscription;
-use crate::gst::StreamFormat;
 use log::trace;
 use log::*;
 use std::collections::VecDeque;

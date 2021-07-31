@@ -14,6 +14,7 @@ use gstreamer_rtsp_server::{
     RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
+use neolink_core::bc_protocol::{Error, StreamFormat, StreamOutput, StreamOutputError};
 use std::collections::HashSet;
 use std::fs;
 use std::io;
@@ -25,14 +26,6 @@ pub struct RtspServer {
     server: GstRTSPServer,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
-pub enum StreamFormat {
-    H264,
-    H265,
-    AAC,
-    ADPCM,
-}
-
 pub struct GstOutputs {
     pub audsrc: MaybeAppSrc,
     pub vidsrc: MaybeAppSrc,
@@ -41,20 +34,17 @@ pub struct GstOutputs {
     factory: RTSPMediaFactory,
 }
 
-impl GstOutputs {
-    pub fn from_appsrcs(vidsrc: MaybeAppSrc, audsrc: MaybeAppSrc) -> GstOutputs {
-        let result = GstOutputs {
-            vidsrc,
-            audsrc,
-            video_format: None,
-            audio_format: None,
-            factory: RTSPMediaFactory::new(),
-        };
-        result.apply_format();
-        result
+impl StreamOutput for GstOutputs {
+    fn write_audio(&mut self, data: &[u8]) -> StreamOutputError {
+        self.audsrc.write_all(data)?;
+        Ok(())
+    }
+    fn write_video(&mut self, data: &[u8]) -> StreamOutputError {
+        self.vidsrc.write_all(data)?;
+        Ok(())
     }
 
-    pub fn set_format(&mut self, format: Option<StreamFormat>) {
+    fn set_format(&mut self, format: Option<StreamFormat>) {
         match format {
             Some(StreamFormat::H264) | Some(StreamFormat::H265) => {
                 if format != self.video_format {
@@ -70,6 +60,20 @@ impl GstOutputs {
             }
             _ => {}
         }
+    }
+}
+
+impl GstOutputs {
+    pub fn from_appsrcs(vidsrc: MaybeAppSrc, audsrc: MaybeAppSrc) -> GstOutputs {
+        let result = GstOutputs {
+            vidsrc,
+            audsrc,
+            video_format: None,
+            audio_format: None,
+            factory: RTSPMediaFactory::new(),
+        };
+        result.apply_format();
+        result
     }
 
     fn apply_format(&self) {
