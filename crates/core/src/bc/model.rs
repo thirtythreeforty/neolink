@@ -6,6 +6,8 @@ pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
 /// Login messages have this ID
 pub const MSG_ID_LOGIN: u32 = 1;
+/// Logout messages have this ID
+pub const MSG_ID_LOGOUT: u32 = 2;
 /// Video and Audio Streams messages have this ID
 pub const MSG_ID_VIDEO: u32 = 3;
 /// Version messages have this ID

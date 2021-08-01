@@ -42,6 +42,21 @@ pub struct BcCamera {
     connection: Option<BcConnection>,
     logged_in: bool,
     message_num: AtomicU16,
+    // Certain commands such as logout require the username/pass in plain text.... why....???
+    credentials: Option<Credentials>,
+}
+
+// Used for caching the credentials
+#[derive(Clone)]
+struct Credentials {
+    username: String,
+    password: Option<String>,
+}
+
+impl Credentials {
+    fn new(username: String, password: Option<String>) -> Self {
+        Self { username, password }
+    }
 }
 
 impl Drop for BcCamera {
@@ -90,6 +105,7 @@ impl BcCamera {
                 message_num: AtomicU16::new(0),
                 channel_id,
                 logged_in: false,
+                credentials: None,
             });
         }
 
@@ -108,6 +124,21 @@ impl BcCamera {
             warn!("Could not log out, ignoring: {}", err);
         }
         self.connection = None;
+    }
+
+    // Certains commands like logout need the username and password
+    // this command will return it as a tuple of (Username, Option<Password>)
+    // This will only work after login
+    fn get_credentials(&self) -> &Option<Credentials> {
+        &self.credentials
+    }
+    // This is used to store the credentials it is called during login.
+    fn set_credentials(&mut self, username: String, password: Option<String>) {
+        self.credentials = Some(Credentials::new(username, password));
+    }
+    // This is used to clear the stored credentials it is called during logout.
+    fn clear_credentials(&mut self) {
+        self.credentials = None;
     }
 }
 
