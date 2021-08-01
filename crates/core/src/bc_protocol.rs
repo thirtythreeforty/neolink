@@ -10,6 +10,7 @@ use Md5Trunc::*;
 
 mod connection;
 mod errors;
+mod ledstate;
 mod login;
 mod logout;
 mod media_packet;
@@ -19,6 +20,7 @@ mod time;
 mod version;
 
 pub use errors::Error;
+pub use ledstate::LightState;
 pub use stream::{StreamFormat, StreamOutput, StreamOutputError};
 
 type Result<T> = std::result::Result<T, Error>;

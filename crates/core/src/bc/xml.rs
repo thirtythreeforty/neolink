@@ -33,31 +33,33 @@ impl Default for BcPayloads {
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 #[yaserde(rename = "body")]
 pub struct BcXml {
-    /// Encryption xml are negociated during login and contain the NONCE: `MSG_ID_LOGIN`
+    /// Encryption xml are negociated during login and contain the NONCE
     #[yaserde(rename = "Encryption")]
     pub encryption: Option<Encryption>,
-    /// LoginUser xml is used during modern login: `MSG_ID_LOGIN`
+    /// LoginUser xml is used during modern login
     #[yaserde(rename = "LoginUser")]
     pub login_user: Option<LoginUser>,
-    /// LoginNet xml is used during modern login: `MSG_ID_LOGIN`
+    /// LoginNet xml is used during modern login
     #[yaserde(rename = "LoginNet")]
     pub login_net: Option<LoginNet>,
-    /// The final part of a login sequence will return DeviceInfo xml: `MSG_ID_LOGIN`
+    /// The final part of a login sequence will return DeviceInfo xml
     #[yaserde(rename = "DeviceInfo")]
     pub device_info: Option<DeviceInfo>,
-    /// The VersionInfo xml is recieved in reply to a version request: `MSG_ID_VERSION`
+    /// The VersionInfo xml is recieved in reply to a version request
     #[yaserde(rename = "VersionInfo")]
     pub version_info: Option<VersionInfo>,
     /// Preview xml is used as part of the stream request to set the stream quality and channel
     #[yaserde(rename = "Preview")]
     pub preview: Option<Preview>,
     #[yaserde(rename = "SystemGeneral")]
-    /// SystemGeneral xml is sent or recieved as part of the clock get/setting:
-    /// `MSG_ID_GET_GENERAL` and `MSG_ID_SET_GENERAL`
+    /// SystemGeneral xml is sent or recieved as part of the clock get/setting
     pub system_general: Option<SystemGeneral>,
-    /// Received as part of the Genral system info request: `MSG_ID_GET_GENERAL`
+    /// Received as part of the Genral system info request
     #[yaserde(rename = "Norm")]
     pub norm: Option<Norm>,
+    /// Received as part of the LEDState info request
+    #[yaserde(rename = "LedState")]
+    pub led_state: Option<LedState>,
 }
 
 impl BcXml {
@@ -194,7 +196,7 @@ pub struct Preview {
 /// Extension xml
 ///
 /// This is used to describe the subsequent payload passed the `payload_offset`
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Debug, YaDeserialize, YaSerialize)]
 pub struct Extension {
     /// XML Version always "1.1"
     #[yaserde(attribute)]
@@ -214,6 +216,18 @@ pub struct Extension {
     /// The channel ID. This is usually `0` unless using an NVR
     #[yaserde(rename = "channelId")]
     pub channel_id: Option<u8>,
+}
+
+impl Default for Extension {
+    fn default() -> Extension {
+        Extension {
+            version: xml_ver(),
+            binary_data: None,
+            user_name: None,
+            token: None,
+            channel_id: None,
+        }
+    }
 }
 
 /// SystemGeneral xml
@@ -263,7 +277,26 @@ pub struct Norm {
     norm: String,
 }
 
-/// Convience function to return the xml function used throughout the library
+/// LedState xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct LedState {
+    /// XML Version always "1.1"
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Channel ID of camera to change its LED
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u32,
+    /// LED Version, observed value is "2"
+    #[yaserde(rename = "ledVersion")]
+    pub led_version: Option<u32>,
+    /// State of the IR LEDs values are "auto", "open", "close"
+    pub state: String,
+    /// State of the LED status light (blue on light), vallues are "open", "close"
+    #[yaserde(rename = "lightState")]
+    pub light_state: String,
+}
+
+/// Convience function to return the xml version used throughout the library
 pub fn xml_ver() -> String {
     "1.1".to_string()
 }

@@ -18,6 +18,10 @@ pub const MSG_ID_PING: u32 = 93;
 pub const MSG_ID_GET_GENERAL: u32 = 104;
 /// Setting general system info (clock mostly) messages have this ID
 pub const MSG_ID_SET_GENERAL: u32 = 105;
+/// Getting the LED status is done with this ID
+pub const MSG_ID_GET_LED_STATUS: u32 = 208;
+/// Setting the LED status is done with this ID
+pub const MSG_ID_SET_LED_STATUS: u32 = 209;
 
 /// An empty password in legacy format
 pub const EMPTY_LEGACY_PASSWORD: &str =
