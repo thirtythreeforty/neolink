@@ -136,9 +136,7 @@ pub(crate) fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
         // Get predictor state from block header using DVI 4 format.
         if bytes.len() < 8 {
             error!("ADPCM Block size is not long enough for header");
-            return Err(Error::AdpcmDecoding(
-                "ADPCM has insufficent block size",
-            ));
+            return Err(Error::AdpcmDecoding("ADPCM has insufficent block size"));
         }
         let step_output_bytes = &bytes[4..6];
         let mut last_output = i16::from_le_bytes(
