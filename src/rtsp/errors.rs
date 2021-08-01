@@ -6,18 +6,18 @@ use err_derive::Error;
 pub enum Error {
     /// Raised when the config file fails to deserlize
     #[error(display = "Configuration parsing error")]
-    ConfigError(#[error(source)] toml::de::Error),
+    Config(#[error(source)] toml::de::Error),
     /// Raised when `neolink_core` raises an error
     #[error(display = "Communication error")]
-    ProtocolError(#[error(source)] neolink_core::Error),
+    Protocol(#[error(source)] neolink_core::Error),
     /// Raised when there is an IO error such as unable to find
     /// config file
     #[error(display = "I/O error")]
-    IoError(#[error(source)] std::io::Error),
+    Io(#[error(source)] std::io::Error),
     /// Raised when the config file fails validataion
     #[error(display = "Validation error")]
-    ValidationError(#[error(source)] validator::ValidationErrors),
+    Validation(#[error(source)] validator::ValidationErrors),
     /// Raised when there is an ADPCM decoding error
     #[error(display = "ADPCM Decoding Error")]
-    AdpcmDecodingError(&'static str),
+    AdpcmDecoding(&'static str),
 }

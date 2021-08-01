@@ -102,7 +102,7 @@ pub(crate) fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
 
     if bytes.len() < 4 {
         error!("ADPCM data is too short for even the magic.");
-        return Err(Error::AdpcmDecodingError(
+        return Err(Error::AdpcmDecoding(
             "ADPCM data is too short for even the magic.",
         ));
     }
@@ -112,7 +112,7 @@ pub(crate) fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     const FRAME_TYPE_HISILICON: &[u8] = &[0x00, 0x01];
     if frame_type_bytes != FRAME_TYPE_HISILICON {
         error!("Unexpected ADPCM frame type: {:x?}", frame_type_bytes);
-        return Err(Error::AdpcmDecodingError("Unexpected ADPCM frame type"));
+        return Err(Error::AdpcmDecoding("Unexpected ADPCM frame type"));
     }
 
     // Check for valid block size
@@ -126,7 +126,7 @@ pub(crate) fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     let full_block_size = block_size + 4; // block_size + magic (2 bytes) + size (2 bytes)
     if !bytes.len() % full_block_size as usize == 0 {
         error!("ADPCM Data is not a multiple of the block size");
-        return Err(Error::AdpcmDecodingError(
+        return Err(Error::AdpcmDecoding(
             "ADPCM block size does not match data length.",
         ));
     }
@@ -136,7 +136,7 @@ pub(crate) fn adpcm_to_pcm(bytes: &[u8]) -> Result<Vec<u8>, Error> {
         // Get predictor state from block header using DVI 4 format.
         if bytes.len() < 8 {
             error!("ADPCM Block size is not long enough for header");
-            return Err(Error::AdpcmDecodingError(
+            return Err(Error::AdpcmDecoding(
                 "ADPCM has insufficent block size",
             ));
         }

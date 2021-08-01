@@ -41,7 +41,7 @@ impl StreamOutput for GstOutputs {
         self.set_format(Some(format));
         if let StreamFormat::ADPCM = format {
             let pcm = adpcm_to_pcm(data).map_err(|e| {
-                if let Error::AdpcmDecodingError(msg) = e {
+                if let Error::AdpcmDecoding(msg) = e {
                     neolink_core::Error::OtherString(format!("ADPCM decoding error: {}", msg))
                 } else {
                     neolink_core::Error::Other("Generic error during ADPCM decoding")
