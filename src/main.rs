@@ -13,6 +13,7 @@ use structopt::StructOpt;
 
 mod cmdline;
 mod errors;
+mod reboot;
 mod rtsp;
 mod statusled;
 
@@ -36,6 +37,9 @@ fn main() -> Result<(), Error> {
         }
         Command::StatusLight(opts) => {
             statusled::main(opts)?;
+        }
+        Command::Reboot(opts) => {
+            reboot::main(opts)?;
         }
     }
 

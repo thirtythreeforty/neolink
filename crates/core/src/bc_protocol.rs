@@ -15,6 +15,7 @@ mod login;
 mod logout;
 mod media_packet;
 mod ping;
+mod reboot;
 mod stream;
 mod time;
 mod version;
