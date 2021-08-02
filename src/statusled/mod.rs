@@ -28,14 +28,15 @@ pub fn main(opt: Opt) -> Result<(), Error> {
     for camera_config in &config.cameras {
         if opt.camera == camera_config.name {
             cam_found = true;
-            let mut camera =
-                BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)?;
-
             info!(
                 "{}: Connecting to camera at {}",
                 camera_config.name, camera_config.camera_addr
             );
 
+            let mut camera =
+                BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)?;
+
+            info!("{}: Logging in", camera_config.name);
             camera.login(&camera_config.username, camera_config.password.as_deref())?;
 
             info!("{}: Connected and logged in", camera_config.name);
