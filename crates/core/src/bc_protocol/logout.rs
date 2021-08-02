@@ -21,7 +21,7 @@ impl BcCamera {
 
                 let modern_logout = Bc::new_from_xml(
                     BcMeta {
-                        msg_id: MSG_ID_LOGIN,
+                        msg_id: MSG_ID_LOGOUT,
                         channel_id: self.channel_id,
                         msg_num: self.new_message_num(),
                         stream_type: 0,
