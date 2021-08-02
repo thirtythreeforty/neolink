@@ -4,6 +4,30 @@
 /// This module serves the rtsp streams for the
 /// `neolink rtsp` subcommand
 ///
+/// All camera specified in the config.toml will be served
+/// over rtsp. By default it bind to all local ip addresses
+/// on the port 8554.
+///
+/// You can view the streams with any rtsp compliement program
+/// such as ffmpeg, vlc, blue-iris, home-assistant, zone-minder etc.
+///
+/// Each camera has it own endpoint based on its name. For example
+/// a camera named `"Garage"` in the config can be found at.
+///
+/// `rtsp://my.ip.address:8554/Garage`
+///
+/// With the lower resolution stream at
+///
+/// `rtsp://my.ip.address:8554/Garage/subStream`
+///
+/// # Usage
+///
+/// To start the subcommand use the following in a shell.
+///
+/// ```bash
+/// neolink rtsp --config=config.toml
+/// ```
+///
 use gio::TlsAuthenticationMode;
 use log::*;
 use neolink_core::bc_protocol::BcCamera;

@@ -3,6 +3,18 @@
 ///
 /// This module handles the controls of the blue led status light
 ///
+/// The subcommand attepts to set the LED status light not the IR
+/// lights or the flood lights.
+///
+/// # Usage
+///
+/// ```bash
+/// # To turn the light on
+/// neolink status-light --config=config.toml CameraName on
+/// # Or off
+/// neolink status-light --config=config.toml CameraName off
+/// ```
+///
 use log::*;
 use neolink_core::bc_protocol::BcCamera;
 use std::fs;
