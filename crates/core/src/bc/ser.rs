@@ -35,7 +35,7 @@ impl Bc {
                 // Now get the offset of the payload
                 payload_offset = if has_payload_offset(self.meta.class) {
                     // If we're required to put binary length, put 0 if we have no binary
-                    Some(if modern.payload.is_some() {
+                    Some(if modern.extension.is_some() {
                         ext_len as u32
                     } else {
                         0
