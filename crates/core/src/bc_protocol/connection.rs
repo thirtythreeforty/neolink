@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::error::Error as StdErr; // Just need the traits
 use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -24,6 +24,7 @@ pub struct BcConnection {
     // Arc<Mutex<EncryptionProtocol>> because it is shared between context
     // and connection for deserialisation and serialistion respectivly
     encryption_protocol: Arc<Mutex<EncryptionProtocol>>,
+    poll_abort: Arc<AtomicBool>,
 }
 
 pub struct BcSubscription<'a> {
@@ -59,19 +60,26 @@ impl BcConnection {
 
         let encryption_protocol = Arc::new(Mutex::new(EncryptionProtocol::Unencrypted));
         let connections_encryption_protocol = encryption_protocol.clone();
+        let poll_abort = Arc::new(AtomicBool::new(false));
+        let poll_abort_rx = poll_abort.clone();
         let rx_thread = std::thread::spawn(move || {
             let mut context = BcContext::new(connections_encryption_protocol);
             let mut result;
-            while {
+            loop {
                 result = BcConnection::poll(&mut context, &conn, &mut subs);
-                result.is_ok()
-            } {}
-            let e = result.unwrap_err();
-            error!("Deserialization error: {}", e);
-            let mut cause = e.source();
-            while let Some(e) = cause {
-                error!("caused by: {}", e);
-                cause = e.source();
+                if poll_abort_rx.load(Ordering::Relaxed) {
+                    break; // Poll has been aborted by request usally during disconnect
+                }
+                if result.is_err() {
+                    let e = result.unwrap_err();
+                    error!("Deserialization error: {}", e);
+                    let mut cause = e.source();
+                    while let Some(e) = cause {
+                        error!("caused by: {}", e);
+                        cause = e.source();
+                    }
+                    break;
+                }
             }
         });
 
@@ -80,6 +88,7 @@ impl BcConnection {
             subscribers,
             rx_thread: Some(rx_thread),
             encryption_protocol,
+            poll_abort,
         })
     }
 
@@ -127,6 +136,10 @@ impl BcConnection {
         }
 
         Ok(())
+    }
+
+    pub fn stop_polling(&self) {
+        self.poll_abort.store(true, Ordering::Relaxed);
     }
 
     pub fn set_encrypted(&self, value: EncryptionProtocol) {

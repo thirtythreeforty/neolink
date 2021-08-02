@@ -122,8 +122,17 @@ impl BcCamera {
     /// This will drop the connection. It will try to send the logout request to the camera
     /// first
     pub fn disconnect(&mut self) {
-        if let Err(err) = self.logout() {
-            warn!("Could not log out, ignoring: {}", err);
+        // Stop polling now. We don't need it for a disconnect
+        // and if we don't then another we might get a deserialise
+        // error from another thread that polls and needs the login.
+        //
+        // It will also ensure that when we drop the connection we don't
+        // get an error for read retrun zero bytes.
+        if let Some(connection) = &self.connection {
+            connection.stop_polling();
+            if let Err(err) = self.logout() {
+                warn!("Could not log out, ignoring: {}", err);
+            }
         }
         self.connection = None;
     }
