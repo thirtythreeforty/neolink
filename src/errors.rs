@@ -7,4 +7,6 @@ pub enum Error {
     Rtsp(#[error(source)] super::rtsp::Error),
     #[error(display = "Status LED Error")]
     StatusLight(#[error(source)] super::statusled::Error),
+    #[error(display = "Reboot Error")]
+    Reboot(#[error(source)] super::reboot::Error),
 }

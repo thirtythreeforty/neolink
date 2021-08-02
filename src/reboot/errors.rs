@@ -1,6 +1,6 @@
 use err_derive::Error;
 
-/// The main error for the status-light subcommand
+/// The main error for the reboot subcommand
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
 pub enum Error {
@@ -18,7 +18,3 @@ pub enum Error {
     #[error(display = "Validation error")]
     Validation(#[error(source)] validator::ValidationErrors),
 }
-
-#[derive(Error, Debug)]
-#[error(display = "Failed to parse on/off flag")]
-pub(super) struct ParseOnOffError;

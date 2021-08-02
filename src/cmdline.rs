@@ -12,4 +12,5 @@ pub struct Opt {
 pub enum Command {
     Rtsp(super::rtsp::Opt),
     StatusLight(super::statusled::Opt),
+    Reboot(super::reboot::Opt),
 }
