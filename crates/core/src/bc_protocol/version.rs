@@ -2,7 +2,7 @@ use super::{BcCamera, Error, Result, RX_TIMEOUT};
 use crate::bc::{model::*, xml::*};
 
 impl BcCamera {
-    /// Request the VersionInfo xml
+    /// Request the [VersionInfo] xml
     pub fn version(&self) -> Result<VersionInfo> {
         let connection = self
             .connection

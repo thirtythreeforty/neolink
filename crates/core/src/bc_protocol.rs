@@ -74,13 +74,13 @@ impl BcCamera {
     /// # Parameters
     ///
     /// * `host` - The address of the camera either ip address or hostname string is ok but
-    ///             `SocketAddr` is fine too
+    ///             [`std::net::SocketAddr`] is fine too
     ///
     /// * `channel_id` - The channel ID this is usually zero unless using a NVR
     ///
     /// # Returns
     ///
-    /// returns either an error of the camera
+    /// returns either an error or the camera
     ///
     pub fn new_with_addr<T: ToSocketAddrs>(host: T, channel_id: u8) -> Result<Self> {
         let addr_iter = match host.to_socket_addrs() {

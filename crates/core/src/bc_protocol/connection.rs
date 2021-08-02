@@ -13,7 +13,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 /// A shareable connection to a camera.  Handles serialization of messages.  To send/receive, call
-/// .subscribe() with a message ID.  You can use the BcSubscription to send or receive only
+/// .[subscribe()] with a message ID.  You can use the BcSubscription to send or receive only
 /// messages with that ID; each incoming message is routed to its appropriate subscriber.
 ///
 /// There can be only one subscriber per kind of message at a time.

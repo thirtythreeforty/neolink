@@ -42,7 +42,7 @@ pub struct Bc {
 #[derive(Debug, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
 pub enum BcBody {
-    /// Legacy is unsupported except for login where it is
+    /// Legacy is unsupported except for login where it is used
     /// to negociate the initial login and upgrade to modern
     LegacyMsg(LegacyMsg),
     /// Modern is the current reolink protocol it is mostly
@@ -53,20 +53,20 @@ pub enum BcBody {
 /// Modern messages have two payloads split by the `payload_offset` in the header
 ///
 /// The first payload is extension which describes the second payload. If the
-/// `payload_offset` is `0` then their is no `extension` usually because it has
-/// already been negociated in a previous message and it is `None`
+/// `payload_offset` is `0` then their is no `extension` (usually because it has
+/// already been negociated in a previous message) and it is `None`
 ///
 /// The second payload contains the actual data of interest and is all bytes after
-/// the `payload_offset` up to the `body_len`. If `payload_offset` equals `body_len`
-/// then there is not payload and it is `None`
+/// the `payload_offset` up to the `body_len`. If `payload_offset`
+/// equals `body_len` then there is not payload and it is `None`
 ///
-/// If payload_offset is `0` and equal to `body_len` then there is neither `extension`
-/// or `payload` these are header only messages. This usually occurs to acknoledge receipt
+/// If `payload_offset` is `0` and equal to `body_len` then there is neither
+/// `extension` or `payload` these are header only messages. This usually occurs to acknoledge receipt
 /// of a command. In such cases the header `response_code` should be checked.
 ///
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ModernMsg {
-    /// Extension describes the following payload such as which `channel_id` it is for
+    /// Extension describes the following payload such as which channel id it is for
     pub extension: Option<Extension>,
     /// Primary payload which is dependant on MsgID
     pub payload: Option<BcPayloads>,
@@ -103,25 +103,25 @@ pub(super) struct BcHeader {
 /// descriptions of the Body (the application dictates these)
 #[derive(Debug, PartialEq, Eq)]
 pub struct BcMeta {
-    /// Message ID dictaes the major content of the messahe
+    /// Message ID dictaes the major content of the message
     pub msg_id: u32,
     /// In most cases 0 but can be other values for NVRs
     pub channel_id: u8,
     /// In most cases this is unimportant but 0 means Clear Stream while 1 means Fluent stream
-    /// This is only really on `MSG_ID_VIDEO` streams when the SD `subStreams` are requested
+    /// This is only really used during `[MSG_ID_VIDEO]` streams when the SD `subStreams` are requested
     pub stream_type: u8,
     /// On modern messages this is the response code
-    /// When sending a command it is set to `0` but the reply can be
-    /// - `200` means OK
+    /// When sending a command it is set to `0`. The reply from the camera can be
+    /// - `200` for OK
     /// - `400` for bad request
-    /// A malformed packet will return a non `400` code
+    /// A malformed packet will return a `400` code
     pub response_code: u16,
     /// A message ID is used to match replies with requests. The camera will parrot back
-    /// in its reply to a message this same `msg_num`
+    /// this number in its reply
     ///
-    /// Also if there are multiple replies split over multiple messages such as in
-    /// streams talk or when sending a firmware update they will all have the same
-    /// `msg_num`
+    /// If there a message is too long to fit in one packet it will be split over multiple
+    /// messages all with the same `msg_num` (this can happing in video streams, talk and when
+    /// sending a firmware update)
     pub msg_num: u16,
     /// The class is mostly an unknown quanitiy but does dictate the size of the header
     /// know values are
@@ -242,13 +242,13 @@ impl BcHeader {
         }
     }
 
-    /// Constuct a `BcHeader` from a `BcMeta`
+    /// Constuct a [`BcHeader`] from a [`BcMeta`]
     ///
     /// This requires additional data such as the `body_len`
     ///
     /// # Parameters
     ///
-    /// * `meta` - the `BcMeta` to convert
+    /// * `meta` - the [`BcMeta`] to convert
     ///
     /// * `body_len` - The length of the body (extension and payload) in bytes
     ///

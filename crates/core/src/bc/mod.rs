@@ -28,14 +28,14 @@
 //! which are binary data in the bc media packet format
 //!
 
-/// `model` contains the structure of the messages such as headers and payloads
+/// Contains the structure of the messages such as headers and payloads
 pub mod model;
 
-/// `de` contains code related to the deserialisation of the bc packets
+/// Contains code related to the deserialisation of the bc packets
 pub mod de;
-/// `ser` contains code related to the serialisation of the bc packets
+/// `Contains code related to the serialisation of the bc packets
 pub mod ser;
-/// `xml` contains the know xml payloads
+/// Contains the structs for the know xmls of payloads and extension
 pub mod xml;
 
 mod xml_crypto;

@@ -8,6 +8,9 @@ use crate::{
 };
 
 /// The stream from the camera will be using one of these formats
+///
+/// This is used as part of `StreamOutput` to give hints about
+/// the format of the stream
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum StreamFormat {
     /// H264 (AVC) video format
@@ -20,10 +23,10 @@ pub enum StreamFormat {
     ADPCM,
 }
 
-/// Convience type for the error raised by the StreamOutput trait
+/// Convience type for the error raised by the [StreamOutput] trait
 pub type StreamOutputError = Result<()>;
 
-/// The method `start_stream` requires a structure with this trait to pass the
+/// The method [`BcCamera::start_video()`] requires a structure with this trait to pass the
 /// audio and video data back to
 pub trait StreamOutput {
     /// This is the callback raised when audio data is received
@@ -38,7 +41,7 @@ impl BcCamera {
     ///
     /// # Parameters
     ///
-    /// * `data_outs` - This should be a struct that implements the `StreamOutput` trait
+    /// * `data_outs` - This should be a struct that implements the [`StreamOutput`] trait
     ///
     /// * `stream_name` - The name of the stream either `"mainStream"` for HD or `"subStream"` for SD
     ///

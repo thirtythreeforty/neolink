@@ -33,7 +33,7 @@ impl Default for BcPayloads {
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 #[yaserde(rename = "body")]
 pub struct BcXml {
-    /// Encryption xml are negociated during login and contain the NONCE
+    /// Encryption xml is received during login and contain the NONCE
     #[yaserde(rename = "Encryption")]
     pub encryption: Option<Encryption>,
     /// LoginUser xml is used during modern login
@@ -83,7 +83,7 @@ impl Extension {
 /// Encryption xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct Encryption {
-    /// XML Version always "1.1"
+    /// XML Version
     #[yaserde(attribute)]
     pub version: String,
     #[yaserde(rename = "type")]
@@ -96,7 +96,7 @@ pub struct Encryption {
 /// LoginUser xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct LoginUser {
-    /// XML Version always "1.1"
+    /// XML Version
     #[yaserde(attribute)]
     pub version: String,
     /// Username to login as
@@ -112,7 +112,7 @@ pub struct LoginUser {
 /// LoginNet xml
 #[derive(PartialEq, Eq, Debug, YaDeserialize, YaSerialize)]
 pub struct LoginNet {
-    /// XML Version always "1.1"
+    /// XML Version
     #[yaserde(attribute)]
     pub version: String,
     /// Type of connection usually LAN (even on wifi)
@@ -179,7 +179,7 @@ pub struct Resolution {
 /// This xml is used to request a stream to start
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct Preview {
-    /// XML Version always "1.1"
+    /// XML Version
     #[yaserde(attribute)]
     pub version: String,
 
@@ -198,7 +198,7 @@ pub struct Preview {
 /// This is used to describe the subsequent payload passed the `payload_offset`
 #[derive(PartialEq, Eq, Debug, YaDeserialize, YaSerialize)]
 pub struct Extension {
-    /// XML Version always "1.1"
+    /// XML Version
     #[yaserde(attribute)]
     pub version: String,
     /// If the subsequent payload is binary this will be set to 1. Otherwise it is ommited
@@ -233,7 +233,7 @@ impl Default for Extension {
 /// SystemGeneral xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct SystemGeneral {
-    /// XML Version always "1.1"
+    /// XML Version
     #[yaserde(attribute)]
     pub version: String,
 
@@ -270,7 +270,7 @@ pub struct SystemGeneral {
 /// Norm xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct Norm {
-    /// XML Version always "1.1"
+    /// XML Version
     #[yaserde(attribute)]
     pub version: String,
     // This is usually just `"NTSC"`
@@ -280,18 +280,18 @@ pub struct Norm {
 /// LedState xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct LedState {
-    /// XML Version always "1.1"
+    /// XML Version
     #[yaserde(attribute)]
     pub version: String,
-    /// Channel ID of camera to change its LED
+    /// Channel ID of camera to get/set its LED state
     #[yaserde(rename = "channelId")]
     pub channel_id: u32,
-    /// LED Version, observed value is "2"
+    /// LED Version, observed value is "2". Should be None when setting the LedState
     #[yaserde(rename = "ledVersion")]
     pub led_version: Option<u32>,
     /// State of the IR LEDs values are "auto", "open", "close"
     pub state: String,
-    /// State of the LED status light (blue on light), vallues are "open", "close"
+    /// State of the LED status light (blue on light), values are "open", "close"
     #[yaserde(rename = "lightState")]
     pub light_state: String,
 }

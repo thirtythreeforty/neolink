@@ -2,7 +2,7 @@ use super::{BcCamera, Error, Result, RX_TIMEOUT};
 use crate::bc::{model::*, xml::*};
 
 impl BcCamera {
-    /// Get the LEDState xml which contains the LED status of the camera
+    /// Get the [LedState] xml which contains the LED status of the camera
     pub fn get_ledstate(&mut self) -> Result<LedState> {
         let connection = self
             .connection
@@ -48,7 +48,7 @@ impl BcCamera {
         }
     }
 
-    /// Set the led lights using the LEDState xml
+    /// Set the led lights using the [LedState] xml
     pub fn set_ledstate(&mut self, mut led_state: LedState) -> Result<()> {
         let connection = self
             .connection

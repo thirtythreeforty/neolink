@@ -9,11 +9,11 @@ pub enum Error {
     #[error(display = "Communication error")]
     Communication(#[error(source)] std::io::Error),
 
-    /// Errors raised during deserlization
+    /// Error raised during deserlization
     #[error(display = "Deserialization error")]
     Deserialization(#[error(source)] super::bc::de::Error),
 
-    /// Errors raised during serlization
+    /// Error raised during serlization
     #[error(display = "Serialization error")]
     Serialization(#[error(source)] super::bc::ser::Error),
 
@@ -30,8 +30,7 @@ pub enum Error {
         why: &'static str,
     },
 
-    /// Raised when a connection is dropped. This can be for many reasons
-    /// and is usually not helpful
+    /// Raised when a connection is dropped.
     #[error(display = "Dropped connection")]
     DroppedConnection(#[error(source)] std::sync::mpsc::RecvError),
 
@@ -39,7 +38,7 @@ pub enum Error {
     #[error(display = "Timeout")]
     Timeout,
 
-    /// Raised when connection is dropped because the RX_TIMEOUT is reach
+    /// Raised when connection is dropped because the timeout is reach
     #[error(display = "Dropped connection")]
     TimeoutDisconnected,
 

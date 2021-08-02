@@ -3,7 +3,7 @@
 //!
 //! Neolink-Core is a rust library for interacting with reolink and family cameras.
 //!
-//! Most high level camera controls are in the `neolink_core::bc_protocol` module
+//! Most high level camera controls are in the [`bc_protocol`] module
 //!
 //! A camera can be initialised with
 //!
@@ -19,12 +19,12 @@
 //! # let camera = BcCamera::new_with_addr("camera_ip_address", channel_id);
 //! camera.login("username", "password");
 //! ```
-//! For further commands see the `BcCamera` struct.
+//! For further commands see the [`bc_protocol::BcCamera`] struct.
 //!
 
-/// `bc` module contains low level BC structures and formats
+/// Contains low level BC structures and formats
 pub mod bc;
-/// `bc_protocol` contains high level interfaces for the camera
+/// Contains high level interfaces for the camera
 pub mod bc_protocol;
 
 #[derive(Debug)]
