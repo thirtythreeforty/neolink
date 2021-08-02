@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-/// The command line for the rtsp subcommand
+/// The rtsp command will serve all cameras in the config over the rtsp protocol
 #[derive(StructOpt, Debug)]
 pub struct Opt {
     /// The path to the config file

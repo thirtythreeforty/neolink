@@ -1,7 +1,7 @@
 ///
 /// # Neolink RTSP
 ///
-/// This crate serves as the rtsp source for the
+/// This module serves the rtsp streams for the
 /// `neolink rtsp` subcommand
 ///
 use gio::TlsAuthenticationMode;

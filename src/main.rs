@@ -14,6 +14,7 @@ use structopt::StructOpt;
 mod cmdline;
 mod errors;
 mod rtsp;
+mod statusled;
 
 use cmdline::{Command, Opt};
 use errors::Error;
@@ -32,6 +33,9 @@ fn main() -> Result<(), Error> {
     match opt.cmd {
         Command::Rtsp(opts) => {
             rtsp::main(opts)?;
+        }
+        Command::StatusLight(opts) => {
+            statusled::main(opts)?;
         }
     }
 

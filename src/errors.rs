@@ -4,5 +4,7 @@ use err_derive::Error;
 #[allow(clippy::large_enum_variant)]
 pub enum Error {
     #[error(display = "RTSP Error")]
-    RtspError(#[error(source)] super::rtsp::Error),
+    Rtsp(#[error(source)] super::rtsp::Error),
+    #[error(display = "Status LED Error")]
+    StatusLight(#[error(source)] super::statusled::Error),
 }
