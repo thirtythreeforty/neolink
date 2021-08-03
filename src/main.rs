@@ -16,6 +16,7 @@ mod errors;
 mod reboot;
 mod rtsp;
 mod statusled;
+mod talk;
 
 use cmdline::{Command, Opt};
 use errors::Error;
@@ -40,6 +41,9 @@ fn main() -> Result<(), Error> {
         }
         Command::Reboot(opts) => {
             reboot::main(opts)?;
+        }
+        Command::Talk(opts) => {
+            talk::main(opts)?;
         }
     }
 

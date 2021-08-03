@@ -13,4 +13,5 @@ pub enum Command {
     Rtsp(super::rtsp::Opt),
     StatusLight(super::statusled::Opt),
     Reboot(super::reboot::Opt),
+    Talk(super::talk::Opt),
 }
