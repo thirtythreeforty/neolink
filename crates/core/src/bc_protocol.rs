@@ -17,6 +17,7 @@ mod logout;
 mod ping;
 mod reboot;
 mod stream;
+mod talk;
 mod time;
 mod version;
 

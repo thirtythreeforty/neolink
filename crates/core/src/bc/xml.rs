@@ -60,6 +60,9 @@ pub struct BcXml {
     /// Received as part of the LEDState info request
     #[yaserde(rename = "LedState")]
     pub led_state: Option<LedState>,
+    /// Sent as part of the TalkConfig to prepare the camera for audio talk-back
+    #[yaserde(rename = "TalkConfig")]
+    pub talk_config: Option<TalkConfig>,
 }
 
 impl BcXml {
@@ -285,7 +288,7 @@ pub struct LedState {
     pub version: String,
     /// Channel ID of camera to get/set its LED state
     #[yaserde(rename = "channelId")]
-    pub channel_id: u32,
+    pub channel_id: u8,
     /// LED Version, observed value is "2". Should be None when setting the LedState
     #[yaserde(rename = "ledVersion")]
     pub led_version: Option<u32>,
@@ -294,6 +297,49 @@ pub struct LedState {
     /// State of the LED status light (blue on light), values are "open", "close"
     #[yaserde(rename = "lightState")]
     pub light_state: String,
+}
+
+/// TalkConfig xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct TalkConfig {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Channel ID of camera to set the TalkConfig
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// Duplex known values `"FDX"`
+    pub duplex: String,
+    /// audioStreamMode known values `"followVideoStream"`
+    #[yaserde(rename = "audioStreamMode")]
+    pub audio_stream_mode: String,
+    /// AudioConfig contans the details of the audio to follow
+    pub audio_config: AudioConfig,
+}
+
+/// audioConfig xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[yaserde(rename = "audioConfig")]
+pub struct AudioConfig {
+    /// Audio type known values are `"adpcm"`
+    ///
+    /// Do not expect camera to support anything else.
+    #[yaserde(rename = "audioType")]
+    pub audio_type: String,
+    /// Audio sample rate known values are `16000`
+    #[yaserde(rename = "sampleRate")]
+    pub sample_rate: u16,
+    /// Precision of data known vaues are `16` (i.e. 16bit)
+    #[yaserde(rename = "samplePrecision")]
+    pub sample_precision: u16,
+    /// Number of audio samples this should be twice the block size for adpcm
+    #[yaserde(rename = "lengthPerEncoder")]
+    pub length_per_encoder: u16,
+    /// Sound track is the number of tracks known values are `"mono"`
+    ///
+    /// Do not expect camera to support anything else
+    #[yaserde(rename = "soundTrack")]
+    pub soundTrack: String,
 }
 
 /// Convience function to return the xml version used throughout the library

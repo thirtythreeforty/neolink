@@ -2087,6 +2087,78 @@ a PR to improve it.
     </body>
     ```
 
+- 201: `<TalkConfig>`
+
+  - Client
+
+    - Header
+
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 c9  |  00 00 01 f2   |    12 00 00 00    |       00 00       |     64 14     |  00 00 00 68  |
+
+    - Body
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Binary
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <TalkConfig version="1.1">
+    <channelId>0</channelId>
+    <duplex>FDX</duplex>
+    <audioStreamMode>followVideoStream</audioStreamMode>
+    <audioConfig>
+    <audioType>adpcm</audioType>
+    <sampleRate>16000</sampleRate>
+    <samplePrecision>16</samplePrecision>
+    <lengthPerEncoder>1024</lengthPerEncoder>
+    <soundTrack>mono</soundTrack>
+    </audioConfig>
+    </TalkConfig>
+    </body>
+    ```
+
+  - Camera
+
+    - Header
+
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 c9  |  00 00 00 00   |    12 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
+
+- 202: `Talk`
+
+  - Client
+
+    - Header
+
+        |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Binary Offset |
+        |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 ca  |  00 00 08 c3   |    00 00 00 00    |       00 00       |     64 14     |  00 00 00 83  |
+
+    - Body
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <binaryData>1</binaryData>
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Binary
+
+      Binary data contains media-packets of adpcm data
+
+
+  **Notes**: No reply from camera. After this the client keeps sending this packet with binary in the BcMedia encoded packets of adpcm data
+
 - 208: `<LedState>`
 
   - Client
