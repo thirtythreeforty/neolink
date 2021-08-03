@@ -59,19 +59,17 @@ impl StreamOutput for GstOutputs {
     fn write(&mut self, media: BcMedia) -> StreamOutputError {
         match media {
             BcMedia::Iframe(payload) => {
-                let video_type = match payload.video_type.as_str() {
-                    "H264" | "h264" => StreamFormat::H264,
-                    "H265" | "h265" => StreamFormat::H265,
-                    _ => unreachable!(),
+                let video_type = match payload.video_type {
+                    VideoType::H264 => StreamFormat::H264,
+                    VideoType::H265 => StreamFormat::H265,
                 };
                 self.set_format(Some(video_type));
                 self.vidsrc.write_all(&payload.data)?;
             }
             BcMedia::Pframe(payload) => {
-                let video_type = match payload.video_type.as_str() {
-                    "H264" | "h264" => StreamFormat::H264,
-                    "H265" | "h265" => StreamFormat::H265,
-                    _ => unreachable!(),
+                let video_type = match payload.video_type {
+                    VideoType::H264 => StreamFormat::H264,
+                    VideoType::H265 => StreamFormat::H265,
                 };
                 self.set_format(Some(video_type));
                 self.vidsrc.write_all(&payload.data)?;
@@ -81,7 +79,7 @@ impl StreamOutput for GstOutputs {
                 self.audsrc.write_all(&payload.data)?;
             }
             BcMedia::Adpcm(payload) => {
-                self.set_format(Some(StreamFormat::Adpcm(payload.block_size)));
+                self.set_format(Some(StreamFormat::Adpcm((payload.data.len() - 4) as u16)));
                 let pcm = adpcm_to_pcm(&payload.data).map_err(|e| {
                     if let Error::AdpcmDecoding(msg) = e {
                         neolink_core::Error::OtherString(format!("ADPCM decoding error: {}", msg))

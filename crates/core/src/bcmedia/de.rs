@@ -2,7 +2,7 @@ use super::model::BcMediaIframe;
 use super::model::*;
 use err_derive::Error;
 use nom::IResult;
-use nom::{combinator::*, number::streaming::*, take, take_str};
+use nom::{combinator::*, named, number::streaming::*, take, take_str};
 use std::io::Read;
 
 // PAD_SIZE: Media packets use 8 byte padding
@@ -113,7 +113,7 @@ fn bcmedia(buf: &[u8]) -> IResult<&[u8], BcMedia> {
 }
 
 fn bcmedia_info_v1(buf: &[u8]) -> IResult<&[u8], BcMediaInfoV1> {
-    let (buf, header_size) = verify(le_u32, |x| *x == 32)(buf)?;
+    let (buf, _header_size) = verify(le_u32, |x| *x == 32)(buf)?;
     let (buf, video_width) = le_u32(buf)?;
     let (buf, video_height) = le_u32(buf)?;
     let (buf, _unknown) = le_u8(buf)?;
@@ -135,7 +135,7 @@ fn bcmedia_info_v1(buf: &[u8]) -> IResult<&[u8], BcMediaInfoV1> {
     Ok((
         buf,
         BcMediaInfoV1 {
-            header_size,
+            // header_size,
             video_width,
             video_height,
             fps,
@@ -156,7 +156,7 @@ fn bcmedia_info_v1(buf: &[u8]) -> IResult<&[u8], BcMediaInfoV1> {
 }
 
 fn bcmedia_info_v2(buf: &[u8]) -> IResult<&[u8], BcMediaInfoV2> {
-    let (buf, header_size) = verify(le_u32, |x| *x == 32)(buf)?;
+    let (buf, _header_size) = verify(le_u32, |x| *x == 32)(buf)?;
     let (buf, video_width) = le_u32(buf)?;
     let (buf, video_height) = le_u32(buf)?;
     let (buf, _unknown) = le_u8(buf)?;
@@ -178,7 +178,7 @@ fn bcmedia_info_v2(buf: &[u8]) -> IResult<&[u8], BcMediaInfoV2> {
     Ok((
         buf,
         BcMediaInfoV2 {
-            header_size,
+            // header_size,
             video_width,
             video_height,
             fps,
@@ -199,7 +199,8 @@ fn bcmedia_info_v2(buf: &[u8]) -> IResult<&[u8], BcMediaInfoV2> {
 }
 
 fn bcmedia_iframe(buf: &[u8]) -> IResult<&[u8], BcMediaIframe> {
-    let (buf, video_type_str) = take_str!(buf, 4)?;
+    named!(take4str( &[u8] ) -> &str, take_str!( 4 ) );
+    let (buf, video_type_str) = verify(take4str, |x| matches!(x, "H264" | "H265"))(buf)?;
     let (buf, payload_size) = le_u32(buf)?;
     let (buf, _unknown_a) = le_u32(buf)?;
     let (buf, microseconds) = le_u32(buf)?;
@@ -213,11 +214,16 @@ fn bcmedia_iframe(buf: &[u8]) -> IResult<&[u8], BcMediaIframe> {
     };
     let (buf, _padding) = take!(buf, pad_size)?;
 
+    let video_type = match video_type_str {
+        "H264" => VideoType::H264,
+        "H265" => VideoType::H265,
+        _ => unreachable!(),
+    };
     Ok((
         buf,
         BcMediaIframe {
-            video_type: video_type_str.to_string(),
-            payload_size,
+            video_type,
+            // payload_size,
             microseconds,
             time,
             data: data_slice.to_vec(),
@@ -226,7 +232,8 @@ fn bcmedia_iframe(buf: &[u8]) -> IResult<&[u8], BcMediaIframe> {
 }
 
 fn bcmedia_pframe(buf: &[u8]) -> IResult<&[u8], BcMediaPframe> {
-    let (buf, video_type_str) = take_str!(buf, 4)?;
+    named!(take4str( &[u8] ) -> &str, take_str!( 4 ) );
+    let (buf, video_type_str) = verify(take4str, |x| matches!(x, "H264" | "H265"))(buf)?;
     let (buf, payload_size) = le_u32(buf)?;
     let (buf, _unknown_a) = le_u32(buf)?;
     let (buf, microseconds) = le_u32(buf)?;
@@ -238,11 +245,17 @@ fn bcmedia_pframe(buf: &[u8]) -> IResult<&[u8], BcMediaPframe> {
     };
     let (buf, _padding) = take!(buf, pad_size)?;
 
+    let video_type = match video_type_str {
+        "H264" => VideoType::H264,
+        "H265" => VideoType::H265,
+        _ => unreachable!(),
+    };
+
     Ok((
         buf,
         BcMediaPframe {
-            video_type: video_type_str.to_string(),
-            payload_size,
+            video_type,
+            // payload_size,
             microseconds,
             data: data_slice.to_vec(),
         },
@@ -262,7 +275,7 @@ fn bcmedia_aac(buf: &[u8]) -> IResult<&[u8], BcMediaAac> {
     Ok((
         buf,
         BcMediaAac {
-            payload_size,
+            // payload_size,
             data: data_slice.to_vec(),
         },
     ))
@@ -283,8 +296,8 @@ fn bcmedia_adpcm(buf: &[u8]) -> IResult<&[u8], BcMediaAdpcm> {
     Ok((
         buf,
         BcMediaAdpcm {
-            payload_size,
-            block_size,
+            // payload_size,
+            // block_size,
             data: data_slice.to_vec(),
         },
     ))

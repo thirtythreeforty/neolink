@@ -19,10 +19,10 @@ pub(super) const MAGIC_HEADER_BCMEDIA_INFO_V1: u32 = 0x31303031;
 /// The start of a BcMedia stream contains this message
 /// which describes the data to follow
 pub struct BcMediaInfoV1 {
-    /// This is the size of the header so it's actually a fixed value
-    /// The other messages have body size here so maybe that's why
-    /// it's included
-    pub header_size: u32,
+    // This is the size of the header so it's actually a fixed value
+    // The other messages have body size here so maybe that's why
+    // it's included
+    // pub header_size: u32,
     /// Width of the video
     pub video_width: u32,
     /// Height of the video
@@ -62,10 +62,10 @@ pub(super) const MAGIC_HEADER_BCMEDIA_INFO_V2: u32 = 0x32303031;
 /// The start of a BcMedia stream contains this message
 /// which describes the data to follow
 pub struct BcMediaInfoV2 {
-    /// This is the size of the header so it's actually a fixed value
-    /// The other messages have body size here so maybe that's why
-    /// it's included
-    pub header_size: u32,
+    // This is the size of the header so it's actually a fixed value
+    // The other messages have body size here so maybe that's why
+    // it's included
+    // pub header_size: u32,
     /// Width of the video
     pub video_width: u32,
     /// Height of the video
@@ -102,12 +102,20 @@ pub struct BcMediaInfoV2 {
 
 pub(super) const MAGIC_HEADER_BCMEDIA_IFRAME: u32 = 0x63643030;
 
+/// Video Types for I/PFrame
+pub enum VideoType {
+    /// H264 video data
+    H264,
+    /// H265 video data
+    H265,
+}
+
 /// This is a BcMedia video IFrame.
 pub struct BcMediaIframe {
-    /// ASCII of either "H264", or "H265"
-    pub video_type: String,
-    /// Size of payload after header in bytes
-    pub payload_size: u32,
+    /// "H264", or "H265"
+    pub video_type: VideoType,
+    // Size of payload after header in bytes
+    // pub payload_size: u32,
     // unknown: u32, // NVR channel count? Known values 1-00/08 2-00 3-00 4-00
     /// Timestamp in microseconds
     pub microseconds: u32,
@@ -123,10 +131,10 @@ pub(super) const MAGIC_HEADER_BCMEDIA_PFRAME: u32 = 0x63643130;
 
 /// This is a BcMedia video PFrame.
 pub struct BcMediaPframe {
-    /// ASCII of either "H264", or "H265"
-    pub video_type: String,
-    /// Size of payload after header in bytes
-    pub payload_size: u32,
+    /// "H264", or "H265"
+    pub video_type: VideoType,
+    // Size of payload after header in bytes
+    // pub payload_size: u32,
     // unknown: u32, // NVR channel count? Known values 1-00/08 2-00 3-00 4-00
     /// Timestamp in microseconds
     pub microseconds: u32,
@@ -139,8 +147,8 @@ pub(super) const MAGIC_HEADER_BCMEDIA_AAC: u32 = 0x62773530;
 
 /// This contains BcMedia audio data in AAC format
 pub struct BcMediaAac {
-    /// Size of payload after header in bytes
-    pub payload_size: u16,
+    // Size of payload after header in bytes
+    // pub payload_size: u16,
     // Size of payload after header in bytes exactly the same as before
     // pub payload_size_b: u16,
     /// Raw AAC data
@@ -153,17 +161,22 @@ pub(super) const MAGIC_HEADER_BCMEDIA_ADPCM_DATA: u16 = 0x0100;
 
 /// This contains BcMedia audio data in ADPCM format
 pub struct BcMediaAdpcm {
-    /// Size of payload after header in bytes
-    pub payload_size: u16,
+    // Size of payload after header in bytes
+    // pub payload_size: u16,
     // Size of payload after header in bytes exactly the same as before
     // pub payload_size_b: u16,
     // more_magic: MAGIC_HEADER_BCMEDIA_ADPCM_DATA
-    /// Adpcm block size in bytes (there are twice this in samples)
+    // Adpcm block size in bytes (there are twice this in samples)
+    //
+    // These bytes (and the MAGIC_HEADER_BCMEDIA_ADPCM_DATA) are included as
+    // part of the payload_size. It may be more prudent to sealise them to
+    // another structure.
+    // pub block_size: u16,
+    /// The raw adpcm data in DVI-4 layout.
     ///
-    /// These bytes (and the MAGIC_HEADER_BCMEDIA_ADPCM_DATA) are included as
-    /// part of the payload_size. It may be more prudent to sealise them to
-    /// another structure.
-    pub block_size: u16,
-    /// The raw adpcm data in DVI-4 layout. Size should be [block_size] + 4
+    /// One `data` should contain 4 bytes of the adpcm predictor state then one block
+    /// of adpcm samples
+    ///
+    /// To calculate the block-align size simply remove 4 from the `len()`
     pub data: Vec<u8>,
 }
