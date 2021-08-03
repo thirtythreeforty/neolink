@@ -1,27 +1,8 @@
-use super::{
-    media_packet::{MediaDataKind, MediaDataSubscriber},
-    BcCamera, Result,
-};
+use super::{BcCamera, BinarySubscriber, Result};
 use crate::{
     bc::{model::*, xml::*},
     Never,
 };
-
-/// The stream from the camera will be using one of these formats
-///
-/// This is used as part of `StreamOutput` to give hints about
-/// the format of the stream
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
-pub enum StreamFormat {
-    /// H264 (AVC) video format
-    H264,
-    /// H265 (HEVC) video format
-    H265,
-    /// AAC audio
-    AAC,
-    /// ADPCM in DVI-4 format
-    ADPCM,
-}
 
 /// Convience type for the error raised by the [StreamOutput] trait
 pub type StreamOutputError = Result<()>;
@@ -29,10 +10,8 @@ pub type StreamOutputError = Result<()>;
 /// The method [`BcCamera::start_video()`] requires a structure with this trait to pass the
 /// audio and video data back to
 pub trait StreamOutput {
-    /// This is the callback raised when audio data is received
-    fn write_audio(&mut self, data: &[u8], format: StreamFormat) -> StreamOutputError;
-    /// This is the callback raised when video data is received
-    fn write_video(&mut self, data: &[u8], format: StreamFormat) -> StreamOutputError;
+    /// This is the callback raised a complete media packet is received
+    fn write(&mut self, media: BcMedia) -> StreamOutputError;
 }
 
 impl BcCamera {
@@ -87,27 +66,15 @@ impl BcCamera {
 
         sub_video.send(start_video)?;
 
-        let mut media_sub = MediaDataSubscriber::from_bc_sub(&sub_video);
+        let mut media_sub = BinarySubscriber::from_bc_sub(&sub_video);
 
         loop {
-            let binary_data = media_sub.next_media_packet()?;
-            // We now have a complete interesting packet. Send it to gst.
-            // Process the packet
-            match (binary_data.kind(), binary_data.media_format()) {
-                (
-                    MediaDataKind::VideoDataIframe | MediaDataKind::VideoDataPframe,
-                    Some(media_format),
-                ) => {
-                    data_outs.write_video(binary_data.body(), media_format)?;
-                }
-                (MediaDataKind::AudioDataAac, Some(media_format)) => {
-                    data_outs.write_audio(binary_data.body(), media_format)?;
-                }
-                (MediaDataKind::AudioDataAdpcm, Some(media_format)) => {
-                    data_outs.write_audio(binary_data.body(), media_format)?;
-                }
-                _ => {}
-            };
+            let bc_media = BcMedia::deserialize(&mut media_sub).map_err(|e| {
+                log::error!("{:?}", e);
+                e
+            })?;
+            // We now have a complete interesting packet. Send it to on the callback
+            data_outs.write(bc_media)?;
         }
     }
 }

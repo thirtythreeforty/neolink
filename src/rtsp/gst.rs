@@ -16,7 +16,10 @@ use gstreamer_rtsp_server::{
     RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
-use neolink_core::bc_protocol::{StreamFormat, StreamOutput, StreamOutputError};
+use neolink_core::{
+    bc::model::*,
+    bc_protocol::{StreamOutput, StreamOutputError},
+};
 use std::collections::HashSet;
 use std::fs;
 use std::io;
@@ -36,26 +39,63 @@ pub(crate) struct GstOutputs {
     factory: RTSPMediaFactory,
 }
 
+// The stream from the camera will be using one of these formats
+//
+// This is used as part of `StreamOutput` to give hints about
+// the format of the stream
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
+enum StreamFormat {
+    // H264 (AVC) video format
+    H264,
+    // H265 (HEVC) video format
+    H265,
+    // AAC audio
+    Aac,
+    // ADPCM in DVI-4 format
+    Adpcm(u16),
+}
+
 impl StreamOutput for GstOutputs {
-    fn write_audio(&mut self, data: &[u8], format: StreamFormat) -> StreamOutputError {
-        self.set_format(Some(format));
-        if let StreamFormat::ADPCM = format {
-            let pcm = adpcm_to_pcm(data).map_err(|e| {
-                if let Error::AdpcmDecoding(msg) = e {
-                    neolink_core::Error::OtherString(format!("ADPCM decoding error: {}", msg))
-                } else {
-                    neolink_core::Error::Other("Generic error during ADPCM decoding")
-                }
-            })?;
-            self.vidsrc.write_all(&pcm)?;
-        } else {
-            self.vidsrc.write_all(data)?;
+    fn write(&mut self, media: BcMedia) -> StreamOutputError {
+        match media {
+            BcMedia::Iframe(payload) => {
+                let video_type = match payload.video_type.as_str() {
+                    "H264" | "h264" => StreamFormat::H264,
+                    "H265" | "h265" => StreamFormat::H265,
+                    _ => unreachable!(),
+                };
+                self.set_format(Some(video_type));
+                self.vidsrc.write_all(&payload.data)?;
+            }
+            BcMedia::Pframe(payload) => {
+                let video_type = match payload.video_type.as_str() {
+                    "H264" | "h264" => StreamFormat::H264,
+                    "H265" | "h265" => StreamFormat::H265,
+                    _ => unreachable!(),
+                };
+                self.set_format(Some(video_type));
+                self.vidsrc.write_all(&payload.data)?;
+            }
+            BcMedia::Aac(payload) => {
+                self.set_format(Some(StreamFormat::Aac));
+                self.audsrc.write_all(&payload.data)?;
+            }
+            BcMedia::Adpcm(payload) => {
+                self.set_format(Some(StreamFormat::Adpcm(payload.block_size)));
+                let pcm = adpcm_to_pcm(&payload.data).map_err(|e| {
+                    if let Error::AdpcmDecoding(msg) = e {
+                        neolink_core::Error::OtherString(format!("ADPCM decoding error: {}", msg))
+                    } else {
+                        neolink_core::Error::Other("Generic error during ADPCM decoding")
+                    }
+                })?;
+                self.audsrc.write_all(&pcm)?;
+            }
+            _ => {
+                //Ignore other BcMedia like InfoV1 and InfoV2
+            }
         }
-        Ok(())
-    }
-    fn write_video(&mut self, data: &[u8], format: StreamFormat) -> StreamOutputError {
-        self.set_format(Some(format));
-        self.vidsrc.write_all(data)?;
+
         Ok(())
     }
 }
@@ -81,7 +121,7 @@ impl GstOutputs {
                     self.apply_format();
                 }
             }
-            Some(StreamFormat::AAC) | Some(StreamFormat::ADPCM) => {
+            Some(StreamFormat::Aac) | Some(StreamFormat::Adpcm(_)) => {
                 if format != self.audio_format {
                     self.audio_format = format;
                     self.apply_format();
@@ -103,9 +143,9 @@ impl GstOutputs {
         };
 
         let launch_aud = match self.audio_format {
-            Some(StreamFormat::ADPCM) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! rawaudioparse format=pcm pcm-format=s16le sample-rate=8000 num-channels=1 interleaved=true ! audioconvert ! rtpL16pay name=pay1", // DVI4 is converted to pcm in the appsrc
-            Some(StreamFormat::AAC) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! aacparse ! decodebin ! audioconvert ! rtpL16pay name=pay1 name=pay1",
-            _ => "! fakesink",
+            Some(StreamFormat::Adpcm(block_size)) => format!("caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000 ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! adpcmdec  ! audioconvert ! rtpL16pay name=pay1", block_size), // DVI4 is converted to pcm in the appsrc
+            Some(StreamFormat::Aac) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! aacparse ! decodebin ! audioconvert ! rtpL16pay name=pay1 name=pay1".to_string(),
+            _ => "! fakesink".to_string(),
         };
 
         self.factory.set_launch(
@@ -114,7 +154,7 @@ impl GstOutputs {
             "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
             launch_vid,
             "appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
-            launch_aud,
+            &launch_aud,
             ")"
         ]
             .join(" "),
