@@ -19,7 +19,6 @@ pub enum Error {
 }
 
 impl BcMedia {
-    #[allow(dead_code)]
     pub(crate) fn serialize<W: Write>(&self, buf: W) -> Result<W, Error> {
         let (buf, _) = match &self {
             BcMedia::InfoV1(payload) => gen(bcmedia_info_v1(payload), buf)?,
