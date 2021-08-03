@@ -70,8 +70,7 @@ impl BcConnection {
                 if poll_abort_rx.load(Ordering::Relaxed) {
                     break; // Poll has been aborted by request usally during disconnect
                 }
-                if result.is_err() {
-                    let e = result.unwrap_err();
+                if let Err(e) = result {
                     error!("Deserialization error: {}", e);
                     let mut cause = e.source();
                     while let Some(e) = cause {

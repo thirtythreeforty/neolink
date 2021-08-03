@@ -26,6 +26,8 @@
 pub mod bc;
 /// Contains high level interfaces for the camera
 pub mod bc_protocol;
+/// Contains low level structures and formats for the media substream
+pub mod bcmedia;
 
 #[derive(Debug)]
 /// Certain method just as `start_video` will block forever or return an error

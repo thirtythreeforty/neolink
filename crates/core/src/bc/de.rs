@@ -2,7 +2,6 @@ use super::model::*;
 use super::xml::{BcPayloads, BcXml};
 use super::xml_crypto;
 use err_derive::Error;
-use log::*;
 use nom::IResult;
 use nom::{bytes::streaming::take, combinator::*, number::streaming::*, sequence::*};
 use std::io::Read;
@@ -12,29 +11,21 @@ use std::io::Read;
 pub enum Error {
     /// A Nom parsing error usually a malformed packet
     #[error(display = "Parsing error")]
-    NomError(&'static str),
+    NomError(String),
     /// An IO error such as the stream being dropped
     #[error(display = "I/O error")]
     IoError(#[error(source)] std::io::Error),
 }
-
 type NomErrorType<'a> = nom::error::Error<&'a [u8]>;
 
 impl<'a> From<nom::Err<NomErrorType<'a>>> for Error {
     fn from(k: nom::Err<NomErrorType<'a>>) -> Self {
         let reason = match k {
-            nom::Err::Error(_) => "Nom Error",
-            nom::Err::Failure(_) => "Nom Failure",
-            _ => "Unknown Nom error",
+            nom::Err::Error(e) => format!("Nom Error: {:?}", e),
+            nom::Err::Failure(e) => format!("Nom Error: {:?}", e),
+            _ => "Unknown Nom error".to_string(),
         };
         Error::NomError(reason)
-    }
-}
-
-impl Bc {
-    pub(crate) fn deserialize<R: Read>(context: &mut BcContext, r: R) -> Result<Bc, Error> {
-        // Throw away the nom-specific return types
-        read_from_reader(|reader| bc_msg(context, reader), r)
     }
 }
 
@@ -67,6 +58,13 @@ where
             )
             .into());
         }
+    }
+}
+
+impl Bc {
+    pub(crate) fn deserialize<R: Read>(context: &mut BcContext, r: R) -> Result<Bc, Error> {
+        // Throw away the nom-specific return types
+        read_from_reader(|reader| bc_msg(context, reader), r)
     }
 }
 
@@ -210,8 +208,8 @@ fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
     Ok((
         buf,
         BcHeader {
-            msg_id,
             body_len,
+            msg_id,
             channel_id,
             stream_type,
             msg_num,

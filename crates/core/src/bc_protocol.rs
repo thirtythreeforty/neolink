@@ -1,5 +1,5 @@
 use self::connection::BcConnection;
-use crate::bc;
+use crate::{bc, bcmedia};
 use log::*;
 use std::convert::TryInto;
 use std::net::ToSocketAddrs;
@@ -8,21 +8,22 @@ use std::time::Duration;
 
 use Md5Trunc::*;
 
+mod binarysub;
 mod connection;
 mod errors;
 mod ledstate;
 mod login;
 mod logout;
-mod media_packet;
 mod ping;
 mod reboot;
 mod stream;
 mod time;
 mod version;
 
+pub use binarysub::BinarySubscriber;
 pub use errors::Error;
 pub use ledstate::LightState;
-pub use stream::{StreamFormat, StreamOutput, StreamOutputError};
+pub use stream::{StreamOutput, StreamOutputError};
 
 type Result<T> = std::result::Result<T, Error>;
 
