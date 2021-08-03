@@ -1,5 +1,5 @@
 use self::connection::BcConnection;
-use crate::bc;
+use crate::{bc, bcmedia};
 use log::*;
 use std::convert::TryInto;
 use std::net::ToSocketAddrs;

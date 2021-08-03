@@ -17,8 +17,8 @@ use gstreamer_rtsp_server::{
 };
 use log::*;
 use neolink_core::{
-    bc::model::*,
     bc_protocol::{StreamOutput, StreamOutputError},
+    bcmedia::model::*,
 };
 use std::collections::HashSet;
 use std::fs;

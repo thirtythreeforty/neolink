@@ -1,6 +1,7 @@
 use super::{BcCamera, BinarySubscriber, Result};
 use crate::{
     bc::{model::*, xml::*},
+    bcmedia::model::*,
     Never,
 };
 
@@ -69,10 +70,7 @@ impl BcCamera {
         let mut media_sub = BinarySubscriber::from_bc_sub(&sub_video);
 
         loop {
-            let bc_media = BcMedia::deserialize(&mut media_sub).map_err(|e| {
-                log::error!("{:?}", e);
-                e
-            })?;
+            let bc_media = BcMedia::deserialize(&mut media_sub)?;
             // We now have a complete interesting packet. Send it to on the callback
             data_outs.write(bc_media)?;
         }

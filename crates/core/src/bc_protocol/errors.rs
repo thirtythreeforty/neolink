@@ -17,6 +17,14 @@ pub enum Error {
     #[error(display = "Serialization error")]
     Serialization(#[error(source)] super::bc::ser::Error),
 
+    /// Error raised during deserlization
+    #[error(display = "Media Deserialization error")]
+    MediaDeserialization(#[error(source)] super::bcmedia::de::Error),
+
+    /// Error raised during serlization
+    #[error(display = "Media Serialization error")]
+    MediaSerialization(#[error(source)] super::bcmedia::ser::Error),
+
     /// A connection error such as Simultaneous subscription
     #[error(display = "Connection error")]
     ConnectionError(#[error(source)] super::connection::Error),
