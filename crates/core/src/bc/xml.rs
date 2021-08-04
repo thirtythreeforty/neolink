@@ -314,6 +314,7 @@ pub struct TalkConfig {
     #[yaserde(rename = "audioStreamMode")]
     pub audio_stream_mode: String,
     /// AudioConfig contans the details of the audio to follow
+    #[yaserde(rename = "audioConfig")]
     pub audio_config: AudioConfig,
 }
 
