@@ -66,18 +66,26 @@ impl BcCamera {
         } else {
             return Err(Error::UnintelligibleReply {
                 reply: msg,
-                why: "The camera did not except the TalkConfig xml",
+                why:
+                    "The camera did not accept the TalkConfig xml. Audio format is likely incorrect",
             });
         }
 
         let full_block_size = block_size + 4; // Block size + predictor state
         let sub = connection.subscribe(MSG_ID_TALK)?;
 
-        for bytes in adpcm.chunks(full_block_size as usize) {
-            let bcmedia_adpcm = BcMedia::Adpcm(BcMediaAdpcm {
-                data: bytes.to_vec(),
-            });
-            let bcmedia_adpcm_data = bcmedia_adpcm.serialize(vec![])?;
+        const BLOCK_PER_PAYLOAD: usize = 4;
+        const BLOCK_HEADER_SIZE: usize = 4;
+        const SAMPLES_PER_BYTE: usize = 2;
+
+        for payload_bytes in adpcm.chunks(full_block_size as usize * BLOCK_PER_PAYLOAD) {
+            let mut payload = vec![];
+            for bytes in payload_bytes.chunks(full_block_size as usize) {
+                let bcmedia_adpcm = BcMedia::Adpcm(BcMediaAdpcm {
+                    data: bytes.to_vec(),
+                });
+                payload = bcmedia_adpcm.serialize(payload)?;
+            }
 
             let msg = Bc {
                 meta: BcMeta {
@@ -94,11 +102,26 @@ impl BcCamera {
                         binary_data: Some(1),
                         ..Default::default()
                     }),
-                    payload: Some(BcPayloads::Binary(bcmedia_adpcm_data)),
+                    payload: Some(BcPayloads::Binary(payload)),
                 }),
             };
 
             sub.send(msg)?;
+
+            let adpcm_len = payload_bytes.len();
+            // There are two samples per byte
+            //
+            // To calculate the bytes we subtract the block headers from the len
+            //
+            // There is 1 initial sample stored in the block header so we add that in the end
+            //
+            let samples_sent = (adpcm_len - BLOCK_HEADER_SIZE * BLOCK_PER_PAYLOAD)
+                * SAMPLES_PER_BYTE
+                + BLOCK_PER_PAYLOAD;
+
+            // Time to play the sample in seconds
+            let play_length = samples_sent as f32 / sample_rate as f32;
+            std::thread::sleep(std::time::Duration::from_secs_f32(play_length));
         }
 
         Ok(())
