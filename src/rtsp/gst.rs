@@ -1,8 +1,8 @@
 //! This module provides an "RtspServer" abstraction that allows consumers of its API to feed it
 //! data using an ordinary std::io::Write interface.
 pub(crate) use self::maybe_app_src::MaybeAppSrc;
-use super::adpcm::adpcm_to_pcm;
-use super::errors::Error;
+// use super::adpcm::adpcm_to_pcm;
+// use super::errors::Error;
 use gstreamer::prelude::Cast;
 use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
@@ -81,14 +81,7 @@ impl StreamOutput for GstOutputs {
             }
             BcMedia::Adpcm(payload) => {
                 self.set_format(Some(StreamFormat::Adpcm((payload.data.len() - 4) as u16)));
-                let pcm = adpcm_to_pcm(&payload.data).map_err(|e| {
-                    if let Error::AdpcmDecoding(msg) = e {
-                        neolink_core::Error::OtherString(format!("ADPCM decoding error: {}", msg))
-                    } else {
-                        neolink_core::Error::Other("Generic error during ADPCM decoding")
-                    }
-                })?;
-                self.audsrc.write_all(&pcm)?;
+                self.audsrc.write_all(&payload.data)?;
             }
             _ => {
                 //Ignore other BcMedia like InfoV1 and InfoV2

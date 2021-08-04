@@ -1,5 +1,5 @@
 use gstreamer::{
-    element_error, parse_launch, prelude::*, ClockTime, FlowError, FlowSuccess, MessageView,
+    element_error, parse_launch, prelude::*, Caps, ClockTime, FlowError, FlowSuccess, MessageView,
     Pipeline, ResourceError, State,
 };
 use gstreamer_app::{AppSink, AppSinkCallbacks};
@@ -125,7 +125,7 @@ fn set_data_channel(appsink: &AppSink, tx: SyncSender<Vec<u8>>) {
                     element_error!(
                         appsink,
                         ResourceError::Failed,
-                        ("Failed to interprete buffer as S16 PCM")
+                        ("Failed to interprete buffer as u8 ADPCM")
                     );
 
                     FlowError::Error
@@ -161,7 +161,7 @@ fn create_pipeline(
         source, sample_rate, volume, block_align
     );
 
-    // log::info!("{}", launch_str);
+    log::info!("{}", launch_str);
 
     // Parse the pipeline we want to probe from a static in-line string.
     // Here we give our audiotestsrc a name, so we can retrieve that element
@@ -170,6 +170,22 @@ fn create_pipeline(
     let pipeline = pipeline
         .dynamic_cast::<Pipeline>()
         .map_err(Error::GstreamerElement)?;
+
+    let appsink = get_sink(&pipeline)?;
+
+    // Tell the appsink what format we want. It will then be the audiotestsrc's job to
+    // provide the format we request.
+    // This can be set after linking the two objects, because format negotiation between
+    // both elements will happen during pre-rolling of the pipeline.
+    appsink.set_caps(Some(&Caps::new_simple(
+        "audio/x-adpcm",
+        &[
+            ("layout", &"dvi"),
+            ("block_align", &(block_align as i32)),
+            ("channels", &(1i32)),
+            ("rate", &(sample_rate as i32)),
+        ],
+    )));
 
     Ok(pipeline)
 }

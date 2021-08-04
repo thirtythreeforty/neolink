@@ -37,7 +37,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use validator::Validate;
 
-mod adpcm;
+// mod adpcm;
 /// The command line parameters for this subcommand
 mod cmdline;
 mod config;

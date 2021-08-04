@@ -17,7 +17,7 @@ pub enum Error {
     /// Raised when the config file fails validataion
     #[error(display = "Validation error")]
     Validation(#[error(source)] validator::ValidationErrors),
-    /// Raised when there is an ADPCM decoding error
-    #[error(display = "ADPCM Decoding Error")]
-    AdpcmDecoding(&'static str),
+    // Raised when there is an ADPCM decoding error
+    // #[error(display = "ADPCM Decoding Error")]
+    // AdpcmDecoding(&'static str),
 }
