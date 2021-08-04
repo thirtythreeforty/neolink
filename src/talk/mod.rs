@@ -78,13 +78,16 @@ pub fn main(opt: Opt) -> Result<(), Error> {
                 return Err(Error::TalkUnsupported);
             }
 
-            let rx = gst::file_input(
-                &opt.media_path
-                    .to_str()
-                    .expect("File path not UTF8 complient"),
-                block_size,
-                sample_rate,
-            )?;
+            let rx = match (&opt.file_path, &opt.microphone) {
+                (Some(path), false) => gst::file_input(
+                    path.to_str().expect("File path not UTF8 complient"),
+                    opt.volume,
+                    block_size,
+                    sample_rate,
+                )?,
+                (None, true) => gst::mic_input(opt.volume, block_size, sample_rate)?,
+                _ => unreachable!(),
+            };
 
             camera.talk_stream(rx, talk_config)?;
         }

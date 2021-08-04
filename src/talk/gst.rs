@@ -10,10 +10,29 @@ use byte_slice_cast::*;
 
 pub(super) fn file_input(
     filename: &str,
+    volume: f32,
     block_align: u16,
     sample_rate: u16,
 ) -> Result<Receiver<Vec<u8>>, Error> {
-    let pipeline = create_pipeline(filename, block_align, sample_rate)?;
+    let pipeline = create_pipeline(
+        &format!("filesrc location={}", filename),
+        volume,
+        block_align,
+        sample_rate,
+    )?;
+    input(pipeline)
+}
+
+pub(super) fn mic_input(
+    volume: f32,
+    block_align: u16,
+    sample_rate: u16,
+) -> Result<Receiver<Vec<u8>>, Error> {
+    let pipeline = create_pipeline("autoaudiosrc", volume, block_align, sample_rate)?;
+    input(pipeline)
+}
+
+fn input(pipeline: Pipeline) -> Result<Receiver<Vec<u8>>, Error> {
     let appsink = get_sink(&pipeline)?;
     let (tx, rx) = sync_channel(30);
 
@@ -121,19 +140,25 @@ fn set_data_channel(appsink: &AppSink, tx: SyncSender<Vec<u8>>) {
     );
 }
 
-fn create_pipeline(filename: &str, block_align: u16, sample_rate: u16) -> Result<Pipeline, Error> {
+fn create_pipeline(
+    source: &str,
+    volume: f32,
+    block_align: u16,
+    sample_rate: u16,
+) -> Result<Pipeline, Error> {
     gstreamer::init()?;
 
     let launch_str = format!(
-        "filesrc location={} \
+        "{} \
         ! decodebin \
         ! audioconvert \
         ! audioresample \
         ! audio/x-raw,rate={},channels=1 \
+        ! volume volume={:.2} \
         ! queue  \
         ! adpcmenc blockalign={} layout=dvi \
         ! appsink name=thesink",
-        filename, sample_rate, block_align
+        source, sample_rate, volume, block_align
     );
 
     // log::info!("{}", launch_str);
