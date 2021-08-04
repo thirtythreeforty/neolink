@@ -12,13 +12,14 @@
 /// ```
 ///
 use log::*;
-use neolink_core::bc_protocol::BcCamera;
+use neolink_core::{bc::xml::TalkConfig, bc_protocol::BcCamera};
 use std::fs;
 use validator::Validate;
 
 mod cmdline;
 mod config;
 mod errors;
+mod gst;
 
 pub(crate) use cmdline::Opt;
 use config::Config;
@@ -49,9 +50,43 @@ pub fn main(opt: Opt) -> Result<(), Error> {
 
             info!("{}: Connected and logged in", camera_config.name);
 
-            let data = fs::read(&opt.adpcm_file)?;
+            let talk_ability = camera.talk_ability()?;
+            if talk_ability.duplex_list.is_empty()
+                || talk_ability.audio_stream_mode_list.is_empty()
+                || talk_ability.audio_config_list.is_empty()
+            {
+                return Err(Error::TalkUnsupported);
+            }
 
-            camera.talk(&data, opt.block_size, opt.sample_rate)?;
+            // Just copy that data from the first talk ability in the config have never seen more
+            // than one ability
+            let config = 0;
+
+            let talk_config = TalkConfig {
+                channel_id: camera_config.channel_id,
+                duplex: talk_ability.duplex_list[config].duplex.clone(),
+                audio_stream_mode: talk_ability.audio_stream_mode_list[config]
+                    .audio_stream_mode
+                    .clone(),
+                audio_config: talk_ability.audio_config_list[config].audio_config.clone(),
+                ..Default::default()
+            };
+
+            let block_size = talk_config.audio_config.length_per_encoder / 2;
+            let sample_rate = talk_config.audio_config.sample_rate;
+            if block_size == 0 || sample_rate == 0 {
+                return Err(Error::TalkUnsupported);
+            }
+
+            let rx = gst::file_input(
+                &opt.media_path
+                    .to_str()
+                    .expect("File path not UTF8 complient"),
+                block_size,
+                sample_rate,
+            )?;
+
+            camera.talk_stream(rx, talk_config)?;
         }
     }
 

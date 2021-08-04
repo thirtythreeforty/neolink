@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-/// The talk command will send adpcm data to the camera to say
+/// The talk command will send audio for the camera to say
 ///
-/// This data should be encoded in adpcm with dvi4 layout
+/// This data should be encoded in a way that gstreamer can understand.
+/// This should be ok with most common formats.
 ///
 /// `gst-launch` can be used to prepare this data
 #[derive(StructOpt, Debug)]
@@ -13,13 +14,7 @@ pub struct Opt {
     pub config: PathBuf,
     /// The name of the camera to change the lights of. Must be a name in the config
     pub camera: String,
-    /// The path to the adpcm data to send in DVI-4 layout
-    #[structopt(short, long, parse(from_os_str), name = "media-path")]
-    pub adpcm_file: PathBuf,
-    /// The block size used to encode the adpcm data (recommended 512)
-    #[structopt(short, long)]
-    pub block_size: u16,
-    /// The sample rate used to encode the adpcm data (recommended 16000)
-    #[structopt(short, long)]
-    pub sample_rate: u16,
+    /// The path to the audio file.
+    #[structopt(short, long, parse(from_os_str))]
+    pub media_path: PathBuf,
 }
