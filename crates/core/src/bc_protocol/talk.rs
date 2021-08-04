@@ -243,7 +243,7 @@ impl BcCamera {
         let full_block_size = block_size + 4; // Block size + predictor state
         let sub = connection.subscribe(MSG_ID_TALK)?;
 
-        const BLOCK_PER_PAYLOAD: usize = 4;
+        const BLOCK_PER_PAYLOAD: usize = 1;
         const BLOCK_HEADER_SIZE: usize = 4;
         const SAMPLES_PER_BYTE: usize = 2;
 
@@ -255,7 +255,7 @@ impl BcCamera {
         let mut end_of_stream = false;
         while !end_of_stream {
             while payload_bytes.len() < target_chunks {
-                let mut buffer = vec![0; target_chunks - payload_bytes.len()];
+                let mut buffer = vec![255; target_chunks - payload_bytes.len()];
                 if let Ok(read) = buffered_recv.read(&mut buffer) {
                     payload_bytes.extend(&buffer[..read]);
                 } else {
@@ -269,15 +269,13 @@ impl BcCamera {
             }
 
             let mut payload = vec![];
-            for bytes in payload_bytes.chunks(full_block_size as usize) {
-                let bcmedia_adpcm = BcMedia::Adpcm(BcMediaAdpcm {
-                    data: bytes.to_vec(),
-                });
+            for block_bytes in payload_bytes.chunks(full_block_size as usize) {
+                let bytes: Vec<u8> = block_bytes.to_vec();
+                let bcmedia_adpcm = BcMedia::Adpcm(BcMediaAdpcm { data: bytes });
                 payload = bcmedia_adpcm.serialize(payload)?;
             }
 
             let adpcm_len = payload_bytes.len();
-            payload_bytes = vec![];
 
             // There are two samples per byte
             //
@@ -285,9 +283,15 @@ impl BcCamera {
             //
             // There is 1 initial sample stored in the block header so we add that in the end
             //
-            let samples_sent = (adpcm_len - BLOCK_HEADER_SIZE * BLOCK_PER_PAYLOAD)
-                * SAMPLES_PER_BYTE
-                + BLOCK_PER_PAYLOAD;
+            let samples_sent = if adpcm_len >= BLOCK_HEADER_SIZE * BLOCK_PER_PAYLOAD {
+                (adpcm_len - BLOCK_HEADER_SIZE * BLOCK_PER_PAYLOAD) * SAMPLES_PER_BYTE
+                    + BLOCK_PER_PAYLOAD
+            } else {
+                // Zero samples in this block
+                break;
+            };
+
+            payload_bytes = vec![];
 
             // Time to play the sample in seconds
             let play_length = samples_sent as f32 / sample_rate as f32;

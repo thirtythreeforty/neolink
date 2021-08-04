@@ -80,7 +80,7 @@ impl StreamOutput for GstOutputs {
                 self.audsrc.write_all(&payload.data)?;
             }
             BcMedia::Adpcm(payload) => {
-                self.set_format(Some(StreamFormat::Adpcm((payload.data.len() - 4) as u16)));
+                self.set_format(Some(StreamFormat::Adpcm(payload.data.len() as u16)));
                 self.audsrc.write_all(&payload.data)?;
             }
             _ => {

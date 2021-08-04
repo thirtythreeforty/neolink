@@ -72,7 +72,7 @@ pub fn main(opt: Opt) -> Result<(), Error> {
                 ..Default::default()
             };
 
-            let block_size = talk_config.audio_config.length_per_encoder / 2;
+            let block_size = (talk_config.audio_config.length_per_encoder / 2) + 4;
             let sample_rate = talk_config.audio_config.sample_rate;
             if block_size == 0 || sample_rate == 0 {
                 return Err(Error::TalkUnsupported);

@@ -166,12 +166,12 @@ pub struct BcMediaAdpcm {
     // Size of payload after header in bytes exactly the same as before
     // pub payload_size_b: u16,
     // more_magic: MAGIC_HEADER_BCMEDIA_ADPCM_DATA
-    // Adpcm block size in bytes (there are twice this in samples)
+    // Adpcm sample_block_size in bytes
     //
     // These bytes (and the MAGIC_HEADER_BCMEDIA_ADPCM_DATA) are included as
     // part of the payload_size. It may be more prudent to sealise them to
     // another structure.
-    // pub block_size: u16,
+    // pub sample_block_size: u16,
     /// The raw adpcm data in DVI-4 layout.
     ///
     /// One `data` should contain 4 bytes of the adpcm predictor state then one block
