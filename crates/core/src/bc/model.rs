@@ -10,6 +10,8 @@ pub const MSG_ID_LOGIN: u32 = 1;
 pub const MSG_ID_LOGOUT: u32 = 2;
 /// Video and Audio Streams messages have this ID
 pub const MSG_ID_VIDEO: u32 = 3;
+/// TalkAbility messages have this ID
+pub const MSG_ID_TALKABILITY: u32 = 10;
 /// Reboot messages have this ID
 pub const MSG_ID_REBOOT: u32 = 23;
 /// Version messages have this ID
