@@ -183,6 +183,6 @@ fn bcmedia_adpcm<W: Write>(payload: &BcMediaAdpcm) -> impl SerializeFn<W> {
         le_u16((payload.data.len() + 4) as u16), // Payload + 2 byte magic + 2byte block size
         le_u16((payload.data.len() + 4) as u16), // Payload + 2 byte magic + 2byte block size
         le_u16(MAGIC_HEADER_BCMEDIA_ADPCM_DATA), // magic
-        le_u16((payload.data.len()) as u16),     // block size + predictor state size (4bytes)
+        be_u16((payload.data.len() - 4) as u16), // block size = len  - predictor state size (4bytes)
     ))
 }

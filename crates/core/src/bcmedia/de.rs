@@ -282,11 +282,14 @@ fn bcmedia_aac(buf: &[u8]) -> IResult<&[u8], BcMediaAac> {
 }
 
 fn bcmedia_adpcm(buf: &[u8]) -> IResult<&[u8], BcMediaAdpcm> {
+    const BLOCK_HEADER_SIZE: u16 = 4;
+
     let (buf, payload_size) = le_u16(buf)?;
     let (buf, _payload_size_b) = le_u16(buf)?;
     let (buf, _magic) = verify(le_u16, |x| *x == MAGIC_HEADER_BCMEDIA_ADPCM_DATA)(buf)?;
-    let (buf, block_size) = le_u16(buf)?;
-    let (buf, data_slice) = take!(buf, block_size)?;
+    // This `block_size` is bigendian for some reason. It is block size
+    let (buf, block_size) = be_u16(buf)?;
+    let (buf, data_slice) = take!(buf, block_size + BLOCK_HEADER_SIZE)?;
     let pad_size = match payload_size as u32 % PAD_SIZE {
         0 => 0,
         n => PAD_SIZE - n,
