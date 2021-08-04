@@ -7,8 +7,9 @@ use gstreamer::prelude::Cast;
 use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
 //use gstreamer_rtsp::RTSPLowerTrans;
-use gio::{TlsAuthenticationMode, TlsCertificate};
 use gstreamer_rtsp::RTSPAuthMethod;
+pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
+use gstreamer_rtsp_server::glib;
 use gstreamer_rtsp_server::prelude::*;
 use gstreamer_rtsp_server::{
     RTSPAuth, RTSPMediaFactory, RTSPServer as GstRTSPServer, RTSPToken,
@@ -181,7 +182,7 @@ impl RtspServer {
     ) -> Result<GstOutputs> {
         let mounts = self
             .server
-            .get_mount_points()
+            .mount_points()
             .expect("The server should have mountpoints");
 
         // Create a MaybeAppSrc: Write which we will give the caller.  When the backing AppSrc is
@@ -209,19 +210,19 @@ impl RtspServer {
         factory.connect_media_configure(move |_factory, media| {
             debug!("RTSP: media was configured");
             let bin = media
-                .get_element()
+                .element()
                 .expect("Media should have an element")
                 .dynamic_cast::<Bin>()
                 .expect("Media source's element should be a bin");
             let app_src = bin
-                .get_by_name_recurse_up("vidsrc")
+                .by_name_recurse_up("vidsrc")
                 .expect("write_src must be present in created bin")
                 .dynamic_cast::<AppSrc>()
                 .expect("Source element is expected to be an appsrc!");
             let _ = tx.send(app_src); // Receiver may be dropped, don't panic if so
 
             let app_src_aud = bin
-                .get_by_name_recurse_up("audsrc")
+                .by_name_recurse_up("audsrc")
                 .expect("write_src must be present in created bin")
                 .dynamic_cast::<AppSrc>()
                 .expect("Source element is expected to be an appsrc!");
@@ -272,7 +273,7 @@ impl RtspServer {
     }
 
     pub(crate) fn set_credentials(&self, credentials: &[(&str, &str)]) -> Result<()> {
-        let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new);
+        let auth = self.server.auth().unwrap_or_else(RTSPAuth::new);
         auth.set_supported_methods(RTSPAuthMethod::Basic);
 
         let mut un_authtoken = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"anonymous")]);
@@ -296,7 +297,7 @@ impl RtspServer {
         client_auth: TlsAuthenticationMode,
     ) -> Result<()> {
         debug!("Setting up TLS using {}", cert_file);
-        let auth = self.server.get_auth().unwrap_or_else(RTSPAuth::new);
+        let auth = self.server.auth().unwrap_or_else(RTSPAuth::new);
 
         // We seperate reading the file and changing to a PEM so that we get different error messages.
         let cert_contents = fs::read_to_string(cert_file).expect("TLS file not found");
@@ -312,7 +313,7 @@ impl RtspServer {
         self.server.set_address(bind_addr);
         self.server.set_service(&format!("{}", bind_port));
         // Attach server to default Glib context
-        self.server.attach(None);
+        let _ = self.server.attach(None);
 
         // Run the Glib main loop.
         let main_loop = glib::MainLoop::new(None, false);

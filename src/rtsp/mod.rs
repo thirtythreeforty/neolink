@@ -28,7 +28,6 @@
 /// neolink rtsp --config=config.toml
 /// ```
 ///
-use gio::TlsAuthenticationMode;
 use log::*;
 use neolink_core::bc_protocol::BcCamera;
 use neolink_core::Never;
@@ -49,7 +48,7 @@ mod gst;
 pub(crate) use cmdline::Opt;
 use config::{CameraConfig, Config, UserConfig};
 pub(crate) use errors::Error;
-use gst::{GstOutputs, RtspServer};
+use gst::{GstOutputs, RtspServer, TlsAuthenticationMode};
 
 /// Entry point for the rtsp subcommand
 ///
