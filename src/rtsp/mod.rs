@@ -140,7 +140,7 @@ fn camera_loop(
                 return Err(cam_err.err.into());
             }
             _ => error!(
-                "Error streaming from camera {}, will retry in {}s: {}",
+                "Error streaming from camera {}, will retry in {}s: {:?}",
                 camera_config.name,
                 current_backoff.as_secs(),
                 cam_err.err
