@@ -74,7 +74,6 @@ impl BufRead for FileSubscriber {
         }
         while self.buffer.len() <= self.consumed {
             let next_file = self.files.pop();
-            log::error!("Next file: {:?}", next_file);
             if let Some(next_file) = next_file {
                 let bytes = &fs::read(next_file)?;
                 self.buffer.extend(bytes);
