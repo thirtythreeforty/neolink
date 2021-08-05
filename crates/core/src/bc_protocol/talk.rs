@@ -153,8 +153,13 @@ impl BcCamera {
         sub.send(msg)?;
         let mut msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
 
+        // If another client is already talking OR if we crashed before sending
+        // msgid 11 the camera will reply 422
+        //
+        // The official client in this case just sends msgid 11 and retries so
+        // we will do that too
         if let BcMeta {
-            response_code: 442, ..
+            response_code: 422, ..
         } = msg.meta
         {
             self.talk_stop()?;
@@ -287,8 +292,13 @@ impl BcCamera {
         sub.send(msg)?;
         let mut msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
 
+        // If another client is already talking OR if we crashed before sending
+        // msgid 11 the camera will reply 422
+        //
+        // The official client in this case just sends msgid 11 and retries so
+        // we will do that too
         if let BcMeta {
-            response_code: 442, ..
+            response_code: 422, ..
         } = msg.meta
         {
             self.talk_stop()?;

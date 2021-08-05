@@ -11,6 +11,7 @@ use Md5Trunc::*;
 mod binarysub;
 mod connection;
 mod errors;
+pub(crate) mod filesub;
 mod ledstate;
 mod login;
 mod logout;

@@ -8,16 +8,18 @@
 //! A camera can be initialised with
 //!
 //! ```no_run
+//! use neolink_core::bc_protocol::BcCamera;
 //! let channel_id = 0; // Usually zero but can be non zero if uses a reolink NVR
-//! let camera = BcCamera::new_with_addr("camera_ip_address", channel_id);
+//! let mut camera = BcCamera::new_with_addr("camera_ip_address", channel_id).unwrap();
 //! ```
 //!
 //! After that login can be conducted with
 //!
 //! ```no_run
+//! # use neolink_core::bc_protocol::BcCamera;
 //! # let channel_id = 0;
-//! # let camera = BcCamera::new_with_addr("camera_ip_address", channel_id);
-//! camera.login("username", "password");
+//! # let mut camera = BcCamera::new_with_addr("camera_ip_address", channel_id).unwrap();
+//! camera.login("username", Some("password"));
 //! ```
 //! For further commands see the [`bc_protocol::BcCamera`] struct.
 //!
