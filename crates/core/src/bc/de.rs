@@ -66,7 +66,6 @@ where
                     // We should just wait and try again
                 }
                 Err(e) => {
-                    log::error!("HERE {:?}", e);
                     return Err(e.into());
                 }
             }

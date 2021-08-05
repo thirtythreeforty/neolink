@@ -219,6 +219,7 @@ fn bcmedia_iframe(buf: &[u8]) -> IResult<&[u8], BcMediaIframe> {
         "H265" => VideoType::H265,
         _ => unreachable!(),
     };
+
     Ok((
         buf,
         BcMediaIframe {
@@ -282,14 +283,15 @@ fn bcmedia_aac(buf: &[u8]) -> IResult<&[u8], BcMediaAac> {
 }
 
 fn bcmedia_adpcm(buf: &[u8]) -> IResult<&[u8], BcMediaAdpcm> {
-    const BLOCK_HEADER_SIZE: u16 = 4;
+    const SUB_HEADER_SIZE: u16 = 4;
 
     let (buf, payload_size) = le_u16(buf)?;
     let (buf, _payload_size_b) = le_u16(buf)?;
     let (buf, _magic) = verify(le_u16, |x| *x == MAGIC_HEADER_BCMEDIA_ADPCM_DATA)(buf)?;
-    // This `sample_block_size` is bigendian for some reason. It is block size - BLOCK_HEADER_SIZE
-    let (buf, sample_block_size) = be_u16(buf)?;
-    let block_size = sample_block_size + BLOCK_HEADER_SIZE;
+    // On some camera this value is just 2
+    // On other cameras is half the block size without the header
+    let (buf, _half_block_size) = le_u16(buf)?;
+    let block_size = payload_size - SUB_HEADER_SIZE;
     let (buf, data_slice) = take!(buf, block_size)?;
     let pad_size = match payload_size as u32 % PAD_SIZE {
         0 => 0,
@@ -305,4 +307,63 @@ fn bcmedia_adpcm(buf: &[u8]) -> IResult<&[u8], BcMediaAdpcm> {
             data: data_slice.to_vec(),
         },
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+    use crate::bc_protocol::filesub::FileSubscriber;
+    use crate::bcmedia::model::*;
+    use env_logger::Env;
+    use log::*;
+    use std::io::ErrorKind;
+    use std::path::PathBuf;
+
+    fn init() {
+        let _ = env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+            .is_test(true)
+            .try_init();
+    }
+
+    fn sample(name: &str) -> PathBuf {
+        let dir = std::env::current_dir().unwrap(); // This is crate root during cargo test
+        dir.join("src").join("bcmedia").join("samples").join(name)
+    }
+
+    #[test]
+    // This method will test the decoding on swann cameras output
+    //
+    // Crucially this contains adpcm
+    fn test_swan_deser() {
+        init();
+
+        let mut subsciber = FileSubscriber::from_files(vec![
+            sample("video_stream_swan_00.raw"),
+            sample("video_stream_swan_01.raw"),
+            sample("video_stream_swan_02.raw"),
+            sample("video_stream_swan_03.raw"),
+            sample("video_stream_swan_04.raw"),
+            sample("video_stream_swan_05.raw"),
+            sample("video_stream_swan_06.raw"),
+            sample("video_stream_swan_07.raw"),
+            sample("video_stream_swan_08.raw"),
+            sample("video_stream_swan_09.raw"),
+        ]);
+
+        // Should derealise all of this
+        loop {
+            let e = BcMedia::deserialize(&mut subsciber);
+            match e {
+                Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                    // Reach end of files
+                    break;
+                }
+                Err(e) => {
+                    error!("{:?}", e);
+                    panic!();
+                }
+                Ok(_) => {}
+            }
+        }
+    }
 }

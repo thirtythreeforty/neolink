@@ -1,4 +1,5 @@
 /// Video streams encapsulate a stream of BcMedia
+#[derive(Debug)]
 pub enum BcMedia {
     /// Holds info on the stream
     InfoV1(BcMediaInfoV1),
@@ -18,6 +19,7 @@ pub(super) const MAGIC_HEADER_BCMEDIA_INFO_V1: u32 = 0x31303031;
 
 /// The start of a BcMedia stream contains this message
 /// which describes the data to follow
+#[derive(Debug)]
 pub struct BcMediaInfoV1 {
     // This is the size of the header so it's actually a fixed value
     // The other messages have body size here so maybe that's why
@@ -61,6 +63,7 @@ pub(super) const MAGIC_HEADER_BCMEDIA_INFO_V2: u32 = 0x32303031;
 
 /// The start of a BcMedia stream contains this message
 /// which describes the data to follow
+#[derive(Debug)]
 pub struct BcMediaInfoV2 {
     // This is the size of the header so it's actually a fixed value
     // The other messages have body size here so maybe that's why
@@ -103,6 +106,7 @@ pub struct BcMediaInfoV2 {
 pub(super) const MAGIC_HEADER_BCMEDIA_IFRAME: u32 = 0x63643030;
 
 /// Video Types for I/PFrame
+#[derive(Debug)]
 pub enum VideoType {
     /// H264 video data
     H264,
@@ -111,6 +115,7 @@ pub enum VideoType {
 }
 
 /// This is a BcMedia video IFrame.
+#[derive(Debug)]
 pub struct BcMediaIframe {
     /// "H264", or "H265"
     pub video_type: VideoType,
@@ -130,6 +135,7 @@ pub struct BcMediaIframe {
 pub(super) const MAGIC_HEADER_BCMEDIA_PFRAME: u32 = 0x63643130;
 
 /// This is a BcMedia video PFrame.
+#[derive(Debug)]
 pub struct BcMediaPframe {
     /// "H264", or "H265"
     pub video_type: VideoType,
@@ -146,6 +152,7 @@ pub struct BcMediaPframe {
 pub(super) const MAGIC_HEADER_BCMEDIA_AAC: u32 = 0x62773530;
 
 /// This contains BcMedia audio data in AAC format
+#[derive(Debug)]
 pub struct BcMediaAac {
     // Size of payload after header in bytes
     // pub payload_size: u16,
@@ -160,6 +167,7 @@ pub(super) const MAGIC_HEADER_BCMEDIA_ADPCM: u32 = 0x62773130;
 pub(super) const MAGIC_HEADER_BCMEDIA_ADPCM_DATA: u16 = 0x0100;
 
 /// This contains BcMedia audio data in ADPCM format
+#[derive(Debug)]
 pub struct BcMediaAdpcm {
     // Size of payload after header in bytes
     // pub payload_size: u16,
