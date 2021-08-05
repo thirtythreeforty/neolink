@@ -58,6 +58,10 @@ pub enum Error {
     #[error(display = "Failed to translate camera address")]
     AddrResolutionError,
 
+    /// Raised non adpcm data is sent to the talk command
+    #[error(display = "Talk data is not ADPCM")]
+    UnknownTalkEncoding,
+
     /// A generic catch all error
     #[error(display = "Other error")]
     Other(&'static str),

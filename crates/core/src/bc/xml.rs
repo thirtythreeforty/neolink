@@ -63,6 +63,9 @@ pub struct BcXml {
     /// Sent as part of the TalkConfig to prepare the camera for audio talk-back
     #[yaserde(rename = "TalkConfig")]
     pub talk_config: Option<TalkConfig>,
+    /// Revieced as part of the TalkAbility request
+    #[yaserde(rename = "TalkAbility")]
+    pub talk_ability: Option<TalkAbility>,
 }
 
 impl BcXml {
@@ -314,13 +317,16 @@ pub struct TalkConfig {
     #[yaserde(rename = "audioStreamMode")]
     pub audio_stream_mode: String,
     /// AudioConfig contans the details of the audio to follow
+    #[yaserde(rename = "audioConfig")]
     pub audio_config: AudioConfig,
 }
 
 /// audioConfig xml
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 #[yaserde(rename = "audioConfig")]
 pub struct AudioConfig {
+    /// Unknown only sent during TalkAbility request from the camera
+    pub priority: Option<u32>,
     /// Audio type known values are `"adpcm"`
     ///
     /// Do not expect camera to support anything else.
@@ -339,7 +345,47 @@ pub struct AudioConfig {
     ///
     /// Do not expect camera to support anything else
     #[yaserde(rename = "soundTrack")]
-    pub soundTrack: String,
+    pub sound_track: String,
+}
+
+/// TalkAbility xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct TalkAbility {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Duplexes known values `"FDX"`
+    #[yaserde(rename = "duplexList")]
+    pub duplex_list: Vec<DuplexList>,
+    /// audioStreamModes known values `"followVideoStream"`
+    #[yaserde(rename = "audioStreamModeList")]
+    pub audio_stream_mode_list: Vec<AudioStreamModeList>,
+    /// AudioConfigs contans the details of the audio to follow
+    #[yaserde(rename = "audioConfigList")]
+    pub audio_config_list: Vec<AudioConfigList>,
+}
+
+/// duplexList xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct DuplexList {
+    /// The supported duplex known values are "FBX"
+    pub duplex: String,
+}
+
+/// audioStreamModeList xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AudioStreamModeList {
+    /// The supported audio stream mode
+    #[yaserde(rename = "audioStreamMode")]
+    pub audio_stream_mode: String,
+}
+
+/// audioConfigList xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AudioConfigList {
+    /// The supported audio configs
+    #[yaserde(rename = "audioConfig")]
+    pub audio_config: AudioConfig,
 }
 
 /// Convience function to return the xml version used throughout the library

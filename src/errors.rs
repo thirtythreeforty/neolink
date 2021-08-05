@@ -9,4 +9,6 @@ pub enum Error {
     StatusLight(#[error(source)] super::statusled::Error),
     #[error(display = "Reboot Error")]
     Reboot(#[error(source)] super::reboot::Error),
+    #[error(display = "Talk Error")]
+    Talk(#[error(source)] super::talk::Error),
 }

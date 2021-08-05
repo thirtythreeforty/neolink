@@ -28,7 +28,6 @@
 /// neolink rtsp --config=config.toml
 /// ```
 ///
-use gio::TlsAuthenticationMode;
 use log::*;
 use neolink_core::bc_protocol::BcCamera;
 use neolink_core::Never;
@@ -38,7 +37,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use validator::Validate;
 
-mod adpcm;
+// mod adpcm;
 /// The command line parameters for this subcommand
 mod cmdline;
 mod config;
@@ -49,7 +48,7 @@ mod gst;
 pub(crate) use cmdline::Opt;
 use config::{CameraConfig, Config, UserConfig};
 pub(crate) use errors::Error;
-use gst::{GstOutputs, RtspServer};
+use gst::{GstOutputs, RtspServer, TlsAuthenticationMode};
 
 /// Entry point for the rtsp subcommand
 ///
@@ -141,7 +140,7 @@ fn camera_loop(
                 return Err(cam_err.err.into());
             }
             _ => error!(
-                "Error streaming from camera {}, will retry in {}s: {}",
+                "Error streaming from camera {}, will retry in {}s: {:?}",
                 camera_config.name,
                 current_backoff.as_secs(),
                 cam_err.err
