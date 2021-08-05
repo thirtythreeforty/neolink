@@ -48,15 +48,28 @@ where
             Err(e) => return Err(e.into()),
         };
 
-        if 0 == (&mut rdr)
-            .take(to_read.get() as u64)
-            .read_to_end(&mut input)?
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "Read returned 0 bytes",
-            )
-            .into());
+        loop {
+            match (&mut rdr)
+                .take(to_read.get() as u64)
+                .read_to_end(&mut input)
+            {
+                Ok(0) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "Read returned 0 bytes",
+                    )
+                    .into());
+                }
+                Ok(_) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // This is a temporaily unavaliable resource
+                    // We should just wait and try again
+                }
+                Err(e) => {
+                    log::error!("HERE {:?}", e);
+                    return Err(e.into());
+                }
+            }
         }
     }
 }
