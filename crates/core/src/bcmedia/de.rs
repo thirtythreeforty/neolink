@@ -366,4 +366,94 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    // Tests the decoding of an info v1
+    fn test_info_v1() {
+        init();
+
+        let mut subsciber = FileSubscriber::from_files(vec![sample("info_v1.raw")]);
+
+        let e = BcMedia::deserialize(&mut subsciber);
+        assert!(matches!(
+            e,
+            Ok(BcMedia::InfoV1(BcMediaInfoV1 {
+                video_width: 2560,
+                video_height: 1440,
+                fps: 30,
+                start_year: 121,
+                start_month: 8,
+                start_day: 4,
+                start_hour: 23,
+                start_min: 23,
+                start_seconds: 52,
+                end_year: 121,
+                end_month: 8,
+                end_day: 4,
+                end_hour: 23,
+                end_min: 23,
+                end_seconds: 52,
+            }))
+        ));
+    }
+
+    #[test]
+    fn test_iframe() {
+        init();
+
+        let mut subsciber = FileSubscriber::from_files(vec![
+            sample("iframe_0.raw"),
+            sample("iframe_1.raw"),
+            sample("iframe_2.raw"),
+            sample("iframe_3.raw"),
+            sample("iframe_4.raw"),
+        ]);
+
+        let e = BcMedia::deserialize(&mut subsciber);
+        if let Ok(BcMedia::Iframe(BcMediaIframe {
+            video_type: VideoType::H264,
+            microseconds: 3557705112,
+            time: 1628085232,
+            data: d,
+        })) = e
+        {
+            assert_eq!(d.len(), 192881);
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_pframe() {
+        init();
+
+        let mut subsciber =
+            FileSubscriber::from_files(vec![sample("pframe_0.raw"), sample("pframe_1.raw")]);
+
+        let e = BcMedia::deserialize(&mut subsciber);
+        if let Ok(BcMedia::Pframe(BcMediaPframe {
+            video_type: VideoType::H264,
+            microseconds: 3557767112,
+            data: d,
+        })) = e
+        {
+            assert_eq!(d.len(), 45108);
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_adpcm() {
+        init();
+
+        let mut subsciber = FileSubscriber::from_files(vec![sample("adpcm_0.raw")]);
+
+        let e = BcMedia::deserialize(&mut subsciber);
+        if let Ok(BcMedia::Adpcm(BcMediaAdpcm { data: d })) = e {
+            assert_eq!(d.len(), 244);
+        } else {
+            panic!();
+        }
+    }
 }
