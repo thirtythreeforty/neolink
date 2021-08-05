@@ -7,6 +7,53 @@ type IoResult<T> = std::result::Result<T, IoError>;
 
 impl BcCamera {
     ///
+    /// Finish Talk
+    ///
+    /// The send the talk finish to the camera.
+    ///
+    /// It is also sent when the request for talk config returns status code 422
+    ///
+    pub fn talk_stop(&self) -> Result<()> {
+        let connection = self.connection.as_ref().expect("Must be connected");
+
+        let sub = connection.subscribe(MSG_ID_TALKRESET)?;
+
+        let msg = Bc {
+            meta: BcMeta {
+                msg_id: MSG_ID_TALKRESET,
+                channel_id: self.channel_id,
+                msg_num: self.new_message_num(),
+                stream_type: 0,
+                response_code: 0,
+                class: 0x6414,
+            },
+            body: BcBody::ModernMsg(ModernMsg {
+                extension: Some(Extension {
+                    channel_id: Some(self.channel_id),
+                    ..Default::default()
+                }),
+                payload: None,
+            }),
+        };
+
+        sub.send(msg)?;
+        let msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+
+        if let BcMeta {
+            response_code: 200, ..
+        } = msg.meta
+        {
+        } else {
+            return Err(Error::UnintelligibleReply {
+                reply: msg,
+                why: "The camera did not accept the talk stop command.",
+            });
+        }
+
+        Ok(())
+    }
+
+    ///
     /// Requests the [`TalkAbility`] xml
     ///
     pub fn talk_ability(&self) -> Result<TalkAbility> {
@@ -104,7 +151,17 @@ impl BcCamera {
         };
 
         sub.send(msg)?;
-        let msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+        let mut msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+
+        if let BcMeta {
+            response_code: 442, ..
+        } = msg.meta
+        {
+            self.talk_stop()?;
+            // Retry
+            sub.send(msg)?;
+            msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+        }
 
         if let BcMeta {
             response_code: 200, ..
@@ -171,6 +228,8 @@ impl BcCamera {
             std::thread::sleep(std::time::Duration::from_secs_f32(play_length));
         }
 
+        self.talk_stop()?;
+
         Ok(())
     }
 
@@ -226,7 +285,17 @@ impl BcCamera {
         };
 
         sub.send(msg)?;
-        let msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+        let mut msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+
+        if let BcMeta {
+            response_code: 442, ..
+        } = msg.meta
+        {
+            self.talk_stop()?;
+            // Retry
+            sub.send(msg)?;
+            msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+        }
 
         if let BcMeta {
             response_code: 200, ..
@@ -319,6 +388,8 @@ impl BcCamera {
 
             std::thread::sleep(std::time::Duration::from_secs_f32(play_length * 0.95));
         }
+
+        self.talk_stop()?;
 
         Ok(())
     }

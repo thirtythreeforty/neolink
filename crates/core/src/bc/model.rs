@@ -12,6 +12,8 @@ pub const MSG_ID_LOGOUT: u32 = 2;
 pub const MSG_ID_VIDEO: u32 = 3;
 /// TalkAbility messages have this ID
 pub const MSG_ID_TALKABILITY: u32 = 10;
+/// TalkReset messages have this ID
+pub const MSG_ID_TALKRESET: u32 = 11;
 /// Reboot messages have this ID
 pub const MSG_ID_REBOOT: u32 = 23;
 /// Version messages have this ID
