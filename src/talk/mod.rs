@@ -85,7 +85,7 @@ pub fn main(opt: Opt) -> Result<(), Error> {
                     block_size,
                     sample_rate,
                 )?,
-                (None, true) => gst::mic_input(opt.volume, block_size, sample_rate)?,
+                (None, true) => gst::mic_input(opt.volume, block_size, sample_rate, &opt.input_src)?,
                 _ => unreachable!(),
             };
 

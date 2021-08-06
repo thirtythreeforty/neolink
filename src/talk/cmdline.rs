@@ -17,10 +17,13 @@ pub struct Opt {
     /// The path to the audio file.
     #[structopt(short, long, parse(from_os_str), conflicts_with = "microphone")]
     pub file_path: Option<PathBuf>,
-    /// Use the microphone as the source. Which microphone depends
+    /// Use the microphone as the source. Defaults to autoaudiosrc - Which microphone depends
     /// on [gstraemer](https://gstreamer.freedesktop.org/documentation/autodetect/autoaudiosrc.html?gi-language=c#autoaudiosrc-page)
     #[structopt(short, long, conflicts_with = "file_path")]
     pub microphone: bool,
+    /// Use a specific microphone like "alsasrc device=hw:1"
+    #[structopt(short, long, default_value = "autoaudiosrc", conflicts_with = "file_path",)]
+    pub input_src: String,
     /// Use to change the volume of the input
     #[structopt(short, long, default_value = "1.0")]
     pub volume: f32,

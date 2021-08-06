@@ -27,8 +27,9 @@ pub(super) fn mic_input(
     volume: f32,
     block_align: u16,
     sample_rate: u16,
+    input_src:&str,
 ) -> Result<Receiver<Vec<u8>>, Error> {
-    let pipeline = create_pipeline("autoaudiosrc", volume, block_align, sample_rate)?;
+    let pipeline = create_pipeline(input_src, volume, block_align, sample_rate)?;
     input(pipeline)
 }
 
