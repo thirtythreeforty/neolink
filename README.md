@@ -264,8 +264,8 @@ This will change in the future as reverse engineering needs require.
 
 ## Additional Commands
 
-Recent development in Neolink has enabled additional command line tools
-for controling the camera. They are all used through neolink subcommands like this:
+Neolink also has some additional command line tools
+for controlling the camera. They are all used through neolink subcommands like this:
 
 
 ```bash
@@ -276,11 +276,21 @@ The currently supported subcommands are
 
 - **rtsp**: The standard neolink rtsp bridge
 - **status-light**: A command to control the LED status light
+- **reboot**: Will reboot a camera
+- **talk**: Will enable talk back through either the microphone or by
+            reading a sound file.
 
-For full detail on the commands please use
+For a full list of commands please use
 
 ```bash
-neolink help subcommand
+neolink help
+```
+
+For further details on the subcommands please use the following
+where `<subcommand>` is replaced with the subcommand of interest
+
+```bash
+neolink help <subcommand>
 ```
 
 ## License
