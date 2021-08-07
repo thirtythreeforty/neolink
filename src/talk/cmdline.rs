@@ -22,7 +22,12 @@ pub struct Opt {
     #[structopt(short, long, conflicts_with = "file_path")]
     pub microphone: bool,
     /// Use a specific microphone like "alsasrc device=hw:1"
-    #[structopt(short, long, default_value = "autoaudiosrc", conflicts_with = "file_path",)]
+    #[structopt(
+        short,
+        long,
+        default_value = "autoaudiosrc",
+        conflicts_with = "file_path"
+    )]
     pub input_src: String,
     /// Use to change the volume of the input
     #[structopt(short, long, default_value = "1.0")]

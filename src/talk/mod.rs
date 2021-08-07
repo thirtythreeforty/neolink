@@ -80,12 +80,17 @@ pub fn main(opt: Opt) -> Result<(), Error> {
 
             let rx = match (&opt.file_path, &opt.microphone) {
                 (Some(path), false) => gst::from_input(
-                    &format!("filesrc location={}", path.to_str().expect("File path not UTF8 complient")),
+                    &format!(
+                        "filesrc location={}",
+                        path.to_str().expect("File path not UTF8 complient")
+                    ),
                     opt.volume,
                     block_size,
                     sample_rate,
                 )?,
-                (None, true) => gst::from_input(&opt.input_src, opt.volume, block_size, sample_rate)?,
+                (None, true) => {
+                    gst::from_input(&opt.input_src, opt.volume, block_size, sample_rate)?
+                }
                 _ => unreachable!(),
             };
 
