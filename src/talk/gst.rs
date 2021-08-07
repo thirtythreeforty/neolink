@@ -8,27 +8,13 @@ use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use super::errors::Error;
 use byte_slice_cast::*;
 
-pub(super) fn file_input(
-    filename: &str,
+pub(super) fn from_input(
+    input_src: &str,
     volume: f32,
     block_align: u16,
     sample_rate: u16,
 ) -> Result<Receiver<Vec<u8>>, Error> {
-    let pipeline = create_pipeline(
-        &format!("filesrc location={}", filename),
-        volume,
-        block_align,
-        sample_rate,
-    )?;
-    input(pipeline)
-}
-
-pub(super) fn mic_input(
-    volume: f32,
-    block_align: u16,
-    sample_rate: u16,
-) -> Result<Receiver<Vec<u8>>, Error> {
-    let pipeline = create_pipeline("autoaudiosrc", volume, block_align, sample_rate)?;
+    let pipeline = create_pipeline(input_src, volume, block_align, sample_rate)?;
     input(pipeline)
 }
 
