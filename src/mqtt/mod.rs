@@ -46,6 +46,7 @@ pub fn main(opt: Opt) -> Result<(), Error> {
         for camera_config in &config.cameras {
             if let Some(mqtt_config) = camera_config.mqtt.as_ref() {
                 let loop_arc_app = arc_app.clone();
+                info!("{}: Setting up mqtt", camera_config.name);
                 s.spawn(move |_| {
                     while loop_arc_app.running("app") {
                         let _ = listen_on_camera(camera_config, mqtt_config, loop_arc_app.clone());
@@ -76,9 +77,8 @@ fn listen_on_camera(
 
         // Start listening to mqtt events
         s.spawn(|_| {
-            if mqtt.start().is_err() {
-                event_cam.abort();
-            }
+            let _ = mqtt.start().is_err();
+            event_cam.abort();
         });
 
         // Listen on camera messages and post on mqtt
@@ -92,13 +92,13 @@ fn listen_on_camera(
                             }
                         }
                         Messages::MotionStop => {
-                            if mqtt.send_message("status/motion", "on", true).is_err() {
-                                error!("Failed to publish motion start for {}", cam_config.name);
+                            if mqtt.send_message("status/motion", "off", true).is_err() {
+                                error!("Failed to publish motion stop for {}", cam_config.name);
                             }
                         }
                         Messages::MotionStart => {
-                            if mqtt.send_message("status/motion", "off", true).is_err() {
-                                error!("Failed to publish motion stop for {}", cam_config.name);
+                            if mqtt.send_message("status/motion", "on", true).is_err() {
+                                error!("Failed to publish motion start for {}", cam_config.name);
                             }
                         }
                         _ => {}

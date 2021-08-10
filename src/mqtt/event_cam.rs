@@ -105,6 +105,7 @@ impl<'a> EventCam<'a> {
 
         info!("{}: Logging in", camera_config.name);
         camera.login(&camera_config.username, camera_config.password.as_deref())?;
+        info!("{}: Connected and logged in", camera_config.name);
 
         (tx.lock()?).send(Messages::Login)?;
 
@@ -127,12 +128,14 @@ impl<'a> EventCam<'a> {
         };
 
         let _ = crossbeam::scope(|s| {
+            info!("{}: Listening to Camera Motion", camera_config.name);
             s.spawn(|_| {
                 let _ = cam_motion.listen_on_motion(&mut motion_callback);
                 // If listen_on_motion returns then camera disconnect
                 app.abort(&camera_config.name);
             });
 
+            info!("{}: Setting up camera actions", camera_config.name);
             s.spawn(|_| {
                 let _ = message_handler.listen();
             });
@@ -170,7 +173,6 @@ impl MotionOutput for MotionCallback {
                 }
                 _ => {}
             }
-
             Ok(true)
         } else {
             Ok(false)

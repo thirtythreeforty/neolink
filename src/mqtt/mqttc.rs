@@ -116,6 +116,7 @@ impl Mqtt {
         });
 
         // Start polling messages
+        info!("{}: Starting listening to mqtt", name);
         let mqtt_read_app = app;
         let mqtt_reading = arc_me.clone();
         let mqtt_read_name = name.to_string();

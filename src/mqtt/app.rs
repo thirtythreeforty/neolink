@@ -27,9 +27,9 @@ impl App {
         let aborters = self.aborters.lock().unwrap();
         for level in levels.split(':') {
             if aborters.contains(&level.to_string()) {
-                return true;
+                return false;
             }
         }
-        false
+        true
     }
 }
