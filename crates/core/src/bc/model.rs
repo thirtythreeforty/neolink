@@ -16,6 +16,10 @@ pub const MSG_ID_TALKABILITY: u32 = 10;
 pub const MSG_ID_TALKRESET: u32 = 11;
 /// Reboot messages have this ID
 pub const MSG_ID_REBOOT: u32 = 23;
+/// Request motion detection messages
+pub const MSG_ID_MOTION_REQUEST: u32 = 31;
+/// Motion detection messages
+pub const MSG_ID_MOTION: u32 = 33;
 /// Version messages have this ID
 pub const MSG_ID_VERSION: u32 = 80;
 /// Ping messages have this ID

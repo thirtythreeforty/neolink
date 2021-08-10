@@ -32,7 +32,7 @@ impl BcCamera {
         } else {
             Err(Error::UnintelligibleReply {
                 reply: msg,
-                why: "The camera did not except the TalkConfig xml",
+                why: "The camera did not except the reboot",
             })
         }
     }

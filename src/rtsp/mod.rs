@@ -30,7 +30,6 @@
 ///
 use log::*;
 use neolink_core::bc_protocol::BcCamera;
-use neolink_core::Never;
 use std::collections::HashSet;
 use std::fs;
 use std::sync::Arc;
@@ -118,37 +117,40 @@ fn camera_loop(
     stream_name: &str,
     outputs: &mut GstOutputs,
     manage: bool,
-) -> Result<Never, Error> {
+) -> Result<(), Error> {
     let min_backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(15);
     let mut current_backoff = min_backoff;
 
     loop {
-        let cam_err = camera_main(camera_config, stream_name, outputs, manage).unwrap_err();
-        outputs.vidsrc.on_stream_error();
-        outputs.audsrc.on_stream_error();
-        // Authentication failures are permanent; we retry everything else
-        if cam_err.connected {
-            current_backoff = min_backoff;
-        }
-        match cam_err.err {
-            neolink_core::Error::AuthFailed => {
-                error!(
-                    "Authentication failed to camera {}, not retrying",
-                    camera_config.name
-                );
-                return Err(cam_err.err.into());
+        if let Err(cam_err) = camera_main(camera_config, stream_name, outputs, manage) {
+            outputs.vidsrc.on_stream_error();
+            outputs.audsrc.on_stream_error();
+            // Authentication failures are permanent; we retry everything else
+            if cam_err.connected {
+                current_backoff = min_backoff;
             }
-            _ => error!(
-                "Error streaming from camera {}, will retry in {}s: {:?}",
-                camera_config.name,
-                current_backoff.as_secs(),
-                cam_err.err
-            ),
-        }
+            match cam_err.err {
+                neolink_core::Error::AuthFailed => {
+                    error!(
+                        "Authentication failed to camera {}, not retrying",
+                        camera_config.name
+                    );
+                    return Err(cam_err.err.into());
+                }
+                _ => error!(
+                    "Error streaming from camera {}, will retry in {}s: {:?}",
+                    camera_config.name,
+                    current_backoff.as_secs(),
+                    cam_err.err
+                ),
+            }
 
-        std::thread::sleep(current_backoff);
-        current_backoff = std::cmp::min(max_backoff, current_backoff * 2);
+            std::thread::sleep(current_backoff);
+            current_backoff = std::cmp::min(max_backoff, current_backoff * 2);
+        } else {
+            return Ok(());
+        }
     }
 }
 
@@ -207,7 +209,7 @@ fn camera_main(
     stream_name: &str,
     outputs: &mut GstOutputs,
     manage: bool,
-) -> Result<Never, CameraErr> {
+) -> Result<(), CameraErr> {
     let mut connected = false;
     (|| {
         let mut camera = BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)?;

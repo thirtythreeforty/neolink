@@ -24,10 +24,7 @@ pub struct FileSubscriber {
 }
 
 impl FileSubscriber {
-    /// Creates a binary subsciber from a BcSubscrption.
-    /// When reading the next packet it will skip over multiple
-    /// Bc packets to fill the binary buffer so ensure you
-    /// only want binary packets when calling read
+    /// Creates a file subsciber from a list of files
     pub fn from_files<P: AsRef<Path>>(paths: Vec<P>) -> FileSubscriber {
         FileSubscriber {
             files: paths
