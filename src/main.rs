@@ -13,6 +13,7 @@ use structopt::StructOpt;
 
 mod cmdline;
 mod errors;
+mod mqtt;
 mod reboot;
 mod rtsp;
 mod statusled;
@@ -44,6 +45,9 @@ fn main() -> Result<(), Error> {
         }
         Command::Talk(opts) => {
             talk::main(opts)?;
+        }
+        Command::Mqtt(opts) => {
+            mqtt::main(opts)?;
         }
     }
 

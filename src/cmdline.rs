@@ -14,4 +14,5 @@ pub enum Command {
     StatusLight(super::statusled::Opt),
     Reboot(super::reboot::Opt),
     Talk(super::talk::Opt),
+    Mqtt(super::mqtt::Opt),
 }

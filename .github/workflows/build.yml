@@ -94,6 +94,7 @@ jobs:
           apt-get install --assume-yes --no-install-recommends \
           build-essential \
           gcc-${{ matrix.gcc }} \
+          g++-${{ matrix.gcc }} \
           libgstrtspserver-1.0-dev:${{ matrix.arch }} \
           libgstreamer1.0-dev:${{ matrix.arch }} \
           libgtk2.0-dev:${{ matrix.arch }} \

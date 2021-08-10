@@ -11,4 +11,6 @@ pub enum Error {
     Reboot(#[error(source)] super::reboot::Error),
     #[error(display = "Talk Error")]
     Talk(#[error(source)] super::talk::Error),
+    #[error(display = "Talk Error")]
+    Mqtt(#[error(source)] super::mqtt::Error),
 }
