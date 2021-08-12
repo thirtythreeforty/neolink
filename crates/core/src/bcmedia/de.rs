@@ -312,7 +312,7 @@ fn bcmedia_adpcm(buf: &[u8]) -> IResult<&[u8], BcMediaAdpcm> {
 #[cfg(test)]
 mod tests {
     use super::Error;
-    use crate::bc_protocol::filesub::FileSubscriber;
+    use crate::bc_protocol::FileSubscriber;
     use crate::bcmedia::model::*;
     use env_logger::Env;
     use log::*;

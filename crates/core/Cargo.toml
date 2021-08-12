@@ -20,5 +20,6 @@ yaserde_derive = "0.3.16"
 xml-rs = "0.8"
 
 [dev-dependencies]
+assert_matches = "1.5.0"
 env_logger = "*"
 indoc = "0.3"

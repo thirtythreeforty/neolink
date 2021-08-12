@@ -53,7 +53,7 @@ pub struct Bc {
 #[allow(clippy::large_enum_variant)]
 pub enum BcBody {
     /// Legacy is unsupported except for login where it is used
-    /// to negociate the initial login and upgrade to modern
+    /// to negotiate the initial login and upgrade to modern
     LegacyMsg(LegacyMsg),
     /// Modern is the current reolink protocol it is mostly
     /// xml based
@@ -64,7 +64,7 @@ pub enum BcBody {
 ///
 /// The first payload is extension which describes the second payload. If the
 /// `payload_offset` is `0` then their is no `extension` (usually because it has
-/// already been negociated in a previous message) and it is `None`
+/// already been negotiated in a previous message) and it is `None`
 ///
 /// The second payload contains the actual data of interest and is all bytes after
 /// the `payload_offset` up to the `body_len`. If `payload_offset`
@@ -153,7 +153,7 @@ pub(super) struct BcSendInfo {
 
 /// These are the encyption modes supported by the camera
 ///
-/// The mode is negociated during login
+/// The mode is negotiated during login
 #[derive(Debug, Clone)]
 pub enum EncryptionProtocol {
     /// Older camera use no encryption
@@ -161,7 +161,7 @@ pub enum EncryptionProtocol {
     /// Camera/Firmwares before 2021 use BCEncrypt which is a simple XOr
     BCEncrypt,
     /// Latest cameras/firmwares use Aes with the key derived from
-    /// the camera's password and the negociated NONCE
+    /// the camera's password and the negotiated NONCE
     Aes(Option<[u8; 16]>),
 }
 

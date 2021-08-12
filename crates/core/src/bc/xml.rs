@@ -95,7 +95,7 @@ pub struct Encryption {
     #[yaserde(rename = "type")]
     /// The hashing algorithm used. Only observed the value of "md5"
     pub type_: String,
-    /// The nonce used to negociate the login and to generate the AES key
+    /// The nonce used to negotiate the login and to generate the AES key
     pub nonce: String,
 }
 
