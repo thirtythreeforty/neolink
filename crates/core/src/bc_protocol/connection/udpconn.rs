@@ -3,6 +3,7 @@ use crate::bc;
 use crate::bc::model::*;
 use crate::bcudp;
 use crate::bcudp::{model::*, xml::*};
+use crate::RX_TIMEOUT;
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use socket2::{Domain, Socket, Type};
@@ -456,14 +457,18 @@ impl BufRead for UdpSource {
         }
         if self.read_buffer.buffer.len() <= self.read_buffer.consumed {
             // Get next packet of the read queue
-            if let Some(msg) = self
-                .incoming
-                .lock()
-                .unwrap()
-                .remove(&self.next_to_consume.load(Ordering::Relaxed))
-            {
-                self.next_to_consume.fetch_add(1, Ordering::Relaxed);
-                self.read_buffer.buffer.extend(msg.buf);
+            let start_time = OffsetDateTime::now_utc();
+            while (start_time - OffsetDateTime::now_utc()) < RX_TIMEOUT {
+                if let Some(msg) = self
+                    .incoming
+                    .lock()
+                    .unwrap()
+                    .remove(&self.next_to_consume.load(Ordering::Relaxed))
+                {
+                    self.next_to_consume.fetch_add(1, Ordering::Relaxed);
+                    self.read_buffer.buffer.extend(msg.buf);
+                    break;
+                }
             }
         }
 

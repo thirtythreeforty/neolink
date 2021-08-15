@@ -1,4 +1,5 @@
 use super::{crc::calc_crc, model::*, xml::*, xml_crypto::decrypt};
+use crate::RX_TIMEOUT;
 use err_derive::Error;
 use nom::IResult;
 use nom::{
@@ -8,6 +9,7 @@ use nom::{
     take, Err,
 };
 use std::io::Read;
+use time::OffsetDateTime;
 
 /// The error types used during deserialisation
 #[derive(Debug, Error)]
@@ -51,15 +53,30 @@ where
             Err(e) => return Err(e.into()),
         };
 
-        if 0 == (&mut rdr)
-            .take(to_read.get() as u64)
-            .read_to_end(&mut input)?
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "Read returned 0 bytes",
-            )
-            .into());
+        let start_time = OffsetDateTime::now_utc();
+        loop {
+            match (&mut rdr)
+                .take(to_read.get() as u64)
+                .read_to_end(&mut input)
+            {
+                Ok(0) => {
+                    if (OffsetDateTime::now_utc() - start_time) > RX_TIMEOUT {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            "Read returned 0 bytes",
+                        )
+                        .into());
+                    }
+                }
+                Ok(_) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // This is a temporaily unavaliable resource
+                    // We should just wait and try again
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
         }
     }
 }
