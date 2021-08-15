@@ -22,7 +22,6 @@ password = ProtoField.string("baichuan.password", "password", base.ASCII)
 
 -- UDP Related content
 udp_magic = ProtoField.int32("baichuan.udp_magic", "udp_magic", base.DEC)
-udp_type = ProtoField.int8("baichuan.udp_type", "udp_type", base.DEC)
 udp_message_id = ProtoField.int8("baichuan.udp_message_id", "udp_message_id", base.DEC)
 udp_connection_id = ProtoField.int32("baichuan.udp_connection_id", "udp_connection_id", base.DEC)
 udp_unknown = ProtoField.int32("baichuan.udp_unknown", "udp_unknown", base.DEC)
@@ -49,7 +48,6 @@ bc_protocol.fields = {
   username,
   password,
   udp_magic,
-  udp_type,
   udp_message_id,
   udp_connection_id,
   udp_unknown,
@@ -463,7 +461,6 @@ function process_udp_header(buffer, headers_tree)
   local header = headers_tree:add(bc_protocol, buffer(0, header_data.length),
     "Baichuan UDP Header, length: " .. header_data.length .. ", type " .. header_data.class)
   header:add_le(udp_magic, buffer(0,4))
-  header:add_le(udp_type, buffer(0,1))
   if header_data.class == 0x3a then
     header:add_le(udp_size, buffer(4, 4))
     header:add_le(udp_unknown,buffer(8, 4))
