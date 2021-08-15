@@ -189,7 +189,7 @@ struct MessageHandler {
 
 impl MessageHandler {
     fn listen(&mut self) {
-        if self.app.running(&format!("app:{}", self.name)) {
+        while self.app.running(&format!("app:{}", self.name)) {
             // Try and lock don't worry if not
             if let Ok(ref mut channel_out) = self.rx.try_lock() {
                 match channel_out.try_recv() {
