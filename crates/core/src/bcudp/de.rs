@@ -5,7 +5,7 @@ use nom::{
     combinator::*,
     error::{make_error, ErrorKind},
     number::streaming::*,
-    take, take_str, Err,
+    take, Err,
 };
 use std::io::Read;
 
@@ -180,7 +180,7 @@ mod tests {
             Ok(BcUdp::Discovery(UdpDiscovery {
                 tid: 96,
                 payload: UdpXml {
-                    disconnect: Some(Disconnect {
+                    c2d_disc: Some(C2dDisc {
                         cid: 82000,
                         did: 80,
                     }),
@@ -203,7 +203,7 @@ mod tests {
             Ok(BcUdp::Discovery(UdpDiscovery {
                 tid: 113,
                 payload: UdpXml {
-                    camera_transmission: Some(CameraTransmission {
+                    d2c_t: Some(D2cT {
                         sid: 62098713,
                         conn: conn_str,
                         cid: 82001,
@@ -228,7 +228,7 @@ mod tests {
             Ok(BcUdp::Discovery(UdpDiscovery {
                 tid: 1101,
                 payload: UdpXml {
-                    client_transmission: Some(ClientTransmission {
+                    c2d_t: Some(C2dT {
                         sid: 62098713,
                         conn: conn_str,
                         cid: 82001,
@@ -253,7 +253,7 @@ mod tests {
             Ok(BcUdp::Discovery(UdpDiscovery {
                 tid: 1101,
                 payload: UdpXml {
-                    camera_cfm: Some(CameraCfm {
+                    d2c_cfm: Some(D2cCfm {
                         sid: 62098713,
                         conn: conn_str,
                         rsp: 0,

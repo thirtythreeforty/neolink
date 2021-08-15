@@ -1,12 +1,13 @@
+use super::{BcSource, BcSubscription, Error, Result, TcpSource};
 use crate::bc;
 use crate::bc::model::*;
-use err_derive::Error;
 use log::*;
 use socket2::{Domain, Socket, Type};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::error::Error as StdErr; // Just need the traits
-use std::net::{Shutdown, SocketAddr, TcpStream};
+use std::io::{Error as IoError, Read, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex};
 use std::thread::JoinHandle;
@@ -18,7 +19,7 @@ use std::time::Duration;
 ///
 /// There can be only one subscriber per kind of message at a time.
 pub struct BcConnection {
-    connection: Arc<Mutex<TcpStream>>,
+    sink: Arc<Mutex<BcSource>>,
     subscribers: Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
     rx_thread: Option<JoinHandle<()>>,
     // Arc<Mutex<EncryptionProtocol>> because it is shared between context
@@ -27,46 +28,22 @@ pub struct BcConnection {
     poll_abort: Arc<AtomicBool>,
 }
 
-pub struct BcSubscription<'a> {
-    pub rx: Receiver<Bc>,
-    msg_id: u32,
-    conn: &'a BcConnection,
-}
-
-type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(display = "Communication error")]
-    Communication(#[error(source)] std::io::Error),
-
-    #[error(display = "Deserialization error")]
-    Deserialization(#[error(source)] bc::de::Error),
-
-    #[error(display = "Serialization error")]
-    Serialization(#[error(source)] bc::ser::Error),
-
-    #[error(display = "Simultaneous subscription")]
-    SimultaneousSubscription { msg_id: u32 },
-}
-
 impl BcConnection {
-    pub fn new(addr: SocketAddr, timeout: Duration) -> Result<BcConnection> {
-        let tcp_conn = connect_to(addr, timeout)?;
+    pub fn new(source: BcSource) -> Result<Self> {
         let subscribers: Arc<Mutex<BTreeMap<u32, Sender<Bc>>>> = Default::default();
 
         let mut subs = subscribers.clone();
-        let conn = tcp_conn.try_clone()?;
 
         let encryption_protocol = Arc::new(Mutex::new(EncryptionProtocol::Unencrypted));
         let connections_encryption_protocol = encryption_protocol.clone();
         let poll_abort = Arc::new(AtomicBool::new(false));
         let poll_abort_rx = poll_abort.clone();
+        let conn = source.try_clone()?;
         let rx_thread = std::thread::spawn(move || {
             let mut context = BcContext::new(connections_encryption_protocol);
             let mut result;
             loop {
-                result = BcConnection::poll(&mut context, &conn, &mut subs);
+                result = Self::poll(&mut context, &conn, &mut subs);
                 if poll_abort_rx.load(Ordering::Relaxed) {
                     break; // Poll has been aborted by request usally during disconnect
                 }
@@ -83,12 +60,22 @@ impl BcConnection {
         });
 
         Ok(BcConnection {
-            connection: Arc::new(Mutex::new(tcp_conn)),
+            sink: Arc::new(Mutex::new(source)),
             subscribers,
             rx_thread: Some(rx_thread),
             encryption_protocol,
             poll_abort,
         })
+    }
+
+    pub fn stop_polling(&self) {
+        self.poll_abort.store(true, Ordering::Relaxed);
+    }
+
+    pub(super) fn send(&self, bc: Bc) -> Result<()> {
+        bc.serialize(&*self.sink.lock().unwrap(), &self.get_encrypted())?;
+        let _ = self.sink.lock().unwrap().flush();
+        Ok(())
     }
 
     pub fn subscribe(&self, msg_id: u32) -> Result<BcSubscription> {
@@ -97,21 +84,29 @@ impl BcConnection {
             Entry::Vacant(vac_entry) => vac_entry.insert(tx),
             Entry::Occupied(_) => return Err(Error::SimultaneousSubscription { msg_id }),
         };
-        Ok(BcSubscription {
-            rx,
-            conn: self,
-            msg_id,
-        })
+        Ok(BcSubscription::new(rx, msg_id, self))
+    }
+
+    pub fn unsubscribe(&self, msg_id: u32) -> Result<()> {
+        self.subscribers.lock().unwrap().remove(&msg_id);
+        Ok(())
+    }
+
+    pub fn set_encrypted(&self, value: EncryptionProtocol) {
+        *(self.encryption_protocol.lock().unwrap()) = value;
+    }
+
+    pub fn get_encrypted(&self) -> EncryptionProtocol {
+        (*self.encryption_protocol.lock().unwrap()).clone()
     }
 
     fn poll(
         context: &mut BcContext,
-        connection: &TcpStream,
+        connection: &BcSource,
         subscribers: &mut Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
     ) -> Result<()> {
         // Don't hold the lock during deserialization so we don't poison the subscribers mutex if
         // something goes wrong
-
         let response = Bc::deserialize(context, connection).map_err(|err| {
             // If the connection hangs up, hang up on all subscribers
             subscribers.lock().unwrap().clear();
@@ -136,24 +131,11 @@ impl BcConnection {
 
         Ok(())
     }
-
-    pub fn stop_polling(&self) {
-        self.poll_abort.store(true, Ordering::Relaxed);
-    }
-
-    pub fn set_encrypted(&self, value: EncryptionProtocol) {
-        *(self.encryption_protocol.lock().unwrap()) = value;
-    }
-
-    pub fn get_encrypted(&self) -> EncryptionProtocol {
-        (*self.encryption_protocol.lock().unwrap()).clone()
-    }
 }
 
 impl Drop for BcConnection {
     fn drop(&mut self) {
         debug!("Shutting down BcConnection...");
-        let _ = self.connection.lock().unwrap().shutdown(Shutdown::Both);
         match self
             .rx_thread
             .take()
@@ -168,42 +150,4 @@ impl Drop for BcConnection {
             }
         }
     }
-}
-
-impl<'a> BcSubscription<'a> {
-    pub fn send(&self, bc: Bc) -> Result<()> {
-        assert!(bc.meta.msg_id == self.msg_id);
-
-        bc.serialize(
-            &*self.conn.connection.lock().unwrap(),
-            &self.conn.get_encrypted(),
-        )?;
-        Ok(())
-    }
-}
-
-/// Makes it difficult to avoid unsubscribing when you're finished
-impl<'a> Drop for BcSubscription<'a> {
-    fn drop(&mut self) {
-        self.conn.subscribers.lock().unwrap().remove(&self.msg_id);
-    }
-}
-
-/// Helper to create a TcpStream with a connect timeout
-fn connect_to(addr: SocketAddr, timeout: Duration) -> Result<TcpStream> {
-    let socket = match addr {
-        SocketAddr::V4(_) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
-        SocketAddr::V6(_) => {
-            let s = Socket::new(Domain::ipv6(), Type::stream(), None)?;
-            s.set_only_v6(false)?;
-            s
-        }
-    };
-
-    socket.set_keepalive(Some(timeout))?;
-    socket.set_read_timeout(Some(timeout))?;
-    socket.set_write_timeout(Some(timeout))?;
-    socket.connect_timeout(&addr.into(), timeout)?;
-
-    Ok(socket.into_tcp_stream())
 }

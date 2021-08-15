@@ -117,6 +117,10 @@ standard tcp bc connection
 If the camera supports UDP the client will send this xml packet
 as a broadcast on 255.255.255.255 on port 2018
 
+**Known UID**
+
+If the UID is already known you can skip to this step.
+
 ```xml
 <P2P>
   <C2D_C>
@@ -139,33 +143,14 @@ to both udp and tcp. Then the udp will disconnect.
 
 ---
 
-## T Payload Camera
+## D2C_C_R Payload Camera
 
 Camera replies with this payload on the port specified in `C2D_C`
 
 ```xml
 <P2P>
-  <D2C_T>
-    <sid>62097899</sid>
-    <conn>local</conn>
-    <cid>82000</cid>
-    <did>80</did>
-  </D2C_T>
-</P2P>
-```
-
-- **sid**: ID of the camera
-- **conn**: Type of connection only observed `local` value
-- **cid**: The connection ID of the client
-- **did**: The connection ID of the camera
-
-
-Camera also sends this
-
-```xml
-<P2P>
   <D2C_C_R>
-      <timer>
+    <timer>
       <def>3000</def>
       <hb>10000</hb>
       <hbt>60000</hbt>
@@ -176,6 +161,12 @@ Camera also sends this
   </D2C_C_R>
 </P2P>
 ```
+
+- **timer** Unknown timer of some sort`
+- **rsp**: Unknown
+- **cid**: The connection ID of the client
+- **did**: The connection ID of the camera
+
 
 
 ## T Payload Client
@@ -199,6 +190,11 @@ Client then replies with this.
 - **did**: The connection ID of the camera
 - **mtu**: The maximum transmission unit of the connection. Which is the
            largest packet size in bytes
+
+
+## T Payload Camera
+
+Camera replies with this payload on the port specified in `C2D_C`
 
 **Login**
 

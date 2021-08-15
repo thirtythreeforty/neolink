@@ -6,27 +6,30 @@ use yaserde::{ser::Config, YaDeserialize, YaSerialize};
 use yaserde_derive::{YaDeserialize, YaSerialize};
 
 /// The top level of the UDP xml is P2P
-#[derive(PartialEq, Eq, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 #[yaserde(rename = "P2P")]
 pub struct UdpXml {
-    /// C2D_S xml
+    /// C2D_S xml Discovery of any client
     #[yaserde(rename = "C2D_S")]
-    pub start: Option<DiscoveryStartAny>,
-    /// C2D_S xml
+    pub c2d_s: Option<C2dS>,
+    /// C2D_S xml Discovery of client with a UID
     #[yaserde(rename = "C2D_C")]
-    pub start_with: Option<DiscoveryStartWith>,
+    pub c2d_c: Option<C2dC>,
+    /// D2C_C_C xml Reply from discovery
+    #[yaserde(rename = "D2C_C_R")]
+    pub d2c_c_r: Option<D2cCr>,
     /// D2C_T xml
     #[yaserde(rename = "D2C_T")]
-    pub camera_transmission: Option<CameraTransmission>,
+    pub d2c_t: Option<D2cT>,
     /// C2D_T xml
     #[yaserde(rename = "C2D_T")]
-    pub client_transmission: Option<ClientTransmission>,
+    pub c2d_t: Option<C2dT>,
     /// D2C_CFM xml
     #[yaserde(rename = "D2C_CFM")]
-    pub camera_cfm: Option<CameraCfm>,
-    /// C2D_DISC xml
+    pub d2c_cfm: Option<D2cCfm>,
+    /// C2D_DISC xml Disconnect
     #[yaserde(rename = "C2D_DISC")]
-    pub disconnect: Option<Disconnect>,
+    pub c2d_disc: Option<C2dDisc>,
 }
 
 impl UdpXml {
@@ -45,14 +48,14 @@ impl UdpXml {
 ///
 /// It should be broadcasted to port 2015
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
-pub struct DiscoveryStartAny {
+pub struct C2dS {
     /// The destination to reply to
-    pub to: StartTo,
+    pub to: PortList,
 }
 
-/// to xml
+/// Port list xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
-pub struct StartTo {
+pub struct PortList {
     /// Port to open udp connections with
     pub port: u32,
 }
@@ -62,11 +65,11 @@ pub struct StartTo {
 /// This will start a connection with any camera that has this UID
 /// It should be broadcasted to port 2018
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
-pub struct DiscoveryStartWith {
+pub struct C2dC {
     /// UID of the camera the client wants to connect with
     pub uid: String,
     /// Cli contains the udp port to communicate on
-    pub cli: StartCli,
+    pub cli: ClientList,
     /// The cid is the client ID
     pub cid: u32,
     /// Maximum transmission size,
@@ -78,16 +81,43 @@ pub struct DiscoveryStartWith {
     pub os: String,
 }
 
-/// C2D_C xml
+/// Client List xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
-pub struct StartCli {
+pub struct ClientList {
     /// Port to start udp communication with
     pub port: u32,
 }
 
+/// D2C_C_R xml
+///
+/// This will start a connection with any camera that has this UID
+/// It should be broadcasted to port 2018
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct D2cCr {
+    /// Called timer but not sure what it is a timer of
+    pub timer: Timer,
+    /// Unknown
+    pub rsp: u32,
+    /// Client ID
+    pub cid: u32,
+    /// Camera ID
+    pub did: u32,
+}
+
+/// Timer provided by D2C_C_R
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct Timer {
+    /// Unknown
+    def: u32,
+    /// Unknown
+    hb: u32,
+    /// Unknown
+    hbt: u32,
+}
+
 /// C2D_DISC xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
-pub struct Disconnect {
+pub struct C2dDisc {
     /// The client connection ID
     pub cid: u32,
     /// The camera connection ID
@@ -96,7 +126,7 @@ pub struct Disconnect {
 
 /// D2C_T xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
-pub struct CameraTransmission {
+pub struct D2cT {
     /// The camera SID
     pub sid: u32,
     /// Type of connection observed values are `"local"`
@@ -109,7 +139,7 @@ pub struct CameraTransmission {
 
 /// C2D_T xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
-pub struct ClientTransmission {
+pub struct C2dT {
     /// The camera SID
     pub sid: u32,
     /// Type of connection observed values are `"local"`
@@ -122,7 +152,7 @@ pub struct ClientTransmission {
 
 /// D2C_CFM xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
-pub struct CameraCfm {
+pub struct D2cCfm {
     /// The camera SID
     pub sid: u32,
     /// Type of connection observed values are `"local"`

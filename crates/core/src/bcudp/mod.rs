@@ -22,10 +22,12 @@
 //!
 
 mod crc;
-mod de;
+/// Functions to deserialize udp packets
+pub mod de;
 /// Contains the model describing the top level structures
 pub mod model;
-mod ser;
+/// Functions to serialize udp packets
+pub mod ser;
 /// Contains the udp related xml payloads
 pub mod xml;
 // Constains routines to de/encrypt udp xml

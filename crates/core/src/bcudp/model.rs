@@ -38,9 +38,13 @@ pub const MAGIC_HEADER_UDP_ACK: u32 = 0x2a87cf20;
 /// resend the packet
 #[derive(Debug, PartialEq, Eq)]
 pub struct UdpAck {
-    /// The connection ID of the other party
+    /// The connection ID
     ///
-    /// This is negotiated during [`UdpDiscovery`]
+    /// This is negotiated during [`UdpDiscovery`] as cid for the client and did for the camera
+    ///
+    /// When receiving from the camera it will be cid
+    ///
+    /// When sending to the camera it should be did
     pub connection_id: u32,
     // Unknown 4 bytes always 0
     /// The ID of the last data packet [`UdpData`]
@@ -57,7 +61,11 @@ pub const MAGIC_HEADER_UDP_DATA: u32 = 0x2a87cf10;
 pub struct UdpData {
     /// The connection ID of the other party
     ///
-    /// This is negotiated during [`UdpDiscovery`]
+    /// This is negotiated during [`UdpDiscovery`] as cid for the client and did for the camera
+    ///
+    /// When receiving from the camera it will be cid
+    ///
+    /// When sending to the camera it should be did
     pub connection_id: u32,
     // Unknown 4 bytes always 0
     /// The ID of the data packet

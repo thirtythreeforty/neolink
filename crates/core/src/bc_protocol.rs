@@ -1,35 +1,31 @@
-use self::connection::BcConnection;
 use crate::{bc, bcmedia};
 use log::*;
 use std::convert::TryInto;
-use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicU16, Ordering};
-use std::time::Duration;
 
 use Md5Trunc::*;
 
-mod binarysub;
 mod connection;
 mod errors;
-pub(crate) mod filesub;
 mod ledstate;
 mod login;
 mod logout;
 mod ping;
 mod reboot;
+mod resolution;
 mod stream;
 mod talk;
 mod time;
 mod version;
 
-pub use binarysub::BinarySubscriber;
+use super::RX_TIMEOUT;
+pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
+pub use resolution::*;
 pub use stream::{StreamOutput, StreamOutputError};
 
 type Result<T> = std::result::Result<T, Error>;
-
-const RX_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl<'a> From<std::sync::mpsc::RecvTimeoutError> for Error {
     fn from(k: std::sync::mpsc::RecvTimeoutError) -> Self {
@@ -77,8 +73,7 @@ impl BcCamera {
     ///
     /// # Parameters
     ///
-    /// * `host` - The address of the camera either ip address or hostname string is ok but
-    ///             [`std::net::SocketAddr`] is fine too
+    /// * `host` - The address of the camera either ip address, hostname string, or uid is ok
     ///
     /// * `channel_id` - The channel ID this is usually zero unless using a NVR
     ///
@@ -86,15 +81,24 @@ impl BcCamera {
     ///
     /// returns either an error or the camera
     ///
-    pub fn new_with_addr<T: ToSocketAddrs>(host: T, channel_id: u8) -> Result<Self> {
-        let addr_iter = match host.to_socket_addrs() {
+    pub fn new_with_addr<T: ToSocketAddrsOrUid>(host: T, channel_id: u8) -> Result<Self> {
+        let addr_iter = match host.to_socket_addrs_or_uid() {
             Ok(iter) => iter,
             Err(_) => return Err(Error::AddrResolutionError),
         };
 
         for addr in addr_iter {
-            debug!("Trying {}", addr);
-            let conn = match BcConnection::new(addr, RX_TIMEOUT) {
+            let source = match addr {
+                SocketAddrOrUid::SocketAddr(addr) => {
+                    debug!("Trying address {}", addr);
+                    BcSource::new_tcp(addr, RX_TIMEOUT)?
+                }
+                SocketAddrOrUid::Uid(uid) => {
+                    debug!("Trying uid {}", uid);
+                    BcSource::new_udp(&uid, RX_TIMEOUT)?
+                }
+            };
+            let conn = match BcConnection::new(source) {
                 Ok(conn) => conn,
                 Err(err) => match err {
                     connection::Error::Communication(ref err) => {
@@ -105,7 +109,7 @@ impl BcCamera {
                 },
             };
 
-            debug!("Success: {}", addr);
+            debug!("Success");
             return Ok(Self {
                 connection: Some(conn),
                 message_num: AtomicU16::new(0),
@@ -126,13 +130,11 @@ impl BcCamera {
     /// This will drop the connection. It will try to send the logout request to the camera
     /// first
     pub fn disconnect(&mut self) {
-        // Stop polling now. We don't need it for a disconnect
-        // and if we don't then another we might get a deserialise
-        // error from another thread that polls and needs the login.
-        //
-        // It will also ensure that when we drop the connection we don't
-        // get an error for read retrun zero bytes.
         if let Some(connection) = &self.connection {
+            // Stop polling now. We don't need it for a disconnect
+            //
+            // It will also ensure that when we drop the connection we don't
+            // get an error for read return zero bytes from the polling thread;
             connection.stop_polling();
             if let Err(err) = self.logout() {
                 warn!("Could not log out, ignoring: {}", err);
@@ -178,7 +180,7 @@ fn md5_string(input: &str, trunc: Md5Trunc) -> String {
 }
 
 /// This is a convience function to make an AES key from the login password and the NONCE
-/// negociated during login
+/// negotiated during login
 pub fn make_aes_key(nonce: &str, passwd: &str) -> [u8; 16] {
     let key_phrase = format!("{}-{}", nonce, passwd);
     let key_phrase_hash = format!("{:X}\0", md5::compute(&key_phrase))
