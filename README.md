@@ -110,6 +110,14 @@ docker run \
 The Docker image is "best effort" and intended for advanced users; questions
 about running Docker are outside the scope of Neolink.
 
+If you use a UDP only camera, such as a battery camera you will need to either
+use `--net=host` or setup a [macvlan](https://docs.docker.com/network/macvlan/)
+for the docker image that supports UDP broadcast.
+This is because UDP requires that udp broadcast messages are transmitted across
+the docker network interface, however this is [not possible in the default
+bridging mode](https://github.com/docker/for-linux/issues/637)
+
+
 ## Configuration
 
 **Note**: for a more comprehensive setup tutorial, refer to the
@@ -120,6 +128,9 @@ about running Docker are outside the scope of Neolink.
 
 Copy and modify the `sample_config.toml` to specify the address, username, and
 password for each camera (if there is no password, you can omit that line).
+The address can be a camera UID, in this case your network must support UDP
+broadcasts. Battery cameras exclusively use this UDP mode so you must always
+use a UID in the address field.
 
 Each `[[cameras]]` block creates a new camera; the `name` determines the RTSP
 path you should connect your client to.
