@@ -75,7 +75,7 @@ or your package manager on Linux.
    
    Raspberry Pi OS x64 example:
    
-    ```
+    ```bash
     unzip release-arm64-buster.zip
     sudo cp neolink /usr/local/bin/ 
     sudo chmod +x /usr/local/bin/neolink
