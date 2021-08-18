@@ -132,7 +132,7 @@ fn udp_disc(buf: &[u8]) -> IResult<&[u8], UdpDiscovery> {
 }
 
 fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
-    let (buf, connection_id) = le_u32(buf)?;
+    let (buf, connection_id) = le_i32(buf)?;
     let (buf, _unknown_a) = verify(le_u32, |&x| x == 0)(buf)?;
     let (buf, _unknown_b) = verify(le_u32, |&x| x == 0)(buf)?;
     let (buf, packet_id) = le_u32(buf)?;
@@ -147,7 +147,7 @@ fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
 }
 
 fn udp_data(buf: &[u8]) -> IResult<&[u8], UdpData> {
-    let (buf, connection_id) = le_u32(buf)?;
+    let (buf, connection_id) = le_i32(buf)?;
     let (buf, _unknown_a) = verify(le_u32, |&x| x == 0)(buf)?;
     let (buf, packet_id) = le_u32(buf)?;
     let (buf, payload_size) = le_u32(buf)?;

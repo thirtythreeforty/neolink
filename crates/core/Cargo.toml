@@ -10,6 +10,7 @@ aes = "0.6"
 cfb-mode = "0.6"
 cookie-factory = "0.3"
 err-derive = "0.2"
+lazy_static = "1.4"
 log = { version = "0.4" }
 md5 = "0.7"
 nom = "6.1.2"

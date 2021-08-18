@@ -45,7 +45,11 @@ pub struct UdpAck {
     /// When receiving from the camera it will be cid
     ///
     /// When sending to the camera it should be did
-    pub connection_id: u32,
+    ///
+    /// We use i32 because when we send the connection id to the reolink
+    /// register and then download the same connection id from the register_address
+    /// it comes back in an xml that is encoded as i32 (i.e. can be negative string)
+    pub connection_id: i32,
     // Unknown 4 bytes always 0
     /// The ID of the last data packet [`UdpData`]
     pub packet_id: u32,
@@ -66,7 +70,11 @@ pub struct UdpData {
     /// When receiving from the camera it will be cid
     ///
     /// When sending to the camera it should be did
-    pub connection_id: u32,
+    ///
+    /// We use i32 because when we send the connection id to the reolink
+    /// register and then download the same connection id from the register_address
+    /// it comes back in an xml that is encoded as i32 (i.e. can be negative string)
+    pub connection_id: i32,
     // Unknown 4 bytes always 0
     /// The ID of the data packet
     pub packet_id: u32,

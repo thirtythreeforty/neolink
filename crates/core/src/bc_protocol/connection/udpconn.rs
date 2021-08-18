@@ -4,6 +4,7 @@ use crate::bc::model::*;
 use crate::bcudp;
 use crate::bcudp::{model::*, xml::*};
 use crate::RX_TIMEOUT;
+use lazy_static::lazy_static;
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use socket2::{Domain, Socket, Type};
@@ -12,7 +13,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::error::Error as StdErr; // Just need the traits
 use std::io::{BufRead, Error as IoError, Read, Write};
-use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket};
 use std::sync::{
     atomic::{AtomicBool, AtomicU32, Ordering},
     mpsc::{channel, Receiver, Sender},
@@ -26,11 +27,29 @@ type IoResult<T> = std::result::Result<T, IoError>;
 
 const WAIT_TIME: Duration = Duration::from_millis(500);
 
+// TODO: Path MTU discovery
+const MTU: u32 = 1350;
+
+lazy_static! {
+    static ref P2P_RELAY_HOSTNAMES: [&'static str; 10] = [
+        "p2p.reolink.com",
+        "p2p1.reolink.com",
+        "p2p2.reolink.com",
+        "p2p3.reolink.com",
+        "p2p14.reolink.com",
+        "p2p15.reolink.com",
+        "p2p6.reolink.com",
+        "p2p7.reolink.com",
+        "p2p8.reolink.com",
+        "p2p9.reolink.com",
+    ];
+}
+
 pub struct UdpSource {
     socket: UdpSocket,
     address: SocketAddr,
-    client_id: u32,
-    camera_id: u32,
+    client_id: i32,
+    camera_id: i32,
     mtu: u32,
     outgoing: Arc<Mutex<HashMap<u32, QueuedMessage>>>,
     incoming: Arc<Mutex<HashMap<u32, QueuedMessage>>>,
@@ -57,8 +76,8 @@ struct QueuedMessage {
 struct DiscoveryResult {
     socket: UdpSocket,
     address: SocketAddr,
-    client_id: u32,
-    camera_id: u32,
+    client_id: i32,
+    camera_id: i32,
     mtu: u32,
 }
 
@@ -106,19 +125,50 @@ impl UdpSource {
         buf: &[u8],
         addr: T,
     ) -> IoResult<(usize, AbortHandle)> {
-        let addr: SocketAddr = addr.to_socket_addrs()?.next().unwrap();
+        let addr = addr.to_socket_addrs()?.next().ok_or_else(|| {
+            IoError::new(std::io::ErrorKind::NotFound, Error::ConnectionUnavaliable)
+        })?;
+        Self::retrying_send_to_multi(socket, buf, &[addr])
+    }
+
+    fn retrying_send_to_multi<T: ToSocketAddrs>(
+        socket: &UdpSocket,
+        buf: &[u8],
+        addrs: &[T],
+    ) -> IoResult<(usize, AbortHandle)> {
         let handle = AbortHandle::new();
-        let bytes_send = socket.send_to(&buf, &addr)?;
+
+        let addrs: Vec<SocketAddr> = addrs
+            .iter()
+            .map(|a| {
+                a.to_socket_addrs()
+                    .ok()
+                    .and_then(|mut a_iter| a_iter.next())
+            })
+            .flatten()
+            .collect();
+
+        let mut bytes_send = 0;
+        for addr in addrs.iter() {
+            bytes_send = socket.send_to(buf, &addr)?;
+        }
 
         let thread_buffer = buf.to_vec();
         let thread_handle = handle.clone();
         let thread_socket = socket.try_clone()?;
-        let thread_addr = addr;
+        let thread_addr: Vec<SocketAddr> = addrs;
+
+        const MAX_RETRIES: usize = 10;
 
         std::thread::spawn(move || {
             std::thread::sleep(WAIT_TIME);
-            while !thread_handle.is_aborted() {
-                let _ = thread_socket.send_to(&thread_buffer[..], &thread_addr);
+            for _ in 0..MAX_RETRIES {
+                if thread_handle.is_aborted() {
+                    break;
+                }
+                for addr in thread_addr.iter() {
+                    let _ = thread_socket.send_to(&thread_buffer[..], &addr);
+                }
                 std::thread::sleep(WAIT_TIME);
             }
         });
@@ -126,20 +176,19 @@ impl UdpSource {
         Ok((bytes_send, handle))
     }
 
-    fn discover_from_uuid(uid: &str, timeout: Duration) -> Result<DiscoveryResult> {
-        let start_time = OffsetDateTime::now_utc();
-
-        let socket = Self::get_socket(timeout)?;
-
+    fn discover_from_uuid_local(
+        uid: &str,
+        socket: &UdpSocket,
+        timeout: Duration,
+    ) -> Result<DiscoveryResult> {
         let mut rng = thread_rng();
         // If tid is too large it will overflow during encrypt so we just use a random u8
         let tid: u32 = (rng.gen::<u8>()) as u32;
-        let client_id: u32 = rng.gen();
+        let client_id: i32 = rng.gen();
         let local_addr = socket.local_addr()?;
         let port = local_addr.port();
 
-        // TODO: Path MTU discovery
-        let mtu = 1350;
+        let mtu = MTU;
 
         let msg = BcUdp::Discovery(UdpDiscovery {
             tid,
@@ -159,10 +208,14 @@ impl UdpSource {
         let mut buf = vec![];
         msg.serialize(&mut buf)?;
 
-        let (amount_sent, abort) =
-            Self::retrying_send_to(&socket, &buf[..], "255.255.255.255:2018")?;
+        let (amount_sent, abort) = Self::retrying_send_to_multi(
+            socket,
+            &buf[..],
+            &["255.255.255.255:2015", "255.255.255.255:2018"],
+        )?;
         assert_eq!(amount_sent, buf.len());
 
+        let start_time = OffsetDateTime::now_utc();
         let camera_address;
         let camera_id;
         loop {
@@ -202,7 +255,7 @@ impl UdpSource {
         socket.connect(camera_address)?;
 
         Ok(DiscoveryResult {
-            socket,
+            socket: socket.try_clone()?,
             address: camera_address,
             client_id,
             camera_id,
@@ -210,8 +263,345 @@ impl UdpSource {
         })
     }
 
+    fn get_register(
+        uid: &str,
+        socket: &UdpSocket,
+        timeout: Duration,
+        tid: u32,
+        // client_id: u32,
+    ) -> Result<M2cQr> {
+        // let local_addr = socket.local_addr()?;
+        // let local_port = local_addr.port();
+
+        let mtu = MTU;
+
+        for p2p_relay in P2P_RELAY_HOSTNAMES.iter() {
+            let msg = BcUdp::Discovery(UdpDiscovery {
+                tid,
+                payload: UdpXml {
+                    c2m_q: Some(C2mQ {
+                        uid: uid.to_string(),
+                        os: "MAC".to_string(),
+                    }),
+                    ..Default::default()
+                },
+            });
+
+            let mut buf = vec![];
+            msg.serialize(&mut buf)?;
+
+            let (amount_sent, abort) =
+                Self::retrying_send_to(socket, &buf[..], format!("{}:9999", p2p_relay))?;
+            assert_eq!(amount_sent, buf.len());
+
+            let start_time = OffsetDateTime::now_utc();
+            loop {
+                if (OffsetDateTime::now_utc() - start_time) <= timeout {
+                    let mut buf = vec![0; mtu as usize];
+                    if let Ok((bytes_read, _)) = socket.recv_from(&mut buf) {
+                        match BcUdp::deserialize(&buf[0..bytes_read]) {
+                            Ok(BcUdp::Discovery(UdpDiscovery {
+                                tid: _,
+                                payload:
+                                    UdpXml {
+                                        m2c_q_r: Some(m2c_q_r),
+                                        ..
+                                    },
+                            })) => {
+                                abort.abort();
+                                return Ok(m2c_q_r);
+                            }
+                            Ok(smt) => debug!("Udp Discovery got this unexpected BcUdp {:?}", smt),
+                            Err(_) => debug!(
+                                "Udp Discovery got this unexpected binary: {:?}",
+                                &buf[0..bytes_read]
+                            ),
+                        }
+                    }
+                } else {
+                    abort.abort();
+                    // This p2p server didn't have the data we need try another
+                    continue;
+                }
+            }
+        }
+        Err(Error::ConnectionUnavaliable)
+    }
+
+    fn discover_from_uuid_remote(
+        uid: &str,
+        socket: &UdpSocket,
+        timeout: Duration,
+    ) -> Result<DiscoveryResult> {
+        let local_addr = socket.local_addr()?;
+        let local_port = local_addr.port();
+
+        let mut rng = thread_rng();
+        // If tid is too large it will overflow during encrypt so we just use a random u8
+        let tid: u32 = (rng.gen::<u8>()) as u32;
+        let mtu = MTU;
+        let client_id: i32 = rng.gen();
+
+        let m2c_q_r = Self::get_register(uid, socket, timeout, tid)?;
+
+        let register_address = m2c_q_r.reg;
+        let relay_address = m2c_q_r.relay;
+        let log_address = m2c_q_r.log;
+        let device_address = m2c_q_r.t;
+
+        debug!("Register address found: {:?}", register_address);
+        debug!("Registering this address: {:?}", local_addr);
+
+        let local_family = if local_addr.ip().is_ipv4() { 4 } else { 6 };
+        let msg = BcUdp::Discovery(UdpDiscovery {
+            tid,
+            payload: UdpXml {
+                c2r_c: Some(C2rC {
+                    uid: uid.to_string(),
+                    cli: IpPort {
+                        ip: local_addr.ip().to_string(),
+                        port: local_port,
+                    },
+                    relay: relay_address,
+                    cid: client_id,
+                    family: local_family,
+                    debug: false,
+                    os: "MAC".to_string(),
+                }),
+                ..Default::default()
+            },
+        });
+
+        let mut buf = vec![];
+        msg.serialize(&mut buf)?;
+
+        let (amount_sent, abort) = Self::retrying_send_to(
+            socket,
+            &buf[..],
+            format!("{}:{}", register_address.ip, register_address.port),
+        )?;
+        assert_eq!(amount_sent, buf.len());
+
+        let device_sid;
+        let dev_loc;
+        let start_time = OffsetDateTime::now_utc();
+        loop {
+            if (OffsetDateTime::now_utc() - start_time) <= timeout {
+                let mut buf = vec![0; mtu as usize];
+                if let Ok((bytes_read, _)) = socket.recv_from(&mut buf) {
+                    match BcUdp::deserialize(&buf[0..bytes_read]) {
+                        // Got camera data from register
+                        Ok(BcUdp::Discovery(UdpDiscovery {
+                            tid: _,
+                            payload:
+                                UdpXml {
+                                    r2c_t: Some(R2cT { dev, cid, sid, .. }),
+                                    ..
+                                },
+                        })) if cid == client_id => {
+                            abort.abort();
+                            // Make a local request to the camera with the dev info
+                            device_sid = sid;
+                            dev_loc = dev;
+                            break;
+                        }
+                        Ok(smt) => debug!("Udp Discovery got this unexpected BcUdp {:?}", smt),
+                        Err(_) => debug!(
+                            "Udp Discovery got this unexpected binary: {:?}",
+                            &buf[0..bytes_read]
+                        ),
+                    }
+                }
+            } else {
+                abort.abort();
+                return Err(Error::Timeout);
+            }
+        }
+
+        debug!("Register revealed address as SID: {:?}", device_sid);
+        debug!("Register revealed address as IP: {:?}", dev_loc);
+
+        // ensure abort
+        abort.abort();
+
+        let msg = BcUdp::Discovery(UdpDiscovery {
+            tid,
+            payload: UdpXml {
+                c2d_t: Some(C2dT {
+                    sid: device_sid,
+                    cid: client_id,
+                    mtu,
+                    conn: "local".to_string(),
+                }),
+                ..Default::default()
+            },
+        });
+
+        let mut buf = vec![];
+        msg.serialize(&mut buf)?;
+
+        let (amount_sent, abort) =
+            Self::retrying_send_to(socket, &buf[..], format!("{}:{}", dev_loc.ip, dev_loc.port))?;
+        assert_eq!(amount_sent, buf.len());
+
+        let device_id;
+        let start_time = OffsetDateTime::now_utc();
+        loop {
+            if (OffsetDateTime::now_utc() - start_time) <= timeout {
+                let mut buf = vec![0; mtu as usize];
+                if let Ok((bytes_read, _)) = socket.recv_from(&mut buf) {
+                    match BcUdp::deserialize(&buf[0..bytes_read]) {
+                        // Got camera data from camera
+                        Ok(BcUdp::Discovery(UdpDiscovery {
+                            tid: _,
+                            payload:
+                                UdpXml {
+                                    d2c_t: Some(D2cT { cid, did, .. }),
+                                    ..
+                                },
+                        })) if cid == client_id => {
+                            device_id = did;
+                            break;
+                        }
+                        // Got camera data from camera CFM
+                        Ok(BcUdp::Discovery(UdpDiscovery {
+                            tid: _,
+                            payload:
+                                UdpXml {
+                                    d2c_cfm: Some(D2cCfm { cid, did, .. }),
+                                    ..
+                                },
+                        })) if cid == client_id => {
+                            device_id = did;
+                            break;
+                        }
+                        // Got camera data from camera disc
+                        Ok(BcUdp::Discovery(UdpDiscovery {
+                            tid: _,
+                            payload:
+                                UdpXml {
+                                    d2c_disc: Some(D2cDisc { cid, did, .. }),
+                                    ..
+                                },
+                        })) if cid == client_id => {
+                            device_id = did;
+                            break;
+                        }
+                        Ok(smt) => debug!("Udp Discovery got this unexpected BcUdp {:?}", smt),
+                        Err(_) => debug!(
+                            "Udp Discovery got this unexpected binary: {:?}",
+                            &buf[0..bytes_read]
+                        ),
+                    }
+                }
+            } else {
+                abort.abort();
+                return Err(Error::Timeout);
+            }
+        }
+
+        debug!("Got device ID as: {:?}", device_id);
+
+        // Ensure aborted
+        abort.abort();
+
+        // Announce to the log that we will connect locally
+        let msg = BcUdp::Discovery(UdpDiscovery {
+            tid,
+            payload: UdpXml {
+                c2r_cfm: Some(C2rCfm {
+                    sid: device_sid,
+                    cid: client_id,
+                    did: device_id,
+                    conn: "local".to_string(),
+                    rsp: 0,
+                }),
+                ..Default::default()
+            },
+        });
+
+        let mut buf = vec![];
+        msg.serialize(&mut buf)?;
+
+        // Just let this retry to max limit as we don't get a reply
+        let (amount_sent, _) = Self::retrying_send_to(
+            socket,
+            &buf[..],
+            format!("{}:{}", log_address.ip, log_address.port),
+        )?;
+        assert_eq!(amount_sent, buf.len());
+
+        // Announce a map type connection (I think this means we could connect remotely)
+        let msg = BcUdp::Discovery(UdpDiscovery {
+            tid,
+            payload: UdpXml {
+                c2d_t: Some(C2dT {
+                    sid: device_sid,
+                    cid: client_id,
+                    mtu,
+                    conn: "map".to_string(),
+                }),
+                ..Default::default()
+            },
+        });
+
+        let mut buf = vec![];
+        msg.serialize(&mut buf)?;
+
+        // Just let this retry to max limit as we don't get a reply
+        let (amount_sent, _) = Self::retrying_send_to(
+            socket,
+            &buf[..],
+            format!("{}:{}", device_address.ip, device_address.port),
+        )?;
+        assert_eq!(amount_sent, buf.len());
+
+        let camera_address: SocketAddr = format!("{}:{}", device_address.ip, device_address.port)
+            .to_socket_addrs()?
+            .next()
+            .ok_or(Error::ConnectionUnavaliable)?;
+
+        Ok(DiscoveryResult {
+            socket: socket.try_clone()?,
+            address: camera_address,
+            client_id,
+            camera_id: device_id,
+            mtu,
+        })
+    }
+
+    fn discover_from_uuid(
+        uid: &str,
+        timeout: Duration,
+        allow_remote: bool,
+    ) -> Result<DiscoveryResult> {
+        let socket = Self::get_socket(timeout)?;
+        match Self::discover_from_uuid_local(uid, &socket, timeout) {
+            Err(Error::Timeout) if allow_remote => {
+                Self::discover_from_uuid_remote(uid, &socket, timeout)
+            }
+            Ok(result) => Ok(result),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// It is possible to contact the reolink servers using udp to
+    /// learn the ip and port of the camera. By default I have turned
+    /// this feature off with no way to enable it from the usual
+    /// command line interface or config.
+    ///
+    /// However it may prove neccesary one day to use it so it is here in the
+    /// library and other programs may want to use it.
+    pub fn new_allow_remote(uid: &str, timeout: Duration) -> Result<Self> {
+        Self::new_with_remote(uid, timeout, true)
+    }
+
     pub fn new(uid: &str, timeout: Duration) -> Result<Self> {
-        let discovery_result = Self::discover_from_uuid(uid, timeout)?;
+        Self::new_with_remote(uid, timeout, false)
+    }
+
+    fn new_with_remote(uid: &str, timeout: Duration, allow_remote: bool) -> Result<Self> {
+        let discovery_result = Self::discover_from_uuid(uid, timeout, allow_remote)?;
         info!("UID {:?} found at {:?}", uid, discovery_result.address);
 
         let me = UdpSource {
@@ -260,7 +650,7 @@ impl UdpSource {
 
     fn handle_ack(
         next_to_consume: u32,
-        camera_id: u32,
+        camera_id: i32,
         incoming: &mut HashMap<u32, QueuedMessage>,
         socket: &UdpSocket,
     ) {

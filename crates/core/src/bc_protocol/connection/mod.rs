@@ -63,7 +63,7 @@ pub enum Error {
     #[error(display = "This connection type in unsupported")]
     UnsupportedConnection,
 
-    #[error(display = "Camera Unconnected")]
+    #[error(display = "Camera Not Findable")]
     ConnectionUnavaliable,
 }
 

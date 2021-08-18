@@ -106,7 +106,7 @@ fn set_data_channel(appsink: &AppSink, tx: SyncSender<Vec<u8>>) {
 
                 // We know what format the data in the memory region has, since we requested
                 // it by setting the appsink's caps. So what we do here is interpret the
-                // memory region we mapped as an array of signed 16 bit integers.
+                // memory region we mapped as an array of signed 8 bit integers.
                 let samples = map.as_slice_of::<u8>().map_err(|_| {
                     element_error!(
                         appsink,

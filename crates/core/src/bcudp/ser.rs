@@ -51,7 +51,7 @@ fn bcudp_disc<'a, W: 'a + Write>(
 fn bcudp_ack<'a, W: 'a + Write>(payload: &'a UdpAck) -> impl SerializeFn<W> + 'a {
     tuple((
         le_u32(MAGIC_HEADER_UDP_ACK),
-        le_u32(payload.connection_id),
+        le_i32(payload.connection_id),
         le_u32(0),
         le_u32(0),
         le_u32(payload.packet_id),
@@ -66,7 +66,7 @@ fn bcudp_data<'a, W: 'a + Write>(
 ) -> impl SerializeFn<W> + 'a {
     tuple((
         le_u32(MAGIC_HEADER_UDP_DATA),
-        le_u32(payload.connection_id),
+        le_i32(payload.connection_id),
         le_u32(0),
         le_u32(payload.packet_id),
         le_u32(binary_payload.len() as u32),
