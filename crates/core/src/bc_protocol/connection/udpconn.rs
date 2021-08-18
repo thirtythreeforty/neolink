@@ -702,6 +702,17 @@ impl UdpSource {
                 let mut read_buf = vec![0_u8; thread_mtu as usize];
                 if let Ok(bytes_read) = thread_socket.recv(&mut read_buf[..]) {
                     match BcUdp::deserialize(&read_buf[0..bytes_read]) {
+                        Ok(BcUdp::Discovery(UdpDiscovery {
+                            payload:
+                                UdpXml {
+                                    d2c_disc: Some(D2cDisc { cid, did }),
+                                    ..
+                                },
+                            ..
+                        })) if cid == thread_client_id && did == thread_camera_id => {
+                            thread_aborter.abort();
+                            debug!("Client requested disconnect")
+                        }
                         Ok(BcUdp::Discovery(packet)) => {
                             warn!("Got unexpected discovery packet: {:?}", packet)
                         }
@@ -789,8 +800,8 @@ impl UdpSource {
                             message.buf.len()
                         );
                         message.time_last_tried = Some(now);
-                        if thread_socket.send(&message.buf[..]).is_err() {
-                            warn!("Failed to send message on udp");
+                        if let Err(e) = thread_socket.send(&message.buf[..]) {
+                            error!("Failed to send message on udp: {:?}", e);
                         }
                     }
                 }
@@ -814,6 +825,12 @@ impl Drop for UdpSource {
 
 impl Read for UdpSource {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+        if self.aborter.is_aborted() {
+            return Err(IoError::new(
+                std::io::ErrorKind::ConnectionAborted,
+                "Connection dropped",
+            ));
+        }
         let buffer = self.fill_buf()?;
         let amt = std::cmp::min(buf.len(), buffer.len());
 
@@ -874,6 +891,12 @@ impl BufRead for UdpSource {
 const UDPDATA_HEADER_SIZE: usize = 20;
 impl Write for UdpSource {
     fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+        if self.aborter.is_aborted() {
+            return Err(IoError::new(
+                std::io::ErrorKind::ConnectionAborted,
+                "Connection dropped",
+            ));
+        }
         self.write_buffer.buffer.extend(buf.to_vec());
         if self.write_buffer.buffer.len() > self.mtu as usize - UDPDATA_HEADER_SIZE {
             let _ = self.flush();
@@ -882,6 +905,12 @@ impl Write for UdpSource {
     }
 
     fn flush(&mut self) -> IoResult<()> {
+        if self.aborter.is_aborted() {
+            return Err(IoError::new(
+                std::io::ErrorKind::ConnectionAborted,
+                "Connection dropped",
+            ));
+        }
         for chunk in self
             .write_buffer
             .buffer
