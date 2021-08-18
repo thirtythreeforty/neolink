@@ -32,17 +32,29 @@ fn main() -> Result<(), Error> {
 
     let opt = Opt::from_args();
 
-    match opt.cmd {
-        Command::Rtsp(opts) => {
+    match (opt.cmd, opt.config) {
+        (None, None) => {
+            // Should be caught at the clap validation
+            unreachable!();
+        }
+        (None, Some(config)) => {
+            warn!(
+                "Deprecated command line option. Please use: `neolink rtsp --config={:?}`",
+                config
+            );
+            rtsp::main(rtsp::Opt { config })?;
+        }
+        (Some(_), Some(_)) => error!("--config should be given after the subcommand"),
+        (Some(Command::Rtsp(opts)), None) => {
             rtsp::main(opts)?;
         }
-        Command::StatusLight(opts) => {
+        (Some(Command::StatusLight(opts)), None) => {
             statusled::main(opts)?;
         }
-        Command::Reboot(opts) => {
+        (Some(Command::Reboot(opts)), None) => {
             reboot::main(opts)?;
         }
-        Command::Talk(opts) => {
+        (Some(Command::Talk(opts)), None) => {
             talk::main(opts)?;
         }
     }
