@@ -1,12 +1,15 @@
-use super::errors::ParseOnOffError;
+use anyhow::{anyhow, Result};
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-fn onoff_parse(src: &str) -> Result<bool, ParseOnOffError> {
+fn onoff_parse(src: &str) -> Result<bool> {
     match src {
         "true" | "on" | "yes" => Ok(true),
         "false" | "off" | "no" => Ok(false),
-        _ => Err(ParseOnOffError),
+        _ => Err(anyhow!(
+            "Could not understand {}, check your input, should be true/false, on/off or yes/no",
+            src
+        )),
     }
 }
 

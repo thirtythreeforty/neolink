@@ -832,6 +832,7 @@ name = "neolink"
 version = "0.4.0"
 dependencies = [
  "aes",
+ "anyhow",
  "byte-slice-cast",
  "cfb-mode",
  "cookie-factory",
