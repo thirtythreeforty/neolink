@@ -51,14 +51,14 @@ or your package manager on Linux.
     
     On Ubuntu/Debian machines gstreamer can be installed with:
     
-        ```bash
-        sudo apt install \
-          libgstrtspserver-1.0-0 \
-          libgstreamer1.0-0 \
-          libgstreamer-plugins-bad1.0-0 \
-          gstreamer1.0-plugins-good \
-          gstreamer1.0-plugins-bad
-        ```
+    ```bash
+    sudo apt install \
+      libgstrtspserver-1.0-0 \
+      libgstreamer1.0-0 \
+      libgstreamer-plugins-bad1.0-0 \
+      gstreamer1.0-plugins-good \
+      gstreamer1.0-plugins-bad
+    ```
 
 
 2. If you are using Windows, add the following to your `PATH` environment variable:
