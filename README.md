@@ -48,8 +48,9 @@ Builds are provided for the following platforms:
 
 1. [Install Gstreamer][gstreamer] from the most recent MSI installer on Windows,
 or your package manager on Linux.
-
-    Ubuntu/Debian:
+    
+    On Ubuntu/Debian machines gstreamer can be installed with:
+    
         ```bash
         sudo apt install \
           libgstrtspserver-1.0-0 \
