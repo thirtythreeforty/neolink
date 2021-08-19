@@ -39,8 +39,8 @@ Builds are provided for the following platforms:
 - macOS x86_64 ([download][macos-ci-download])
 - Ubuntu x86_64 ([download][ubuntu-ci-download])
 - Debian x86 ([download][debian-x86-ci-download])
-- Debian aarch64 ([download][debian-aarch-ci-download])
-- Debian armhf ([download][debian-armhf-ci-download])
+- Debian aarch64 (Raspberry Pi 64-bit) ([download][debian-aarch-ci-download])
+- Debian armhf (Raspberry Pi 32-bit) ([download][debian-armhf-ci-download])
 - Arch Linux ([AUR](https://aur.archlinux.org/packages/neolink-git/))
 - Docker x86 (see below)
 
@@ -48,6 +48,18 @@ Builds are provided for the following platforms:
 
 1. [Install Gstreamer][gstreamer] from the most recent MSI installer on Windows,
 or your package manager on Linux.
+    
+    On Ubuntu/Debian machines gstreamer can be installed with:
+    
+    ```bash
+    sudo apt install \
+      libgstrtspserver-1.0-0 \
+      libgstreamer1.0-0 \
+      libgstreamer-plugins-bad1.0-0 \
+      gstreamer1.0-plugins-good \
+      gstreamer1.0-plugins-bad
+    ```
+
 
 2. If you are using Windows, add the following to your `PATH` environment variable:
 
@@ -58,12 +70,17 @@ or your package manager on Linux.
     **Note:** If you use Chocolatey to install Gstreamer, it does this
     automatically.
 
-3. Download and extract a [prebuilt binary from continuous integration][ci-download]
-(click on the topmost commit for the most recent build).
-
 3. Download and unpack Neolink from the links above.
    1. Note: you can also click on [this link][ci-download] to see all historical builds.
-  You will need to be logged in to GitHub to download directly from the builds page.
+  You will need to be logged in to GitHub to download directly from the builds page (wget doesn't work)
+   
+   Raspberry Pi OS x64 example:
+   
+    ```bash
+    unzip release-arm64-buster.zip
+    sudo cp neolink /usr/local/bin/ 
+    sudo chmod +x /usr/local/bin/neolink
+    ```
 4. Write a configuration file for your cameras.  See the section below.
 
 5. Launch Neolink from a shell, passing your configuration file:
