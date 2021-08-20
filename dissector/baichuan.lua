@@ -15,13 +15,13 @@ unknown = ProtoField.int8("baichuan.unknown", "unknown", base.DEC)
 msg_handle = ProtoField.int8("baichuan.message_handle", "messageHandle", base.DEC)
 status_code = ProtoField.int16("baichuan.status_code", "status_code", base.DEC)
 message_class = ProtoField.int32("baichuan.msg_class", "messageClass", base.DEC)
-f_payload_offset = ProtoField.int32("baichuan.payload_offset", "binOffset", base.DEC)
 f_bin_offset = ProtoField.int32("baichuan.bin_offset", "binOffset", base.DEC)
 username = ProtoField.string("baichuan.username", "username", base.ASCII)
 password = ProtoField.string("baichuan.password", "password", base.ASCII)
 
 -- UDP Related content
 udp_magic = ProtoField.int32("baichuan.udp_magic", "udp_magic", base.DEC)
+udp_type = ProtoField.int8("baichuan.udp_type", "udp_type", base.DEC)
 udp_message_id = ProtoField.int8("baichuan.udp_message_id", "udp_message_id", base.DEC)
 udp_connection_id = ProtoField.int32("baichuan.udp_connection_id", "udp_connection_id", base.DEC)
 udp_unknown = ProtoField.int32("baichuan.udp_unknown", "udp_unknown", base.DEC)
@@ -43,11 +43,11 @@ bc_protocol.fields = {
   encrypt_xml,
   status_code,
   message_class,
-  f_payload_offset,
   f_bin_offset,
   username,
   password,
   udp_magic,
+  udp_type,
   udp_message_id,
   udp_connection_id,
   udp_unknown,
@@ -187,12 +187,7 @@ end
 
 function get_header_len(buffer)
   local magic = buffer(0, 4):le_uint()
-  if magic == 0x0abcdef0 then
-    -- Client <-> BC
-  elseif magic == 0x0fedcba0 then
-    -- BC <-> BC
-  else
-    -- Unknown magic
+  if magic ~= 0x0abcdef0 then
     return -1 -- No header found
   end
   local header_len = header_lengths[buffer(18, 2):le_uint()]
@@ -396,6 +391,8 @@ function get_udp_header_len(buffer)
     udptype = buffer(0, 1):le_uint()
     if udptype == 0x3a then
       return 20
+    elseif udptype == 0x31 then
+      return 20
     elseif udptype == 0x20 then
       return 28
     elseif udptype == 0x10 then
@@ -422,6 +419,11 @@ function get_udp_header(buffer)
   local udp_connection_id = nil
   local udp_packet_count = nil
   if udp_class == 0x3a then
+    udp_size = buffer(4, 4):le_uint()
+    udp_unknown1 = buffer(8, 4):le_uint()
+    udp_tid = buffer(12, 4):le_uint()
+    udp_checksum = buffer(16, 4):le_uint()
+  elseif udp_class == 0x31 then
     udp_size = buffer(4, 4):le_uint()
     udp_unknown1 = buffer(8, 4):le_uint()
     udp_tid = buffer(12, 4):le_uint()
@@ -461,7 +463,13 @@ function process_udp_header(buffer, headers_tree)
   local header = headers_tree:add(bc_protocol, buffer(0, header_data.length),
     "Baichuan UDP Header, length: " .. header_data.length .. ", type " .. header_data.class)
   header:add_le(udp_magic, buffer(0,4))
+  header:add_le(udp_type, buffer(0,1))
   if header_data.class == 0x3a then
+    header:add_le(udp_size, buffer(4, 4))
+    header:add_le(udp_unknown,buffer(8, 4))
+    header:add_le(udp_tid, buffer(12, 4))
+    header:add_le(udp_checksum, buffer(16, 4))
+  elseif header_data.class == 0x31 then
     header:add_le(udp_size, buffer(4, 4))
     header:add_le(udp_unknown,buffer(8, 4))
     header:add_le(udp_tid, buffer(12, 4))
@@ -674,6 +682,9 @@ function bc_protocol.dissector(buffer, pinfo, tree)
         local subtree = tree:add(bc_protocol, decryped_tvb, "UDP Message Data")
         Dissector.get("xml"):call(decryped_tvb, pinfo, subtree)
         pinfo.cols.protocol = bc_protocol.name .. " UDP Heartbeat"
+      elseif udp_header.class == 0x31 then
+        pinfo.cols.protocol = bc_protocol.name .. " UDP Relay"
+
       elseif udp_header.class == 0x20 then
         pinfo.cols.protocol = bc_protocol.name .. " UDP ACK"
       else
@@ -713,12 +724,49 @@ function bc_protocol.dissector(buffer, pinfo, tree)
   end
 end
 
-DissectorTable.get("tcp.port"):add(9000, bc_protocol)
-DissectorTable.get("tcp.port"):add(52941, bc_protocol) -- change to your own custom port
+local function heuristic_checker_udp(buffer, pinfo, tree)
+    -- guard for length
+    print("UDP Heur")
+    length = buffer:len()
+    if length < 4 then return false end
+    print("LEN GOOD")
+    local potential_magic = buffer(0,4):le_uint()
+    print("MAGIC??? " .. string.format("%x", potential_magic))
 
-DissectorTable.get("udp.port"):add(23534, bc_protocol) -- change to your own custom port
-DissectorTable.get("udp.port"):add(29237, bc_protocol)
-DissectorTable.get("udp.port"):add(39654, bc_protocol)
-DissectorTable.get("udp.port"):add(28100, bc_protocol)
-DissectorTable.get("udp.port"):add(13154, bc_protocol)
-DissectorTable.get("udp.port"):add(2015, bc_protocol)
+    if potential_magic ~= 0x2a87cf3a  and 
+        potential_magic ~= 0x2a87cf20 and
+        potential_magic ~= 0x2a87cf10 and
+        potential_magic ~= 0x2a87cf31 then
+
+      return false
+    end
+  
+    print("YEP")
+    bc_protocol.dissector(buffer, pinfo, tree)
+    return true
+end
+
+local function heuristic_checker_tcp(buffer, pinfo, tree)
+    -- guard for length
+    length = buffer:len()
+    if length < 4 then return false end
+
+    local potential_magic = buffer(0,4):le_uint()
+    if potential_magic ~= 0xabcdef0  then return false end
+  
+    bc_protocol.dissector(buffer, pinfo, tree)
+    return true
+end
+
+bc_protocol:register_heuristic("udp", heuristic_checker_udp)
+bc_protocol:register_heuristic("tcp", heuristic_checker_tcp)
+
+-- DissectorTable.get("tcp.port"):add(9000, bc_protocol)
+-- DissectorTable.get("tcp.port"):add(53959, bc_protocol) -- change to your own custom port
+
+-- DissectorTable.get("udp.port"):add(2000, bc_protocol)
+-- DissectorTable.get("udp.port"):add(2015, bc_protocol)
+-- DissectorTable.get("udp.port"):add(2018, bc_protocol)
+-- DissectorTable.get("udp.port"):add(2000, bc_protocol)
+-- DissectorTable.get("udp.port"):add(9999, bc_protocol)
+
