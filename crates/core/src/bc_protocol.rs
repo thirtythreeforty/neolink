@@ -19,6 +19,7 @@ mod time;
 mod version;
 
 use super::RX_TIMEOUT;
+use bc::model::*;
 pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
@@ -63,6 +64,7 @@ impl Credentials {
 
 impl Drop for BcCamera {
     fn drop(&mut self) {
+        debug!("Dropping camera");
         self.disconnect();
     }
 }
@@ -98,6 +100,7 @@ impl BcCamera {
                     BcSource::new_udp(&uid, RX_TIMEOUT)?
                 }
             };
+
             let conn = match BcConnection::new(source) {
                 Ok(conn) => conn,
                 Err(err) => match err {
@@ -110,13 +113,33 @@ impl BcCamera {
             };
 
             debug!("Success");
-            return Ok(Self {
+            let me = Self {
                 connection: Some(conn),
                 message_num: AtomicU16::new(0),
                 channel_id,
                 logged_in: false,
                 credentials: None,
-            });
+            };
+
+            if let Some(conn) = &me.connection {
+                let keep_alive_msg = Bc {
+                    meta: BcMeta {
+                        msg_id: MSG_ID_UDP_KEEP_ALIVE,
+                        channel_id: me.channel_id,
+                        msg_num: me.new_message_num(),
+                        stream_type: 0,
+                        response_code: 0,
+                        class: 0x6414,
+                    },
+                    body: BcBody::ModernMsg(ModernMsg {
+                        ..Default::default()
+                    }),
+                };
+
+                conn.set_keep_alive_msg(keep_alive_msg);
+            }
+
+            return Ok(me);
         }
 
         Err(Error::Timeout)

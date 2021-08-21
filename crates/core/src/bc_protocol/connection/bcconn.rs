@@ -26,6 +26,7 @@ pub struct BcConnection {
     // and connection for deserialisation and serialistion respectivly
     encryption_protocol: Arc<Mutex<EncryptionProtocol>>,
     poll_abort: Arc<AtomicBool>,
+    keep_alive_msg: Arc<Mutex<Option<Bc>>>,
 }
 
 impl BcConnection {
@@ -38,8 +39,11 @@ impl BcConnection {
         let connections_encryption_protocol = encryption_protocol.clone();
         let poll_abort = Arc::new(AtomicBool::new(false));
         let poll_abort_rx = poll_abort.clone();
-        let conn = source.try_clone()?;
+        let mut conn = source.try_clone()?;
+        let keep_alive_msg: Arc<Mutex<Option<Bc>>> = Arc::new(Mutex::new(None));
+        let connections_keep_alive_msg = keep_alive_msg.clone();
         let rx_thread = std::thread::spawn(move || {
+            let keep_alive_encryption_protocol = connections_encryption_protocol.clone();
             let mut context = BcContext::new(connections_encryption_protocol);
             let mut result;
             loop {
@@ -56,6 +60,14 @@ impl BcConnection {
                     }
                     break;
                 }
+                // Send a udp keep alive if set
+                if let Ok(lock) = connections_keep_alive_msg.try_lock() {
+                    if let Some(keep_alive_msg) = lock.as_ref() {
+                        let _ = keep_alive_msg
+                            .serialize(&conn, &keep_alive_encryption_protocol.lock().unwrap());
+                        let _ = conn.flush();
+                    }
+                }
             }
         });
 
@@ -65,6 +77,7 @@ impl BcConnection {
             rx_thread: Some(rx_thread),
             encryption_protocol,
             poll_abort,
+            keep_alive_msg,
         })
     }
 
@@ -90,6 +103,10 @@ impl BcConnection {
     pub fn unsubscribe(&self, msg_id: u32) -> Result<()> {
         self.subscribers.lock().unwrap().remove(&msg_id);
         Ok(())
+    }
+
+    pub fn set_keep_alive_msg(&self, msg: Bc) {
+        *self.keep_alive_msg.lock().unwrap() = Some(msg);
     }
 
     pub fn set_encrypted(&self, value: EncryptionProtocol) {
@@ -124,8 +141,10 @@ impl BcConnection {
                 }
             }
             Entry::Vacant(_) => {
-                debug!("Ignoring uninteresting message ID {}", msg_id);
-                trace!("Contents: {:?}", response);
+                if msg_id != MSG_ID_UDP_KEEP_ALIVE {
+                    debug!("Ignoring uninteresting message ID {}", msg_id);
+                    trace!("Contents: {:?}", response);
+                }
             }
         }
 

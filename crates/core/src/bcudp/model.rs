@@ -54,7 +54,9 @@ pub struct UdpAck {
     /// The ID of the last data packet [`UdpData`]
     pub packet_id: u32,
     // 2 Bytes Unknown: Observed values `00000000`, `d6010000`, `d7160000` `09e00000`
-    // 2 Bytes Unknown: Observed values `00000000`
+    //                  Unknown but seems to change randomly every second
+    // 2 Bytes size of a payload
+    // Payload of `00 01 01 01 01` where `01` is added after every repeat
 }
 
 /// Magic for the UDP Data packet

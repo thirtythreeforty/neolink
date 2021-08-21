@@ -21,6 +21,8 @@ yaserde_derive = "0.3.16"
 xml-rs = "0.8"
 rand = "0.8.4"
 regex = "1.5.4"
+crossbeam-channel = "0.5.1"
+get_if_addrs = "0.5.3"
 
 [dev-dependencies]
 assert_matches = "1.5.0"

@@ -68,7 +68,10 @@ where
                     }
                 }
                 Ok(_) => break,
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
                     // This is a temporaily unavaliable resource
                     // We should just wait and try again
                 }

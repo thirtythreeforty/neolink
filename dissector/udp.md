@@ -253,11 +253,46 @@ These messages are sent to acknowledge receipt of message. They are header only.
 - 4 Bytes unknown: Always `00000000` for for UDP Ack
 - 4 Bytes Last Packet ID: Last received packet id
 - 4 Bytes Unknown: Observed values `00000000`, `d6010000`, `d7160000` `09e00000` **NEEDS INFO**
-- 4 Bytes Unknown: Observed values `00000000`
+- Payload Size: **NEEDS INFO**
+- Paload **NEEDS INFO**
 
 **To Investigate:**
-  - Why does the unknown byte change. It starts at zero and remains that way for a long
-    time. Then seems to change and remain at the new value for a long time
+  - Why does the unknown byte change. It starts at zero and remains that way for a second
+    time. Then seems to change and remain at the new value for another second
+  - Payload is usually 0 but occasionally it is non zero
+    - When this happens the payload becomes `00 01 01 01 01 01` always the first
+    byte `00` then just `01`/`00` bytes
+    - This payload then increases in size by `01` each ackpacket until a new
+      udpdata packet arrives. At which point the `Last received packet id` jumps
+
+Here's an example of a UDP Ack payload (size 203 bytes)
+
+```hex
+0000   00 01 01 01 01 01 01 01 01 01 01 01 00 01 01 01
+0010   01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01
+0020   01 01 01 01 00 01 01 01 01 01 01 01 01 01 01 01
+0030   01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01
+0040   01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01
+0050   01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01
+0060   01 01 01 01 01 01 00 01 01 01 01 01 01 01 01 01
+0070   01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01
+0080   01 01 01 01 01 01 01 01 01 01 00 01 01 01 01 01
+0090   01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01
+00a0   01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01
+00b0   01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01
+00c0   01 01 01 01 01 01 01 01 01 01 01 01
+```
+
+I believe this is a truth table of false/true for missing packets
+
+In this example the last packet sent was number 221 but the camera only
+acknowledged number 14 and sent this binary too and the unknown
+value was `f8010000` (504).
+
+If this payload is allowed to grow to ~ 205 bytes the camera sends a
+disconnect request and drops the connection
+
+
 
 # UDP Data
 

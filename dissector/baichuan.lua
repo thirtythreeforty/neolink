@@ -29,6 +29,7 @@ udp_tid = ProtoField.int32("baichuan.udp_tid", "udp_tid", base.DEC)
 udp_checksum = ProtoField.int32("baichuan.udp_checksum", "udp_checksum", base.DEC)
 udp_packet_count = ProtoField.int32("baichuan.udp_packet_count", "udp_packet_count", base.DEC)
 udp_last_ack_packet = ProtoField.int32("baichuan.udp_last_ack_packet", "udp_last_ack_packet", base.DEC)
+udp_ack_payload_size = ProtoField.int32("baichuan.udp_ack_payload_size", "ack_payload_size", base.DEC)
 udp_size = ProtoField.int32("baichuan.udp_size", "udp_size", base.DEC)
 
 bc_protocol.fields = {
@@ -55,6 +56,7 @@ bc_protocol.fields = {
   udp_checksum,
   udp_packet_count,
   udp_last_ack_packet,
+  udp_ack_payload_size,
   udp_size,
 }
 
@@ -416,6 +418,7 @@ function get_udp_header(buffer)
   local udp_unknown3 = nil
   local udp_unknown4 = nil
   local udp_last_ack_packet = nil
+  local udp_ack_payload_size = nil
   local udp_connection_id = nil
   local udp_packet_count = nil
   if udp_class == 0x3a then
@@ -434,7 +437,7 @@ function get_udp_header(buffer)
     udp_unknown2 = buffer(12, 4):le_uint()
     udp_last_ack_packet = buffer(16, 4):le_uint()
     udp_unknown3 = buffer(20, 4):le_uint()
-    udp_unknown4 = buffer(24, 4):le_uint()
+    udp_ack_payload_size = buffer(24, 4):le_uint()
   elseif udp_class == 0x10 then
     udp_connection_id = buffer(4, 4):le_uint()
     udp_unknown1 = buffer(8, 4):le_uint()
@@ -455,6 +458,7 @@ function get_udp_header(buffer)
     connection_id = udp_connection_id,
     packet_count = udp_packet_count,
     last_ack_packet = udp_last_ack_packet,
+    ack_payload_size = udp_ack_payload_size
   }
 end
 
@@ -480,7 +484,7 @@ function process_udp_header(buffer, headers_tree)
     header:add_le(udp_unknown, buffer(12, 4))
     header:add_le(udp_last_ack_packet, buffer(16, 4))
     header:add_le(udp_unknown, buffer(20, 4))
-    header:add_le(udp_unknown, buffer(24, 4))
+    header:add_le(udp_ack_payload_size, buffer(24, 4))
   elseif header_data.class == 0x10 then
     header:add_le(udp_connection_id, buffer(4, 4))
     header:add_le(udp_unknown, buffer(8, 4))
@@ -687,6 +691,9 @@ function bc_protocol.dissector(buffer, pinfo, tree)
 
       elseif udp_header.class == 0x20 then
         pinfo.cols.protocol = bc_protocol.name .. " UDP ACK"
+        if udp_header.ack_payload_size > 0 then
+          tree:add(bc_protocol, buffer(25,udp_header.ack_payload_size), "BcUdp Ack Payload")
+        end
       else
         subbuffer = buffer(udp_header_len, nil)
       end

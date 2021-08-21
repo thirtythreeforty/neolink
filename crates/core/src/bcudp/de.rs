@@ -135,9 +135,15 @@ fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
     let (buf, connection_id) = le_i32(buf)?;
     let (buf, _unknown_a) = verify(le_u32, |&x| x == 0)(buf)?;
     let (buf, _unknown_b) = verify(le_u32, |&x| x == 0)(buf)?;
-    let (buf, packet_id) = le_u32(buf)?;
-    let (buf, _unknown_c) = le_u32(buf)?;
-    let (buf, _unknown_d) = verify(le_u32, |&x| x == 0)(buf)?;
+    let (buf, packet_id) = le_u32(buf)?; // This is the point at which the camera has contigious
+                                         // packets to
+    let (buf, _unknown) = le_u32(buf)?;
+    let (buf, payload_size) = le_u32(buf)?;
+    let (buf, _payload) = take!(buf, payload_size)?; // It is a binary payload of
+                                                     // `00 01 01 01 01 00 01`
+                                                     // Probably a truth map of missing packets
+                                                     // since last contigious packet_id up
+                                                     // to the last packet we sent and it recieved
 
     let data = UdpAck {
         connection_id,

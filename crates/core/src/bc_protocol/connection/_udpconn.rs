@@ -4,6 +4,9 @@ use crate::bc::model::*;
 use crate::bcudp;
 use crate::bcudp::{model::*, xml::*};
 use crate::RX_TIMEOUT;
+use crossbeam_channel::{
+    unbounded, Receiver, RecvError, RecvTimeoutError, SendError, SendTimeoutError, Sender,
+};
 use lazy_static::lazy_static;
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
@@ -16,7 +19,6 @@ use std::io::{BufRead, Error as IoError, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket};
 use std::sync::{
     atomic::{AtomicBool, AtomicU32, Ordering},
-    mpsc::{channel, Receiver, Sender},
     Arc, Mutex,
 };
 use std::thread::JoinHandle;
@@ -51,11 +53,12 @@ pub struct UdpSource {
     client_id: i32,
     camera_id: i32,
     mtu: u32,
-    outgoing: Arc<Mutex<HashMap<u32, QueuedMessage>>>,
-    incoming: Arc<Mutex<HashMap<u32, QueuedMessage>>>,
+
+    camera_acknowledged: Arc<AtomicU32>,
+    client_sent: Arc<AtomicU32>,
+    client_wants: Arc<AtomicU32>,
+    unacknowledged: Arc<Mutex<HashMap<u32, Vec<u8>>>>,
     aborter: AbortHandle,
-    next_to_consume: Arc<AtomicU32>,
-    next_send_message: Arc<AtomicU32>,
     // Buffered because a single read might not read a whole packet
     read_buffer: Buffered,
     write_buffer: Buffered,
@@ -65,12 +68,6 @@ pub struct UdpSource {
 struct Buffered {
     buffer: Vec<u8>,
     consumed: usize,
-}
-
-#[derive(Debug)]
-struct QueuedMessage {
-    buf: Vec<u8>,
-    time_last_tried: Option<OffsetDateTime>,
 }
 
 struct DiscoveryResult {
@@ -103,7 +100,7 @@ impl AbortHandle {
 }
 
 impl UdpSource {
-    fn get_socket(timeout: Duration) -> Result<UdpSocket> {
+    fn get_socket(_timeout: Duration) -> Result<UdpSocket> {
         // Select a random port to bind to
         let mut ports: Vec<u16> = (53500..54000).into_iter().collect();
         let mut rng = thread_rng();
@@ -116,6 +113,7 @@ impl UdpSource {
         let socket = UdpSocket::bind(&addrs[..])?;
         socket.set_read_timeout(Some(timeout))?;
         socket.set_write_timeout(Some(timeout))?;
+        // socket.set_nonblocking(true)?;
         socket.set_broadcast(true)?;
         Ok(socket)
     }
@@ -276,6 +274,7 @@ impl UdpSource {
         let mtu = MTU;
 
         for p2p_relay in P2P_RELAY_HOSTNAMES.iter() {
+            debug!("Trying register: {}", p2p_relay);
             let msg = BcUdp::Discovery(UdpDiscovery {
                 tid,
                 payload: UdpXml {
@@ -307,6 +306,18 @@ impl UdpSource {
                                         m2c_q_r: Some(m2c_q_r),
                                         ..
                                     },
+                            })) if m2c_q_r.reg.port == 0 || m2c_q_r.reg.ip.is_empty() => {
+                                // This register is empty
+                                abort.abort();
+                                break;
+                            }
+                            Ok(BcUdp::Discovery(UdpDiscovery {
+                                tid: _,
+                                payload:
+                                    UdpXml {
+                                        m2c_q_r: Some(m2c_q_r),
+                                        ..
+                                    },
                             })) => {
                                 abort.abort();
                                 return Ok(m2c_q_r);
@@ -321,10 +332,11 @@ impl UdpSource {
                 } else {
                     abort.abort();
                     // This p2p server didn't have the data we need try another
-                    continue;
+                    break;
                 }
             }
         }
+        debug!("All registers tried");
         Err(Error::ConnectionUnavaliable)
     }
 
@@ -344,10 +356,12 @@ impl UdpSource {
 
         let m2c_q_r = Self::get_register(uid, socket, timeout, tid)?;
 
+        debug!("Got this information from the register: {:?}", m2c_q_r);
+
         let register_address = m2c_q_r.reg;
         let relay_address = m2c_q_r.relay;
         let log_address = m2c_q_r.log;
-        let device_address = m2c_q_r.t;
+        // let device_address = m2c_q_r.t;
 
         debug!("Register address found: {:?}", register_address);
         debug!("Registering this address: {:?}", local_addr);
@@ -549,17 +563,16 @@ impl UdpSource {
         msg.serialize(&mut buf)?;
 
         // Just let this retry to max limit as we don't get a reply
-        let (amount_sent, _) = Self::retrying_send_to(
-            socket,
-            &buf[..],
-            format!("{}:{}", device_address.ip, device_address.port),
-        )?;
+        let (amount_sent, _) =
+            Self::retrying_send_to(socket, &buf[..], format!("{}:{}", dev_loc.ip, dev_loc.port))?;
         assert_eq!(amount_sent, buf.len());
 
-        let camera_address: SocketAddr = format!("{}:{}", device_address.ip, device_address.port)
+        let camera_address: SocketAddr = format!("{}:{}", dev_loc.ip, dev_loc.port)
             .to_socket_addrs()?
             .next()
             .ok_or(Error::ConnectionUnavaliable)?;
+
+        socket.connect(camera_address)?;
 
         Ok(DiscoveryResult {
             socket: socket.try_clone()?,
@@ -597,29 +610,33 @@ impl UdpSource {
     }
 
     pub fn new(uid: &str, timeout: Duration) -> Result<Self> {
-        Self::new_with_remote(uid, timeout, false)
+        Self::new_with_remote(uid, timeout, true)
     }
 
     fn new_with_remote(uid: &str, timeout: Duration, allow_remote: bool) -> Result<Self> {
         let discovery_result = Self::discover_from_uuid(uid, timeout, allow_remote)?;
         info!("UID {:?} found at {:?}", uid, discovery_result.address);
 
+        let (to_outgoing, outgoing) = unbounded();
+        let (incoming, from_incoming) = unbounded();
         let me = UdpSource {
             socket: discovery_result.socket,
             address: discovery_result.address,
             client_id: discovery_result.client_id,
             camera_id: discovery_result.camera_id,
             mtu: discovery_result.mtu,
-            incoming: Default::default(),
-            outgoing: Default::default(),
+            incoming: from_incoming,
+            outgoing: to_outgoing,
+            camera_acknowledged: Default::default(),
+            unacknowledged: Default::default(),
+            client_sent: Default::default(),
+            client_wants: Default::default(),
             aborter: AbortHandle::new(),
-            next_to_consume: Arc::new(AtomicU32::new(0)),
-            next_send_message: Arc::new(AtomicU32::new(0)),
             read_buffer: Default::default(),
             write_buffer: Default::default(),
         };
 
-        me.start_polling()?;
+        me.start_polling(outgoing, incoming)?;
 
         Ok(me)
     }
@@ -634,174 +651,141 @@ impl UdpSource {
             incoming: self.incoming.clone(),
             outgoing: self.outgoing.clone(),
             aborter: self.aborter.clone(),
-            next_to_consume: self.next_to_consume.clone(),
-            next_send_message: self.next_send_message.clone(),
+            camera_acknowledged: self.camera_acknowledged.clone(),
+            unacknowledged: self.unacknowledged.clone(),
+            client_sent: self.client_sent.clone(),
+            client_wants: self.client_wants.clone(),
             // These are not shared mutable so they don't pollute each other buffer
-            read_buffer: self.read_buffer.clone(),
-            write_buffer: self.write_buffer.clone(),
+            read_buffer: Default::default(),
+            write_buffer: Default::default(),
         })
     }
 
-    fn start_polling(&self) -> IoResult<()> {
-        self.start_polling_recv()?;
-        self.start_polling_send()?;
+    fn start_polling(
+        &self,
+        outgoing: Receiver<Vec<u8>>,
+        incoming: Sender<Vec<u8>>,
+    ) -> IoResult<()> {
         Ok(())
     }
 
-    fn handle_ack(
-        next_to_consume: u32,
-        camera_id: i32,
-        incoming: &mut HashMap<u32, QueuedMessage>,
-        socket: &UdpSocket,
-    ) {
-        // Send an acknoledge.
-        // we want the next packet that's missing after the
-        // last consumed packet.
-        let mut next_packet = next_to_consume;
-        loop {
-            if incoming.get(&next_packet).is_none() {
-                break;
-            } else {
-                next_packet += 1;
-            }
-        }
-        if next_packet > 0 {
-            let last_received_contigous_packet = next_packet - 1;
-            let ack_msg = BcUdp::Ack(UdpAck {
-                connection_id: camera_id,
-                packet_id: last_received_contigous_packet,
-            });
-            debug!("Re ack packet: {}", last_received_contigous_packet);
-            let mut ack_buf = vec![];
-            if ack_msg.serialize(&mut ack_buf).is_ok() {
-                if let Ok(amount_sent) = socket.send(&ack_buf[..]) {
-                    assert_eq!(amount_sent, ack_buf.len());
-                } else {
-                    error!("Unable to send acknoledgement");
-                }
-            } else {
-                error!("Unable to serialize acknoledgement");
-            }
-        }
-    }
-
-    fn start_polling_recv(&self) -> IoResult<()> {
-        let thread_aborter = self.aborter.clone();
-        let thread_incoming = self.incoming.clone();
-        let thread_outgoing = self.outgoing.clone();
+    fn start_polling_outgoing(&self, outgoing: Receiver<Vec<u8>>) -> IoResult<()> {
         let thread_socket = self.socket.try_clone()?;
-        let thread_mtu = self.mtu;
-        let thread_client_id = self.client_id;
+        let thread_aborter = self.aborter.clone();
         let thread_camera_id = self.camera_id;
-        let thread_next_consumed = self.next_to_consume.clone();
+        let thread_client_sent = self.client_sent.clone();
 
         std::thread::spawn(move || {
             while !thread_aborter.is_aborted() {
-                debug!("Poll UDP Read");
-                // Reciving
-                let mut read_buf = vec![0_u8; thread_mtu as usize];
-                if let Ok(bytes_read) = thread_socket.recv(&mut read_buf[..]) {
-                    match BcUdp::deserialize(&read_buf[0..bytes_read]) {
-                        Ok(BcUdp::Discovery(UdpDiscovery {
-                            payload:
-                                UdpXml {
-                                    d2c_disc: Some(D2cDisc { cid, did }),
-                                    ..
-                                },
-                            ..
-                        })) if cid == thread_client_id && did == thread_camera_id => {
+                match outgoing.recv_timeout(RX_TIMEOUT) {
+                    Ok(msg) => {
+                        let packet_id = thread_client_sent.fetch_add(1, Ordering::Relaxed);
+                        let bcudp_msg = BcUdp::Data(UdpData {
+                            connection_id: thread_camera_id,
+                            packet_id,
+                            payload: msg,
+                        });
+
+                        let mut buf = vec![];
+                        if let Err(e) = bcudp_msg.serialize(&mut buf) {
+                            error!("Failed to serialize bcudp: {:?}, Err: {:?}", bcudp_msg, e);
                             thread_aborter.abort();
-                            debug!("Client requested disconnect")
+                            break;
                         }
-                        Ok(BcUdp::Discovery(packet)) => {
-                            warn!("Got unexpected discovery packet: {:?}", packet)
-                        }
-                        Ok(BcUdp::Ack(UdpAck {
-                            connection_id: cid,
-                            packet_id,
-                        })) if cid == thread_client_id => {
-                            // Camera got our message remove older ones from the send queue
-                            debug!("Got acknoledgment of {}", packet_id);
-                            thread_outgoing
-                                .lock()
-                                .unwrap()
-                                .retain(|&k, _| k > packet_id);
-                            // Queue for resend now
-                            thread_outgoing
-                                .lock()
-                                .unwrap()
-                                .iter_mut()
-                                .for_each(|(_, v)| v.time_last_tried = None);
 
-                            Self::handle_ack(
-                                thread_next_consumed.load(Ordering::Relaxed),
-                                thread_camera_id,
-                                &mut *thread_incoming.lock().unwrap(),
-                                &thread_socket,
-                            );
+                        if let Err(e) = thread_socket.send(&buf) {
+                            error!("Failed to send udp data: {:?}, Err: {:?}", bcudp_msg, e);
+                            thread_aborter.abort();
+                            break;
                         }
-                        Ok(BcUdp::Data(UdpData {
-                            connection_id: cid,
-                            packet_id,
-                            payload,
-                        })) if cid == thread_client_id => {
-                            // Got some data add it to our buffer
-                            let consumed_packet = thread_next_consumed.load(Ordering::Relaxed);
-                            if packet_id >= consumed_packet {
-                                debug!("Reciving UDP data packet with ID: {}", packet_id);
-                                thread_incoming.lock().unwrap().insert(
-                                    packet_id,
-                                    QueuedMessage {
-                                        buf: payload,
-                                        time_last_tried: None,
-                                    },
-                                );
-
-                                Self::handle_ack(
-                                    thread_next_consumed.load(Ordering::Relaxed),
-                                    thread_camera_id,
-                                    &mut *thread_incoming.lock().unwrap(),
-                                    &thread_socket,
-                                );
-                            }
-                        }
-                        Ok(bcudp) => warn!("Unexpected bcudp received {:?}", bcudp),
-                        Err(e) => error!("Unable to poll from udp socket {:?}", e),
+                    }
+                    Err(RecvTimeoutError::Timeout) => {}
+                    Err(RecvTimeoutError::Disconnected) => {
+                        break;
                     }
                 }
             }
         });
-
         Ok(())
     }
 
-    fn start_polling_send(&self) -> IoResult<()> {
-        let thread_aborter = self.aborter.clone();
-        let thread_outgoing = self.outgoing.clone();
+    fn start_polling_ack(&self) -> IoResult<()> {
         let thread_socket = self.socket.try_clone()?;
+        let thread_aborter = self.aborter.clone();
+        let thread_unacknowledged = self.unacknowledged.clone();
+        std::thread::spawn(move || while !thread_aborter.is_aborted() {});
+        Ok(())
+    }
+
+    fn start_polling_incoming(&self, incoming: Sender<Vec<u8>>) -> IoResult<()> {
+        let mut thread_socket = self.socket.try_clone()?;
+        let thread_aborter = self.aborter.clone();
+        let thread_mtu = self.mtu;
+        let thread_camera_acknowledged = self.camera_acknowledged.clone();
+        let thread_client_wants = self.client_wants.clone();
+        let thread_client_id = self.client_id;
+        let thread_camera_id = self.camera_id;
 
         std::thread::spawn(move || {
             while !thread_aborter.is_aborted() {
-                // debug!("Poll UDP Send");
-                let now = OffsetDateTime::now_utc();
-                for (packet_id, message) in thread_outgoing.lock().unwrap().iter_mut() {
-                    let mut should_send = false;
-                    if let Some(&time_last_tried) = message.time_last_tried.as_ref() {
-                        if (now - time_last_tried) >= WAIT_TIME {
-                            should_send = true;
+                let mut buf = vec![0; thread_mtu as usize];
+                if let Ok(new_size) = thread_socket.recv(&mut buf) {
+                    match BcUdp::deserialize(&buf[0..new_size]) {
+                        Ok(bcudp_msg) => {
+                            match bcudp_msg {
+                                BcUdp::Discovery(UdpDiscovery {
+                                    payload:
+                                        UdpXml {
+                                            d2c_disc: Some(D2cDisc { cid, did }),
+                                            ..
+                                        },
+                                    ..
+                                }) if cid == thread_client_id && did == thread_camera_id => {
+                                    thread_aborter.abort();
+                                    debug!("Client requested disconnect")
+                                }
+                                BcUdp::Discovery(packet) => {
+                                    debug!("Got unexpected discovery packet: {:?}", packet)
+                                }
+                                BcUdp::Ack(UdpAck {
+                                    connection_id,
+                                    packet_id,
+                                }) if connection_id == thread_client_id => {
+                                    thread_camera_acknowledged
+                                        .fetch_max(packet_id, Ordering::Acquire);
+                                }
+                                BcUdp::Data(UdpData {
+                                    connection_id: cid,
+                                    packet_id,
+                                    payload,
+                                }) if cid == thread_client_id => {
+                                    if let Ok(_) = thread_client_wants.fetch_update(
+                                        Ordering::SeqCst,
+                                        Ordering::SeqCst,
+                                        |v| {
+                                            if v == packet_id {
+                                                Some(v + 1)
+                                            } else {
+                                                None
+                                            }
+                                        },
+                                    ) {
+                                        match incoming.send(payload) {
+                                            Ok(msg) => {}
+                                            Err(_) => {
+                                                error!("Failed to get payload from UDP");
+                                                thread_aborter.abort();
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            };
                         }
-                    } else {
-                        should_send = true;
-                    }
-                    if should_send {
-                        debug!(
-                            "Sending message ID {} with payload len {}",
-                            packet_id,
-                            message.buf.len()
-                        );
-                        message.time_last_tried = Some(now);
-                        if let Err(e) = thread_socket.send(&message.buf[..]) {
-                            error!("Failed to send message on udp: {:?}", e);
+                        Err(e) => {
+                            error!("Cannot deser UDP msg: {:?}", e);
+                            thread_aborter.abort();
+                            break;
                         }
                     }
                 }
@@ -851,35 +835,34 @@ impl Read for UdpSource {
 
 impl BufRead for UdpSource {
     fn fill_buf(&mut self) -> IoResult<&[u8]> {
-        const CLEAR_CONSUMED_AT: usize = 1024;
-        // This is a trade off between caching too much dead memory
-        // and calling the drain method too often
-        if self.read_buffer.consumed > CLEAR_CONSUMED_AT {
-            let _ = self
-                .read_buffer
-                .buffer
-                .drain(0..self.read_buffer.consumed)
-                .collect::<Vec<u8>>();
-            self.read_buffer.consumed = 0;
-        }
-        if self.read_buffer.buffer.len() <= self.read_buffer.consumed {
-            // Get next packet of the read queue
-            let start_time = OffsetDateTime::now_utc();
-            while (start_time - OffsetDateTime::now_utc()) < RX_TIMEOUT {
-                if let Some(msg) = self
-                    .incoming
-                    .lock()
-                    .unwrap()
-                    .remove(&self.next_to_consume.load(Ordering::Relaxed))
-                {
-                    self.next_to_consume.fetch_add(1, Ordering::Relaxed);
-                    self.read_buffer.buffer.extend(msg.buf);
-                    break;
-                }
-            }
-        }
-
-        Ok(&self.read_buffer.buffer.as_slice()[self.read_buffer.consumed..])
+        // const CLEAR_CONSUMED_AT: usize = 1024;
+        // // This is a trade off between caching too much dead memory
+        // // and calling the drain method too often
+        // if self.read_buffer.consumed > CLEAR_CONSUMED_AT {
+        //     let _ = self
+        //         .read_buffer
+        //         .buffer
+        //         .drain(0..self.read_buffer.consumed)
+        //         .collect::<Vec<u8>>();
+        //     self.read_buffer.consumed = 0;
+        // }
+        // if self.read_buffer.buffer.len() <= self.read_buffer.consumed {
+        //     // Get next packet of the read queue
+        //     let start_time = OffsetDateTime::now_utc();
+        //     while (start_time - OffsetDateTime::now_utc()) < RX_TIMEOUT {
+        //         let mut lock = self.incoming.lock().unwrap();
+        //         if (*lock).contains_key(&self.next_to_consume.load(Ordering::Relaxed)) {
+        //             let next = self.next_to_consume.fetch_add(1, Ordering::Relaxed);
+        //             debug!("Removing: {}", next);
+        //             if let Some(msg) = lock.remove(&next) {
+        //                 self.read_buffer.buffer.extend(msg.buf);
+        //                 break;
+        //             }
+        //         }
+        //     }
+        // }
+        //
+        // Ok(&self.read_buffer.buffer.as_slice()[self.read_buffer.consumed..])
     }
 
     fn consume(&mut self, amt: usize) {
@@ -891,53 +874,53 @@ impl BufRead for UdpSource {
 const UDPDATA_HEADER_SIZE: usize = 20;
 impl Write for UdpSource {
     fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
-        if self.aborter.is_aborted() {
-            return Err(IoError::new(
-                std::io::ErrorKind::ConnectionAborted,
-                "Connection dropped",
-            ));
-        }
-        self.write_buffer.buffer.extend(buf.to_vec());
-        if self.write_buffer.buffer.len() > self.mtu as usize - UDPDATA_HEADER_SIZE {
-            let _ = self.flush();
-        }
-        Ok(buf.len())
+        // if self.aborter.is_aborted() {
+        //     return Err(IoError::new(
+        //         std::io::ErrorKind::ConnectionAborted,
+        //         "Connection dropped",
+        //     ));
+        // }
+        // self.write_buffer.buffer.extend(buf.to_vec());
+        // if self.write_buffer.buffer.len() > self.mtu as usize - UDPDATA_HEADER_SIZE {
+        //     let _ = self.flush();
+        // }
+        // Ok(buf.len())
     }
 
     fn flush(&mut self) -> IoResult<()> {
-        if self.aborter.is_aborted() {
-            return Err(IoError::new(
-                std::io::ErrorKind::ConnectionAborted,
-                "Connection dropped",
-            ));
-        }
-        for chunk in self
-            .write_buffer
-            .buffer
-            .chunks(self.mtu as usize - UDPDATA_HEADER_SIZE)
-        {
-            let packet_id = self.next_send_message.fetch_add(1, Ordering::Relaxed);
-            let msg = BcUdp::Data(UdpData {
-                connection_id: self.camera_id,
-                packet_id,
-                payload: chunk.to_vec(),
-            });
-            let mut buf = vec![];
-            // If this errors it is unrecoverable
-            //
-            // It really shouldn't be able to Err though
-            msg.serialize(&mut buf)
-                .expect("Failed to serialize UDP Data");
-            debug!("Writing");
-            self.outgoing.lock().unwrap().insert(
-                packet_id,
-                QueuedMessage {
-                    time_last_tried: None,
-                    buf,
-                },
-            );
-        }
-        self.write_buffer.buffer.clear();
-        Ok(())
+        // if self.aborter.is_aborted() {
+        //     return Err(IoError::new(
+        //         std::io::ErrorKind::ConnectionAborted,
+        //         "Connection dropped",
+        //     ));
+        // }
+        // for chunk in self
+        //     .write_buffer
+        //     .buffer
+        //     .chunks(self.mtu as usize - UDPDATA_HEADER_SIZE)
+        // {
+        //     let packet_id = self.next_send_message.fetch_add(1, Ordering::Relaxed);
+        //     let msg = BcUdp::Data(UdpData {
+        //         connection_id: self.camera_id,
+        //         packet_id,
+        //         payload: chunk.to_vec(),
+        //     });
+        //     let mut buf = vec![];
+        //     // If this errors it is unrecoverable
+        //     //
+        //     // It really shouldn't be able to Err though
+        //     msg.serialize(&mut buf)
+        //         .expect("Failed to serialize UDP Data");
+        //     debug!("Writing");
+        //     self.outgoing.lock().unwrap().insert(
+        //         packet_id,
+        //         QueuedMessage {
+        //             time_last_tried: None,
+        //             buf,
+        //         },
+        //     );
+        // }
+        // self.write_buffer.buffer.clear();
+        // Ok(())
     }
 }

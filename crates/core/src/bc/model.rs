@@ -32,6 +32,8 @@ pub const MSG_ID_TALK: u32 = 202;
 pub const MSG_ID_GET_LED_STATUS: u32 = 208;
 /// Setting the LED status is done with this ID
 pub const MSG_ID_SET_LED_STATUS: u32 = 209;
+/// UDP Keep alive
+pub const MSG_ID_UDP_KEEP_ALIVE: u32 = 234;
 
 /// An empty password in legacy format
 pub const EMPTY_LEGACY_PASSWORD: &str =
