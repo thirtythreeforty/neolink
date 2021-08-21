@@ -189,7 +189,12 @@ end
 
 function get_header_len(buffer)
   local magic = buffer(0, 4):le_uint()
-  if magic ~= 0x0abcdef0 then
+  if magic == 0x0abcdef0 then
+    -- Client <-> BC
+  elseif magic == 0x0fedcba0 then
+    -- BC <-> BC
+  else
+    -- Unknown magic
     return -1 -- No header found
   end
   local header_len = header_lengths[buffer(18, 2):le_uint()]
@@ -400,7 +405,6 @@ function get_udp_header_len(buffer)
     elseif udptype == 0x10 then
       return 20
     else
-      print("Unknown udp type")
       return -1
     end
   end
@@ -668,7 +672,6 @@ function process_bc_message(buffer, pinfo, tree)
 end
 
 function bc_protocol.init ()
-   -- print ("(re-)initialise")
    fragments = {}
 end
 
@@ -733,22 +736,18 @@ end
 
 local function heuristic_checker_udp(buffer, pinfo, tree)
     -- guard for length
-    print("UDP Heur")
     length = buffer:len()
     if length < 4 then return false end
-    print("LEN GOOD")
     local potential_magic = buffer(0,4):le_uint()
-    print("MAGIC??? " .. string.format("%x", potential_magic))
 
-    if potential_magic ~= 0x2a87cf3a  and 
+    if potential_magic ~= 0x2a87cf3a  and
         potential_magic ~= 0x2a87cf20 and
         potential_magic ~= 0x2a87cf10 and
         potential_magic ~= 0x2a87cf31 then
 
       return false
     end
-  
-    print("YEP")
+
     bc_protocol.dissector(buffer, pinfo, tree)
     return true
 end
@@ -759,8 +758,11 @@ local function heuristic_checker_tcp(buffer, pinfo, tree)
     if length < 4 then return false end
 
     local potential_magic = buffer(0,4):le_uint()
-    if potential_magic ~= 0xabcdef0  then return false end
-  
+    if potential_magic ~= 0xabcdef0 and
+        potential_magic ~= 0x0fedcba0  then
+      return false
+    end
+
     bc_protocol.dissector(buffer, pinfo, tree)
     return true
 end
@@ -776,4 +778,3 @@ bc_protocol:register_heuristic("tcp", heuristic_checker_tcp)
 -- DissectorTable.get("udp.port"):add(2018, bc_protocol)
 -- DissectorTable.get("udp.port"):add(2000, bc_protocol)
 -- DissectorTable.get("udp.port"):add(9999, bc_protocol)
-
