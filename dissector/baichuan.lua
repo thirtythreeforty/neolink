@@ -692,7 +692,7 @@ function bc_protocol.dissector(buffer, pinfo, tree)
       elseif udp_header.class == 0x20 then
         pinfo.cols.protocol = bc_protocol.name .. " UDP ACK"
         if udp_header.ack_payload_size > 0 then
-          tree:add(bc_protocol, buffer(25,udp_header.ack_payload_size), "BcUdp Ack Payload")
+          tree:add(bc_protocol, buffer(28,udp_header.ack_payload_size), "BcUdp Ack Payload")
         end
       else
         subbuffer = buffer(udp_header_len, nil)
