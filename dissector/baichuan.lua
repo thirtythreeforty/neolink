@@ -716,6 +716,7 @@ function bc_protocol.dissector(buffer, pinfo, tree)
 end
 --- END UDP CONTENT
 
+local added_udp_ports = {}
 local function heuristic_checker_udp(buffer, pinfo, tree)
     -- guard for length
     local length = buffer:len()
@@ -728,6 +729,15 @@ local function heuristic_checker_udp(buffer, pinfo, tree)
         potential_magic ~= 0x2a87cf31 then
 
       return false
+    end
+
+    if added_udp_ports[pinfo.dst_port] == nil then
+      table.insert(added_udp_ports, pinfo.dst_port)
+      DissectorTable.get("udp.port"):add(pinfo.dst_port, bc_protocol)
+    end
+    if added_udp_ports[pinfo.src_port] == nil then
+      table.insert(added_udp_ports, pinfo.src_port)
+      DissectorTable.get("udp.port"):add(pinfo.src_port, bc_protocol)
     end
 
     bc_protocol.dissector(buffer, pinfo, tree)
