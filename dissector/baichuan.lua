@@ -2,35 +2,35 @@
 -- Copy/symlink it into ~/.local/lib/wireshark/plugins/ and restart Wireshark; it should
 -- automatically attempt to decode TCP connections on port 9000.
 
-bc_protocol = Proto("Baichuan",  "Baichuan/Reolink IP Camera Protocol")
+local bc_protocol = Proto("Baichuan",  "Baichuan/Reolink IP Camera Protocol")
 
-magic_bytes = ProtoField.int32("baichuan.magic", "magic", base.DEC)
-message_id =  ProtoField.int32("baichuan.msg_id", "messageId", base.DEC)
-message_len = ProtoField.int32("baichuan.msg_len", "messageLen", base.DEC)
-xml_enc_offset = ProtoField.int8("baichuan.xml_encryption_offset", "xmlEncryptionOffset", base.DEC)
-encrypt_xml = ProtoField.bool("baichuan.encrypt_xml", "encrypt_xml", base.NONE)
-channel_id =  ProtoField.int8("baichuan.channel_id", "channel_id", base.DEC)
-stream_id = ProtoField.int8("baichuan.stream_id", "streamID", base.DEC)
-unknown = ProtoField.int8("baichuan.unknown", "unknown", base.DEC)
-msg_handle = ProtoField.int8("baichuan.message_handle", "messageHandle", base.DEC)
-status_code = ProtoField.int16("baichuan.status_code", "status_code", base.DEC)
-message_class = ProtoField.int32("baichuan.msg_class", "messageClass", base.DEC)
-f_bin_offset = ProtoField.int32("baichuan.bin_offset", "binOffset", base.DEC)
-username = ProtoField.string("baichuan.username", "username", base.ASCII)
-password = ProtoField.string("baichuan.password", "password", base.ASCII)
+local magic_bytes = ProtoField.int32("baichuan.magic", "magic", base.DEC)
+local message_id =  ProtoField.int32("baichuan.msg_id", "messageId", base.DEC)
+local message_len = ProtoField.int32("baichuan.msg_len", "messageLen", base.DEC)
+local xml_enc_offset = ProtoField.int8("baichuan.xml_encryption_offset", "xmlEncryptionOffset", base.DEC)
+local encrypt_xml = ProtoField.bool("baichuan.encrypt_xml", "encrypt_xml", base.NONE)
+local channel_id =  ProtoField.int8("baichuan.channel_id", "channel_id", base.DEC)
+local stream_id = ProtoField.int8("baichuan.stream_id", "streamID", base.DEC)
+local unknown = ProtoField.int8("baichuan.unknown", "unknown", base.DEC)
+local msg_handle = ProtoField.int8("baichuan.message_handle", "messageHandle", base.DEC)
+local status_code = ProtoField.int16("baichuan.status_code", "status_code", base.DEC)
+local message_class = ProtoField.int32("baichuan.msg_class", "messageClass", base.DEC)
+local f_bin_offset = ProtoField.int32("baichuan.bin_offset", "binOffset", base.DEC)
+local username = ProtoField.string("baichuan.username", "username", base.ASCII)
+local password = ProtoField.string("baichuan.password", "password", base.ASCII)
 
 -- UDP Related content
-udp_magic = ProtoField.int32("baichuan.udp_magic", "udp_magic", base.DEC)
-udp_type = ProtoField.int8("baichuan.udp_type", "udp_type", base.DEC)
-udp_message_id = ProtoField.int8("baichuan.udp_message_id", "udp_message_id", base.DEC)
-udp_connection_id = ProtoField.int32("baichuan.udp_connection_id", "udp_connection_id", base.DEC)
-udp_unknown = ProtoField.int32("baichuan.udp_unknown", "udp_unknown", base.DEC)
-udp_tid = ProtoField.int32("baichuan.udp_tid", "udp_tid", base.DEC)
-udp_checksum = ProtoField.int32("baichuan.udp_checksum", "udp_checksum", base.DEC)
-udp_packet_count = ProtoField.int32("baichuan.udp_packet_count", "udp_packet_count", base.DEC)
-udp_last_ack_packet = ProtoField.int32("baichuan.udp_last_ack_packet", "udp_last_ack_packet", base.DEC)
-udp_ack_payload_size = ProtoField.int32("baichuan.udp_ack_payload_size", "ack_payload_size", base.DEC)
-udp_size = ProtoField.int32("baichuan.udp_size", "udp_size", base.DEC)
+local udp_magic = ProtoField.int32("baichuan.udp_magic", "udp_magic", base.DEC)
+local udp_type = ProtoField.int8("baichuan.udp_type", "udp_type", base.DEC)
+local udp_message_id = ProtoField.int8("baichuan.udp_message_id", "udp_message_id", base.DEC)
+local udp_connection_id = ProtoField.int32("baichuan.udp_connection_id", "udp_connection_id", base.DEC)
+local udp_unknown = ProtoField.int32("baichuan.udp_unknown", "udp_unknown", base.DEC)
+local udp_tid = ProtoField.int32("baichuan.udp_tid", "udp_tid", base.DEC)
+local udp_checksum = ProtoField.int32("baichuan.udp_checksum", "udp_checksum", base.DEC)
+local udp_packet_count = ProtoField.int32("baichuan.udp_packet_count", "udp_packet_count", base.DEC)
+local udp_last_ack_packet = ProtoField.int32("baichuan.udp_last_ack_packet", "udp_last_ack_packet", base.DEC)
+local udp_ack_payload_size = ProtoField.int32("baichuan.udp_ack_payload_size", "ack_payload_size", base.DEC)
+local udp_size = ProtoField.int32("baichuan.udp_size", "udp_size", base.DEC)
 
 bc_protocol.fields = {
   magic_bytes,
@@ -60,7 +60,7 @@ bc_protocol.fields = {
   udp_size,
 }
 
-message_types = {
+local message_types = {
   [1]="login", -- <Encryption> <LoginUser>/<LoginNet> <DeviceInfo>/<StreamInfoList>
   [2]="logout",
   [3]="<Preview> (video)",
@@ -163,21 +163,21 @@ message_types = {
   [274]="<findAlarmVideo>",
 }
 
-message_classes = {
+local message_classes = {
   [0x6514]="legacy",
   [0x6614]="modern",
   [0x6414]="modern",
   [0x0000]="modern",
 }
 
-header_lengths = {
+local header_lengths = {
   [0x6514]=20,
   [0x6614]=20,
   [0x6414]=24,
   [0x0000]=24,
 }
 
-function xml_encrypt(ba, offset)
+local function xml_decrypt(ba, offset)
   local key = "\031\045\060\075\090\105\120\255" -- 1f, 2d, 3c, 4b, 5a, 69, 78 ,ff
   local e = ByteArray.new()
   e:set_size(ba:len())
@@ -187,13 +187,9 @@ function xml_encrypt(ba, offset)
   return e
 end
 
-function get_header_len(buffer)
+local function get_header_len(buffer)
   local magic = buffer(0, 4):le_uint()
-  if magic == 0x0abcdef0 then
-    -- Client <-> BC
-  elseif magic == 0x0fedcba0 then
-    -- BC <-> BC
-  else
+  if magic ~= 0x0abcdef0 and magic ~= 0x0fedcba0 then
     -- Unknown magic
     return -1 -- No header found
   end
@@ -201,19 +197,18 @@ function get_header_len(buffer)
   return header_len
 end
 
-function get_header(buffer)
+local function get_header(buffer)
   -- bin_offset is either nil (no binary data) or nonzero
   -- TODO: bin_offset is actually stateful!
   local bin_offset = nil
-  local status_code = nil
-  local encrypt_xml = nil
+  local return_code = nil
+  local encr_xml = nil
   local header_len = header_lengths[buffer(18, 2):le_uint()]
-  local msg_type = buffer(4, 4):le_uint()
   if header_len == 24 then
     bin_offset = buffer(20, 4):le_uint() -- if NHD-805/806 legacy protocol 30 30 30 30 aka "0000"
-    status_code =  buffer(16, 2):le_uint()
+    return_code =  buffer(16, 2):le_uint()
   else
-    encrypt_xml = buffer(16, 1):le_uint()
+    encr_xml = buffer(16, 1):le_uint()
   end
   local msg_type = buffer(4, 4):le_uint()
   local stream_text = "HD (Clear)"
@@ -225,23 +220,23 @@ function get_header(buffer)
     msg_type = buffer(4, 4):le_uint(),
     msg_type_str = message_types[msg_type] or "unknown",
     msg_len = buffer(8, 4):le_uint(),
-    encrypt_xml = encrypt_xml,
+    encrypt_xml = encr_xml,
     channel_id = buffer(12, 1):le_uint(),
     enc_offset = buffer(12, 1):le_uint(),
     stream_type = stream_text,
     unknown = buffer(14, 1):le_uint(),
     msg_handle = buffer(15, 1):le_uint(),
     msg_cls = buffer(18, 2):le_uint(),
-    status_code = status_code,
+    status_code = return_code,
     class = message_classes[buffer(18, 2):le_uint()],
     header_len = header_lengths[buffer(18, 2):le_uint()],
     bin_offset = bin_offset,
   }
 end
 
-function process_header(buffer, headers_tree)
+local function process_header(buffer, headers_tree)
   local header_data = get_header(buffer)
-  local header = headers_tree:add(bc_protocol, buffer(0, header_len),
+  local header = headers_tree:add(bc_protocol, buffer(0, header_data.header_len),
     "Baichuan Message Header, length: " .. header_data.header_len .. ", type " .. header_data.msg_type)
   local stream_text = " HD (Clear)"
   if buffer(13, 1):le_uint() == 1 then
@@ -269,10 +264,10 @@ function process_header(buffer, headers_tree)
   else
     header:add_le(encrypt_xml, buffer(16, 1))
   end
-  return header_len
+  return header_data.header_len
 end
 
-function process_body(header, body_buffer, bc_subtree, pinfo)
+local function process_body(header, body_buffer, bc_subtree, pinfo)
   if header.msg_len == 0 then
     return
   end
@@ -295,9 +290,9 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
       local body_tvb = xml_buffer:tvb("Meta Payload")
       body:add(body_tvb(), "Meta Payload")
       if xml_len >= 4 then
-        if xml_encrypt(xml_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
+        if xml_decrypt(xml_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
           local ba = xml_buffer:bytes()
-          local decrypted = xml_encrypt(ba, header.enc_offset)
+          local decrypted = xml_decrypt(ba, header.enc_offset)
           body_tvb = decrypted:tvb("Decrypted XML (in Meta Payload)")
           -- Create a tree item that, when clicked, automatically shows the tab we just created
           body:add(body_tvb(), "Decrypted XML (in Meta Payload)")
@@ -315,11 +310,11 @@ function process_body(header, body_buffer, bc_subtree, pinfo)
       local bin_len = header.msg_len - header.bin_offset
       if bin_len > 0 then
         local binary_buffer = body_buffer(header.bin_offset, bin_len) -- Don't extend beyond msg size
-        body_tvb = binary_buffer:tvb("Main Payload");
+        local body_tvb = binary_buffer:tvb("Main Payload");
         body:add(body_tvb(), "Main Payload")
         if bin_len > 4 then
-          if xml_encrypt(binary_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
-            local decrypted = xml_encrypt(binary_buffer:bytes(), header.enc_offset)
+          if xml_decrypt(binary_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
+            local decrypted = xml_decrypt(binary_buffer:bytes(), header.enc_offset)
             body_tvb = decrypted:tvb("Decrypted XML (in Main Payload)")
             -- Create a tree item that, when clicked, automatically shows the tab we just created
             body:add(body_tvb(), "Decrypted XML (in Main Payload)")
@@ -338,13 +333,13 @@ end
 
 
 -- UDP CONTENT
-udp_fragments = {}
+local udp_fragments = {}
 
-function rshift(x, by)
+local function rshift(x, by)
   return math.floor(x / 2 ^ by)
 end
 
-function udp_decrypt(data, tid)
+local function udp_decrypt(data, tid)
   local result = ByteArray.new()
   result:set_size(data:len())
   local key = {
@@ -367,7 +362,7 @@ function udp_decrypt(data, tid)
     local index = bit32.band(x, 7)
     local xor_key_word = key[index + 1]
     for b=0, 3 do
-      byte_index = x * 4 + b
+      local byte_index = x * 4 + b
       local val = data:get_index(byte_index)
       local key_byte = bit32.extract(xor_key_word, b*8, 8)
       val = bit32.bxor(key_byte, val)
@@ -380,22 +375,13 @@ function udp_decrypt(data, tid)
   return result
 end
 
-function xml_encrypt(ba, offset)
-  local key = "\031\045\060\075\090\105\120\255" -- 1f, 2d, 3c, 4b, 5a, 69, 78 ,ff
-  local e = ByteArray.new()
-  e:set_size(ba:len())
-  for i=0,ba:len() - 1 do
-    e:set_index(i, bit32.bxor(bit32.band(offset, 0xFF), bit32.bxor(ba:get_index(i), key:byte(((i + offset) % 8) + 1))))
-  end
-  return e
-end
 
-function get_udp_header_len(buffer)
+local function get_udp_header_len(buffer)
   local udpmagic = buffer(1, 3):le_uint()
   if not udpmagic == 0x2a87cf then
     return 0
   else
-    udptype = buffer(0, 1):le_uint()
+    local udptype = buffer(0, 1):le_uint()
     if udptype == 0x3a then
       return 20
     elseif udptype == 0x31 then
@@ -410,63 +396,63 @@ function get_udp_header_len(buffer)
   end
 end
 
-function get_udp_header(buffer)
+local function get_udp_header(buffer)
   local udp_class = buffer(0, 1):le_uint()
-  local udp_magic = buffer(1, 3):le_uint()
+  local l_udp_magic = buffer(1, 3):le_uint()
   local length = get_udp_header_len(buffer)
-  local udp_size = nil
+  local l_udp_size = nil
   local udp_unknown1 = nil
-  local udp_tid = nil
-  local udp_checksum = nil
+  local l_udp_tid = nil
+  local l_udp_checksum = nil
   local udp_unknown2 = nil
   local udp_unknown3 = nil
   local udp_unknown4 = nil
-  local udp_last_ack_packet = nil
-  local udp_ack_payload_size = nil
-  local udp_connection_id = nil
-  local udp_packet_count = nil
+  local l_udp_last_ack_packet = nil
+  local l_udp_ack_payload_size = nil
+  local l_udp_connection_id = nil
+  local l_udp_packet_count = nil
   if udp_class == 0x3a then
-    udp_size = buffer(4, 4):le_uint()
+    l_udp_size = buffer(4, 4):le_uint()
     udp_unknown1 = buffer(8, 4):le_uint()
-    udp_tid = buffer(12, 4):le_uint()
-    udp_checksum = buffer(16, 4):le_uint()
+    l_udp_tid = buffer(12, 4):le_uint()
+    l_udp_checksum = buffer(16, 4):le_uint()
   elseif udp_class == 0x31 then
-    udp_size = buffer(4, 4):le_uint()
+    l_udp_size = buffer(4, 4):le_uint()
     udp_unknown1 = buffer(8, 4):le_uint()
-    udp_tid = buffer(12, 4):le_uint()
-    udp_checksum = buffer(16, 4):le_uint()
+    l_udp_tid = buffer(12, 4):le_uint()
+    l_udp_checksum = buffer(16, 4):le_uint()
   elseif udp_class == 0x20 then
-    udp_connection_id = buffer(4, 4):le_uint()
+    l_udp_connection_id = buffer(4, 4):le_uint()
     udp_unknown1 = buffer(8, 4):le_uint()
     udp_unknown2 = buffer(12, 4):le_uint()
-    udp_last_ack_packet = buffer(16, 4):le_uint()
+    l_udp_last_ack_packet = buffer(16, 4):le_uint()
     udp_unknown3 = buffer(20, 4):le_uint()
-    udp_ack_payload_size = buffer(24, 4):le_uint()
+    l_udp_ack_payload_size = buffer(24, 4):le_uint()
   elseif udp_class == 0x10 then
-    udp_connection_id = buffer(4, 4):le_uint()
+    l_udp_connection_id = buffer(4, 4):le_uint()
     udp_unknown1 = buffer(8, 4):le_uint()
-    udp_packet_count = buffer(12, 4):le_uint()
-    udp_size = buffer(16, 4):le_uint()
+    l_udp_packet_count = buffer(12, 4):le_uint()
+    l_udp_size = buffer(16, 4):le_uint()
   end
   return {
     length = length,
     class = udp_class,
-    magic = udp_magic,
-    payload_size = udp_size,
-    unknown1 = unknown1,
-    unknown2 = unknown2,
-    unknown3 = unknown3,
-    unknown4 = unknown4,
-    tid = udp_tid,
-    checksum = udp_checksum,
-    connection_id = udp_connection_id,
-    packet_count = udp_packet_count,
-    last_ack_packet = udp_last_ack_packet,
-    ack_payload_size = udp_ack_payload_size
+    magic = l_udp_magic,
+    payload_size = l_udp_size,
+    unknown1 = udp_unknown1,
+    unknown2 = udp_unknown2,
+    unknown3 = udp_unknown3,
+    unknown4 = udp_unknown4,
+    tid = l_udp_tid,
+    checksum = l_udp_checksum,
+    connection_id = l_udp_connection_id,
+    packet_count = l_udp_packet_count,
+    last_ack_packet = l_udp_last_ack_packet,
+    ack_payload_size = l_udp_ack_payload_size
   }
 end
 
-function process_udp_header(buffer, headers_tree)
+local function process_udp_header(buffer, headers_tree)
   local header_data = get_udp_header(buffer)
   local header = headers_tree:add(bc_protocol, buffer(0, header_data.length),
     "Baichuan UDP Header, length: " .. header_data.length .. ", type " .. header_data.class)
@@ -498,130 +484,7 @@ function process_udp_header(buffer, headers_tree)
   return header_data.length
 end
 
-function udp_reassemple(udp_header, subbuffer, more, pinfo, tree)
-  -- Cache udp message for later lookup
-  local con_id = udp_header.connection_id
-  if udp_fragments[con_id] == nil then
-    udp_fragments[con_id] = {}
-  end
-  local mess_id = udp_header.packet_count
-  if udp_fragments[con_id][mess_id] == nil then
-    udp_fragments[con_id][mess_id] = {}
-  end
-  udp_fragments[con_id][mess_id]['result'] = more
-  udp_fragments[con_id][mess_id]['message_id'] = mess_id
-  udp_fragments[con_id][mess_id]['buffer'] = subbuffer:bytes()
-
-  -- Go backwards from current ID until:
-  -- I hit a result that is not NOMAGIC
-  -- Can be myself
-  local start_idx = mess_id
-  local start_fragment = udp_fragments[con_id][start_idx]
-  while start_fragment.result == "NOMAGIC" do
-    start_idx = start_idx -1
-    start_fragment = udp_fragments[con_id][start_idx]
-    if start_fragment == nil then
-      break
-    end
-  end
-
-  if start_fragment ~= nil then -- Found a starting fragment
-    local needed = start_fragment.result
-    if needed == "DONE" then
-      if start_fragment.message_id == udp_header.packet_count then
-        process_bc_message(start_fragment.buffer:tvb(), pinfo, tree)
-      end
-    elseif needed == "+1" then
-      -- Cannot handle in UDP...
-      -- Only happens in off chance not enough data for
-      -- even the header
-      -- Never observed to date
-    else
-      -- pinfo.cols['info'] = "SEARCHING"
-      local next_id = start_fragment.message_id + 1
-      local reassembled = ByteArray.new()
-      local total_packet = 1
-      reassembled = reassembled .. start_fragment.buffer
-      local target_len = reassembled:len() + start_fragment.result
-      while reassembled:len() < target_len do
-        local next_fragment = udp_fragments[con_id][next_id]
-        if next_fragment ~= nil then
-          reassembled = reassembled .. next_fragment.buffer
-          total_packet = total_packet + 1
-        else
-          break
-        end
-      end
-      if reassembled:len() >= target_len then
-        start_fragment.result = "DONE"
-        process_bc_message(reassembled:tvb("Reassembled UDP"), pinfo, tree)
-      end
-    end
-  end
-end
---- END UDP CONTENT
-
-function is_complete_bc_message(buffer)
-  length = buffer:len()
-  if length == 0 then
-    return "DONE"
-  end
-
-  local sub_buffer = buffer
-  local table_msg_type_str = {}
-  local table_msg_type = {}
-
-  local continue_loop = true
-  while ( continue_loop )
-  do
-
-    -- Get min bytes for a magic and header len
-    if sub_buffer:len() < 20 then
-      -- Need more bytes but we don't have a header to learn how many bytes
-      return "+1"
-    end
-    header_len = get_header_len(sub_buffer(0, nil))
-
-    if header_len >= 0 then
-      -- Valid magic and header found
-
-      -- Ensure min bytes for full header
-      if sub_buffer:len() < header_len then
-        -- Need more bytes
-        return header_len - sub_buffer:len()
-      end
-
-
-      local header = get_header(sub_buffer(0, nil))
-
-      -- Get full header and body
-      local full_body_len =  header.msg_len + header.header_len
-      if sub_buffer:len() < full_body_len then
-        return full_body_len - sub_buffer:len()
-      end
-
-      local remaining = sub_buffer:len() - header.header_len
-      if header.header_len < sub_buffer:len() then
-        local body_buffer = sub_buffer(header.header_len, nil)
-        remaining = body_buffer:len() - header.msg_len
-      end
-
-      -- Remaning bytes?
-      if remaining == 0 then
-        continue_loop = false
-      else
-        sub_buffer = sub_buffer(full_body_len, sub_buffer:len() - full_body_len)
-      end
-    else
-      return "NOMAGIC"
-    end
-  end
-  return "DONE"
-end
-
-function process_bc_message(buffer, pinfo, tree)
-  length = buffer:len()
-
+local function process_bc_message(buffer, pinfo, tree)
   pinfo.cols.protocol = bc_protocol.name
 
   local sub_buffer = buffer
@@ -631,7 +494,7 @@ function process_bc_message(buffer, pinfo, tree)
   local continue_loop = true
   while ( continue_loop )
   do
-    header_len = get_header_len(sub_buffer(0, nil))
+    local header_len = get_header_len(sub_buffer(0, nil))
 
     if header_len >= 0 then
       -- Valid magic and header found
@@ -671,8 +534,127 @@ function process_bc_message(buffer, pinfo, tree)
   return
 end
 
+local function is_complete_bc_message(buffer)
+  local length = buffer:len()
+  if length == 0 then
+    return "DONE"
+  end
+
+  local sub_buffer = buffer
+
+  local continue_loop = true
+  while ( continue_loop )
+  do
+
+    -- Get min bytes for a magic and header len
+    if sub_buffer:len() < 20 then
+      -- Need more bytes but we don't have a header to learn how many bytes
+      return "+1"
+    end
+    local header_len = get_header_len(sub_buffer(0, nil))
+
+    if header_len >= 0 then
+      -- Valid magic and header found
+
+      -- Ensure min bytes for full header
+      if sub_buffer:len() < header_len then
+        -- Need more bytes
+        return header_len - sub_buffer:len()
+      end
+
+
+      local header = get_header(sub_buffer(0, nil))
+
+      -- Get full header and body
+      local full_body_len =  header.msg_len + header.header_len
+      if sub_buffer:len() < full_body_len then
+        return full_body_len - sub_buffer:len()
+      end
+
+      local remaining = sub_buffer:len() - header.header_len
+      if header.header_len < sub_buffer:len() then
+        local body_buffer = sub_buffer(header.header_len, nil)
+        remaining = body_buffer:len() - header.msg_len
+      end
+
+      -- Remaning bytes?
+      if remaining == 0 then
+        continue_loop = false
+      else
+        sub_buffer = sub_buffer(full_body_len, sub_buffer:len() - full_body_len)
+      end
+    else
+      return "NOMAGIC"
+    end
+  end
+  return "DONE"
+end
+
+local function udp_reassemple(udp_header, subbuffer, more, pinfo, tree)
+  -- Cache udp message for later lookup
+  local con_id = udp_header.connection_id
+  if udp_fragments[con_id] == nil then
+    udp_fragments[con_id] = {}
+  end
+  local mess_id = udp_header.packet_count
+  if udp_fragments[con_id][mess_id] == nil then
+    udp_fragments[con_id][mess_id] = {}
+  end
+  udp_fragments[con_id][mess_id]['result'] = more
+  udp_fragments[con_id][mess_id]['message_id'] = mess_id
+  udp_fragments[con_id][mess_id]['buffer'] = subbuffer:bytes()
+
+  -- Go backwards from current ID until:
+  -- I hit a result that is not NOMAGIC
+  -- Can be myself
+  local start_idx = mess_id
+  local start_fragment = udp_fragments[con_id][start_idx]
+  while start_fragment.result == "NOMAGIC" do
+    start_idx = start_idx -1
+    start_fragment = udp_fragments[con_id][start_idx]
+    if start_fragment == nil then
+      break
+    end
+  end
+
+  if start_fragment ~= nil then -- Found a starting fragment
+    local needed = start_fragment.result
+    if needed == "DONE" then
+      if start_fragment.message_id == udp_header.packet_count then
+        process_bc_message(start_fragment.buffer:tvb(), pinfo, tree)
+      end
+    elseif needed == "+1" then
+      -- Cannot handle in UDP...
+      -- Only happens in off chance not enough data for
+      -- even the header
+      -- Never observed to date
+      return
+    else
+      -- pinfo.cols['info'] = "SEARCHING"
+      local next_id = start_fragment.message_id + 1
+      local reassembled = ByteArray.new()
+      local total_packet = 1
+      reassembled = reassembled .. start_fragment.buffer
+      local target_len = reassembled:len() + start_fragment.result
+      while reassembled:len() < target_len do
+        local next_fragment = udp_fragments[con_id][next_id]
+        if next_fragment ~= nil then
+          reassembled = reassembled .. next_fragment.buffer
+          total_packet = total_packet + 1
+        else
+          break
+        end
+      end
+      if reassembled:len() >= target_len then
+        start_fragment.result = "DONE"
+        process_bc_message(reassembled:tvb("Reassembled UDP"), pinfo, tree)
+      end
+    end
+  end
+end
+
 function bc_protocol.init ()
-   fragments = {}
+   udp_fragments = {}
 end
 
 function bc_protocol.dissector(buffer, pinfo, tree)
@@ -684,8 +666,8 @@ function bc_protocol.dissector(buffer, pinfo, tree)
       udp_header = get_udp_header(buffer(0, udp_header_len))
       process_udp_header(buffer(0, udp_header_len), tree)
       if udp_header.class == 0x3a then
-        decrypted_bytes = udp_decrypt(buffer(udp_header_len, nil):bytes(), udp_header.tid)
-        decryped_tvb = decrypted_bytes:tvb("UDP Decrypted Message")
+        local decrypted_bytes = udp_decrypt(buffer(udp_header_len, nil):bytes(), udp_header.tid)
+        local decryped_tvb = decrypted_bytes:tvb("UDP Decrypted Message")
         local subtree = tree:add(bc_protocol, decryped_tvb, "UDP Message Data")
         Dissector.get("xml"):call(decryped_tvb, pinfo, subtree)
         pinfo.cols.protocol = bc_protocol.name .. " UDP Heartbeat"
@@ -708,7 +690,6 @@ function bc_protocol.dissector(buffer, pinfo, tree)
   end
   if subbuffer ~= nil then
     local more = is_complete_bc_message(subbuffer)
-
     if pinfo.can_desegment == 1 then -- TCP can use the desegment method
       if more == "DONE" then
         process_bc_message(subbuffer, pinfo, tree)
@@ -733,10 +714,11 @@ function bc_protocol.dissector(buffer, pinfo, tree)
     end
   end
 end
+--- END UDP CONTENT
 
 local function heuristic_checker_udp(buffer, pinfo, tree)
     -- guard for length
-    length = buffer:len()
+    local length = buffer:len()
     if length < 4 then return false end
     local potential_magic = buffer(0,4):le_uint()
 
@@ -752,15 +734,25 @@ local function heuristic_checker_udp(buffer, pinfo, tree)
     return true
 end
 
+local added_tcp_ports = {}
+
 local function heuristic_checker_tcp(buffer, pinfo, tree)
     -- guard for length
-    length = buffer:len()
+    local length = buffer:len()
     if length < 4 then return false end
-
     local potential_magic = buffer(0,4):le_uint()
-    if potential_magic ~= 0xabcdef0 and
+    if potential_magic ~= 0x0abcdef0 and
         potential_magic ~= 0x0fedcba0  then
       return false
+    end
+
+    if added_tcp_ports[pinfo.dst_port] == nil then
+      table.insert(added_tcp_ports, pinfo.dst_port)
+      DissectorTable.get("tcp.port"):add(pinfo.dst_port, bc_protocol)
+    end
+    if added_tcp_ports[pinfo.src_port] == nil then
+      table.insert(added_tcp_ports, pinfo.src_port)
+      DissectorTable.get("tcp.port"):add(pinfo.src_port, bc_protocol)
     end
 
     bc_protocol.dissector(buffer, pinfo, tree)
@@ -769,8 +761,6 @@ end
 
 bc_protocol:register_heuristic("udp", heuristic_checker_udp)
 bc_protocol:register_heuristic("tcp", heuristic_checker_tcp)
-
--- DissectorTable.get("tcp.port"):add(9000, bc_protocol)
 -- DissectorTable.get("tcp.port"):add(53959, bc_protocol) -- change to your own custom port
 
 -- DissectorTable.get("udp.port"):add(2000, bc_protocol)

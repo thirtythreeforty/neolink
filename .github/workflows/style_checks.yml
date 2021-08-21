@@ -41,3 +41,13 @@ jobs:
     - name: rustfmt
       run: |
         cargo +nightly fmt --all -- --check
+
+  check_lua:
+    name: Luacheck
+    runs-on: ubuntu-latest
+    steps:
+    - name: Run luacheck
+      uses: nebularg/actions-luacheck@v1
+      with:
+        files: 'dissector/baichuan.lua'
+        args: --globals Dissector,Proto,ProtoField,base,ByteArray,DESEGMENT_ONE_MORE_SEGMENT,DissectorTable
