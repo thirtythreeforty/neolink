@@ -94,6 +94,12 @@ to init a connection
 </P2P>
 ```
 
+It also sends this binary on port 2000 as a broadcast
+
+```
+aaaa0000
+```
+
 ---
 
 **Camera Replies with Binary**
@@ -115,7 +121,7 @@ standard tcp bc connection
 **Udp Camera**
 
 If the camera supports UDP the client will send this xml packet
-as a broadcast on 255.255.255.255 on port 2018
+as a broadcast on 255.255.255.255 on port 2018/2015
 
 **Known UID**
 
@@ -217,6 +223,8 @@ After a message ID 02 (logout) the client send this
 - **cid**: The connection ID of the client
 - **did**: The connection ID of the camera
 
+The camera also send it but with a `D2C_DISC` tag
+
 ## Other
 
 Some cameras seem to also send this before login
@@ -257,12 +265,12 @@ These messages are sent to acknowledge receipt of message. They are header only.
 - Paload **NEEDS INFO**
 
 **To Investigate:**
-  - Why does the unknown byte change. It starts at zero and remains that way for a second
-    time. Then seems to change and remain at the new value for another second
-  - Payload is usually 0 but occasionally it is non zero
+  - Why does the unknown byte change. It starts at zero and remains that way
+    for a second. Then seems to change and remain at the new value for another second
+  - Payload size is usually 0 but occasionally it is non zero
     - When this happens the payload becomes `00 01 01 01 01 01` always the first
     byte `00` then just `01`/`00` bytes
-    - This payload then increases in size by `01` each ackpacket until a new
+    - This payload then increases in size by `01` each ack packet until a new
       udpdata packet arrives. At which point the `Last received packet id` jumps
 
 Here's an example of a UDP Ack payload (size 203 bytes)
@@ -291,6 +299,10 @@ value was `f8010000` (504).
 
 If this payload is allowed to grow to ~ 205 bytes the camera sends a
 disconnect request and drops the connection
+
+I believe that the `Bytes Last Packet ID` in the header is the number of
+contiguous packets then the payload represents a table of non contiguous
+packets it wants
 
 
 
