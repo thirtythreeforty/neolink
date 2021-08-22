@@ -172,8 +172,10 @@ impl UdpTransmit {
         let camera_has = self.camera_acknowledged.load(Ordering::Relaxed);
         let client_sent = self.client_sent.load(Ordering::Relaxed);
         if camera_has < client_sent {
-            for packet_id in camera_has..(client_sent + 1) {
+            debug!("Resending {:?}", (camera_has + 1)..(client_sent + 1));
+            for packet_id in (camera_has + 1)..(client_sent + 1) {
                 if let Some(payload) = &outgoing_history.get(&packet_id) {
+                    debug!("    - Sending {}", packet_id);
                     socket
                         .send(payload)
                         .map_err(|e| TransmitError::SocketSend { err: e })?;
@@ -208,7 +210,7 @@ impl UdpTransmit {
         if client_wants > 0 {
             let bcack_msg = BcUdp::Ack(UdpAck {
                 connection_id: discovery_result.camera_id,
-                packet_id: client_wants - 1,
+                packet_id: client_wants,
             });
 
             let mut buf = vec![];
