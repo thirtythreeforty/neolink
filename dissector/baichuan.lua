@@ -507,7 +507,7 @@ local function process_bc_message(buffer, pinfo, tree)
 
       local remaining = sub_buffer:len() - header.header_len
 
-      local bc_subtree = tree:add(bc_protocol, sub_buffer(0, header.msg_len),
+      local bc_subtree = tree:add(bc_protocol, sub_buffer(0, header.full_body_len),
         "Baichuan IP Camera Protocol, " .. header.msg_type_str .. ":" .. header.msg_type .. " message")
       process_header(sub_buffer, bc_subtree)
       if header.header_len < sub_buffer:len() then
