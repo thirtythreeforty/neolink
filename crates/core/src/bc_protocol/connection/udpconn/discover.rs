@@ -517,4 +517,27 @@ impl UdpDiscover {
             Err(e) => Err(e),
         }
     }
+
+    pub fn send_client_disconnect(&self, socket: &UdpSocket) {
+        if let Ok(addr) = socket.peer_addr() {
+            let mut rng = thread_rng();
+            let tid: u32 = (rng.gen::<u8>()) as u32;
+            let bcudp_msg = BcUdp::Discovery(UdpDiscovery {
+                tid,
+                payload: UdpXml {
+                    c2d_disc: Some(C2dDisc {
+                        cid: self.client_id,
+                        did: self.camera_id,
+                    }),
+                    ..Default::default()
+                },
+            });
+
+            let mut buf = vec![];
+            let buf = bcudp_msg
+                .serialize(&mut buf)
+                .expect("Unable to serliaze udp disconnect");
+            let _ = Self::retrying_send_to(socket, buf, addr);
+        }
+    }
 }

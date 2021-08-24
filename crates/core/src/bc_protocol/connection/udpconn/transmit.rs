@@ -227,7 +227,6 @@ impl UdpTransmit {
                 let bcudp_msg = BcUdp::deserialize(&buf[0..amount_recv])?;
                 match bcudp_msg {
                     BcUdp::Discovery(UdpDiscovery {
-                        tid,
                         payload:
                             UdpXml {
                                 d2c_disc: Some(D2cDisc { cid, did }),
@@ -238,22 +237,7 @@ impl UdpTransmit {
                         && did == discovery_result.camera_id =>
                     {
                         // Reply with C2D_Disc and end
-                        let bcudp_msg = BcUdp::Discovery(UdpDiscovery {
-                            tid,
-                            payload: UdpXml {
-                                c2d_disc: Some(C2dDisc {
-                                    cid: discovery_result.client_id,
-                                    did: discovery_result.camera_id,
-                                }),
-                                ..Default::default()
-                            },
-                        });
-
-                        let mut buf = vec![];
-                        bcudp_msg.serialize(&mut buf)?;
-                        socket
-                            .send(&buf)
-                            .map_err(|e| TransmitError::SocketSend { err: e })?;
+                        discovery_result.send_client_disconnect(socket);
                         return Err(TransmitError::Disc);
                     }
                     BcUdp::Discovery(packet) => {

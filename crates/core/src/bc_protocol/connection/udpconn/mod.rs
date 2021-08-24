@@ -131,6 +131,8 @@ impl UdpSource {
                 }
             }
             error!("Udp read poll aborted");
+            // We send client disconnect here
+            thread_discovery_result.send_client_disconnect(&thread_socket);
         });
 
         let thread_aborter = aborter.clone();

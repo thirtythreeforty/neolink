@@ -120,7 +120,7 @@ standard tcp bc connection
 
 **Udp Camera**
 
-If the camera supports UDP the client will send this xml packet
+If the camera supports UDP the client will send the following xml packet
 as a broadcast on 255.255.255.255 on port 2018/2015
 
 **Known UID**
