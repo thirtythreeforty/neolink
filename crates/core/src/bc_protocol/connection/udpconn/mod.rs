@@ -140,13 +140,11 @@ impl UdpSource {
 
         // Poll Write
         std::thread::spawn(move || {
-            let mut outgoing_history = Default::default();
             while !thread_aborter.is_aborted() {
                 if let Err(err) = thread_transmit.poll_write(
                     &thread_socket,
                     &(*thread_discovery_result),
                     &from_outgoing,
-                    &mut outgoing_history,
                 ) {
                     if !thread_aborter.is_aborted() {
                         match err {

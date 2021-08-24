@@ -139,15 +139,21 @@ fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
                                          // packets to
     let (buf, _unknown) = le_u32(buf)?;
     let (buf, payload_size) = le_u32(buf)?;
-    let (buf, _payload) = take!(buf, payload_size)?; // It is a binary payload of
-                                                     // `00 01 01 01 01 00 01`
-                                                     // Probably a truth map of missing packets
-                                                     // since last contigious packet_id up
-                                                     // to the last packet we sent and it recieved
+    let (buf, payload) = if payload_size > 0 {
+        let (buf, t_payload) = take!(buf, payload_size)?; // It is a binary payload of
+                                                          // `00 01 01 01 01 00 01`
+                                                          // Probably a truth map of missing packets
+                                                          // since last contigious packet_id up
+                                                          // to the last packet we sent and it recieved
+        (buf, t_payload.to_vec())
+    } else {
+        (buf, vec![])
+    };
 
     let data = UdpAck {
         connection_id,
         packet_id,
+        payload,
     };
     Ok((buf, data))
 }
@@ -303,6 +309,7 @@ mod tests {
             Ok(BcUdp::Ack(UdpAck {
                 connection_id: 80,
                 packet_id: 2439,
+                ..
             }))
         );
     }

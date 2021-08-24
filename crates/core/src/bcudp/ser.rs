@@ -22,7 +22,10 @@ impl BcUdp {
                 let xml_payload = encrypt(payload.tid, &payload.payload.serialize(vec![]).unwrap());
                 gen(bcudp_disc(payload, &xml_payload), buf)?
             }
-            BcUdp::Ack(payload) => gen(bcudp_ack(payload), buf)?,
+            BcUdp::Ack(payload) => {
+                let binary_payload = &payload.payload;
+                gen(bcudp_ack(payload, binary_payload), buf)?
+            }
             BcUdp::Data(payload) => {
                 let binary_payload = &payload.payload;
                 gen(bcudp_data(payload, binary_payload), buf)?
@@ -48,7 +51,10 @@ fn bcudp_disc<'a, W: 'a + Write>(
     ))
 }
 
-fn bcudp_ack<'a, W: 'a + Write>(payload: &'a UdpAck) -> impl SerializeFn<W> + 'a {
+fn bcudp_ack<'a, W: 'a + Write>(
+    payload: &'a UdpAck,
+    binary_payload: &'a [u8],
+) -> impl SerializeFn<W> + 'a {
     tuple((
         le_u32(MAGIC_HEADER_UDP_ACK),
         le_i32(payload.connection_id),
@@ -56,7 +62,8 @@ fn bcudp_ack<'a, W: 'a + Write>(payload: &'a UdpAck) -> impl SerializeFn<W> + 'a
         le_u32(0),
         le_u32(payload.packet_id),
         le_u32(0),
-        le_u32(0),
+        le_u32(binary_payload.len() as u32),
+        slice(binary_payload),
     ))
 }
 
