@@ -102,7 +102,7 @@ impl ClientSent {
         locked.retain(|&k, _| k > start);
 
         for (idx, &value) in payload.iter().enumerate() {
-            let packet_id = start + idx as u32;
+            let packet_id = (start + 1) + idx as u32;
             if value > 0 {
                 locked.remove(&packet_id);
             }
@@ -192,9 +192,9 @@ impl ClientRecieved {
             let mut vec = vec![];
             for i in (start + 1)..(end + 1) {
                 if locked.contains_key(&i) {
-                    vec.push(0)
-                } else {
                     vec.push(1)
+                } else {
+                    vec.push(0)
                 }
             }
             vec

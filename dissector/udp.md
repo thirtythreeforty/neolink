@@ -261,17 +261,12 @@ These messages are sent to acknowledge receipt of message. They are header only.
 - 4 Bytes unknown: Always `00000000` for for UDP Ack
 - 4 Bytes Last Packet ID: Last received packet id
 - 4 Bytes Unknown: Observed values `00000000`, `d6010000`, `d7160000` `09e00000` **NEEDS INFO**
-- Payload Size: **NEEDS INFO**
-- Paload **NEEDS INFO**
+- Payload Size
+- Paload
 
 **To Investigate:**
   - Why does the unknown byte change. It starts at zero and remains that way
     for a second. Then seems to change and remain at the new value for another second
-  - Payload size is usually 0 but occasionally it is non zero
-    - When this happens the payload becomes `00 01 01 01 01 01` always the first
-    byte `00` then just `01`/`00` bytes
-    - This payload then increases in size by `01` each ack packet until a new
-      udpdata packet arrives. At which point the `Last received packet id` jumps
 
 Here's an example of a UDP Ack payload (size 203 bytes)
 
@@ -291,18 +286,12 @@ Here's an example of a UDP Ack payload (size 203 bytes)
 00c0   01 01 01 01 01 01 01 01 01 01 01 01
 ```
 
-I believe this is a truth table of false/true for missing packets
-
-In this example the last packet sent was number 221 but the camera only
-acknowledged number 14 and sent this binary too and the unknown
-value was `f8010000` (504).
+The payload is a truth table. If the packet ID in header is 50
+then the first byte corresponds to packet id 51, the second 52
+etc etc. If the byte if `00` then the camera will resend that packet
 
 If this payload is allowed to grow to ~ 205 bytes the camera sends a
 disconnect request and drops the connection
-
-I believe that the `Bytes Last Packet ID` in the header is the number of
-contiguous packets then the payload represents a table of non contiguous
-packets it wants
 
 
 
