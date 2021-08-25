@@ -45,6 +45,12 @@ impl BcCamera {
             _ => 0,
         };
 
+        let handle = match stream_name {
+            "mainStream" => 0,
+            "subStream" => 256,
+            _ => 1024,
+        };
+
         let start_video = Bc::new_from_xml(
             BcMeta {
                 msg_id: MSG_ID_VIDEO,
@@ -58,7 +64,7 @@ impl BcCamera {
                 preview: Some(Preview {
                     version: xml_ver(),
                     channel_id: self.channel_id,
-                    handle: 0,
+                    handle,
                     stream_type: stream_name.to_string(),
                 }),
                 ..Default::default()
