@@ -7,7 +7,8 @@ use validator::{Validate, ValidationError};
 use validator_derive::Validate;
 
 lazy_static! {
-    static ref RE_STREAM_SRC: Regex = Regex::new(r"^(mainStream|subStream|both)$").unwrap();
+    static ref RE_STREAM_SRC: Regex =
+        Regex::new(r"^(mainStream|subStream|externStream|both|all)$").unwrap();
     static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
 }
 

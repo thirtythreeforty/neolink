@@ -89,7 +89,7 @@ pub fn main(opt: Opt) -> Result<()> {
                 get_permitted_users(config.users.as_slice(), &arc_cam.permitted_users);
 
             // Set up each main and substream according to all the RTSP mount paths we support
-            if ["both", "mainStream"].iter().any(|&e| e == arc_cam.stream) {
+            if ["all", "both", "mainStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[
                     &*format!("/{}", arc_cam.name),
                     &*format!("/{}/mainStream", arc_cam.name),
@@ -100,7 +100,7 @@ pub fn main(opt: Opt) -> Result<()> {
                 let main_camera = arc_cam.clone();
                 s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut outputs, true));
             }
-            if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
+            if ["all", "both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
                 let mut outputs = rtsp
                     .add_stream(paths, &permitted_users)
@@ -108,6 +108,15 @@ pub fn main(opt: Opt) -> Result<()> {
                 let sub_camera = arc_cam.clone();
                 let manage = arc_cam.stream == "subStream";
                 s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut outputs, manage));
+            }
+            if ["all", "externStream"].iter().any(|&e| e == arc_cam.stream) {
+                let paths = &[&*format!("/{}/externStream", arc_cam.name)];
+                let mut outputs = rtsp
+                    .add_stream(paths, &permitted_users)
+                    .unwrap();
+                let sub_camera = arc_cam.clone();
+                let manage = arc_cam.stream == "externStream";
+                s.spawn(move |_| camera_loop(&*sub_camera, "externStream", &mut outputs, manage));
             }
         }
 
