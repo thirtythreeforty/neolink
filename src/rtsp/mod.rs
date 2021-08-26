@@ -264,7 +264,7 @@ fn camera_main(
         let stream_display_name = match stream_name {
             Stream::Main => "Main Stream (Clear)",
             Stream::Sub => "Sub Stream (Fluent)",
-            Stream::Extern => "Sub Stream (Balanced)",
+            Stream::Extern => "Extern Stream (Balanced)",
         };
 
         info!(
