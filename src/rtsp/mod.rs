@@ -30,7 +30,7 @@
 ///
 use anyhow::{Context, Result};
 use log::*;
-use neolink_core::bc_protocol::BcCamera;
+use neolink_core::bc_protocol::{BcCamera, Stream};
 use neolink_core::Never;
 use std::collections::HashSet;
 use std::fs;
@@ -98,7 +98,7 @@ pub fn main(opt: Opt) -> Result<()> {
                     .add_stream(paths, &permitted_users)
                     .unwrap();
                 let main_camera = arc_cam.clone();
-                s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut outputs, true));
+                s.spawn(move |_| camera_loop(&*main_camera, Stream::Main, &mut outputs, true));
             }
             if ["all", "both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
@@ -107,7 +107,7 @@ pub fn main(opt: Opt) -> Result<()> {
                     .unwrap();
                 let sub_camera = arc_cam.clone();
                 let manage = arc_cam.stream == "subStream";
-                s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut outputs, manage));
+                s.spawn(move |_| camera_loop(&*sub_camera, Stream::Sub, &mut outputs, manage));
             }
             if ["all", "externStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/externStream", arc_cam.name)];
@@ -116,7 +116,7 @@ pub fn main(opt: Opt) -> Result<()> {
                     .unwrap();
                 let sub_camera = arc_cam.clone();
                 let manage = arc_cam.stream == "externStream";
-                s.spawn(move |_| camera_loop(&*sub_camera, "externStream", &mut outputs, manage));
+                s.spawn(move |_| camera_loop(&*sub_camera, Stream::Extern, &mut outputs, manage));
             }
         }
 
@@ -129,7 +129,7 @@ pub fn main(opt: Opt) -> Result<()> {
 
 fn camera_loop(
     camera_config: &CameraConfig,
-    stream_name: &str,
+    stream_name: Stream,
     outputs: &mut GstOutputs,
     manage: bool,
 ) -> Result<Never> {
@@ -218,7 +218,7 @@ fn get_permitted_users<'a>(
 
 fn camera_main(
     camera_config: &CameraConfig,
-    stream_name: &str,
+    stream_name: Stream,
     outputs: &mut GstOutputs,
     manage: bool,
 ) -> Result<Never, CameraErr> {
@@ -261,9 +261,15 @@ fn camera_main(
             do_camera_management(&mut camera, camera_config).context("Failed to manage the camera settings")?;
         }
 
+        let stream_display_name = match stream_name {
+            Stream::Main => "Main Stream (Clear)",
+            Stream::Sub => "Sub Stream (Fluent)",
+            Stream::Extern => "Sub Stream (Balanced)",
+        };
+
         info!(
             "{}: Starting video stream {}",
-            camera_config.name, stream_name
+            camera_config.name, stream_display_name
         );
         camera.start_video(outputs, stream_name).with_context(|| format!("Error while streaming {}", camera_config.name))
     })().map_err(|e| CameraErr{
