@@ -29,7 +29,39 @@ Currently it has been tested on the following cameras:
 Neolink does not support other cameras such as the RLC-420, since they already
 [provide native RTSP](https://support.reolink.com/hc/en-us/articles/360007010473-How-to-Live-View-Reolink-Cameras-via-VLC-Media-Player).
 
-## Installation
+## Usage
+
+1. First, write a configuration yaml file describing your cameras.  See the
+Configuration section below or the provided sample config.
+
+2. Launch Neolink:
+```
+neolink rtsp --config=your_config.yaml
+```
+
+3. Then, connect your RTSP viewer to `rtsp://127.0.0.1:8554/your_camera_name`!
+
+### Additional commands
+
+Neolink also has some additional command line tools
+for controlling the camera. They are all used through neolink subcommands like this:
+
+```bash
+neolink subcommand --config=...
+```
+
+The currently supported subcommands are
+
+- **rtsp**: The standard neolink rtsp bridge
+- **status-light**: Control the LED status light
+- **reboot**: Reboot a camera
+- **talk**: Enable talk back through either the microphone or by
+            reading a sound file.
+
+For a full list of commands use `neolink help`, or use
+`neolink help <subcommand>` for details on a subcommand of interest.
+
+## Download & Installation
 
 In the future Neolink will be much easier to install.
 For now, follow these steps.
@@ -158,11 +190,6 @@ Each `[[cameras]]` block creates a new camera; the `name` determines the RTSP
 path you should connect your client to.
 Currently Neolink cannot auto-detect cameras like the official clients do; you
 must specify their IP addresses directly.
-
-By default the H265 video format is used. Some cameras, for example E1, provide
-H264 streams. To use these you must specify `format = "h264"` in the
-`[[cameras]]` config. Soon this will be auto-detected, and you will not have to know or care about
-the format.
 
 By default, the HD stream is available at the RTSP path `/name` or
 `/name/mainStream`, and the SD stream is available at `/name/subStream`.
@@ -294,37 +321,6 @@ this is `~/.local/lib/wireshark/plugins/` under Linux.
 Currently the dissector does not attempt to decode the Baichuan "extension"
 messages except `binaryData`.
 This will change in the future as reverse engineering needs require.
-
-## Additional Commands
-
-Neolink also has some additional command line tools
-for controlling the camera. They are all used through neolink subcommands like this:
-
-
-```bash
-neolink subcommand --config=...
-```
-
-The currently supported subcommands are
-
-- **rtsp**: The standard neolink rtsp bridge
-- **status-light**: A command to control the LED status light
-- **reboot**: Will reboot a camera
-- **talk**: Will enable talk back through either the microphone or by
-            reading a sound file.
-
-For a full list of commands please use
-
-```bash
-neolink help
-```
-
-For further details on the subcommands please use the following
-where `<subcommand>` is replaced with the subcommand of interest
-
-```bash
-neolink help <subcommand>
-```
 
 ## License
 
