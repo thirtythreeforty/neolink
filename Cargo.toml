@@ -1,28 +1,29 @@
 [package]
 name = "neolink"
 description = "A standards-compliant bridge to Reolink IP cameras"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["George Hilliard <thirtythreeforty@gmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace]
+members = [
+  "crates/*",
+]
 
 [dependencies]
+neolink_core = { path = "crates/core", version = "0.4.0" }
 aes = "0.6"
 cfb-mode = "0.6"
 cookie-factory = "0.3"
 crossbeam = "0.7"
-env_logger = "*"
 err-derive = "0.2"
-glib = ">=0.10.3"
-gio = "0.9"
-gstreamer = "0.16"
-gstreamer-app = "0.16"
-gstreamer-rtsp = "0.16"
-gstreamer-rtsp-server = { version = "0.16", features = ["v1_12", "v1_14"]}
+env_logger = "*"
+gstreamer = "0.17"
+gstreamer-app = "0.17"
+gstreamer-rtsp = "0.17"
+gstreamer-rtsp-server = { version = "0.17", features = ["v1_12", "v1_14"]}
 lazy_static = "1.4"
 log = { version = "0.4" }
-indoc = "0.3"
 itertools = "0.9"
 md5 = "0.7"
 nom = "6.1.2"
@@ -37,3 +38,5 @@ yaserde_derive = "0.3.16"
 xml-rs = "0.8"
 validator = "0.10"
 validator_derive = "0.10"
+byte-slice-cast = "1.0.0"
+anyhow = "1.0.42"

@@ -1,0 +1,24 @@
+[package]
+name = "neolink_core"
+description = "Core services and structure for Reolink IP cameras"
+version = "0.4.0"
+authors = ["George Hilliard <thirtythreeforty@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+aes = "0.6"
+cfb-mode = "0.6"
+cookie-factory = "0.3"
+err-derive = "0.2"
+log = { version = "0.4" }
+md5 = "0.7"
+nom = "6.1.2"
+socket2 = "0.3"
+time = "0.2"
+yaserde = "0.3.16"
+yaserde_derive = "0.3.16"
+xml-rs = "0.8"
+
+[dev-dependencies]
+env_logger = "*"
+indoc = "0.3"

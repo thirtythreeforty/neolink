@@ -86,7 +86,7 @@ or your package manager on Linux.
 5. Launch Neolink from a shell, passing your configuration file:
 
     ```bash
-    neolink --config my_config.toml
+    neolink rtsp --config my_config.toml
     ```
 
 6. Connect your NVR software to Neolink's RTSP server.
@@ -294,6 +294,37 @@ this is `~/.local/lib/wireshark/plugins/` under Linux.
 Currently the dissector does not attempt to decode the Baichuan "extension"
 messages except `binaryData`.
 This will change in the future as reverse engineering needs require.
+
+## Additional Commands
+
+Neolink also has some additional command line tools
+for controlling the camera. They are all used through neolink subcommands like this:
+
+
+```bash
+neolink subcommand --config=...
+```
+
+The currently supported subcommands are
+
+- **rtsp**: The standard neolink rtsp bridge
+- **status-light**: A command to control the LED status light
+- **reboot**: Will reboot a camera
+- **talk**: Will enable talk back through either the microphone or by
+            reading a sound file.
+
+For a full list of commands please use
+
+```bash
+neolink help
+```
+
+For further details on the subcommands please use the following
+where `<subcommand>` is replaced with the subcommand of interest
+
+```bash
+neolink help <subcommand>
+```
 
 ## License
 

@@ -98,9 +98,9 @@ Most of this information comes from the work of @twisteddx at his
 After the ADPCM header is another header of the form
 
 - 2 bytes Magic either 0x00 0x01 or 0x00 0x7a
-- 2 Bytes DVI-4 Block size
+- 2 Bytes DVI-4 Block size divided in bytes.
 
-After this header the adpcm DVI-4 data follows.
+After this header the adpcm DVI-4 data follows should be 4+Block size bytes.
 
 ## Processing
 

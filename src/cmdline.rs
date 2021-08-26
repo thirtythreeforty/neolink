@@ -1,11 +1,20 @@
 use std::path::PathBuf;
-use structopt::StructOpt;
+use structopt::{clap::AppSettings, StructOpt};
 
 /// A standards-compliant bridge to Reolink IP cameras
 #[derive(StructOpt, Debug)]
-#[structopt(name = "neolink")]
+#[structopt(name = "neolink", setting(AppSettings::ArgRequiredElseHelp))]
 pub struct Opt {
-    /// main configuration file
     #[structopt(short, long, parse(from_os_str))]
-    pub config: PathBuf,
+    pub config: Option<PathBuf>,
+    #[structopt(subcommand)]
+    pub cmd: Option<Command>,
+}
+
+#[derive(StructOpt, Debug)]
+pub enum Command {
+    Rtsp(super::rtsp::Opt),
+    StatusLight(super::statusled::Opt),
+    Reboot(super::reboot::Opt),
+    Talk(super::talk::Opt),
 }
