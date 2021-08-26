@@ -15,6 +15,20 @@ pub trait StreamOutput {
     fn write(&mut self, media: BcMedia) -> StreamOutputError;
 }
 
+/// The stream names supported by BC
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Stream {
+    /// This is the HD stream
+    Main,
+    /// This is the SD stream
+    Sub,
+    /// This stream represents a balance between SD and HD
+    ///
+    /// It is only avaliable on some camera. If the camera dosen't
+    /// support it the stream will be the same as the SD stream
+    Extern,
+}
+
 impl BcCamera {
     ///
     /// Starts the video stream
@@ -23,13 +37,20 @@ impl BcCamera {
     ///
     /// * `data_outs` - This should be a struct that implements the [`StreamOutput`] trait
     ///
-    /// * `stream_name` - The name of the stream either `"mainStream"` for HD or `"subStream"` for SD
+    /// * `stream_name` - This is a [`Stream`] that controls the stream to request from the camera.
+    ///                   Selecting [`Stream::Main`] will select the HD stream.
+    ///                   Selecting [`Stream::Sub`] will select the SD stream.
+    ///                   Selecting [`Stream::Extern`] will select the medium quality stream (only on some camera)
     ///
     /// # Returns
     ///
     /// This will block forever or return an error when the camera connection is dropped
     ///
-    pub fn start_video<Outputs>(&self, data_outs: &mut Outputs, stream_name: &str) -> Result<Never>
+    pub fn start_video<Outputs>(
+        &self,
+        data_outs: &mut Outputs,
+        stream_name: Stream,
+    ) -> Result<Never>
     where
         Outputs: StreamOutput,
     {
@@ -40,16 +61,25 @@ impl BcCamera {
         let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
 
         let stream_num = match stream_name {
-            "mainStream" => 0,
-            "subStream" => 1,
-            _ => 0,
+            Stream::Main => 0,
+            Stream::Sub => 1,
+            Stream::Extern => 0,
         };
 
+        // Theses are the numbers used with the offical client
+        // connecting to an E1.
         let handle = match stream_name {
-            "mainStream" => 0,
-            "subStream" => 256,
-            _ => 1024,
+            Stream::Main => 0,
+            Stream::Sub => 256,
+            Stream::Extern => 1024,
         };
+
+        let stream_type = match stream_name {
+            Stream::Main => "mainStream",
+            Stream::Sub => "subStream",
+            Stream::Extern => "externStream",
+        }
+        .to_string();
 
         let start_video = Bc::new_from_xml(
             BcMeta {
@@ -65,7 +95,7 @@ impl BcCamera {
                     version: xml_ver(),
                     channel_id: self.channel_id,
                     handle,
-                    stream_type: stream_name.to_string(),
+                    stream_type,
                 }),
                 ..Default::default()
             },
