@@ -37,6 +37,7 @@ Configuration section below or the provided sample config.
 2. Launch Neolink:
 ```bash
 neolink rtsp --config=your_config.yaml
+```
 
 3. Then, connect your RTSP viewer to `rtsp://127.0.0.1:8554/your_camera_name`!
 
