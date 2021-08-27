@@ -46,11 +46,7 @@ impl BcCamera {
     ///
     /// This will block forever or return an error when the camera connection is dropped
     ///
-    pub fn start_video<Outputs>(
-        &self,
-        data_outs: &mut Outputs,
-        stream_name: Stream,
-    ) -> Result<Never>
+    pub fn start_video<Outputs>(&self, data_outs: &mut Outputs, stream: Stream) -> Result<Never>
     where
         Outputs: StreamOutput,
     {
@@ -60,21 +56,29 @@ impl BcCamera {
             .expect("Must be connected to start video");
         let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
 
-        let stream_num = match stream_name {
+        // On an E1:
+        //  - mainStream always has a value of 0
+        //  - subStream always has a value of 1
+        //  - There is no externStram
+        // On a B800:
+        //  - mainStream is 0
+        //  - subStream is 0
+        //  - externStream is 0
+        let stream_code = match stream {
             Stream::Main => 0,
             Stream::Sub => 1,
             Stream::Extern => 0,
         };
 
         // Theses are the numbers used with the offical client
-        // connecting to an E1.
-        let handle = match stream_name {
+        // connecting to an B800.
+        let handle = match stream {
             Stream::Main => 0,
             Stream::Sub => 256,
             Stream::Extern => 1024,
         };
 
-        let stream_type = match stream_name {
+        let stream_name = match stream {
             Stream::Main => "mainStream",
             Stream::Sub => "subStream",
             Stream::Extern => "externStream",
@@ -86,7 +90,7 @@ impl BcCamera {
                 msg_id: MSG_ID_VIDEO,
                 channel_id: self.channel_id,
                 msg_num: self.new_message_num(),
-                stream_type: stream_num,
+                stream_type: stream_code,
                 response_code: 0,
                 class: 0x6414, // IDK why
             },
@@ -95,7 +99,7 @@ impl BcCamera {
                     version: xml_ver(),
                     channel_id: self.channel_id,
                     handle,
-                    stream_type,
+                    stream_type: stream_name,
                 }),
                 ..Default::default()
             },

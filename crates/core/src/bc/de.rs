@@ -232,150 +232,289 @@ fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
     ))
 }
 
-#[test]
-fn test_bc_modern_login() {
-    let sample = include_bytes!("samples/model_sample_modern_login.bin");
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bc::xml::*;
+    use assert_matches::assert_matches;
 
-    let encryption_protocol =
-        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-    let mut context = BcContext::new(encryption_protocol);
+    #[test]
+    fn test_bc_modern_login() {
+        let sample = include_bytes!("samples/model_sample_modern_login.bin");
 
-    let (buf, header) = bc_header(&sample[..]).unwrap();
-    let (_, body) = bc_body(&mut context, &header, buf).unwrap();
-    assert_eq!(header.msg_id, 1);
-    assert_eq!(header.body_len, 145);
-    assert_eq!(header.channel_id, 0);
-    assert_eq!(header.stream_type, 0);
-    assert_eq!(header.payload_offset, None);
-    assert_eq!(header.response_code, 0xdd01);
-    assert_eq!(header.class, 0x6614);
-    match body {
-        BcBody::ModernMsg(ModernMsg {
-            payload:
-                Some(BcPayloads::BcXml(BcXml {
-                    encryption: Some(encryption),
-                    ..
-                })),
-            ..
-        }) => assert_eq!(encryption.nonce, "9E6D1FCB9E69846D"),
-        _ => panic!(),
-    }
-}
+        let encryption_protocol =
+            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+        let mut context = BcContext::new(encryption_protocol);
 
-#[test]
-fn test_bc_legacy_login() {
-    let sample = include_bytes!("samples/model_sample_legacy_login.bin");
-
-    let encryption_protocol =
-        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-    let mut context = BcContext::new(encryption_protocol);
-
-    let (buf, header) = bc_header(&sample[..]).unwrap();
-    let (_, body) = bc_body(&mut context, &header, buf).unwrap();
-    assert_eq!(header.msg_id, 1);
-    assert_eq!(header.body_len, 1836);
-    assert_eq!(header.channel_id, 0);
-    assert_eq!(header.stream_type, 0);
-    assert_eq!(header.payload_offset, None);
-    assert_eq!(header.response_code, 0xdc01);
-    assert_eq!(header.class, 0x6514);
-    match body {
-        BcBody::LegacyMsg(LegacyMsg::LoginMsg { username, password }) => {
-            assert_eq!(username, "21232F297A57A5A743894A0E4A801FC\0");
-            assert_eq!(password, EMPTY_LEGACY_PASSWORD);
+        let (buf, header) = bc_header(&sample[..]).unwrap();
+        let (_, body) = bc_body(&mut context, &header, buf).unwrap();
+        assert_eq!(header.msg_id, 1);
+        assert_eq!(header.body_len, 145);
+        assert_eq!(header.channel_id, 0);
+        assert_eq!(header.stream_type, 0);
+        assert_eq!(header.payload_offset, None);
+        assert_eq!(header.response_code, 0xdd01);
+        assert_eq!(header.class, 0x6614);
+        match body {
+            BcBody::ModernMsg(ModernMsg {
+                payload:
+                    Some(BcPayloads::BcXml(BcXml {
+                        encryption: Some(encryption),
+                        ..
+                    })),
+                ..
+            }) => assert_eq!(encryption.nonce, "9E6D1FCB9E69846D"),
+            _ => panic!(),
         }
-        _ => panic!(),
     }
-}
 
-#[test]
-fn test_bc_modern_login_failed() {
-    let sample = include_bytes!("samples/modern_login_failed.bin");
+    #[test]
+    fn test_bc_legacy_login() {
+        let sample = include_bytes!("samples/model_sample_legacy_login.bin");
 
-    let encryption_protocol =
-        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-    let mut context = BcContext::new(encryption_protocol);
+        let encryption_protocol =
+            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+        let mut context = BcContext::new(encryption_protocol);
 
-    let (buf, header) = bc_header(&sample[..]).unwrap();
-    let (_, body) = bc_body(&mut context, &header, buf).unwrap();
-    assert_eq!(header.msg_id, 1);
-    assert_eq!(header.body_len, 0);
-    assert_eq!(header.channel_id, 0);
-    assert_eq!(header.stream_type, 0);
-    assert_eq!(header.payload_offset, Some(0x0));
-    assert_eq!(header.response_code, 0x190); // 400
-    assert_eq!(header.class, 0x0000);
-    match body {
-        BcBody::ModernMsg(ModernMsg {
-            extension: None,
-            payload: None,
-        }) => {}
-        _ => panic!(),
-    }
-}
-
-#[test]
-fn test_bc_modern_login_success() {
-    let sample = include_bytes!("samples/modern_login_success.bin");
-
-    let encryption_protocol =
-        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-    let mut context = BcContext::new(encryption_protocol);
-
-    let (buf, header) = bc_header(&sample[..]).unwrap();
-    let (_, body) = bc_body(&mut context, &header, buf).unwrap();
-    assert_eq!(header.msg_id, 1);
-    assert_eq!(header.body_len, 2949);
-    assert_eq!(header.channel_id, 0);
-    assert_eq!(header.stream_type, 0);
-    assert_eq!(header.payload_offset, Some(0x0));
-    assert_eq!(header.response_code, 0xc8); // 200
-    assert_eq!(header.class, 0x0000);
-
-    // Previously, we were not handling payload_offset == 0 (no bin offset) correctly.
-    // Test that we decoded XML and no binary.
-    match body {
-        BcBody::ModernMsg(ModernMsg {
-            extension: None,
-            payload: Some(_),
-        }) => {}
-        _ => panic!(),
-    }
-}
-
-#[test]
-fn test_bc_binary_mode() {
-    let sample1 = include_bytes!("samples/modern_video_start1.bin");
-    let sample2 = include_bytes!("samples/modern_video_start2.bin");
-
-    let encryption_protocol =
-        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-    let mut context = BcContext::new(encryption_protocol);
-
-    let msg1 = Bc::deserialize(&mut context, &sample1[..]).unwrap();
-    match msg1.body {
-        BcBody::ModernMsg(ModernMsg {
-            extension:
-                Some(Extension {
-                    binary_data: Some(1),
-                    ..
-                }),
-            payload: Some(BcPayloads::Binary(bin)),
-        }) => {
-            assert_eq!(bin.len(), 32);
+        let (buf, header) = bc_header(&sample[..]).unwrap();
+        let (_, body) = bc_body(&mut context, &header, buf).unwrap();
+        assert_eq!(header.msg_id, 1);
+        assert_eq!(header.body_len, 1836);
+        assert_eq!(header.channel_id, 0);
+        assert_eq!(header.stream_type, 0);
+        assert_eq!(header.payload_offset, None);
+        assert_eq!(header.response_code, 0xdc01);
+        assert_eq!(header.class, 0x6514);
+        match body {
+            BcBody::LegacyMsg(LegacyMsg::LoginMsg { username, password }) => {
+                assert_eq!(username, "21232F297A57A5A743894A0E4A801FC\0");
+                assert_eq!(password, EMPTY_LEGACY_PASSWORD);
+            }
+            _ => panic!(),
         }
-        _ => panic!(),
     }
 
-    context.in_bin_mode.insert(msg1.meta.msg_num);
-    let msg2 = Bc::deserialize(&mut context, &sample2[..]).unwrap();
-    match msg2.body {
-        BcBody::ModernMsg(ModernMsg {
-            extension: None,
-            payload: Some(BcPayloads::Binary(bin)),
-        }) => {
-            assert_eq!(bin.len(), 30344);
+    #[test]
+    fn test_bc_modern_login_failed() {
+        let sample = include_bytes!("samples/modern_login_failed.bin");
+
+        let encryption_protocol =
+            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+        let mut context = BcContext::new(encryption_protocol);
+
+        let (buf, header) = bc_header(&sample[..]).unwrap();
+        let (_, body) = bc_body(&mut context, &header, buf).unwrap();
+        assert_eq!(header.msg_id, 1);
+        assert_eq!(header.body_len, 0);
+        assert_eq!(header.channel_id, 0);
+        assert_eq!(header.stream_type, 0);
+        assert_eq!(header.payload_offset, Some(0x0));
+        assert_eq!(header.response_code, 0x190); // 400
+        assert_eq!(header.class, 0x0000);
+        match body {
+            BcBody::ModernMsg(ModernMsg {
+                extension: None,
+                payload: None,
+            }) => {}
+            _ => panic!(),
         }
-        _ => panic!(),
+    }
+
+    #[test]
+    fn test_bc_modern_login_success() {
+        let sample = include_bytes!("samples/modern_login_success.bin");
+
+        let encryption_protocol =
+            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+        let mut context = BcContext::new(encryption_protocol);
+
+        let (buf, header) = bc_header(&sample[..]).unwrap();
+        let (_, body) = bc_body(&mut context, &header, buf).unwrap();
+        assert_eq!(header.msg_id, 1);
+        assert_eq!(header.body_len, 2949);
+        assert_eq!(header.channel_id, 0);
+        assert_eq!(header.stream_type, 0);
+        assert_eq!(header.payload_offset, Some(0x0));
+        assert_eq!(header.response_code, 0xc8); // 200
+        assert_eq!(header.class, 0x0000);
+
+        // Previously, we were not handling payload_offset == 0 (no bin offset) correctly.
+        // Test that we decoded XML and no binary.
+        match body {
+            BcBody::ModernMsg(ModernMsg {
+                extension: None,
+                payload: Some(_),
+            }) => {}
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn test_bc_binary_mode() {
+        let sample1 = include_bytes!("samples/modern_video_start1.bin");
+        let sample2 = include_bytes!("samples/modern_video_start2.bin");
+
+        let encryption_protocol =
+            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+        let mut context = BcContext::new(encryption_protocol);
+
+        let msg1 = Bc::deserialize(&mut context, &sample1[..]).unwrap();
+        match msg1.body {
+            BcBody::ModernMsg(ModernMsg {
+                extension:
+                    Some(Extension {
+                        binary_data: Some(1),
+                        ..
+                    }),
+                payload: Some(BcPayloads::Binary(bin)),
+            }) => {
+                assert_eq!(bin.len(), 32);
+            }
+            _ => panic!(),
+        }
+
+        context.in_bin_mode.insert(msg1.meta.msg_num);
+        let msg2 = Bc::deserialize(&mut context, &sample2[..]).unwrap();
+        match msg2.body {
+            BcBody::ModernMsg(ModernMsg {
+                extension: None,
+                payload: Some(BcPayloads::Binary(bin)),
+            }) => {
+                assert_eq!(bin.len(), 30344);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    // B800 seems to have a different header to the E1 and swann cameras
+    // the stream_type and message_num do not seem to set in the offical clients
+    //
+    // They also have extra streams
+    fn test_bc_b800_externstream() {
+        let sample = include_bytes!("samples/xml_externstream_b800.bin");
+
+        let encryption_protocol =
+            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+        let mut context = BcContext::new(encryption_protocol);
+
+        let e = Bc::deserialize(&mut context, &sample[..]);
+        assert_matches!(
+            e,
+            Ok(Bc {
+                meta:
+                    BcMeta {
+                        msg_id: 3,
+                        channel_id: 0x8c,
+                        stream_type: 0,
+                        response_code: 0,
+                        msg_num: 0,
+                        class: 0x6414,
+                    },
+                body:
+                    BcBody::ModernMsg(ModernMsg {
+                        extension: None,
+                        payload:
+                            Some(BcPayloads::BcXml(BcXml {
+                                preview:
+                                    Some(Preview {
+                                        version,
+                                        channel_id: 0,
+                                        handle: 1024,
+                                        stream_type,
+                                    }),
+                                ..
+                            })),
+                    }),
+            }) if version == "1.1" && stream_type == "externStream"
+        );
+    }
+
+    #[test]
+    // B800 seems to have a different header to the E1 and swann cameras
+    // the stream_type and message_num do not seem to set in the offical clients
+    //
+    // They also have extra streams
+    fn test_bc_b800_substream() {
+        let sample = include_bytes!("samples/xml_substream_b800.bin");
+
+        let encryption_protocol =
+            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+        let mut context = BcContext::new(encryption_protocol);
+
+        let e = Bc::deserialize(&mut context, &sample[..]);
+        assert_matches!(
+            e,
+            Ok(Bc {
+                meta:
+                    BcMeta {
+                        msg_id: 3,
+                        channel_id: 143,
+                        stream_type: 0,
+                        response_code: 0,
+                        msg_num: 0,
+                        class: 0x6414,
+                    },
+                body:
+                    BcBody::ModernMsg(ModernMsg {
+                        extension: None,
+                        payload:
+                            Some(BcPayloads::BcXml(BcXml {
+                                preview:
+                                    Some(Preview {
+                                        version,
+                                        channel_id: 0,
+                                        handle: 256,
+                                        stream_type,
+                                    }),
+                                ..
+                            })),
+                    }),
+            }) if version == "1.1" && stream_type == "subStream"
+        );
+    }
+
+    #[test]
+    // B800 seems to have a different header to the E1 and swann cameras
+    // the stream_type and message_num do not seem to set in the offical clients
+    //
+    // They also have extra streams
+    fn test_bc_b800_mainstream() {
+        let sample = include_bytes!("samples/xml_mainstream_b800.bin");
+
+        let encryption_protocol =
+            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+        let mut context = BcContext::new(encryption_protocol);
+
+        let e = Bc::deserialize(&mut context, &sample[..]);
+        assert_matches!(
+            e,
+            Ok(Bc {
+                meta:
+                    BcMeta {
+                        msg_id: 3,
+                        channel_id: 138,
+                        stream_type: 0,
+                        response_code: 0,
+                        msg_num: 0,
+                        class: 0x6414,
+                    },
+                body:
+                    BcBody::ModernMsg(ModernMsg {
+                        extension: None,
+                        payload:
+                            Some(BcPayloads::BcXml(BcXml {
+                                preview:
+                                    Some(Preview {
+                                        version,
+                                        channel_id: 0,
+                                        handle: 0,
+                                        stream_type,
+                                    }),
+                                ..
+                            })),
+                    }),
+            }) if version == "1.1" && stream_type == "mainStream"
+        );
     }
 }
