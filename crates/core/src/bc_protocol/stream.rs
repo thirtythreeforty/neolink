@@ -56,7 +56,7 @@ impl BcCamera {
             .expect("Must be connected to start video");
         let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
 
-        // On an E1:
+        // On an E1 and swann cameras:
         //  - mainStream always has a value of 0
         //  - subStream always has a value of 1
         //  - There is no externStram
@@ -71,7 +71,14 @@ impl BcCamera {
         };
 
         // Theses are the numbers used with the offical client
-        // connecting to an B800.
+        // On an E1 and swann cameras:
+        //  - mainStream always has a value of 0
+        //  - subStream always has a value of 1
+        //  - There is no externStram
+        // On a B800:
+        //  - mainStream is 0
+        //  - subStream is 256
+        //  - externStram is 1024
         let handle = match stream {
             Stream::Main => 0,
             Stream::Sub => 256,
