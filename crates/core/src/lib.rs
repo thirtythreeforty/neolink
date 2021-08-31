@@ -31,11 +31,6 @@ pub mod bc_protocol;
 /// Contains low level structures and formats for the media substream
 pub mod bcmedia;
 
-#[derive(Debug)]
-/// Certain method just as `start_video` will block forever or return an error
-/// In such a case the return type is `Result<Never, Error>`
-pub enum Never {}
-
 /// This is the top level error structure of the library
 ///
 /// Most commands will either return their `Ok(result)` or this `Err(Error)`

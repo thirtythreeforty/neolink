@@ -2,17 +2,23 @@ use super::{BcCamera, BinarySubscriber, Result};
 use crate::{
     bc::{model::*, xml::*},
     bcmedia::model::*,
-    Never,
 };
 
 /// Convience type for the error raised by the [StreamOutput] trait
-pub type StreamOutputError = Result<()>;
+pub type StreamOutputError = Result<bool>;
 
 /// The method [`BcCamera::start_video()`] requires a structure with this trait to pass the
 /// audio and video data back to
 pub trait StreamOutput {
     /// This is the callback raised a complete media packet is received
-    fn write(&mut self, media: BcMedia) -> StreamOutputError;
+    ///
+    /// If result is `Ok(true)` more messages will be sent
+    ///
+    /// If result if `Ok(false)` then message will be stopped
+    ///
+    /// If result is `Err(E)` then messages be stopped
+    /// and an error will be thrown
+    fn stream_recv(&mut self, media: BcMedia) -> StreamOutputError;
 }
 
 impl BcCamera {
@@ -29,7 +35,7 @@ impl BcCamera {
     ///
     /// This will block forever or return an error when the camera connection is dropped
     ///
-    pub fn start_video<Outputs>(&self, data_outs: &mut Outputs, stream_name: &str) -> Result<Never>
+    pub fn start_video<Outputs>(&self, data_outs: &mut Outputs, stream_name: &str) -> Result<()>
     where
         Outputs: StreamOutput,
     {
@@ -72,7 +78,11 @@ impl BcCamera {
         loop {
             let bc_media = BcMedia::deserialize(&mut media_sub)?;
             // We now have a complete interesting packet. Send it to on the callback
-            data_outs.write(bc_media)?;
+            match data_outs.stream_recv(bc_media) {
+                Ok(true) => {}
+                Ok(false) => return Ok(()),
+                Err(e) => return Err(e),
+            };
         }
     }
 }
