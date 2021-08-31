@@ -15,6 +15,7 @@ pub(crate) mod filesub;
 mod ledstate;
 mod login;
 mod logout;
+mod motion;
 mod ping;
 mod reboot;
 mod stream;
@@ -25,6 +26,7 @@ mod version;
 pub use binarysub::BinarySubscriber;
 pub use errors::Error;
 pub use ledstate::LightState;
+pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
 pub use stream::{StreamOutput, StreamOutputError};
 
 type Result<T> = std::result::Result<T, Error>;
