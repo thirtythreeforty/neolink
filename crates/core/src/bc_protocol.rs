@@ -27,7 +27,7 @@ pub use binarysub::BinarySubscriber;
 pub use errors::Error;
 pub use ledstate::LightState;
 pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
-pub use stream::{StreamOutput, StreamOutputError};
+pub use stream::{Stream, StreamOutput, StreamOutputError};
 
 type Result<T> = std::result::Result<T, Error>;
 
