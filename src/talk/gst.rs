@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Context, Result};
 use gstreamer::{
     element_error, parse_launch, prelude::*, Caps, ClockTime, FlowError, FlowSuccess, MessageView,
     Pipeline, ResourceError, State,
@@ -5,7 +6,6 @@ use gstreamer::{
 use gstreamer_app::{AppSink, AppSinkCallbacks};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
-use super::errors::Error;
 use byte_slice_cast::*;
 
 pub(super) fn from_input(
@@ -13,12 +13,12 @@ pub(super) fn from_input(
     volume: f32,
     block_align: u16,
     sample_rate: u16,
-) -> Result<Receiver<Vec<u8>>, Error> {
+) -> Result<Receiver<Vec<u8>>> {
     let pipeline = create_pipeline(input_src, volume, block_align, sample_rate)?;
     input(pipeline)
 }
 
-fn input(pipeline: Pipeline) -> Result<Receiver<Vec<u8>>, Error> {
+fn input(pipeline: Pipeline) -> Result<Receiver<Vec<u8>>> {
     let appsink = get_sink(&pipeline)?;
     let (tx, rx) = sync_channel(30);
 
@@ -31,7 +31,7 @@ fn input(pipeline: Pipeline) -> Result<Receiver<Vec<u8>>, Error> {
     Ok(rx)
 }
 
-fn start_pipeline(pipeline: Pipeline) -> Result<(), Error> {
+fn start_pipeline(pipeline: Pipeline) -> Result<()> {
     pipeline.set_state(State::Playing)?;
 
     let bus = pipeline
@@ -42,30 +42,31 @@ fn start_pipeline(pipeline: Pipeline) -> Result<(), Error> {
         match msg.view() {
             MessageView::Eos(..) => break,
             MessageView::Error(err) => {
-                pipeline.set_state(State::Null)?;
+                pipeline
+                    .set_state(State::Null)
+                    .context("Error in gstreamer when setting state to Null")?;
                 log::warn!(
-                    "{:?}",
-                    Error::Gstreamer {
-                        error: err.error().to_string(),
-                        debug: err.debug(),
-                    }
+                    "Error from gstreamer when setting the play state {:?} setting to Null instead",
+                    err
                 );
             }
             _ => (),
         }
     }
 
-    pipeline.set_state(State::Null)?;
+    pipeline
+        .set_state(State::Null)
+        .context("Error in gstreamer when setting state to Null")?;
 
     Ok(())
 }
 
-fn get_sink(pipeline: &Pipeline) -> Result<AppSink, Error> {
+fn get_sink(pipeline: &Pipeline) -> Result<AppSink> {
     let sink = pipeline
         .by_name("thesink")
         .expect("There shoud be a `thesink`");
     sink.dynamic_cast::<AppSink>()
-        .map_err(Error::GstreamerElement)
+        .map_err(|_| anyhow!("Cannot find appsink in gstreamer, check your gstreamer plugins"))
 }
 
 fn set_data_channel(appsink: &AppSink, tx: SyncSender<Vec<u8>>) {
@@ -131,8 +132,9 @@ fn create_pipeline(
     volume: f32,
     block_align: u16,
     sample_rate: u16,
-) -> Result<Pipeline, Error> {
-    gstreamer::init()?;
+) -> Result<Pipeline> {
+    gstreamer::init()
+        .context("Unable to start gstreamer ensure it and all plugins are installed")?;
 
     let launch_str = format!(
         "{} \
@@ -152,10 +154,11 @@ fn create_pipeline(
     // Parse the pipeline we want to probe from a static in-line string.
     // Here we give our audiotestsrc a name, so we can retrieve that element
     // from the resulting pipeline.
-    let pipeline = parse_launch(&launch_str)?;
-    let pipeline = pipeline
-        .dynamic_cast::<Pipeline>()
-        .map_err(Error::GstreamerElement)?;
+    let pipeline = parse_launch(&launch_str)
+        .context("Unable to load gstreamer pipeline ensure all gstramer plugins are installed")?;
+    let pipeline = pipeline.dynamic_cast::<Pipeline>().map_err(|_| {
+        anyhow!("Unable to create gstreamer pipeline ensure all gstramer plugins are installed")
+    })?;
 
     let appsink = get_sink(&pipeline)?;
 

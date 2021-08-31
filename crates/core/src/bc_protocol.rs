@@ -24,7 +24,7 @@ pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
 pub use resolution::*;
-pub use stream::{StreamOutput, StreamOutputError};
+pub use stream::{Stream, StreamOutput, StreamOutputError};
 
 type Result<T> = std::result::Result<T, Error>;
 
