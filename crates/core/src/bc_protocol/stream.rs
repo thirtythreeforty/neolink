@@ -35,20 +35,6 @@ pub enum Stream {
     Extern,
 }
 
-/// The stream names supported by BC
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Stream {
-    /// This is the HD stream
-    Main,
-    /// This is the SD stream
-    Sub,
-    /// This stream represents a balance between SD and HD
-    ///
-    /// It is only avaliable on some camera. If the camera dosen't
-    /// support it the stream will be the same as the SD stream
-    Extern,
-}
-
 impl BcCamera {
     ///
     /// Starts the video stream
