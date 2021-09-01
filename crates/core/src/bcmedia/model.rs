@@ -103,7 +103,9 @@ pub struct BcMediaInfoV2 {
     // unknown: u16
 }
 
+// IFrame magics include the channel number in them
 pub(super) const MAGIC_HEADER_BCMEDIA_IFRAME: u32 = 0x63643030;
+pub(super) const MAGIC_HEADER_BCMEDIA_IFRAME_LAST: u32 = 0x63643039;
 
 /// Video Types for I/PFrame
 #[derive(Debug)]
@@ -132,7 +134,9 @@ pub struct BcMediaIframe {
     pub data: Vec<u8>,
 }
 
+// PFrame magics include the channel number in them
 pub(super) const MAGIC_HEADER_BCMEDIA_PFRAME: u32 = 0x63643130;
+pub(super) const MAGIC_HEADER_BCMEDIA_PFRAME_LAST: u32 = 0x63643139;
 
 /// This is a BcMedia video PFrame.
 #[derive(Debug)]
