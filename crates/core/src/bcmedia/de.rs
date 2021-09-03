@@ -76,8 +76,8 @@ fn bcmedia(buf: &[u8]) -> IResult<&[u8], BcMedia> {
             *x,
             MAGIC_HEADER_BCMEDIA_INFO_V1
                 | MAGIC_HEADER_BCMEDIA_INFO_V2
-                | MAGIC_HEADER_BCMEDIA_IFRAME
-                | MAGIC_HEADER_BCMEDIA_PFRAME
+                | MAGIC_HEADER_BCMEDIA_IFRAME..=MAGIC_HEADER_BCMEDIA_IFRAME_LAST
+                | MAGIC_HEADER_BCMEDIA_PFRAME..=MAGIC_HEADER_BCMEDIA_PFRAME_LAST
                 | MAGIC_HEADER_BCMEDIA_AAC
                 | MAGIC_HEADER_BCMEDIA_ADPCM
         )
@@ -92,11 +92,11 @@ fn bcmedia(buf: &[u8]) -> IResult<&[u8], BcMedia> {
             let (buf, payload) = bcmedia_info_v2(buf)?;
             Ok((buf, BcMedia::InfoV2(payload)))
         }
-        MAGIC_HEADER_BCMEDIA_IFRAME => {
+        MAGIC_HEADER_BCMEDIA_IFRAME..=MAGIC_HEADER_BCMEDIA_IFRAME_LAST => {
             let (buf, payload) = bcmedia_iframe(buf)?;
             Ok((buf, BcMedia::Iframe(payload)))
         }
-        MAGIC_HEADER_BCMEDIA_PFRAME => {
+        MAGIC_HEADER_BCMEDIA_PFRAME..=MAGIC_HEADER_BCMEDIA_PFRAME_LAST => {
             let (buf, payload) = bcmedia_pframe(buf)?;
             Ok((buf, BcMedia::Pframe(payload)))
         }
