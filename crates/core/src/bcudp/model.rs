@@ -20,6 +20,7 @@ pub const MAGIC_HEADER_UDP_NEGO: u32 = 0x2a87cf3a;
 /// The Discovery packet is sent and received to init a connection
 #[derive(Debug, PartialEq, Eq)]
 pub struct UdpDiscovery {
+    // The packet also contains these header fields not deserialized into this struct:
     // 4 Bytes Magic
     // 4 Byte payload size
     // 4 Bytes unknown always `01000000`
