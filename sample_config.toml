@@ -59,4 +59,4 @@ address = "192.168.1.245:9000"
 # By default channel_id = 0. Eg the first connected camera on the device
 # **Note**: that unlike in the offical client the  numbering starts from 0 not 1.
 # An 8 channel NVR would have channels 0 through 7
-# channel_id = 1
+# channel_id = 0
