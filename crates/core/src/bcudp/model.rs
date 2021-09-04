@@ -8,7 +8,7 @@ use super::xml::*;
 pub enum BcUdp {
     /// Packet from the negotiate stage when connection info is exchanged
     Discovery(UdpDiscovery),
-    /// Packet to acknoledge receipt of a data packet
+    /// Packet to acknowledge receipt of a data packet
     Ack(UdpAck),
     /// Packet containing the data (or part of the data) of a Bc packet
     Data(UdpData),
