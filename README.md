@@ -80,9 +80,9 @@ Builds are provided for the following platforms:
 
 1. [Install Gstreamer][gstreamer] from the most recent MSI installer on Windows,
 or your package manager on Linux.
-    
+
     On Ubuntu/Debian machines gstreamer can be installed with:
-    
+
     ```bash
     sudo apt install \
       libgstrtspserver-1.0-0 \
@@ -105,12 +105,12 @@ or your package manager on Linux.
 3. Download and unpack Neolink from the links above.
    1. Note: you can also click on [this link][ci-download] to see all historical builds.
   You will need to be logged in to GitHub to download directly from the builds page (wget doesn't work)
-   
+
    Raspberry Pi OS x64 example:
-   
+
     ```bash
     unzip release-arm64-buster.zip
-    sudo cp neolink /usr/local/bin/ 
+    sudo cp neolink /usr/local/bin/
     sudo chmod +x /usr/local/bin/neolink
     ```
 4. Write a configuration file for your cameras.  See the section below.
@@ -175,7 +175,7 @@ services:
 The Docker image is "best effort" and intended for advanced users; questions
 about running Docker are outside the scope of Neolink.
 
-If you use a UDP only camera, such as a battery camera you will need to either
+If you use a battery-powered camera (or other UDP-only camera) you will need to either
 use `--net=host` or setup a [macvlan](https://docs.docker.com/network/macvlan/)
 for the docker image that supports UDP broadcast.
 This is because UDP requires that udp broadcast messages are transmitted across
