@@ -1,6 +1,7 @@
 use crate::{bc, bcmedia};
 use log::*;
 use std::convert::TryInto;
+use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicU16, Ordering};
 
 use Md5Trunc::*;
@@ -75,7 +76,7 @@ impl BcCamera {
     ///
     /// # Parameters
     ///
-    /// * `host` - The address of the camera either ip address, hostname string, or uid is ok
+    /// * `host` - The address of the camera either ip address, hostname string
     ///
     /// * `channel_id` - The channel ID this is usually zero unless using a NVR
     ///
@@ -83,66 +84,126 @@ impl BcCamera {
     ///
     /// returns either an error or the camera
     ///
-    pub fn new_with_addr<T: ToSocketAddrsOrUid>(host: T, channel_id: u8) -> Result<Self> {
+    pub fn new_with_addr<T: ToSocketAddrs>(host: T, channel_id: u8) -> Result<Self> {
+        let addr_iter = match host.to_socket_addrs() {
+            Ok(iter) => iter,
+            Err(_) => return Err(Error::AddrResolutionError),
+        };
+        for addr in addr_iter {
+            if let Ok(cam) = Self::new(SocketAddrOrUid::SocketAddr(addr), channel_id) {
+                return Ok(cam);
+            }
+        }
+
+        Err(Error::Timeout)
+    }
+
+    ///
+    /// Create a new camera interface with this uid and channel ID
+    ///
+    /// # Parameters
+    ///
+    /// * `uid` - The uid of the camera
+    ///
+    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
+    ///
+    /// # Returns
+    ///
+    /// returns either an error or the camera
+    ///
+    pub fn new_with_uid(uid: &str, channel_id: u8) -> Result<Self> {
+        Self::new(SocketAddrOrUid::Uid(uid.to_string()), channel_id)
+    }
+
+    ///
+    /// Create a new camera interface with this address/uid and channel ID
+    ///
+    /// This method will first perform hostname resolution on the address
+    /// then fallback to uid if that resolution fails.
+    ///
+    /// Be aware that it is possible (although unlikely) that there is
+    /// a dns entry with the same address as the uid. If uncertain use
+    /// one of the other methods.
+    ///
+    /// # Parameters
+    ///
+    /// * `host` - The address of the camera either ip address, hostname string, or uid
+    ///
+    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
+    ///
+    /// # Returns
+    ///
+    /// returns either an error or the camera
+    ///
+    pub fn new_with_addr_or_uid<T: ToSocketAddrsOrUid>(host: T, channel_id: u8) -> Result<Self> {
         let addr_iter = match host.to_socket_addrs_or_uid() {
             Ok(iter) => iter,
             Err(_) => return Err(Error::AddrResolutionError),
         };
-
-        for addr in addr_iter {
-            let source = match addr {
-                SocketAddrOrUid::SocketAddr(addr) => {
-                    debug!("Trying address {}", addr);
-                    BcSource::new_tcp(addr, RX_TIMEOUT)?
-                }
-                SocketAddrOrUid::Uid(uid) => {
-                    debug!("Trying uid {}", uid);
-                    BcSource::new_udp(&uid, RX_TIMEOUT)?
-                }
-            };
-
-            let conn = match BcConnection::new(source) {
-                Ok(conn) => conn,
-                Err(err) => match err {
-                    connection::Error::Communication(ref err) => {
-                        debug!("Assuming timeout from {}", err);
-                        continue;
-                    }
-                    err => return Err(err.into()),
-                },
-            };
-
-            debug!("Success");
-            let me = Self {
-                connection: Some(conn),
-                message_num: AtomicU16::new(0),
-                channel_id,
-                logged_in: false,
-                credentials: None,
-            };
-
-            if let Some(conn) = &me.connection {
-                let keep_alive_msg = Bc {
-                    meta: BcMeta {
-                        msg_id: MSG_ID_UDP_KEEP_ALIVE,
-                        channel_id: me.channel_id,
-                        msg_num: me.new_message_num(),
-                        stream_type: 0,
-                        response_code: 0,
-                        class: 0x6414,
-                    },
-                    body: BcBody::ModernMsg(ModernMsg {
-                        ..Default::default()
-                    }),
-                };
-
-                conn.set_keep_alive_msg(keep_alive_msg);
+        for addr_or_uid in addr_iter {
+            if let Ok(cam) = Self::new(addr_or_uid, channel_id) {
+                return Ok(cam);
             }
-
-            return Ok(me);
         }
 
         Err(Error::Timeout)
+    }
+
+    ///
+    /// Create a new camera interface with this address/uid and channel ID
+    ///
+    /// # Parameters
+    ///
+    /// * `addr` - An enum of [`SocketAddrOrUid`] that contains the address
+    ///
+    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
+    ///
+    /// # Returns
+    ///
+    /// returns either an error or the camera
+    ///
+    pub fn new(addr: SocketAddrOrUid, channel_id: u8) -> Result<Self> {
+        let source = match addr {
+            SocketAddrOrUid::SocketAddr(addr) => {
+                debug!("Trying address {}", addr);
+                BcSource::new_tcp(addr, RX_TIMEOUT)?
+            }
+            SocketAddrOrUid::Uid(uid) => {
+                debug!("Trying uid {}", uid);
+                BcSource::new_udp(&uid, RX_TIMEOUT)?
+            }
+        };
+
+        let conn = BcConnection::new(source)?;
+
+        debug!("Success");
+        let me = Self {
+            connection: Some(conn),
+            message_num: AtomicU16::new(0),
+            channel_id,
+            logged_in: false,
+            credentials: None,
+        };
+
+        if let Some(conn) = &me.connection {
+            let keep_alive_msg = Bc {
+                meta: BcMeta {
+                    msg_id: MSG_ID_UDP_KEEP_ALIVE,
+                    channel_id: me.channel_id,
+                    msg_num: me.new_message_num(),
+                    stream_type: 0,
+                    response_code: 0,
+                    class: 0x6414,
+                },
+                body: BcBody::ModernMsg(ModernMsg {
+                    ..Default::default()
+                }),
+            };
+
+            conn.set_keep_alive_msg(keep_alive_msg);
+        }
+
+        Ok(me)
     }
 
     /// This method will get a new message number and increment the message count atomically

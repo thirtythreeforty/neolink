@@ -17,13 +17,13 @@
 ///
 use anyhow::{anyhow, Context, Result};
 use log::*;
-use neolink_core::bc_protocol::BcCamera;
 use std::fs;
 use validator::Validate;
 
 mod cmdline;
 mod config;
 
+use crate::utils::AddressOrUid;
 pub(crate) use cmdline::Opt;
 use config::Config;
 
@@ -45,19 +45,22 @@ pub fn main(opt: Opt) -> Result<()> {
     for camera_config in &config.cameras {
         if opt.camera == camera_config.name {
             cam_found = true;
+
+            let camera_addr =
+                AddressOrUid::new(&camera_config.camera_addr, &camera_config.camera_uid).unwrap();
             info!(
                 "{}: Connecting to camera at {}",
-                camera_config.name, camera_config.camera_addr
+                camera_config.name, camera_addr
             );
 
-            let mut camera =
-                BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)
-                    .with_context(|| {
-                        format!(
-                            "Failed to connect to camera {} at {} on channel {}",
-                            camera_config.name, camera_config.camera_addr, camera_config.channel_id
-                        )
-                    })?;
+            let mut camera = camera_addr
+                .connect_camera(camera_config.channel_id)
+                .with_context(|| {
+                    format!(
+                        "Failed to connect to camera {} at {} on channel {}",
+                        camera_config.name, camera_addr, camera_config.channel_id
+                    )
+                })?;
 
             info!("{}: Logging in", camera_config.name);
             camera
