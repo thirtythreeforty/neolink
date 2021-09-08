@@ -1,5 +1,6 @@
 use super::{aborthandle::AbortHandle, Error, Result, MTU, P2P_RELAY_HOSTNAMES, WAIT_TIME};
 use crate::bcudp::{model::*, xml::*};
+use local_ip_address::local_ip;
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use std::io::{Error as IoError, ErrorKind, Result as IoResult};
@@ -272,7 +273,7 @@ impl UdpDiscover {
     // It has the following stages
     // - Contact the p2p register: This will get the register, relay and log server ip addresses
     // - Register the client ip address to the register (This can probably be used for NAT holepunching if the camera
-    //    tries to connect to us using this data, currently we don't register a real address though, just `0.0.0.0`)
+    //    tries to connect to us using this data)
     // - The register will return the camera ip/port and SID
     // - Connect to the camera using register's provided ip/port and negotiate a cid and did
     // - Send a message to the reolink log server that we will connect locally
@@ -300,8 +301,9 @@ impl UdpDiscover {
         let log_address = m2c_q_r.log;
         // let device_address = m2c_q_r.t;
 
+        let default_local_address = local_ip().expect("There to be a local ip");
         debug!("Register address found: {:?}", register_address);
-        debug!("Registering this address: {:?}", local_addr);
+        debug!("Registering this address: {:?}", default_local_address);
 
         let local_family = if local_addr.ip().is_ipv4() { 4 } else { 6 };
         let msg = BcUdp::Discovery(UdpDiscovery {
@@ -310,7 +312,7 @@ impl UdpDiscover {
                 c2r_c: Some(C2rC {
                     uid: uid.to_string(),
                     cli: IpPort {
-                        ip: "10.251.254.10".to_string(),
+                        ip: default_local_address.to_string(),
                         port: local_port,
                     },
                     relay: relay_address,

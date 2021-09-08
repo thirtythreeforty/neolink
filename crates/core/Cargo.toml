@@ -14,6 +14,7 @@ crossbeam-channel = "0.5.1"
 err-derive = "0.2"
 get_if_addrs = "0.5.3"
 lazy_static = "1.4"
+local-ip-address = "0.4.4"
 log = { version = "0.4" }
 md5 = "0.7"
 nom = "6.1.2"
