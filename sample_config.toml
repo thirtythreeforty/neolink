@@ -35,6 +35,9 @@ name = "driveway"
 username = "admin"
 password = "12345678"
 address = "192.168.1.187:9000"
+# If you use a battery camera: **Instead** of an `address` supply the uid
+# as follows
+# uid = "ABCD01234567890EFG"
 
 # By default any of the users can connect (or anyone at all if no users are specfied)
 # You can uncomment the following to permit only specfic users
@@ -50,8 +53,9 @@ name = "storage shed"
 username = "admin"
 password = "987654321"
 address = "192.168.1.245:9000"
-# The address could instead be set to a camera UID like this
-# address = "ABCD01234567890EFG"
+# If you use a battery camera: **Instead** of an `address` supply the uid
+# as follows
+# uid = "ABCD01234567890EFG"
 
 # If you use an NVR that relays several camera connections you can choose which
 # camera to connect to with by setting the `channel_id`
