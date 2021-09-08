@@ -15,6 +15,7 @@ pub struct UdpDiscover {
 }
 
 impl UdpDiscover {
+    // Sends data on a UDP socket until aborted or max retries reached
     fn retrying_send_to<T: ToSocketAddrs>(
         socket: &UdpSocket,
         buf: &[u8],
@@ -27,6 +28,8 @@ impl UdpDiscover {
         Self::retrying_send_to_multi(socket, buf, &[addr])
     }
 
+    // Sends data to multiple destinations using a UDP socket
+    // until aborted or max retries reached
     fn retrying_send_to_multi<T: ToSocketAddrs>(
         socket: &UdpSocket,
         buf: &[u8],
@@ -72,6 +75,11 @@ impl UdpDiscover {
         Ok((bytes_send, handle))
     }
 
+    // Performs local discovery
+    //
+    // This involves broadcasting a C2dC
+    // Bc Discovery packet to ports 2015 and 2018
+    // and awaiting a D2cCr reply
     fn discover_from_uuid_local(socket: &UdpSocket, uid: &str, timeout: Duration) -> Result<Self> {
         let mut rng = thread_rng();
         // If tid is too large it will overflow during encrypt so we just use a random u8
@@ -171,6 +179,12 @@ impl UdpDiscover {
         })
     }
 
+    // This function will contact the p2p relay servers
+    //
+    // It will ask each of the servers for details on a specific UID
+    //
+    // On success it returns the M2cQr that the p2p relay
+    // server has about the UID
     fn get_register(
         uid: &str,
         socket: &UdpSocket,
@@ -218,6 +232,9 @@ impl UdpDiscover {
                                     },
                             })) if m2c_q_r.reg.port == 0 || m2c_q_r.reg.ip.is_empty() => {
                                 // This register is empty
+                                // Sometimes a registery will return a M2cQr but it's port and addr
+                                // will be 0
+                                // In this case we ignore this server and contact another
                                 abort.abort();
                                 break;
                             }
@@ -250,6 +267,16 @@ impl UdpDiscover {
         Err(Error::ConnectionUnavaliable)
     }
 
+    // This will start remote discovery against the reolink p2p servers
+    //
+    // It has the following stages
+    // - Contact the p2p register: This will get the register, relay and log server ip addresses
+    // - Register the client ip address to the register (This can probably be used for NAT holepunching if the camera
+    //    tries to connect to us using this data, currently we don't register a real address though, just `0.0.0.0`)
+    // - The register will return the camera ip/port and SID
+    // - Connect to the camera using register's provided ip/port and negotiate a cid and did
+    // - Send a message to the reolink log server that we will connect locally
+    // - Send a message to the camera that we could connect remotely
     fn discover_from_uuid_remote(
         socket: &UdpSocket,
         uid: &str,

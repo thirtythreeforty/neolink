@@ -76,7 +76,7 @@ impl BcCamera {
     ///
     /// # Parameters
     ///
-    /// * `host` - The address of the camera either ip address, hostname string
+    /// * `host` - The address of the camera either ip address or hostname string
     ///
     /// * `channel_id` - The channel ID this is usually zero unless using a NVR
     ///

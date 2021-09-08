@@ -23,7 +23,7 @@ impl AddressOrUid {
     pub(crate) fn new(address: &Option<String>, uid: &Option<String>) -> Result<Self, Error> {
         match (address, uid) {
             (None, None) => Err(anyhow!("Neither address or uid given")),
-            (Some(_), Some(_)) => Err(anyhow!("Either address of uid should be given not both")),
+            (Some(_), Some(_)) => Err(anyhow!("Either address or uid should be given not both")),
             (Some(host), None) => Ok(AddressOrUid::Address(host.clone())),
             (None, Some(host)) => Ok(AddressOrUid::Uid(host.clone())),
         }

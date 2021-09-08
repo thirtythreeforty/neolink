@@ -142,7 +142,7 @@ fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
     let (buf, payload) = if payload_size > 0 {
         let (buf, t_payload) = take!(buf, payload_size)?; // It is a binary payload of
                                                           // `00 01 01 01 01 00 01`
-                                                          // Probably a truth map of missing packets
+                                                          // This is a truth map of missing packets
                                                           // since last contigious packet_id up
                                                           // to the last packet we sent and it recieved
         (buf, t_payload.to_vec())

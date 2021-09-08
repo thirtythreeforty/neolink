@@ -97,6 +97,7 @@ impl ClientSent {
     //     }
     // }
 
+    // This function translates the `UdpAck` payload directly
     fn acknoledge_from_ack_data(&self, start: u32, payload: Vec<u8>) {
         let mut locked = self.buffer.lock().unwrap();
         locked.retain(|&k, _| k > start);
@@ -174,6 +175,7 @@ impl ClientRecieved {
         let _ = locked.entry(packet_id).or_insert(payload);
     }
 
+    // This gets the needed payload to form a `UdpAck` packet
     fn get_needed_packets(&self) -> Option<(u32, Vec<u8>)> {
         let locked = self.buffer.lock().unwrap();
         let packet_id_loc = self.consumed.lock().unwrap();
@@ -190,6 +192,9 @@ impl ClientRecieved {
         // Find last packet in buffer
         let vec = if let Some(end) = locked.keys().max() {
             let mut vec = vec![];
+            // From last contiguous packet to last recieved packet
+            // create a payload of `00` (unreceived) and `01` (received)
+            // that can be used to form the `UdpAck` packet
             for i in (start + 1)..(end + 1) {
                 if locked.contains_key(&i) {
                     vec.push(1)
@@ -236,6 +241,7 @@ impl UdpTransmit {
                     }) if cid == discovery_result.client_id
                         && did == discovery_result.camera_id =>
                     {
+                        // Camera sent a disconnect
                         // Reply with C2D_Disc and end
                         discovery_result.send_client_disconnect(socket);
                         return Err(TransmitError::Disc);
@@ -259,7 +265,6 @@ impl UdpTransmit {
                         packet_id,
                         payload,
                     }) if cid == discovery_result.client_id => {
-                        // Seperated as let/if due to clippy recommend
                         trace!("Recieving UdpData packet {}", packet_id);
                         self.client_recieved.receive(packet_id, payload);
 

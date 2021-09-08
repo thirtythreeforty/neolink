@@ -46,7 +46,7 @@ of `0x00000000` and an  xorout of `0x00000000`.
 
 ## Payload
 
-- The XML payloads and encrypted with a simple xor algorithm. See the full
+- The XML payloads are encrypted with a simple xor algorithm. See the full
   source in neolink for details.
 
 ## Start Discovery payload
@@ -172,6 +172,16 @@ Client then replies with this.
 
 Camera replies with this payload on the port specified in `C2D_C`
 
+```xml
+<P2P>
+<D2C_T>
+<sid>62097899</sid>
+<conn>local</conn>
+<cid>82000</cid>
+<did>528</did>
+</D2C_T>
+</P2P>
+```
 **Login**
 
 The client can now login over UDP
@@ -221,7 +231,7 @@ Some cameras seem to also send this before login
 
 # UDP Ack
 
-These messages are sent to acknowledge receipt of message. They are header only.
+These messages are sent to acknowledge receipt of message
 
 ## Header 28 Bytes
 
@@ -236,7 +246,9 @@ These messages are sent to acknowledge receipt of message. They are header only.
 
 **To Investigate:**
   - Why does the unknown byte change. It starts at zero and remains that way
-    for a second. Then seems to change and remain at the new value for another second
+    for a second. Then seems to change and remain at the new value for another second.
+    This may be some metric such as average ttl for the last second, or some calculation
+    of the jitter
 
 Here's an example of a UDP Ack payload (size 203 bytes)
 
