@@ -199,7 +199,7 @@ pub struct Preview {
     pub handle: u32,
     /// Either `"mainStream"` or `"subStream"`
     #[yaserde(rename = "streamType")]
-    pub stream_type: String,
+    pub stream_type: Option<String>,
 }
 
 /// Extension xml

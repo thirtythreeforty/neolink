@@ -1,4 +1,4 @@
-use super::{BcCamera, BinarySubscriber, Result};
+use super::{BcCamera, BinarySubscriber, Error, Result, RX_TIMEOUT};
 use crate::{
     bc::{model::*, xml::*},
     bcmedia::model::*,
@@ -112,7 +112,7 @@ impl BcCamera {
                     version: xml_ver(),
                     channel_id: self.channel_id,
                     handle,
-                    stream_type: stream_name,
+                    stream_type: Some(stream_name),
                 }),
                 ..Default::default()
             },
@@ -122,14 +122,90 @@ impl BcCamera {
 
         let mut media_sub = BinarySubscriber::from_bc_sub(&sub_video);
 
+        let result;
+
         loop {
             let bc_media = BcMedia::deserialize(&mut media_sub)?;
             // We now have a complete interesting packet. Send it to on the callback
             match data_outs.stream_recv(bc_media) {
                 Ok(true) => {}
-                Ok(false) => return Ok(()),
-                Err(e) => return Err(e),
+                Ok(false) => {
+                    result = Ok(());
+                    break;
+                }
+                Err(e) => {
+                    result = Err(e);
+                    break;
+                }
             };
         }
+
+        println!("Stopping video: {:?}", result);
+        self.stop_stream(stream)?;
+        println!("Video stopped");
+        result
+    }
+
+    ///
+    /// Sends the stop stream message to the camera
+    ///
+    pub fn stop_stream(&self, stream: Stream) -> Result<()> {
+        let connection = self
+            .connection
+            .as_ref()
+            .expect("Must be connected to stop video");
+        let sub = connection.subscribe(MSG_ID_VIDEO_STOP)?;
+
+        // Theses are the numbers used with the offical client
+        // On an E1 and swann cameras:
+        //  - mainStream always has a value of 0
+        //  - subStream always has a value of 1
+        //  - There is no externStram
+        // On a B800:
+        //  - mainStream is 0
+        //  - subStream is 256
+        //  - externStram is 1024
+        let handle = match stream {
+            Stream::Main => 0,
+            Stream::Sub => 256,
+            Stream::Extern => 1024,
+        };
+
+        let msg = Bc::new_from_xml(
+            BcMeta {
+                msg_id: MSG_ID_VIDEO_STOP,
+                channel_id: self.channel_id,
+                msg_num: self.new_message_num(),
+                stream_type: 0,
+                response_code: 0,
+                class: 0x6414, // IDK why
+            },
+            BcXml {
+                preview: Some(Preview {
+                    version: xml_ver(),
+                    channel_id: self.channel_id,
+                    handle,
+                    stream_type: None,
+                }),
+                ..Default::default()
+            },
+        );
+
+        sub.send(msg)?;
+
+        let msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+
+        if let BcMeta {
+            response_code: 200, ..
+        } = msg.meta
+        {
+        } else {
+            return Err(Error::UnintelligibleReply {
+                reply: msg,
+                why: "The camera did not accept the stream stop command.",
+            });
+        }
+
+        Ok(())
     }
 }

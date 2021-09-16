@@ -7,6 +7,8 @@ use gstreamer::prelude::Cast;
 use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
 //use gstreamer_rtsp::RTSPLowerTrans;
+use super::abort::AbortHandle;
+use anyhow::anyhow;
 use gstreamer_rtsp::RTSPAuthMethod;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use gstreamer_rtsp_server::glib;
@@ -27,6 +29,7 @@ use std::io;
 use std::io::Write;
 
 type Result<T> = std::result::Result<T, ()>;
+type AnyResult<T> = std::result::Result<T, anyhow::Error>;
 
 pub(crate) struct RtspServer {
     server: GstRTSPServer,
@@ -38,6 +41,8 @@ pub(crate) struct GstOutputs {
     video_format: Option<StreamFormat>,
     audio_format: Option<StreamFormat>,
     factory: RTSPMediaFactory,
+    live: AbortHandle,
+    last_iframe: Option<Vec<u8>>,
 }
 
 // The stream from the camera will be using one of these formats
@@ -58,6 +63,7 @@ enum StreamFormat {
 
 impl StreamOutput for GstOutputs {
     fn stream_recv(&mut self, media: BcMedia) -> StreamOutputError {
+        let mut should_continue = true;
         match media {
             BcMedia::Iframe(payload) => {
                 let video_type = match payload.video_type {
@@ -66,6 +72,11 @@ impl StreamOutput for GstOutputs {
                 };
                 self.set_format(Some(video_type));
                 self.vidsrc.write_all(&payload.data)?;
+                self.last_iframe = Some(payload.data);
+                // Only stop on an iframe so we have the
+                // last frame to show
+                should_continue = self.live.is_live();
+                debug!("Iframe continue: {}", should_continue);
             }
             BcMedia::Pframe(payload) => {
                 let video_type = match payload.video_type {
@@ -87,8 +98,8 @@ impl StreamOutput for GstOutputs {
                 //Ignore other BcMedia like InfoV1 and InfoV2
             }
         }
-
-        Ok(true)
+        debug!("Output continue: {}", should_continue);
+        Ok(should_continue)
     }
 }
 
@@ -100,9 +111,29 @@ impl GstOutputs {
             video_format: None,
             audio_format: None,
             factory: RTSPMediaFactory::new(),
+            live: AbortHandle::new(),
+            last_iframe: Default::default(),
         };
         result.apply_format();
         result
+    }
+
+    pub(crate) fn get_abort_handle(&self) -> AbortHandle {
+        self.live.clone()
+    }
+
+    pub(crate) fn has_last_iframe(&self) -> bool {
+        self.last_iframe.is_some()
+    }
+
+    pub(crate) fn write_last_iframe(&mut self) -> AnyResult<()> {
+        self.vidsrc.write_all(
+            self.last_iframe
+                .as_ref()
+                .ok_or_else(|| anyhow!("No iframe data avaliable"))?
+                .as_slice(),
+        )?;
+        Ok(())
     }
 
     fn set_format(&mut self, format: Option<StreamFormat>) {
@@ -140,8 +171,7 @@ impl GstOutputs {
             _ => "! fakesink".to_string(),
         };
 
-        self.factory.set_launch(
-            &vec![
+        let launch_str = &vec![
             "( ",
             "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
             launch_vid,
@@ -149,8 +179,9 @@ impl GstOutputs {
             &launch_aud,
             ")"
         ]
-            .join(" "),
-        );
+        .join(" ");
+        debug!("Gstreamer launch str: {:?}", launch_str);
+        self.factory.set_launch(launch_str);
     }
 }
 

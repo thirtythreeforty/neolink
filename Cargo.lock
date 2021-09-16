@@ -958,6 +958,7 @@ dependencies = [
  "cfb-mode",
  "cookie-factory",
  "crossbeam",
+ "crossbeam-channel 0.5.1",
  "env_logger",
  "err-derive",
  "gstreamer",

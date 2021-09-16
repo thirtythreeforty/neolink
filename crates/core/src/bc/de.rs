@@ -431,7 +431,7 @@ mod tests {
                                 ..
                             })),
                     }),
-            }) if version == "1.1" && stream_type == "externStream"
+            }) if version == "1.1" && stream_type == Some("externStream".to_string())
         );
     }
 
@@ -475,7 +475,7 @@ mod tests {
                                 ..
                             })),
                     }),
-            }) if version == "1.1" && stream_type == "subStream"
+            }) if version == "1.1" && stream_type == Some("subStream".to_string())
         );
     }
 
@@ -519,7 +519,7 @@ mod tests {
                                 ..
                             })),
                     }),
-            }) if version == "1.1" && stream_type == "mainStream"
+            }) if version == "1.1" && stream_type == Some("mainStream".to_string())
         );
     }
 }
