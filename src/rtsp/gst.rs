@@ -76,7 +76,6 @@ impl StreamOutput for GstOutputs {
                 // Only stop on an iframe so we have the
                 // last frame to show
                 should_continue = self.live.is_live();
-                debug!("Iframe continue: {}", should_continue);
             }
             BcMedia::Pframe(payload) => {
                 let video_type = match payload.video_type {
@@ -98,7 +97,7 @@ impl StreamOutput for GstOutputs {
                 //Ignore other BcMedia like InfoV1 and InfoV2
             }
         }
-        debug!("Output continue: {}", should_continue);
+
         Ok(should_continue)
     }
 }

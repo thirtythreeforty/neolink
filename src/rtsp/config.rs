@@ -73,6 +73,9 @@ pub(crate) struct CameraConfig {
     #[validate(range(min = 0, max = 31, message = "Invalid channel", code = "channel_id"))]
     #[serde(default = "default_channel_id")]
     pub(crate) channel_id: u8,
+
+    #[validate]
+    pub(crate) motion: Option<MotionConfig>,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -83,6 +86,12 @@ pub(crate) struct UserConfig {
 
     #[serde(alias = "password")]
     pub(crate) pass: String,
+}
+
+#[derive(Debug, Deserialize, Validate, Clone)]
+pub(crate) struct MotionConfig {
+    #[serde(default = "default_motion_timeout", alias = "timeout_seconds")]
+    pub(crate) timeout: f64,
 }
 
 fn default_bind_addr() -> String {
@@ -107,6 +116,10 @@ fn default_tls_client_auth() -> String {
 
 fn default_channel_id() -> u8 {
     0
+}
+
+fn default_motion_timeout() -> f64 {
+    1.
 }
 
 pub(crate) static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];
