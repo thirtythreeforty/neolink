@@ -76,6 +76,9 @@ pub(crate) struct CameraConfig {
 
     #[validate]
     pub(crate) motion: Option<MotionConfig>,
+
+    #[serde(default = "default_on_client")]
+    pub(crate) on_client: bool,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -120,6 +123,10 @@ fn default_channel_id() -> u8 {
 
 fn default_motion_timeout() -> f64 {
     1.
+}
+
+fn default_on_client() -> bool {
+    false
 }
 
 pub(crate) static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];

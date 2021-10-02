@@ -19,10 +19,6 @@ impl AbortHandle {
         self.live.store(false, Ordering::Relaxed);
     }
 
-    pub(crate) fn reset(&self) {
-        self.live.store(true, Ordering::Relaxed);
-    }
-
     pub(crate) fn is_live(&self) -> bool {
         self.live.load(Ordering::Relaxed)
     }

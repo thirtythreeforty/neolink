@@ -1,13 +1,16 @@
 //! This module provides an "RtspServer" abstraction that allows consumers of its API to feed it
 //! data using an ordinary std::io::Write interface.
+mod maybe_app_src;
+
 pub(crate) use self::maybe_app_src::MaybeAppSrc;
+
+use super::state::States;
 // use super::adpcm::adpcm_to_pcm;
 // use super::errors::Error;
 use gstreamer::prelude::Cast;
 use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
 //use gstreamer_rtsp::RTSPLowerTrans;
-use super::abort::AbortHandle;
 use anyhow::anyhow;
 use gstreamer_rtsp::RTSPAuthMethod;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
@@ -41,7 +44,7 @@ pub(crate) struct GstOutputs {
     video_format: Option<StreamFormat>,
     audio_format: Option<StreamFormat>,
     factory: RTSPMediaFactory,
-    live: AbortHandle,
+    state: Option<States>,
     last_iframe: Option<Vec<u8>>,
 }
 
@@ -75,7 +78,9 @@ impl StreamOutput for GstOutputs {
                 self.last_iframe = Some(payload.data);
                 // Only stop on an iframe so we have the
                 // last frame to show
-                should_continue = self.live.is_live();
+                if let Some(state) = self.state.as_ref() {
+                    should_continue = state.should_stream()
+                }
             }
             BcMedia::Pframe(payload) => {
                 let video_type = match payload.video_type {
@@ -110,15 +115,16 @@ impl GstOutputs {
             video_format: None,
             audio_format: None,
             factory: RTSPMediaFactory::new(),
-            live: AbortHandle::new(),
             last_iframe: Default::default(),
+            state: Default::default(),
         };
         result.apply_format();
         result
     }
 
-    pub(crate) fn get_abort_handle(&self) -> AbortHandle {
-        self.live.clone()
+    pub(crate) fn set_state(&mut self, state: States) {
+        self.vidsrc.state = Some(state.clone());
+        self.state = Some(state)
     }
 
     pub(crate) fn has_last_iframe(&self) -> bool {
@@ -341,73 +347,5 @@ impl RtspServer {
         // Run the Glib main loop.
         let main_loop = glib::MainLoop::new(None, false);
         main_loop.run();
-    }
-}
-
-mod maybe_app_src {
-    use super::*;
-    use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
-
-    /// A Write implementation around AppSrc that also allows delaying the creation of the AppSrc
-    /// until later, discarding written data until the AppSrc is provided.
-    pub(crate) struct MaybeAppSrc {
-        rx: Receiver<AppSrc>,
-        app_src: Option<AppSrc>,
-    }
-
-    impl MaybeAppSrc {
-        /// Creates a MaybeAppSrc.  Also returns a Sender that you must use to provide an AppSrc as
-        /// soon as one is available.  When it is received, the MaybeAppSrc will start pushing data
-        /// into the AppSrc when write() is called.
-        pub(crate) fn new_with_tx() -> (Self, SyncSender<AppSrc>) {
-            let (tx, rx) = sync_channel(3); // The sender should not send very often
-            (MaybeAppSrc { rx, app_src: None }, tx)
-        }
-
-        /// Flushes data to Gstreamer on a problem communicating with the underlying video source.
-        pub(crate) fn on_stream_error(&mut self) {
-            if let Some(src) = self.try_get_src() {
-                // Ignore "errors" from Gstreamer such as FLUSHING, which are not really errors.
-                let _ = src.end_of_stream();
-            }
-        }
-
-        /// Attempts to retrieve the AppSrc that should be passed in by the caller of new_with_tx
-        /// at some point after this struct has been created.  At that point, we swap over to
-        /// owning the AppSrc directly.  This function handles either case and returns the AppSrc,
-        /// or None if the caller has not yet sent one.
-        fn try_get_src(&mut self) -> Option<&AppSrc> {
-            while let Some(src) = self.rx.try_recv().ok() {
-                self.app_src = Some(src);
-            }
-            self.app_src.as_ref()
-        }
-    }
-
-    impl Write for MaybeAppSrc {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            // If we have no AppSrc yet, throw away the data and claim that it was written
-            let app_src = match self.try_get_src() {
-                Some(src) => src,
-                None => return Ok(buf.len()),
-            };
-
-            let mut gst_buf = gstreamer::Buffer::with_size(buf.len()).unwrap();
-            {
-                let gst_buf_mut = gst_buf.get_mut().unwrap();
-                let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
-                gst_buf_data.copy_from_slice(buf);
-            }
-
-            let res = app_src.push_buffer(gst_buf); //.map_err(|e| io::Error::new(io::ErrorKind::Other, Box::new(e)))?;
-            if res.is_err() {
-                self.app_src = None;
-            }
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
     }
 }

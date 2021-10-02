@@ -46,7 +46,7 @@ pub enum Error {
     #[error(display = "Deserialization error")]
     Deserialization(#[error(source)] bc::de::Error),
 
-    #[error(display = "BcMedia Deserialization error")]
+    #[error(display = "BcMedia Deserialization error (conn)")]
     BcMediaDeserialization(#[error(source)] bcmedia::de::Error),
 
     #[error(display = "Serialization error")]
