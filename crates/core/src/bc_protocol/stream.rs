@@ -120,6 +120,18 @@ impl BcCamera {
 
         sub_video.send(start_video)?;
 
+        let msg = sub_video.rx.recv_timeout(RX_TIMEOUT)?;
+        if let BcMeta {
+            response_code: 200, ..
+        } = msg.meta
+        {
+        } else {
+            return Err(Error::UnintelligibleReply {
+                reply: msg,
+                why: "The camera did not accept the stream start command.",
+            });
+        }
+
         let mut media_sub = BinarySubscriber::from_bc_sub(&sub_video);
 
         let result;
