@@ -1,8 +1,10 @@
 //! This module provides an "RtspServer" abstraction that allows consumers of its API to feed it
 //! data using an ordinary std::io::Write interface.
 mod maybe_app_src;
+mod maybe_inputselect;
 
 pub(crate) use self::maybe_app_src::MaybeAppSrc;
+pub(crate) use self::maybe_inputselect::MaybeInputSelect;
 
 use super::state::States;
 // use super::adpcm::adpcm_to_pcm;
@@ -23,7 +25,7 @@ use gstreamer_rtsp_server::{
 };
 use log::*;
 use neolink_core::{
-    bc_protocol::{StreamOutput, StreamOutputError},
+    bc_protocol::{Error, StreamOutput, StreamOutputError},
     bcmedia::model::*,
 };
 use std::collections::HashSet;
@@ -38,9 +40,16 @@ pub(crate) struct RtspServer {
     server: GstRTSPServer,
 }
 
+#[derive(Eq, PartialEq, Debug)]
+pub(crate) enum InputSources {
+    Cam,
+    TestSrc,
+}
+
 pub(crate) struct GstOutputs {
     pub(crate) audsrc: MaybeAppSrc,
     pub(crate) vidsrc: MaybeAppSrc,
+    vid_inputselect: MaybeInputSelect,
     video_format: Option<StreamFormat>,
     audio_format: Option<StreamFormat>,
     factory: RTSPMediaFactory,
@@ -67,6 +76,12 @@ enum StreamFormat {
 impl StreamOutput for GstOutputs {
     fn stream_recv(&mut self, media: BcMedia) -> StreamOutputError {
         let mut should_continue = true;
+
+        // Ensure stream is on cam mode
+        self.set_input_source(InputSources::Cam).map_err(|e| {
+            Error::OtherString(format!("Cannot set stream input to camera source {:?}", e))
+        })?;
+
         match media {
             BcMedia::Iframe(payload) => {
                 let video_type = match payload.video_type {
@@ -74,7 +89,9 @@ impl StreamOutput for GstOutputs {
                     VideoType::H265 => StreamFormat::H265,
                 };
                 self.set_format(Some(video_type));
-                self.vidsrc.write_all(&payload.data)?;
+                self.vidsrc.write_all(&payload.data).map_err(|e| {
+                    Error::OtherString(format!("Cannot write IFrame to vidsrc {:?}", e))
+                })?;
                 self.last_iframe = Some(payload.data);
                 // Only stop on an iframe so we have the
                 // last frame to show
@@ -88,15 +105,21 @@ impl StreamOutput for GstOutputs {
                     VideoType::H265 => StreamFormat::H265,
                 };
                 self.set_format(Some(video_type));
-                self.vidsrc.write_all(&payload.data)?;
+                self.vidsrc.write_all(&payload.data).map_err(|e| {
+                    Error::OtherString(format!("Cannot write PFrame to vidsrc {:?}", e))
+                })?;
             }
             BcMedia::Aac(payload) => {
                 self.set_format(Some(StreamFormat::Aac));
-                self.audsrc.write_all(&payload.data)?;
+                self.audsrc.write_all(&payload.data).map_err(|e| {
+                    Error::OtherString(format!("Cannot write AAC to audsrc {:?}", e))
+                })?;
             }
             BcMedia::Adpcm(payload) => {
                 self.set_format(Some(StreamFormat::Adpcm(payload.data.len() as u16)));
-                self.audsrc.write_all(&payload.data)?;
+                self.audsrc.write_all(&payload.data).map_err(|e| {
+                    Error::OtherString(format!("Cannot write ADPCM to audsrc {:?}", e))
+                })?;
             }
             _ => {
                 //Ignore other BcMedia like InfoV1 and InfoV2
@@ -108,10 +131,15 @@ impl StreamOutput for GstOutputs {
 }
 
 impl GstOutputs {
-    pub(crate) fn from_appsrcs(vidsrc: MaybeAppSrc, audsrc: MaybeAppSrc) -> GstOutputs {
+    pub(crate) fn from_appsrcs(
+        vidsrc: MaybeAppSrc,
+        audsrc: MaybeAppSrc,
+        vid_inputselect: MaybeInputSelect,
+    ) -> GstOutputs {
         let result = GstOutputs {
             vidsrc,
             audsrc,
+            vid_inputselect,
             video_format: None,
             audio_format: None,
             factory: RTSPMediaFactory::new(),
@@ -125,6 +153,13 @@ impl GstOutputs {
     pub(crate) fn set_state(&mut self, state: States) {
         self.vidsrc.state = Some(state.clone());
         self.state = Some(state)
+    }
+
+    pub(crate) fn set_input_source(&mut self, input_source: InputSources) -> AnyResult<()> {
+        match &input_source {
+            InputSources::Cam => self.vid_inputselect.set_input(0),
+            InputSources::TestSrc => self.vid_inputselect.set_input(1),
+        }
     }
 
     pub(crate) fn has_last_iframe(&self) -> bool {
@@ -160,14 +195,30 @@ impl GstOutputs {
     }
 
     fn apply_format(&self) {
-        let launch_vid = match self.video_format {
+        let launch_vid_select = match self.video_format {
+            Some(StreamFormat::H264) => "! rtph264pay name=pay0",
+            Some(StreamFormat::H265) => "! rtph265pay name=pay0",
+            _ => "! fakesink",
+        };
+
+        let launch_app_src = match self.video_format {
             Some(StreamFormat::H264) => {
-                "! queue silent=true max-size-bytes=10485760  min-threshold-bytes=1024 ! h264parse ! rtph264pay name=pay0"
+                "! queue silent=true max-size-bytes=10485760  min-threshold-bytes=1024 ! h264parse"
             }
             Some(StreamFormat::H265) => {
-                "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! h265parse ! rtph265pay name=pay0"
+                "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! h265parse"
             }
-            _ => "! fakesink",
+            _ => "",
+        };
+
+        let launch_alt_source = match self.video_format {
+            Some(StreamFormat::H264) => {
+                "videotestsrc ! x264enc ! video/x-h264,width=1920,height=1080,framerate=25/1 ! h264parse"
+            }
+            Some(StreamFormat::H265) => {
+                "videotestsrc ! x265enc ! video/x-h265,width=1920,height=1080,framerate=25/1 ! h265parse"
+            }
+            _ => "",
         };
 
         let launch_aud = match self.audio_format {
@@ -178,10 +229,25 @@ impl GstOutputs {
 
         let launch_str = &vec![
             "( ",
-            "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
-            launch_vid,
-            "appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
-            &launch_aud,
+                // Video out pipe
+                "(",
+                    "input-selector name=vid_inputselect",
+                    launch_vid_select,
+                ")",
+                // Camera vid source
+                "(",
+                    "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
+                    launch_app_src,
+                    "! vid_inputselect.sink_0",
+                ")",
+                // Test vid source
+                "(",
+                    launch_alt_source,
+                    "! vid_inputselect.sink_1",
+                ")",
+                // Audio pipe
+                "appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME",
+                &launch_aud,
             ")"
         ]
         .join(" ");
@@ -221,7 +287,10 @@ impl RtspServer {
         let (maybe_app_src, tx) = MaybeAppSrc::new_with_tx();
         let (maybe_app_src_aud, tx_aud) = MaybeAppSrc::new_with_tx();
 
-        let outputs = GstOutputs::from_appsrcs(maybe_app_src, maybe_app_src_aud);
+        let (maybe_vid_inputselect, tx_vid_inputselect) = MaybeInputSelect::new_with_tx();
+
+        let outputs =
+            GstOutputs::from_appsrcs(maybe_app_src, maybe_app_src_aud, maybe_vid_inputselect);
 
         let factory = &outputs.factory;
 
@@ -256,6 +325,11 @@ impl RtspServer {
                 .dynamic_cast::<AppSrc>()
                 .expect("Source element is expected to be an appsrc!");
             let _ = tx_aud.send(app_src_aud); // Receiver may be dropped, don't panic if so
+
+            let maybe_vid_inputselect = bin
+                .by_name_recurse_up("vid_inputselect")
+                .expect("vid_inputselect must be present in created bin");
+            let _ = tx_vid_inputselect.send(maybe_vid_inputselect); // Receiver may be dropped, don't panic if so
         });
 
         for path in paths {

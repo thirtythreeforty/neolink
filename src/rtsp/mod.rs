@@ -47,7 +47,7 @@ mod state;
 use crate::utils::AddressOrUid;
 pub(crate) use cmdline::Opt;
 use config::{CameraConfig, Config, UserConfig};
-use gst::{GstOutputs, RtspServer, TlsAuthenticationMode};
+use gst::{GstOutputs, InputSources, RtspServer, TlsAuthenticationMode};
 use motion::MotionStream;
 use state::States;
 
@@ -320,15 +320,24 @@ fn camera_main(
                     s.spawn(move |_| {
                         while stream_state.is_live() {
                             if stream_state.should_stream() || ! outputs.has_last_iframe() {
+                                if let Err(e) = outputs.set_input_source(InputSources::Cam) {
+                                    *stream_error.lock().unwrap() = Some(e);
+                                    break;
+                                }
                                 debug!("Stream resumed");
                                 // Will block until the rx thread send the abort
                                 if let Err(e) = stream_camera.start_video(outputs, stream_name).with_context(|| format!("Error while streaming {}", stream_camname)) {
+                                    error!("Stream error {:?}", e);
                                     // When stream errors set the thread error and abort the motion
                                     *stream_error.lock().unwrap() = Some(e);
                                     break;
                                 }
                                 debug!("Stream paused");
                             } else {
+                                if let Err(e) = outputs.set_input_source(InputSources::TestSrc) {
+                                    *stream_error.lock().unwrap() = Some(e);
+                                    break;
+                                }
                                 // While stream is aborted we send the blank image
                                 if let Err(e) = outputs.write_last_iframe().with_context(|| format!("Failed to write no motion image for {}", stream_camname)) {
                                     *stream_error.lock().unwrap() = Some(e);
@@ -338,7 +347,7 @@ fn camera_main(
                             }
                         }
                         stream_state.abort();
-                        println!("Stream stopped");
+                        debug!("Stream stopped");
                     });
                 }).unwrap();
 
