@@ -47,7 +47,7 @@ mod state;
 use crate::utils::AddressOrUid;
 pub(crate) use cmdline::Opt;
 use config::{CameraConfig, Config, UserConfig};
-use gst::{GstOutputs, InputSources, RtspServer, TlsAuthenticationMode};
+use gst::{GstOutputs, InputMode, PausedSources, RtspServer, TlsAuthenticationMode};
 use motion::MotionStream;
 use state::States;
 
@@ -293,6 +293,14 @@ fn camera_main(
             // and control the motion/client state info
             let state = States::new_from_camera_config(camera_config);
             outputs.set_state(state.clone());
+            let paused_source = match pause_config.mode.as_str() {
+                "test" => {PausedSources::TestSrc},
+                "still" => {PausedSources::Still},
+                "black" => {PausedSources::Black},
+                "none" => {PausedSources::None},
+                _ => {unreachable!()}
+            };
+            outputs.set_paused_source(paused_source);
 
             crossbeam::scope(|s| {
                 let mut motion = MotionStream::new(pause_config.motion_timeout, state.clone());
@@ -323,7 +331,7 @@ fn camera_main(
                 s.spawn(move |_| {
                     while stream_state.is_live() {
                         if stream_state.should_stream() || ! outputs.has_last_iframe() {
-                            if let Err(e) = outputs.set_input_source(InputSources::Cam) {
+                            if let Err(e) = outputs.set_input_source(InputMode::Live) {
                                 *stream_error.lock().unwrap() = Some(e);
                                 break;
                             }
@@ -337,13 +345,12 @@ fn camera_main(
                             }
                             debug!("Stream paused");
                         } else {
-                            let input_source = match pause_config.mode.as_str() {
-                                "test" => {InputSources::TestSrc},
-                                "still" => {InputSources::Still},
-                                "black" => {InputSources::Black},
-                                _ => {unreachable!()}
-                            };
-                            if let Err(e) = outputs.set_input_source(input_source) {
+                            if let Err(e) = outputs.set_input_source(InputMode::Paused) {
+                                *stream_error.lock().unwrap() = Some(e);
+                                break;
+                            }
+                            // While stream is aborted we send the last iframe
+                            if let Err(e) = outputs.write_last_iframe().with_context(|| format!("Failed to write no motion image for {}", stream_camname)) {
                                 *stream_error.lock().unwrap() = Some(e);
                                 break;
                             }

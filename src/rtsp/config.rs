@@ -10,7 +10,7 @@ lazy_static! {
     static ref RE_STREAM_SRC: Regex =
         Regex::new(r"^(mainStream|subStream|externStream|both|all)$").unwrap();
     static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
-    static ref RE_PAUSE_MODE: Regex = Regex::new(r"^(black|still|test)$").unwrap();
+    static ref RE_PAUSE_MODE: Regex = Regex::new(r"^(black|still|test|none)$").unwrap();
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -147,7 +147,7 @@ fn default_on_motion() -> bool {
 }
 
 fn default_pause_mode() -> String {
-    "still".to_string()
+    "none".to_string()
 }
 
 fn default_pause() -> PauseConfig {

@@ -41,21 +41,29 @@ pub(crate) struct RtspServer {
 }
 
 #[derive(Eq, PartialEq, Debug)]
-pub(crate) enum InputSources {
-    Cam,
+pub(crate) enum InputMode {
+    Live,
+    Paused,
+}
+
+#[derive(Eq, PartialEq, Debug)]
+pub(crate) enum PausedSources {
     TestSrc,
     Still,
     Black,
+    None,
 }
 
 pub(crate) struct GstOutputs {
     pub(crate) audsrc: MaybeAppSrc,
     pub(crate) vidsrc: MaybeAppSrc,
     vid_inputselect: MaybeInputSelect,
+    aud_inputselect: MaybeInputSelect,
     video_format: Option<StreamFormat>,
     audio_format: Option<StreamFormat>,
     factory: RTSPMediaFactory,
     state: Option<States>,
+    when_paused: PausedSources,
     last_iframe: Option<Vec<u8>>,
 }
 
@@ -80,7 +88,7 @@ impl StreamOutput for GstOutputs {
         let mut should_continue = true;
 
         // Ensure stream is on cam mode
-        self.set_input_source(InputSources::Cam).map_err(|e| {
+        self.set_input_source(InputMode::Live).map_err(|e| {
             Error::OtherString(format!("Cannot set stream input to camera source {:?}", e))
         })?;
 
@@ -137,13 +145,16 @@ impl GstOutputs {
         vidsrc: MaybeAppSrc,
         audsrc: MaybeAppSrc,
         vid_inputselect: MaybeInputSelect,
+        aud_inputselect: MaybeInputSelect,
     ) -> GstOutputs {
         let result = GstOutputs {
             vidsrc,
             audsrc,
             vid_inputselect,
+            aud_inputselect,
             video_format: None,
             audio_format: None,
+            when_paused: PausedSources::None,
             factory: RTSPMediaFactory::new(),
             last_iframe: Default::default(),
             state: Default::default(),
@@ -157,13 +168,25 @@ impl GstOutputs {
         self.state = Some(state)
     }
 
-    pub(crate) fn set_input_source(&mut self, input_source: InputSources) -> AnyResult<()> {
-        match &input_source {
-            InputSources::Cam => self.vid_inputselect.set_input(0),
-            InputSources::TestSrc => self.vid_inputselect.set_input(1),
-            InputSources::Still => self.vid_inputselect.set_input(2),
-            InputSources::Black => self.vid_inputselect.set_input(3),
+    pub(crate) fn set_input_source(&mut self, input_source: InputMode) -> AnyResult<()> {
+        if self.when_paused != PausedSources::None {
+            match &input_source {
+                InputMode::Live => {
+                    self.vid_inputselect.set_input(0)?;
+                    self.aud_inputselect.set_input(0)?;
+                }
+                InputMode::Paused => {
+                    self.vid_inputselect.set_input(1)?;
+                    self.aud_inputselect.set_input(1)?;
+                }
+            }
         }
+        Ok(())
+    }
+
+    pub(crate) fn set_paused_source(&mut self, paused_source: PausedSources) {
+        self.when_paused = paused_source;
+        self.apply_format();
     }
 
     pub(crate) fn has_last_iframe(&self) -> bool {
@@ -199,47 +222,65 @@ impl GstOutputs {
     }
 
     fn apply_format(&self) {
-        let launch_vid_select = match self.video_format {
-            Some(StreamFormat::H264) => "! rtph264pay name=pay0",
-            Some(StreamFormat::H265) => "! rtph265pay name=pay0",
+        let launch_vid_select = match self.when_paused {
+            PausedSources::None => match self.video_format {
+                Some(StreamFormat::H264) => "! rtph264pay name=pay0",
+                Some(StreamFormat::H265) => "! rtph265pay name=pay0",
+                _ => "! fakesink",
+            },
+            _ => match self.video_format {
+                Some(StreamFormat::H264) => "! x264enc !  rtph264pay name=pay0",
+                Some(StreamFormat::H265) => "! x265enc ! rtph265pay name=pay0",
+                _ => "! fakesink",
+            },
+        };
+
+        let launch_app_src = match self.when_paused {
+            PausedSources::None => {
+                match self.video_format {
+                    Some(StreamFormat::H264) => {
+                        "! queue silent=true max-size-bytes=10485760  min-threshold-bytes=1024 ! h264parse"
+                    }
+                    Some(StreamFormat::H265) => {
+                        "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! h265parse"
+                    }
+                    _ => "",
+                }
+            }
+            _ => {
+                match self.video_format {
+                    Some(StreamFormat::H264) => {
+                        "! queue silent=true max-size-bytes=10485760  min-threshold-bytes=1024 ! h264parse ! avdec_h264"
+                    }
+                    Some(StreamFormat::H265) => {
+                        "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! h265parse ! avdec_h265"
+                    }
+                    _ => "",
+                }
+            }
+        };
+
+        let launch_alt_source = match self.when_paused {
+            PausedSources::TestSrc => "videotestsrc ! video/x-raw,width=896,height=512,framerate=25/1",
+            PausedSources::Black => "videotestsrc pattern=black ! video/x-raw,width=896,height=512,framerate=25/1",
+            PausedSources::Still => "vid_src_tee. ! imagefreeze allow-replace=true is-live=true ! video/x-raw,framerate=25/1",
+            PausedSources::None => "",
+        };
+
+        let launch_aud_select = match self.audio_format {
+            Some(StreamFormat::Adpcm(_)) | Some(StreamFormat::Aac) => {
+                "! audioconvert ! rtpL16pay name=pay1"
+            }
             _ => "! fakesink",
         };
 
-        let launch_app_src = match self.video_format {
-            Some(StreamFormat::H264) => {
-                "! queue silent=true max-size-bytes=10485760  min-threshold-bytes=1024 ! h264parse"
-            }
-            Some(StreamFormat::H265) => {
-                "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! h265parse"
-            }
-            _ => "",
-        };
-
-        let launch_alt_source = match self.video_format {
-            Some(StreamFormat::H264) => {
-                "videotestsrc ! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! x264enc ! video/x-h264,width=896,height=512,framerate=25/1 ! h264parse"
-            }
-            Some(StreamFormat::H265) => {
-                "videotestsrc ! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! x265enc ! video/x-h265,width=896,height=512,framerate=25/1 ! h265parse"
-            }
-            _ => "",
-        };
-
-        let launch_imgfreeze_source = match self.video_format {
-            Some(StreamFormat::H264) => {
-                "avdec_h264 ! imagefreeze allow-replace=true is-live=true ! x264enc ! video/x-h264,width=896,height=512,framerate=25/1 ! h264parse"
-            }
-            Some(StreamFormat::H265) => {
-                "decodebin ! imagefreeze allow-replace=true is-live=true ! x265enc ! video/x-h265,width=896,height=512,framerate=25/1 ! h265parse"
-            }
-            _ => "",
-        };
-
         let launch_aud = match self.audio_format {
-            Some(StreamFormat::Adpcm(block_size)) => format!("caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000 ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! adpcmdec  ! audioconvert ! rtpL16pay name=pay1", block_size), // DVI4 is converted to pcm in the appsrc
-            Some(StreamFormat::Aac) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! aacparse ! decodebin ! audioconvert ! rtpL16pay name=pay1 name=pay1".to_string(),
-            _ => "! fakesink".to_string(),
+            Some(StreamFormat::Adpcm(block_size)) => format!("caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000 ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! adpcmdec", block_size), // DVI4 is converted to pcm in the appsrc
+            Some(StreamFormat::Aac) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! aacparse ! decodebin".to_string(),
+            _ => "".to_string(),
         };
+
+        let launch_aud_alt = "audiotestsrc wave=silence";
 
         let launch_str = &vec![
             "( ",
@@ -252,26 +293,38 @@ impl GstOutputs {
                 "(",
                     "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
                     launch_app_src,
+                    // Pipe it though a tee so that the image freeze can grab it
                     "! tee name=vid_src_tee",
                     "(",
                         "vid_src_tee. ! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! vid_inputselect.sink_0",
                     ")",
 
                 ")",
-                // Test vid source
+                // Alternaive vid source
+                //
+                //  Used during paused mode
                 "(",
                     launch_alt_source,
-                    "! vid_inputselect.sink_1",
+                    "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! vid_inputselect.sink_1",
                 ")",
                 // Image freeze
-                "(",
-                    "vid_src_tee. ! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 !",
-                    launch_imgfreeze_source,
-                    " ! vid_inputselect.sink_2",
-                ")",
                 // Audio pipe
-                "appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME",
-                &launch_aud,
+                // Audio out pipe
+                "(",
+                    "input-selector name=aud_inputselect",
+                    launch_aud_select,
+                ")",
+                // Camera aud source
+                "(",
+                    "appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME",
+                    &launch_aud,
+                    "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! aud_inputselect.sink_0",
+                ")",
+                // Camera aud alt source
+                "(",
+                    launch_aud_alt,
+                    "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! aud_inputselect.sink_1",
+                ")",
             ")"
         ]
         .join(" ");
@@ -312,9 +365,14 @@ impl RtspServer {
         let (maybe_app_src_aud, tx_aud) = MaybeAppSrc::new_with_tx();
 
         let (maybe_vid_inputselect, tx_vid_inputselect) = MaybeInputSelect::new_with_tx();
+        let (maybe_aud_inputselect, tx_aud_inputselect) = MaybeInputSelect::new_with_tx();
 
-        let outputs =
-            GstOutputs::from_appsrcs(maybe_app_src, maybe_app_src_aud, maybe_vid_inputselect);
+        let outputs = GstOutputs::from_appsrcs(
+            maybe_app_src,
+            maybe_app_src_aud,
+            maybe_vid_inputselect,
+            maybe_aud_inputselect,
+        );
 
         let factory = &outputs.factory;
 
@@ -354,6 +412,11 @@ impl RtspServer {
                 .by_name_recurse_up("vid_inputselect")
                 .expect("vid_inputselect must be present in created bin");
             let _ = tx_vid_inputselect.send(maybe_vid_inputselect); // Receiver may be dropped, don't panic if so
+
+            let maybe_aud_inputselect = bin
+                .by_name_recurse_up("aud_inputselect")
+                .expect("aud_inputselect must be present in created bin");
+            let _ = tx_aud_inputselect.send(maybe_aud_inputselect); // Receiver may be dropped, don't panic if so
         });
 
         for path in paths {
