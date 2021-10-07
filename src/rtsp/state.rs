@@ -50,8 +50,8 @@ impl States {
     }
 
     pub(crate) fn new_from_camera_config(camera_config: &CameraConfig) -> Self {
-        let motion_controlled = camera_config.motion.is_some();
-        let client_controlled = camera_config.on_client;
+        let motion_controlled = camera_config.pause.on_motion;
+        let client_controlled = camera_config.pause.on_disconnect;
 
         Self::new(motion_controlled, client_controlled)
     }
@@ -85,7 +85,7 @@ impl States {
         *motion = match value {
             true => MotionState::Motion,
             false => MotionState::Still,
-        }
+        };
     }
 
     pub(crate) fn abort(&self) {

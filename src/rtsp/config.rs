@@ -10,6 +10,7 @@ lazy_static! {
     static ref RE_STREAM_SRC: Regex =
         Regex::new(r"^(mainStream|subStream|externStream|both|all)$").unwrap();
     static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
+    static ref RE_PAUSE_MODE: Regex = Regex::new(r"^(black|still|test)$").unwrap();
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -75,10 +76,8 @@ pub(crate) struct CameraConfig {
     pub(crate) channel_id: u8,
 
     #[validate]
-    pub(crate) motion: Option<MotionConfig>,
-
-    #[serde(default = "default_on_client")]
-    pub(crate) on_client: bool,
+    #[serde(default = "default_pause")]
+    pub(crate) pause: PauseConfig,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -92,9 +91,23 @@ pub(crate) struct UserConfig {
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
-pub(crate) struct MotionConfig {
-    #[serde(default = "default_motion_timeout", alias = "timeout_seconds")]
-    pub(crate) timeout: f64,
+pub(crate) struct PauseConfig {
+    #[serde(default = "default_on_motion")]
+    pub(crate) on_motion: bool,
+
+    #[serde(default = "default_on_disconnect")]
+    pub(crate) on_disconnect: bool,
+
+    #[serde(default = "default_motion_timeout", alias = "timeout")]
+    pub(crate) motion_timeout: f64,
+
+    #[serde(default = "default_pause_mode")]
+    #[validate(regex(
+        path = "RE_PAUSE_MODE",
+        message = "Incorrect pause mode",
+        code = "mode"
+    ))]
+    pub(crate) mode: String,
 }
 
 fn default_bind_addr() -> String {
@@ -125,8 +138,25 @@ fn default_motion_timeout() -> f64 {
     1.
 }
 
-fn default_on_client() -> bool {
+fn default_on_disconnect() -> bool {
     false
+}
+
+fn default_on_motion() -> bool {
+    false
+}
+
+fn default_pause_mode() -> String {
+    "still".to_string()
+}
+
+fn default_pause() -> PauseConfig {
+    PauseConfig {
+        on_motion: default_on_motion(),
+        on_disconnect: default_on_disconnect(),
+        motion_timeout: default_motion_timeout(),
+        mode: default_pause_mode(),
+    }
 }
 
 pub(crate) static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];

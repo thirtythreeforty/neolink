@@ -44,6 +44,8 @@ pub(crate) struct RtspServer {
 pub(crate) enum InputSources {
     Cam,
     TestSrc,
+    Still,
+    Black,
 }
 
 pub(crate) struct GstOutputs {
@@ -159,6 +161,8 @@ impl GstOutputs {
         match &input_source {
             InputSources::Cam => self.vid_inputselect.set_input(0),
             InputSources::TestSrc => self.vid_inputselect.set_input(1),
+            InputSources::Still => self.vid_inputselect.set_input(2),
+            InputSources::Black => self.vid_inputselect.set_input(3),
         }
     }
 
@@ -213,10 +217,20 @@ impl GstOutputs {
 
         let launch_alt_source = match self.video_format {
             Some(StreamFormat::H264) => {
-                "videotestsrc ! x264enc ! video/x-h264,width=1920,height=1080,framerate=25/1 ! h264parse"
+                "videotestsrc ! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! x264enc ! video/x-h264,width=896,height=512,framerate=25/1 ! h264parse"
             }
             Some(StreamFormat::H265) => {
-                "videotestsrc ! x265enc ! video/x-h265,width=1920,height=1080,framerate=25/1 ! h265parse"
+                "videotestsrc ! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! x265enc ! video/x-h265,width=896,height=512,framerate=25/1 ! h265parse"
+            }
+            _ => "",
+        };
+
+        let launch_imgfreeze_source = match self.video_format {
+            Some(StreamFormat::H264) => {
+                "avdec_h264 ! imagefreeze allow-replace=true is-live=true ! x264enc ! video/x-h264,width=896,height=512,framerate=25/1 ! h264parse"
+            }
+            Some(StreamFormat::H265) => {
+                "decodebin ! imagefreeze allow-replace=true is-live=true ! x265enc ! video/x-h265,width=896,height=512,framerate=25/1 ! h265parse"
             }
             _ => "",
         };
@@ -238,12 +252,22 @@ impl GstOutputs {
                 "(",
                     "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
                     launch_app_src,
-                    "! vid_inputselect.sink_0",
+                    "! tee name=vid_src_tee",
+                    "(",
+                        "vid_src_tee. ! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! vid_inputselect.sink_0",
+                    ")",
+
                 ")",
                 // Test vid source
                 "(",
                     launch_alt_source,
                     "! vid_inputselect.sink_1",
+                ")",
+                // Image freeze
+                "(",
+                    "vid_src_tee. ! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 !",
+                    launch_imgfreeze_source,
+                    " ! vid_inputselect.sink_2",
                 ")",
                 // Audio pipe
                 "appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME",

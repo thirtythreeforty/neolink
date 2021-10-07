@@ -281,86 +281,83 @@ fn camera_main(
             camera_config.name, stream_display_name
         );
 
-        match &camera_config.motion {
-            Some(motion_config) => {
-                // Used to get the error from the thread
-                let thread_error: Arc<Mutex<Option<anyhow::Error>>> = Default::default();
+        if ! camera_config.pause.on_motion && ! camera_config.pause.on_disconnect {
+            // Stream is always on
+            camera.start_video(outputs, stream_name).with_context(|| format!("Error while streaming {}", camera_config.name))
+        } else {
+            let pause_config = &camera_config.pause;
+            // Used to get the error from the thread
+            let thread_error: Arc<Mutex<Option<anyhow::Error>>> = Default::default();
 
-                // Used to abort all sub threads if any of them request closure
-                // and control the motion/client state info
-                let state = States::new_from_camera_config(camera_config);
-                outputs.set_state(state.clone());
+            // Used to abort all sub threads if any of them request closure
+            // and control the motion/client state info
+            let state = States::new_from_camera_config(camera_config);
+            outputs.set_state(state.clone());
 
-                crossbeam::scope(|s| {
-                    let mut motion = MotionStream::new(motion_config.timeout, state.clone());
+            crossbeam::scope(|s| {
+                let mut motion = MotionStream::new(pause_config.motion_timeout, state.clone());
 
-                    let arc_camera = Arc::new(camera);
+                let arc_camera = Arc::new(camera);
 
-                    // Motion detection thread
-                    let motion_camera = arc_camera.clone();
-                    let motion_camname = camera_config.name.to_string();
-                    let motion_error = thread_error.clone();
-                    let motion_state = state.clone();
-                    s.spawn(move |_| {
-                        if let Err(e) = motion_camera.listen_on_motion(&mut motion).with_context(|| format!("Error while reading motion {}", motion_camname)) {
-                            // When motion errors set the thread error
-                            *motion_error.lock().unwrap() = Some(e);
-                        }
-                        // Always abort the streams/motion when motion stops regardless of why
-                        // so that this thread can reset the camera
-                        motion_state.abort();
-                        debug!("Motion stopped");
-                    });
+                // Motion detection thread
+                let motion_camera = arc_camera.clone();
+                let motion_camname = camera_config.name.to_string();
+                let motion_error = thread_error.clone();
+                let motion_state = state.clone();
+                s.spawn(move |_| {
+                    if let Err(e) = motion_camera.listen_on_motion(&mut motion).with_context(|| format!("Error while reading motion {}", motion_camname)) {
+                        // When motion errors set the thread error
+                        *motion_error.lock().unwrap() = Some(e);
+                    }
+                    // Always abort the streams/motion when motion stops regardless of why
+                    // so that this thread can reset the camera
+                    motion_state.abort();
+                    debug!("Motion stopped");
+                });
 
-                    // Stream thread
-                    let stream_camera = arc_camera;
-                    let stream_camname = camera_config.name.to_string();
-                    let stream_error = thread_error.clone();
-                    let stream_state = state.clone();
-                    s.spawn(move |_| {
-                        while stream_state.is_live() {
-                            if stream_state.should_stream() || ! outputs.has_last_iframe() {
-                                if let Err(e) = outputs.set_input_source(InputSources::Cam) {
-                                    *stream_error.lock().unwrap() = Some(e);
-                                    break;
-                                }
-                                debug!("Stream resumed");
-                                // Will block until the rx thread send the abort
-                                if let Err(e) = stream_camera.start_video(outputs, stream_name).with_context(|| format!("Error while streaming {}", stream_camname)) {
-                                    error!("Stream error {:?}", e);
-                                    // When stream errors set the thread error and abort the motion
-                                    *stream_error.lock().unwrap() = Some(e);
-                                    break;
-                                }
-                                debug!("Stream paused");
-                            } else {
-                                if let Err(e) = outputs.set_input_source(InputSources::TestSrc) {
-                                    *stream_error.lock().unwrap() = Some(e);
-                                    break;
-                                }
-                                // While stream is aborted we send the blank image
-                                if let Err(e) = outputs.write_last_iframe().with_context(|| format!("Failed to write no motion image for {}", stream_camname)) {
-                                    *stream_error.lock().unwrap() = Some(e);
-                                    break;
-                                }
-                                std::thread::sleep(std::time::Duration::from_millis(50));
+                // Stream thread
+                let stream_camera = arc_camera;
+                let stream_camname = camera_config.name.to_string();
+                let stream_error = thread_error.clone();
+                let stream_state = state.clone();
+                s.spawn(move |_| {
+                    while stream_state.is_live() {
+                        if stream_state.should_stream() || ! outputs.has_last_iframe() {
+                            if let Err(e) = outputs.set_input_source(InputSources::Cam) {
+                                *stream_error.lock().unwrap() = Some(e);
+                                break;
                             }
+                            debug!("Stream resumed");
+                            // Will block until the rx thread send the abort
+                            if let Err(e) = stream_camera.start_video(outputs, stream_name).with_context(|| format!("Error while streaming {}", stream_camname)) {
+                                error!("Stream error {:?}", e);
+                                // When stream errors set the thread error and abort the motion
+                                *stream_error.lock().unwrap() = Some(e);
+                                break;
+                            }
+                            debug!("Stream paused");
+                        } else {
+                            let input_source = match pause_config.mode.as_str() {
+                                "test" => {InputSources::TestSrc},
+                                "still" => {InputSources::Still},
+                                "black" => {InputSources::Black},
+                                _ => {unreachable!()}
+                            };
+                            if let Err(e) = outputs.set_input_source(input_source) {
+                                *stream_error.lock().unwrap() = Some(e);
+                                break;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(50));
                         }
-                        stream_state.abort();
-                        debug!("Stream stopped");
-                    });
-                }).unwrap();
+                    }
+                    stream_state.abort();
+                    debug!("Stream stopped");
+                });
+            }).unwrap();
 
-                // Should be the only one holding the thread_error so unwrap it
-                // all the way to an actual error
-                Err(Arc::try_unwrap(thread_error).unwrap().into_inner().unwrap().unwrap())
-            }
-            None => {
-                // No motion config
-                //
-                // Just stream always
-                camera.start_video(outputs, stream_name).with_context(|| format!("Error while streaming {}", camera_config.name))
-            }
+            // Should be the only one holding the thread_error so unwrap it
+            // all the way to an actual error
+            Err(Arc::try_unwrap(thread_error).unwrap().into_inner().unwrap().unwrap())
         }
 
     })().map_err(|e| CameraErr{
