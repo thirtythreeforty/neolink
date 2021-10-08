@@ -169,6 +169,9 @@ impl GstOutputs {
     }
 
     pub(crate) fn set_input_source(&mut self, input_source: InputMode) -> AnyResult<()> {
+        // PausedSources::None is exceptional in that it dosen't swap the stream
+        // to an alterntive source. It just repeats the last buffer meaning not re-encoding
+        // at the cost some clients not handeling the repeating buffers well
         if self.when_paused != PausedSources::None {
             match &input_source {
                 InputMode::Live => {
@@ -177,6 +180,17 @@ impl GstOutputs {
                 }
                 InputMode::Paused => {
                     self.vid_inputselect.set_input(1)?;
+                    self.aud_inputselect.set_input(1)?;
+                }
+            }
+        } else {
+            // For PausedSources::None we still want to use the silence as we don't want to
+            // repeat the audio buffers
+            match &input_source {
+                InputMode::Live => {
+                    self.aud_inputselect.set_input(0)?;
+                }
+                InputMode::Paused => {
                     self.aud_inputselect.set_input(1)?;
                 }
             }
@@ -222,6 +236,10 @@ impl GstOutputs {
     }
 
     fn apply_format(&self) {
+        // This is the final sink prior to rtsp
+        // - In the case of PausedSources::None we just pass through without encoding
+        // - In the case of all other pause sources we need to recencode in order
+        //   to get smooth streams when the stream is paused/resumed
         let launch_vid_select = match self.when_paused {
             PausedSources::None => match self.video_format {
                 Some(StreamFormat::H264) => "! rtph264pay name=pay0",
@@ -235,6 +253,10 @@ impl GstOutputs {
             },
         };
 
+        // This is the part that deals with input from camera
+        // - In the case of PausedSources::None it just passes the stream
+        // - In the case of other Paused sources we decode it so that we can manipulate
+        //   the stream smoothly and swap the source on demand
         let launch_app_src = match self.when_paused {
             PausedSources::None => {
                 match self.video_format {
@@ -260,6 +282,8 @@ impl GstOutputs {
             }
         };
 
+        // This controls the alternaive source used when in paused state
+        // PausedSources::None is the exception in that it is never swapped to this state
         let launch_alt_source = match self.when_paused {
             PausedSources::TestSrc => "videotestsrc ! video/x-raw,width=896,height=512,framerate=25/1",
             PausedSources::Black => "videotestsrc pattern=black ! video/x-raw,width=896,height=512,framerate=25/1",
@@ -267,6 +291,7 @@ impl GstOutputs {
             PausedSources::None => "",
         };
 
+        // This is the final pipeline for the audio prior to rtsp
         let launch_aud_select = match self.audio_format {
             Some(StreamFormat::Adpcm(_)) | Some(StreamFormat::Aac) => {
                 "! audioconvert ! rtpL16pay name=pay1"
@@ -274,12 +299,15 @@ impl GstOutputs {
             _ => "! fakesink",
         };
 
+        // This is the audio source from the camera. We decode to xraw always as some clients
+        // like blue iris only support raw audio
         let launch_aud = match self.audio_format {
             Some(StreamFormat::Adpcm(block_size)) => format!("caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000 ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! adpcmdec", block_size), // DVI4 is converted to pcm in the appsrc
             Some(StreamFormat::Aac) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! aacparse ! decodebin".to_string(),
             _ => "".to_string(),
         };
 
+        // The alternaive audio source is silence
         let launch_aud_alt = "audiotestsrc wave=silence";
 
         let launch_str = &vec![
