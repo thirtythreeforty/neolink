@@ -35,7 +35,7 @@ impl BcCamera {
                     channel_id: self.channel_id,
                     msg_num: self.new_message_num(),
                     stream_type: 0,
-                    response_code: 0xdc03,
+                    response_code: 0xdc02,
                     class: 0x6514,
                 },
                 body: BcBody::LegacyMsg(LegacyMsg::LoginMsg {

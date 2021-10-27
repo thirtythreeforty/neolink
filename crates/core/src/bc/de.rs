@@ -269,6 +269,47 @@ mod tests {
     }
 
     #[test]
+    // This is an 0xdd03 encryption from an Argus 2
+    //
+    // It is currently unsupported
+    fn test_03_enc_login() {
+        let sample = include_bytes!("samples/battery_enc.bin");
+
+        let encryption_protocol =
+            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
+        let mut context = BcContext::new(encryption_protocol);
+
+        let (buf, header) = bc_header(&sample[..]).unwrap();
+        assert!(bc_body(&mut context, &header, buf).is_err());
+        // It should error because we don't support it
+        //
+        // The following would be its contents if we
+        // did support it (maybe one day :) left it here
+        // for then)
+        //
+        //
+        // let (_, body) = bc_body(&mut context, &header, buf).unwrap();
+        // assert_eq!(header.msg_id, 1);
+        // assert_eq!(header.body_len, 175);
+        // assert_eq!(header.channel_id, 0);
+        // assert_eq!(header.stream_type, 0);
+        // assert_eq!(header.payload_offset, None);
+        // assert_eq!(header.response_code, 0xdd03);
+        // assert_eq!(header.class, 0x6614);
+        // match body {
+        //     BcBody::ModernMsg(ModernMsg {
+        //         payload:
+        //             Some(BcPayloads::BcXml(BcXml {
+        //                 encryption: Some(encryption),
+        //                 ..
+        //             })),
+        //         ..
+        //     }) => assert_eq!(encryption.nonce, "0-AhnEZyUg6eKrJFIWgXPF"),
+        //     _ => panic!(),
+        // }
+    }
+
+    #[test]
     fn test_bc_legacy_login() {
         let sample = include_bytes!("samples/model_sample_legacy_login.bin");
 
