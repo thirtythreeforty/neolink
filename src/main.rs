@@ -36,15 +36,16 @@ fn main() -> Result<()> {
 
     let opt = Opt::from_args();
 
+    let conf_path = opt.config.context("Must supply --config file")?;
     let config: Config = toml::from_str(
-        &fs::read_to_string(&opt.config)
-            .with_context(|| format!("Failed to read {:?}", &opt.config))?,
+        &fs::read_to_string(&conf_path)
+            .with_context(|| format!("Failed to read {:?}", conf_path))?,
     )
-    .with_context(|| format!("Failed to parse the {:?} config file", &opt.config))?;
+    .with_context(|| format!("Failed to parse the {:?} config file", conf_path))?;
 
     config
         .validate()
-        .with_context(|| format!("Failed to validate the {:?} config file", &opt.config))?;
+        .with_context(|| format!("Failed to validate the {:?} config file", conf_path))?;
 
     match opt.cmd {
         None => {
