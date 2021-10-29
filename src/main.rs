@@ -40,7 +40,7 @@ fn main() -> Result<()> {
         &fs::read_to_string(&opt.config)
             .with_context(|| format!("Failed to read {:?}", &opt.config))?,
     )
-    .with_context(|| format!("Failed to load {:?} as a config file", &opt.config))?;
+    .with_context(|| format!("Failed to parse the {:?} config file", &opt.config))?;
 
     config
         .validate()
