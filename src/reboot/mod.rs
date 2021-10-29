@@ -13,30 +13,17 @@
 ///
 use anyhow::{anyhow, Context, Result};
 use log::*;
-use std::fs;
-use validator::Validate;
 
 mod cmdline;
-mod config;
 
+use super::config::Config;
 use crate::utils::AddressOrUid;
 pub(crate) use cmdline::Opt;
-use config::Config;
 
 /// Entry point for the reboot subcommand
 ///
 /// Opt is the command line options
-pub fn main(opt: Opt) -> Result<()> {
-    let config: Config = toml::from_str(
-        &fs::read_to_string(&opt.config)
-            .with_context(|| format!("Failed to read {:?}", &opt.config))?,
-    )
-    .with_context(|| format!("Failed to load {:?} as a config file", &opt.config))?;
-
-    config
-        .validate()
-        .with_context(|| format!("Failed to validate the {:?} config file", &opt.config))?;
-
+pub(crate) fn main(opt: Opt, config: Config) -> Result<()> {
     let mut cam_found = false;
     for camera_config in &config.cameras {
         if opt.camera == camera_config.name {
@@ -72,9 +59,8 @@ pub fn main(opt: Opt) -> Result<()> {
 
     if !cam_found {
         Err(anyhow!(
-            "Camera {} was not in the config file {:?}",
+            "Camera {} not found in the config file",
             &opt.camera,
-            &opt.config
         ))
     } else {
         Ok(())

@@ -6,7 +6,7 @@ use structopt::{clap::AppSettings, StructOpt};
 #[structopt(name = "neolink", setting(AppSettings::ArgRequiredElseHelp))]
 pub struct Opt {
     #[structopt(short, long, parse(from_os_str))]
-    pub config: Option<PathBuf>,
+    pub config: PathBuf,
     #[structopt(subcommand)]
     pub cmd: Option<Command>,
 }

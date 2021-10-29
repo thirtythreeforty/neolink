@@ -7,12 +7,15 @@
 //! It contains sub commands for running an rtsp proxy which can be used on Reolink cameras
 //! that do not nativly support RTSP.
 //!
-use anyhow::Result;
+use anyhow::{Context, Result};
 use env_logger::Env;
 use log::*;
+use std::fs;
 use structopt::StructOpt;
+use validator::Validate;
 
 mod cmdline;
+mod config;
 mod reboot;
 mod rtsp;
 mod statusled;
@@ -20,6 +23,7 @@ mod talk;
 mod utils;
 
 use cmdline::{Command, Opt};
+use config::Config;
 
 fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -32,30 +36,35 @@ fn main() -> Result<()> {
 
     let opt = Opt::from_args();
 
-    match (opt.cmd, opt.config) {
-        (None, None) => {
-            // Should be caught at the clap validation
-            unreachable!();
-        }
-        (None, Some(config)) => {
+    let config: Config = toml::from_str(
+        &fs::read_to_string(&opt.config)
+            .with_context(|| format!("Failed to read {:?}", &opt.config))?,
+    )
+    .with_context(|| format!("Failed to load {:?} as a config file", &opt.config))?;
+
+    config
+        .validate()
+        .with_context(|| format!("Failed to validate the {:?} config file", &opt.config))?;
+
+    match opt.cmd {
+        None => {
             warn!(
                 "Deprecated command line option. Please use: `neolink rtsp --config={:?}`",
                 config
             );
-            rtsp::main(rtsp::Opt { config })?;
+            rtsp::main(rtsp::Opt {}, config)?;
         }
-        (Some(_), Some(_)) => error!("--config should be given after the subcommand"),
-        (Some(Command::Rtsp(opts)), None) => {
-            rtsp::main(opts)?;
+        Some(Command::Rtsp(opts)) => {
+            rtsp::main(opts, config)?;
         }
-        (Some(Command::StatusLight(opts)), None) => {
-            statusled::main(opts)?;
+        Some(Command::StatusLight(opts)) => {
+            statusled::main(opts, config)?;
         }
-        (Some(Command::Reboot(opts)), None) => {
-            reboot::main(opts)?;
+        Some(Command::Reboot(opts)) => {
+            reboot::main(opts, config)?;
         }
-        (Some(Command::Talk(opts)), None) => {
-            talk::main(opts)?;
+        Some(Command::Talk(opts)) => {
+            talk::main(opts, config)?;
         }
     }
 
