@@ -30,6 +30,8 @@ pub mod bc;
 pub mod bc_protocol;
 /// Contains low level structures and formats for the media substream
 pub mod bcmedia;
+///  Contains low level structures and formats for the udpstream
+pub mod bcudp;
 
 #[derive(Debug)]
 /// Certain method just as `start_video` will block forever or return an error
@@ -40,3 +42,5 @@ pub enum Never {}
 ///
 /// Most commands will either return their `Ok(result)` or this `Err(Error)`
 pub use bc_protocol::Error;
+
+pub(crate) const RX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);

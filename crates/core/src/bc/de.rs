@@ -1,10 +1,12 @@
 use super::model::*;
 use super::xml::{BcPayloads, BcXml};
 use super::xml_crypto;
+use crate::RX_TIMEOUT;
 use err_derive::Error;
 use nom::IResult;
 use nom::{bytes::streaming::take, combinator::*, number::streaming::*, sequence::*};
 use std::io::Read;
+use time::OffsetDateTime;
 
 /// The error types used during deserialisation
 #[derive(Debug, Error)]
@@ -48,17 +50,20 @@ where
             Err(e) => return Err(e.into()),
         };
 
+        let start_time = OffsetDateTime::now_utc();
         loop {
             match (&mut rdr)
                 .take(to_read.get() as u64)
                 .read_to_end(&mut input)
             {
                 Ok(0) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::UnexpectedEof,
-                        "Read returned 0 bytes",
-                    )
-                    .into());
+                    if (OffsetDateTime::now_utc() - start_time) > RX_TIMEOUT {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            "Read returned 0 bytes",
+                        )
+                        .into());
+                    }
                 }
                 Ok(_) => break,
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {

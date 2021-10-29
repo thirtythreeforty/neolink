@@ -45,6 +45,7 @@ mod config;
 /// The errors this subcommand can raise
 mod gst;
 
+use crate::utils::AddressOrUid;
 pub(crate) use cmdline::Opt;
 use config::{CameraConfig, Config, UserConfig};
 use gst::{GstOutputs, RtspServer, TlsAuthenticationMode};
@@ -225,12 +226,14 @@ fn camera_main(
     let mut connected = false;
     let mut login_fail = false;
     (|| {
+        let camera_addr =
+            AddressOrUid::new(&camera_config.camera_addr, &camera_config.camera_uid).unwrap();
         let mut camera =
-            BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)
+            camera_addr.connect_camera(camera_config.channel_id)
                 .with_context(|| {
                     format!(
                         "Failed to connect to camera {} at {} on channel {}",
-                        camera_config.name, camera_config.camera_addr, camera_config.channel_id
+                        camera_config.name, camera_addr, camera_config.channel_id
                     )
                 })?;
 
@@ -241,7 +244,7 @@ fn camera_main(
 
         info!(
             "{}: Connecting to camera at {}",
-            camera_config.name, camera_config.camera_addr
+            camera_config.name, camera_addr
         );
 
         info!("{}: Logging in", camera_config.name);

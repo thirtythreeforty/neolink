@@ -17,6 +17,7 @@ mod reboot;
 mod rtsp;
 mod statusled;
 mod talk;
+mod utils;
 
 use cmdline::{Command, Opt};
 

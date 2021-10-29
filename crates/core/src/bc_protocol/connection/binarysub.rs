@@ -1,4 +1,7 @@
-use super::{connection::BcSubscription, RX_TIMEOUT};
+use super::{
+    super::{connection::BcSubscription, RX_TIMEOUT},
+    BcConnection,
+};
 use crate::bc::model::*;
 use std::{
     io::{BufRead, Error, ErrorKind, Read},
