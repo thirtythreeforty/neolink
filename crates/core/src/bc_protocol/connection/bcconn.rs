@@ -49,7 +49,7 @@ impl BcConnection {
             let mut last_keep_alive = Instant::now();
             let keep_alive_time = Duration::from_millis(500);
             loop {
-                result = Self::poll(&mut context, &conn, &mut subs);
+                result = Self::poll(&mut context, &conn, &mut subs, &connections_keep_alive_msg);
                 if poll_abort_rx.load(Ordering::Relaxed) {
                     break; // Poll has been aborted by request usally during disconnect
                 }
@@ -126,6 +126,7 @@ impl BcConnection {
         context: &mut BcContext,
         connection: &BcSource,
         subscribers: &mut Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
+        connections_keep_alive_msg: &Arc<Mutex<Option<Bc>>>,
     ) -> Result<()> {
         // Don't hold the lock during deserialization so we don't poison the subscribers mutex if
         // something goes wrong
@@ -149,6 +150,14 @@ impl BcConnection {
                 if msg_id != MSG_ID_UDP_KEEP_ALIVE {
                     debug!("Ignoring uninteresting message ID {}", msg_id);
                     trace!("Contents: {:?}", response);
+                } else {
+                    // This is a keep alive message let see what the camera says about it
+                    if response.meta.response_code != 200 {
+                        // Camera dosen't support the current keep alive message stop sending them
+                        if let Ok(mut lock) = connections_keep_alive_msg.try_lock() {
+                            *lock = None;
+                        }
+                    }
                 }
             }
         }
