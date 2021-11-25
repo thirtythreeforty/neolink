@@ -69,8 +69,8 @@ Builds are provided for the following platforms:
 
 - Windows x86_64 ([download][win-ci-download])
 - macOS x86_64 ([download][macos-ci-download])
-- Ubuntu x86_64 ([download][ubuntu-ci-download])
-- Debian x86 ([download][debian-x86-ci-download])
+- Ubuntu/Debian x86_64 ([download][ubuntu-ci-download])
+- Ubuntu/Debian x86 ([download][debian-x86-ci-download])
 - Debian aarch64 (Raspberry Pi 64-bit) ([download][debian-aarch-ci-download])
 - Debian armhf (Raspberry Pi 32-bit) ([download][debian-armhf-ci-download])
 - Arch Linux ([AUR](https://aur.archlinux.org/packages/neolink-git/))
