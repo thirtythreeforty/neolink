@@ -122,6 +122,10 @@ impl BcConnection {
         (*self.encryption_protocol.lock().unwrap()).clone()
     }
 
+    pub fn is_udp(&self) -> bool {
+        self.sink.lock().unwrap().is_udp()
+    }
+
     fn poll(
         context: &mut BcContext,
         connection: &BcSource,

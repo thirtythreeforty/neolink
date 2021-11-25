@@ -12,6 +12,10 @@ pub enum BcSource {
 }
 
 impl BcSource {
+    pub fn is_udp(&self) -> bool {
+        matches!(self, BcSource::Udp(_))
+    }
+
     pub fn new_tcp(addr: SocketAddr, timeout: Duration) -> Result<Self> {
         let source = TcpSource::new(addr, timeout)?;
         Ok(BcSource::Tcp(Mutex::new(source)))

@@ -186,23 +186,24 @@ impl BcCamera {
         };
 
         if let Some(conn) = &me.connection {
-            let keep_alive_msg = Bc {
-                meta: BcMeta {
-                    msg_id: MSG_ID_UDP_KEEP_ALIVE,
-                    channel_id: me.channel_id,
-                    msg_num: me.new_message_num(),
-                    stream_type: 0,
-                    response_code: 0,
-                    class: 0x6414,
-                },
-                body: BcBody::ModernMsg(ModernMsg {
-                    ..Default::default()
-                }),
-            };
+            if conn.is_udp() {
+                let keep_alive_msg = Bc {
+                    meta: BcMeta {
+                        msg_id: MSG_ID_UDP_KEEP_ALIVE,
+                        channel_id: me.channel_id,
+                        msg_num: me.new_message_num(),
+                        stream_type: 0,
+                        response_code: 0,
+                        class: 0x6414,
+                    },
+                    body: BcBody::ModernMsg(ModernMsg {
+                        ..Default::default()
+                    }),
+                };
 
-            conn.set_keep_alive_msg(keep_alive_msg);
+                conn.set_keep_alive_msg(keep_alive_msg);
+            }
         }
-
         Ok(me)
     }
 
