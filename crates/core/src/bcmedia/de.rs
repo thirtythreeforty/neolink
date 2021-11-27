@@ -277,9 +277,10 @@ fn bcmedia_pframe(buf: &[u8]) -> IResult<&[u8], BcMediaPframe> {
         verify(take4, |x| matches!(x, "H264" | "H265")),
     )(buf)?;
     let (buf, payload_size) = le_u32(buf)?;
-    let (buf, _unknown_a) = le_u32(buf)?;
+    let (buf, additional_header_size) = le_u32(buf)?;
     let (buf, microseconds) = le_u32(buf)?;
     let (buf, _unknown_b) = le_u32(buf)?;
+    let (buf, _additional_header) = take!(buf, additional_header_size)?;
     let (buf, data_slice) = take!(buf, payload_size)?;
     let pad_size = match payload_size % PAD_SIZE {
         0 => 0,
@@ -409,6 +410,39 @@ mod tests {
                 }
                 Ok(_) => {}
             }
+        }
+    }
+
+    #[test]
+    // This method will test the decoding on argus2 cameras output
+    //
+    // This will do a full desearialise from Bc to BcMedia
+    // Crucially this is a battery camera
+    fn test_argus2_pframe_extended() {
+        init();
+
+        let files: Vec<_> = (0..18)
+            .into_iter()
+            .map(|i| sample(&format!("argus2_pframe_{}.raw", i)))
+            .collect();
+        println!("files: {:?}", files);
+
+        let mut subsciber = FileSubscriber::from_files(files);
+        // Should derealise all of this
+        loop {
+            let e = BcMedia::deserialize(&mut subsciber);
+            match e {
+                Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                    // Reach end of files
+                    break;
+                }
+                Err(e) => {
+                    error!("{:?}", e);
+                    panic!();
+                }
+                Ok(_) => {}
+            }
+            println!("\n\n\n\n\n\n\n\n\n\nPrevious: {:0x?}", e);
         }
     }
 
