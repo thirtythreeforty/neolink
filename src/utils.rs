@@ -1,6 +1,9 @@
 //! Contains code that is not specific to any of the subcommands
 //!
-use anyhow::{anyhow, Error};
+use log::*;
+
+use super::config::{CameraConfig, Config};
+use anyhow::{anyhow, Context, Error, Result};
 use neolink_core::bc_protocol::BcCamera;
 use std::fmt::{Display, Error as FmtError, Formatter};
 
@@ -36,4 +39,47 @@ impl AddressOrUid {
             AddressOrUid::Uid(host) => Ok(BcCamera::new_with_uid(host, channel_id)?),
         }
     }
+}
+
+pub(crate) fn find_and_connect(config: &Config, name: &str) -> Result<BcCamera> {
+    let camera_config = find_camera_by_name(config, name)?;
+    connect_and_login(camera_config)
+}
+
+pub(crate) fn connect_and_login(camera_config: &CameraConfig) -> Result<BcCamera> {
+    let camera_addr =
+        AddressOrUid::new(&camera_config.camera_addr, &camera_config.camera_uid).unwrap();
+    info!(
+        "{}: Connecting to camera at {}",
+        camera_config.name, camera_addr
+    );
+
+    let mut camera = camera_addr
+        .connect_camera(camera_config.channel_id)
+        .with_context(|| {
+            format!(
+                "Failed to connect to camera {} at {} on channel {}",
+                camera_config.name, camera_addr, camera_config.channel_id
+            )
+        })?;
+
+    info!("{}: Logging in", camera_config.name);
+    camera
+        .login(&camera_config.username, camera_config.password.as_deref())
+        .with_context(|| format!("Failed to login to {}", camera_config.name))?;
+
+    info!("{}: Connected and logged in", camera_config.name);
+
+    Ok(camera)
+}
+
+pub(crate) fn find_camera_by_name<'a, 'b>(
+    config: &'a Config,
+    name: &'b str,
+) -> Result<&'a CameraConfig> {
+    config
+        .cameras
+        .iter()
+        .find(|c| c.name == name)
+        .ok_or_else(|| anyhow!("Camera {} not found in the config file", name))
 }

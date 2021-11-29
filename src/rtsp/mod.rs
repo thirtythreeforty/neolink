@@ -32,21 +32,18 @@ use anyhow::{Context, Result};
 use log::*;
 use neolink_core::bc_protocol::{BcCamera, Stream};
 use std::collections::HashSet;
-use std::fs;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use validator::Validate;
 
 mod abort;
 mod cmdline;
-mod config;
 mod gst;
 mod motion;
 mod state;
 
+use super::config::{CameraConfig, Config, UserConfig};
 use crate::utils::AddressOrUid;
 pub(crate) use cmdline::Opt;
-use config::{CameraConfig, Config, UserConfig};
 use gst::{GstOutputs, InputMode, PausedSources, RtspServer, TlsAuthenticationMode};
 use motion::MotionStream;
 use state::States;
@@ -54,17 +51,7 @@ use state::States;
 /// Entry point for the rtsp subcommand
 ///
 /// Opt is the command line options
-pub fn main(opt: Opt) -> Result<()> {
-    let config: Config = toml::from_str(
-        &fs::read_to_string(&opt.config)
-            .with_context(|| format!("Failed to read {:?}", &opt.config))?,
-    )
-    .with_context(|| format!("Failed to load {:?} as a config file", &opt.config))?;
-
-    config
-        .validate()
-        .with_context(|| format!("Failed to validate the {:?} config file", &opt.config))?;
-
+pub(crate) fn main(_opt: Opt, config: Config) -> Result<()> {
     let rtsp = &RtspServer::new();
 
     set_up_tls(&config, rtsp);
