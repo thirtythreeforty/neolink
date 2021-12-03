@@ -240,11 +240,41 @@ fn bcmedia_iframe(buf: &[u8]) -> IResult<&[u8], BcMediaIframe> {
         verify(take4, |x| matches!(x, "H264" | "H265")),
     )(buf)?;
     let (buf, payload_size) = le_u32(buf)?;
-    let (buf, _unknown_a) = le_u32(buf)?;
+    let (buf, additional_header_size) = le_u32(buf)?;
     let (buf, microseconds) = le_u32(buf)?;
     let (buf, _unknown_b) = le_u32(buf)?;
-    let (buf, time) = le_u32(buf)?;
-    let (buf, _unknown_c) = le_u32(buf)?;
+    let (buf, time) = if additional_header_size >= 4 {
+        let (buf, time_value) = le_u32(buf)?;
+        (buf, Some(time_value))
+    } else {
+        (buf, None)
+    };
+    let (buf, _unknown_c) = if additional_header_size >= 8 {
+        let (buf, unknown_c) = le_u32(buf)?;
+        (buf, Some(unknown_c))
+    } else {
+        (buf, None)
+    };
+    let (buf, _unknown_d) = if additional_header_size >= 12 {
+        let (buf, unknown_d) = le_u32(buf)?;
+        (buf, Some(unknown_d))
+    } else {
+        (buf, None)
+    };
+    let (buf, _unknown_e) = if additional_header_size >= 16 {
+        let (buf, unknown_e) = le_u32(buf)?;
+        (buf, Some(unknown_e))
+    } else {
+        (buf, None)
+    };
+    let (buf, _unknown_remained) = if additional_header_size > 16 {
+        let remainder = additional_header_size - 16;
+        let (buf, unknown_remained) = take!(buf, remainder)?;
+        (buf, Some(unknown_remained))
+    } else {
+        (buf, None)
+    };
+
     let (buf, data_slice) = take!(buf, payload_size)?;
     let pad_size = match payload_size % PAD_SIZE {
         0 => 0,
@@ -414,18 +444,16 @@ mod tests {
     }
 
     #[test]
-    // This method will test the decoding on argus2 cameras output
+    // This method will test the decoding of argus2 cameras output
     //
-    // This will do a full desearialise from Bc to BcMedia
-    // Crucially this is a battery camera
-    fn test_argus2_pframe_extended() {
+    // This packet has an extended iframe
+    fn test_argus2_iframe_extended() {
         init();
 
-        let files: Vec<_> = (0..18)
+        let files: Vec<_> = (0..5)
             .into_iter()
-            .map(|i| sample(&format!("argus2_pframe_{}.raw", i)))
+            .map(|i| sample(&format!("argus2_iframe_{}.raw", i)))
             .collect();
-        println!("files: {:?}", files);
 
         let mut subsciber = FileSubscriber::from_files(files);
         // Should derealise all of this
@@ -442,7 +470,36 @@ mod tests {
                 }
                 Ok(_) => {}
             }
-            println!("\n\n\n\n\n\n\n\n\n\nPrevious: {:0x?}", e);
+        }
+    }
+
+    #[test]
+    // This method will test the decoding of argus2 cameras output
+    //
+    // This packet has an extended pframe
+    fn test_argus2_pframe_extended() {
+        init();
+
+        let files: Vec<_> = (0..18)
+            .into_iter()
+            .map(|i| sample(&format!("argus2_pframe_{}.raw", i)))
+            .collect();
+
+        let mut subsciber = FileSubscriber::from_files(files);
+        // Should derealise all of this
+        loop {
+            let e = BcMedia::deserialize(&mut subsciber);
+            match e {
+                Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                    // Reach end of files
+                    break;
+                }
+                Err(e) => {
+                    error!("{:?}", e);
+                    panic!();
+                }
+                Ok(_) => {}
+            }
         }
     }
 
@@ -492,7 +549,7 @@ mod tests {
         if let Ok(BcMedia::Iframe(BcMediaIframe {
             video_type: VideoType::H264,
             microseconds: 3557705112,
-            time: 1628085232,
+            time: Some(1628085232),
             data: d,
         })) = e
         {
