@@ -11,7 +11,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// A shareable connection to a camera.  Handles serialization of messages.  To send/receive, call
 /// .[subscribe()] with a message ID.  You can use the BcSubscription to send or receive only
@@ -46,8 +46,10 @@ impl BcConnection {
             let keep_alive_encryption_protocol = connections_encryption_protocol.clone();
             let mut context = BcContext::new(connections_encryption_protocol);
             let mut result;
+            let mut last_keep_alive = Instant::now();
+            let keep_alive_time = Duration::from_millis(500);
             loop {
-                result = Self::poll(&mut context, &conn, &mut subs);
+                result = Self::poll(&mut context, &conn, &mut subs, &connections_keep_alive_msg);
                 if poll_abort_rx.load(Ordering::Relaxed) {
                     break; // Poll has been aborted by request usally during disconnect
                 }
@@ -61,11 +63,14 @@ impl BcConnection {
                     break;
                 }
                 // Send a udp keep alive if set
-                if let Ok(lock) = connections_keep_alive_msg.try_lock() {
-                    if let Some(keep_alive_msg) = lock.as_ref() {
-                        let _ = keep_alive_msg
-                            .serialize(&conn, &keep_alive_encryption_protocol.lock().unwrap());
-                        let _ = conn.flush();
+                if last_keep_alive.elapsed() > keep_alive_time {
+                    last_keep_alive = Instant::now();
+                    if let Ok(lock) = connections_keep_alive_msg.try_lock() {
+                        if let Some(keep_alive_msg) = lock.as_ref() {
+                            let _ = keep_alive_msg
+                                .serialize(&conn, &keep_alive_encryption_protocol.lock().unwrap());
+                            let _ = conn.flush();
+                        }
                     }
                 }
             }
@@ -117,10 +122,15 @@ impl BcConnection {
         (*self.encryption_protocol.lock().unwrap()).clone()
     }
 
+    pub fn is_udp(&self) -> bool {
+        self.sink.lock().unwrap().is_udp()
+    }
+
     fn poll(
         context: &mut BcContext,
         connection: &BcSource,
         subscribers: &mut Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
+        connections_keep_alive_msg: &Arc<Mutex<Option<Bc>>>,
     ) -> Result<()> {
         // Don't hold the lock during deserialization so we don't poison the subscribers mutex if
         // something goes wrong
@@ -144,6 +154,14 @@ impl BcConnection {
                 if msg_id != MSG_ID_UDP_KEEP_ALIVE {
                     debug!("Ignoring uninteresting message ID {}", msg_id);
                     trace!("Contents: {:?}", response);
+                } else {
+                    // This is a keep alive message let see what the camera says about it
+                    if response.meta.response_code != 200 {
+                        // Camera dosen't support the current keep alive message stop sending them
+                        if let Ok(mut lock) = connections_keep_alive_msg.try_lock() {
+                            *lock = None;
+                        }
+                    }
                 }
             }
         }
