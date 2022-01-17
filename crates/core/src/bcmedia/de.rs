@@ -86,7 +86,7 @@ where
 impl BcMedia {
     pub(crate) fn deserialize<R: Read>(r: R) -> Result<BcMedia, Error> {
         // Throw away the nom-specific return types
-        read_from_reader(|reader| bcmedia(reader), r)
+        read_from_reader(bcmedia, r)
     }
 }
 

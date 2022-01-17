@@ -12,6 +12,7 @@ use indoc::indoc;
 /// There are two types of payloads xml and binary
 #[derive(PartialEq, Eq, Debug, YaDeserialize)]
 #[yaserde(flatten)]
+#[allow(clippy::large_enum_variant)]
 pub enum BcPayloads {
     /// XML payloads are the more common ones and include payloads for camera controls
     #[yaserde(rename = "body")]

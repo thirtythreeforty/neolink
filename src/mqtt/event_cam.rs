@@ -1,5 +1,7 @@
 use super::App;
-use super::{config::CameraConfig, errors::Error};
+use crate::config::CameraConfig;
+use crate::utils::AddressOrUid;
+use anyhow::{anyhow, Context, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender, TryRecvError};
 use log::*;
 use neolink_core::bc_protocol::{
@@ -37,10 +39,10 @@ impl<'a> EventCam<'a> {
         }
     }
 
-    pub(crate) fn poll(&self) -> Result<Messages, Error> {
+    pub(crate) fn poll(&self) -> Result<Messages> {
         if let Ok(ref mut channel_out) = self.channel_out.try_lock() {
             if let Some(channel_out) = channel_out.as_mut() {
-                channel_out.recv().map_err(|e| e.into())
+                channel_out.recv().context("Camera failed to poll")
             } else {
                 Ok(Messages::None)
             }
@@ -49,15 +51,17 @@ impl<'a> EventCam<'a> {
         }
     }
 
-    pub(crate) fn send_message(&self, msg: Messages) -> Result<(), Error> {
+    pub(crate) fn send_message(&self, msg: Messages) -> Result<()> {
         if let Ok(ref mut channel_in) = self.channel_in.lock() {
             if let Some(channel_in) = channel_in.as_mut() {
-                channel_in.send(msg).map_err(|e| e.into())
+                channel_in
+                    .send(msg)
+                    .context("Failed to send message from camera")
             } else {
-                Err(Error::CrossbeamSend)
+                Err(anyhow!("Failed to send camera data over crossbeam"))
             }
         } else {
-            Err(Error::Lock)
+            Err(anyhow!("Failed to lock"))
         }
     }
 
@@ -81,7 +85,7 @@ impl<'a> EventCam<'a> {
         while self.app.running(&self.config.name) {
             // Ignore errors and just loop
             let _ = Self::cam_run(
-                &loop_config,
+                loop_config,
                 loop_tx.clone(),
                 loop_rx.clone(),
                 self.app.clone(),
@@ -94,20 +98,30 @@ impl<'a> EventCam<'a> {
         tx: Arc<Mutex<Sender<Messages>>>,
         rx: Arc<Mutex<Receiver<Messages>>>,
         app: Arc<App>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
+        let camera_addr =
+            AddressOrUid::new(&camera_config.camera_addr, &camera_config.camera_uid).unwrap();
+
         info!(
             "{}: Connecting to camera at {}",
-            camera_config.name, camera_config.camera_addr
+            camera_config.name, camera_addr
         );
-
-        let mut camera =
-            BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)?;
+        let mut camera = camera_addr
+            .connect_camera(camera_config.channel_id)
+            .with_context(|| {
+                format!(
+                    "Failed to connect to camera {} at {} on channel {}",
+                    camera_config.name, camera_addr, camera_config.channel_id
+                )
+            })?;
 
         info!("{}: Logging in", camera_config.name);
-        camera.login(&camera_config.username, camera_config.password.as_deref())?;
+        camera
+            .login(&camera_config.username, camera_config.password.as_deref())
+            .context("Failed to login to the camera")?;
         info!("{}: Connected and logged in", camera_config.name);
 
-        (tx.lock()?).send(Messages::Login)?;
+        (tx.lock().map_err(|_| anyhow!("Failed to lock"))?).send(Messages::Login)?;
 
         // Shararble cameras
         let arc_cam = Arc::new(camera);

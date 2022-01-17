@@ -1,4 +1,6 @@
-use super::{config::MqttConfig, errors::Error, App};
+use super::App;
+use crate::config::MqttConfig;
+use anyhow::{Context, Result};
 use crossbeam_channel::{unbounded, Receiver, RecvError, Sender};
 use log::*;
 use rumqttc::{
@@ -198,11 +200,13 @@ impl Mqtt {
         self.msg_channel.1.clone()
     }
 
-    pub(crate) fn poll(&self) -> Result<MqttReply, Error> {
-        self.get_message_listener().recv().map_err(|e| e.into())
+    pub(crate) fn poll(&self) -> Result<MqttReply> {
+        self.get_message_listener()
+            .recv()
+            .context("Mqtt Polling error")
     }
 
-    pub(crate) fn start(&self) -> Result<(), ClientError> {
+    pub(crate) fn start(&self) -> Result<()> {
         // This acts as an event loop
         let mut connection = self.connection.lock().unwrap();
         let (sender, _) = &self.incoming;
@@ -213,9 +217,9 @@ impl Mqtt {
                     match notification {
                         Event::Incoming(Incoming::ConnAck(connected)) => {
                             if ConnectReturnCode::Success == connected.code {
-                                self.update_status()?;
+                                self.update_status().context("Failed to update status")?;
                                 // We succesfully logged in. Now ask for the cameras subscription.
-                                self.subscribe()?;
+                                self.subscribe().context("Failed to subscribe")?;
                             }
                         }
                         Event::Incoming(Incoming::Publish(published_message)) => {

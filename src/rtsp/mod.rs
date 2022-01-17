@@ -119,7 +119,7 @@ fn camera_loop(
     stream_name: Stream,
     outputs: &mut GstOutputs,
     manage: bool,
-) -> Result<(), Error> {
+) -> Result<()> {
     let min_backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(15);
     let mut current_backoff = min_backoff;
@@ -132,20 +132,19 @@ fn camera_loop(
             if cam_err.connected {
                 current_backoff = min_backoff;
             }
-            match cam_err.err {
-                neolink_core::Error::AuthFailed => {
-                    error!(
-                        "Authentication failed to camera {}, not retrying",
-                        camera_config.name
-                    );
-                    return Err(cam_err.err.into());
-                }
-                _ => error!(
+            if cam_err.login_fail {
+                error!(
+                    "Authentication failed to camera {}, not retrying",
+                    camera_config.name
+                );
+                return Err(cam_err.err);
+            } else {
+                error!(
                     "Error streaming from camera {}, will retry in {}s: {:?}",
                     camera_config.name,
                     current_backoff.as_secs(),
                     cam_err.err
-                ),
+                )
             }
 
             std::thread::sleep(current_backoff);

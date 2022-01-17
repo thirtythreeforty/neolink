@@ -12,21 +12,17 @@ use log::*;
 /// neolink reboot --config=config.toml CameraName
 /// ```
 ///
-use std::fs;
 use std::sync::Arc;
-use validator::Validate;
 
 mod app;
 mod cmdline;
-mod config;
-mod errors;
 mod event_cam;
 mod mqttc;
 
+use crate::config::{CameraConfig, Config, MqttConfig};
+use anyhow::Result;
 pub(crate) use app::App;
 pub(crate) use cmdline::Opt;
-use config::{CameraConfig, Config, MqttConfig};
-pub(crate) use errors::Error;
 use event_cam::EventCam;
 pub(crate) use event_cam::Messages;
 use mqttc::{Mqtt, MqttReplyRef};
@@ -34,11 +30,7 @@ use mqttc::{Mqtt, MqttReplyRef};
 /// Entry point for the reboot subcommand
 ///
 /// Opt is the command line options
-pub fn main(opt: Opt) -> Result<(), Error> {
-    let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
-
-    config.validate()?;
-
+pub(crate) fn main(_: Opt, config: Config) -> Result<()> {
     let app = App::new();
     let arc_app = Arc::new(app);
 
@@ -63,7 +55,7 @@ fn listen_on_camera(
     cam_config: &CameraConfig,
     mqtt_config: &MqttConfig,
     app: Arc<App>,
-) -> Result<(), Error> {
+) -> Result<()> {
     // Camera thread
     let event_cam = EventCam::new(cam_config, app.clone());
     let mqtt = Mqtt::new(mqtt_config, &cam_config.name, app.clone());
@@ -83,7 +75,7 @@ fn listen_on_camera(
 
         // Listen on camera messages and post on mqtt
         s.spawn(|_| {
-            while app.running(&format!("app:{}", cam_config.name.to_string())) {
+            while app.running(&format!("app: {}", cam_config.name)) {
                 if let Ok(msg) = event_cam.poll() {
                     match msg {
                         Messages::Login => {
@@ -109,7 +101,7 @@ fn listen_on_camera(
 
         // Listen on mqtt messages and post on camera
         s.spawn(|_| {
-            while app.running(&format!("app:{}", cam_config.name.to_string())) {
+            while app.running(&format!("app: {}", cam_config.name)) {
                 if let Ok(msg) = mqtt.poll() {
                     match msg.as_ref() {
                         MqttReplyRef {

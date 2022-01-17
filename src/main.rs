@@ -68,8 +68,8 @@ fn main() -> Result<()> {
         Some(Command::Talk(opts)) => {
             talk::main(opts, config)?;
         }
-        Command::Mqtt(opts) => {
-            mqtt::main(opts)?;
+        Some(Command::Mqtt(opts)) => {
+            mqtt::main(opts, config)?;
         }
     }
 

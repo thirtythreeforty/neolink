@@ -52,7 +52,7 @@ impl BcCamera {
     ///
     /// This will block forever or return an error when the camera connection is dropped
     ///
-    pub fn start_video<Outputs>(&self, data_outs: &mut Outputs, stream_name: Stream) -> Result<()>
+    pub fn start_video<Outputs>(&self, data_outs: &mut Outputs, stream: Stream) -> Result<()>
     where
         Outputs: StreamOutput,
     {

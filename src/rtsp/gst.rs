@@ -347,7 +347,7 @@ mod maybe_app_src {
         /// owning the AppSrc directly.  This function handles either case and returns the AppSrc,
         /// or None if the caller has not yet sent one.
         fn try_get_src(&mut self) -> Option<&AppSrc> {
-            while let Some(src) = self.rx.try_recv().ok() {
+            while let Ok(src) = self.rx.try_recv() {
                 self.app_src = Some(src);
             }
             self.app_src.as_ref()
