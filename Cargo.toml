@@ -42,3 +42,4 @@ byte-slice-cast = "1.0.0"
 rumqttc = "0.8.0"
 tokio = { version = "1.0", features = ["rt", "macros", "io-util"] }
 crossbeam-channel = "0.5.1"
+anyhow = "1.0.42"

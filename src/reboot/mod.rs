@@ -11,54 +11,22 @@
 /// neolink reboot --config=config.toml CameraName
 /// ```
 ///
-use log::*;
-use neolink_core::bc_protocol::BcCamera;
-use std::fs;
-use validator::Validate;
+use anyhow::{Context, Result};
 
 mod cmdline;
-mod config;
-mod errors;
 
+use super::config::Config;
+use crate::utils::find_and_connect;
 pub(crate) use cmdline::Opt;
-use config::Config;
-pub(crate) use errors::Error;
 
 /// Entry point for the reboot subcommand
 ///
 /// Opt is the command line options
-pub fn main(opt: Opt) -> Result<(), Error> {
-    let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
+pub(crate) fn main(opt: Opt, config: Config) -> Result<()> {
+    let camera = find_and_connect(&config, &opt.camera)?;
 
-    config.validate()?;
-
-    let mut cam_found = false;
-    for camera_config in &config.cameras {
-        if opt.camera == camera_config.name {
-            cam_found = true;
-            info!(
-                "{}: Connecting to camera at {}",
-                camera_config.name, camera_config.camera_addr
-            );
-
-            let mut camera =
-                BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)?;
-
-            info!("{}: Logging in", camera_config.name);
-            camera.login(&camera_config.username, camera_config.password.as_deref())?;
-
-            info!("{}: Connected and logged in", camera_config.name);
-
-            camera.reboot()?;
-        }
-    }
-
-    if !cam_found {
-        error!(
-            "No camera with the name {} was found in the config",
-            opt.camera
-        );
-    }
-
+    camera
+        .reboot()
+        .context("Could not send reboot command to the camera")?;
     Ok(())
 }

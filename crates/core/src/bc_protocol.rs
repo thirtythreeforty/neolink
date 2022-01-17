@@ -1,37 +1,35 @@
-use self::connection::BcConnection;
 use crate::{bc, bcmedia};
 use log::*;
 use std::convert::TryInto;
 use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicU16, Ordering};
-use std::time::Duration;
 
 use Md5Trunc::*;
 
-mod binarysub;
 mod connection;
 mod errors;
-pub(crate) mod filesub;
 mod ledstate;
 mod login;
 mod logout;
 mod motion;
 mod ping;
 mod reboot;
+mod resolution;
 mod stream;
 mod talk;
 mod time;
 mod version;
 
-pub use binarysub::BinarySubscriber;
+use super::RX_TIMEOUT;
+use bc::model::*;
+pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
 pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
-pub use stream::{StreamOutput, StreamOutputError};
+pub use resolution::*;
+pub use stream::{Stream, StreamOutput, StreamOutputError};
 
 type Result<T> = std::result::Result<T, Error>;
-
-const RX_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl<'a> From<std::sync::mpsc::RecvTimeoutError> for Error {
     fn from(k: std::sync::mpsc::RecvTimeoutError) -> Self {
@@ -69,6 +67,7 @@ impl Credentials {
 
 impl Drop for BcCamera {
     fn drop(&mut self) {
+        debug!("Dropping camera");
         self.disconnect();
     }
 }
@@ -79,8 +78,7 @@ impl BcCamera {
     ///
     /// # Parameters
     ///
-    /// * `host` - The address of the camera either ip address or hostname string is ok but
-    ///             [`std::net::SocketAddr`] is fine too
+    /// * `host` - The address of the camera either ip address or hostname string
     ///
     /// * `channel_id` - The channel ID this is usually zero unless using a NVR
     ///
@@ -93,31 +91,122 @@ impl BcCamera {
             Ok(iter) => iter,
             Err(_) => return Err(Error::AddrResolutionError),
         };
-
         for addr in addr_iter {
-            debug!("Trying {}", addr);
-            let conn = match BcConnection::new(addr, RX_TIMEOUT) {
-                Ok(conn) => conn,
-                Err(err) => match err {
-                    connection::Error::Communication(ref err) => {
-                        debug!("Assuming timeout from {}", err);
-                        continue;
-                    }
-                    err => return Err(err.into()),
-                },
-            };
-
-            debug!("Success: {}", addr);
-            return Ok(Self {
-                connection: Some(conn),
-                message_num: AtomicU16::new(0),
-                channel_id,
-                logged_in: false,
-                credentials: None,
-            });
+            if let Ok(cam) = Self::new(SocketAddrOrUid::SocketAddr(addr), channel_id) {
+                return Ok(cam);
+            }
         }
 
         Err(Error::Timeout)
+    }
+
+    ///
+    /// Create a new camera interface with this uid and channel ID
+    ///
+    /// # Parameters
+    ///
+    /// * `uid` - The uid of the camera
+    ///
+    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
+    ///
+    /// # Returns
+    ///
+    /// returns either an error or the camera
+    ///
+    pub fn new_with_uid(uid: &str, channel_id: u8) -> Result<Self> {
+        Self::new(SocketAddrOrUid::Uid(uid.to_string()), channel_id)
+    }
+
+    ///
+    /// Create a new camera interface with this address/uid and channel ID
+    ///
+    /// This method will first perform hostname resolution on the address
+    /// then fallback to uid if that resolution fails.
+    ///
+    /// Be aware that it is possible (although unlikely) that there is
+    /// a dns entry with the same address as the uid. If uncertain use
+    /// one of the other methods.
+    ///
+    /// # Parameters
+    ///
+    /// * `host` - The address of the camera either ip address, hostname string, or uid
+    ///
+    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
+    ///
+    /// # Returns
+    ///
+    /// returns either an error or the camera
+    ///
+    pub fn new_with_addr_or_uid<T: ToSocketAddrsOrUid>(host: T, channel_id: u8) -> Result<Self> {
+        let addr_iter = match host.to_socket_addrs_or_uid() {
+            Ok(iter) => iter,
+            Err(_) => return Err(Error::AddrResolutionError),
+        };
+        for addr_or_uid in addr_iter {
+            if let Ok(cam) = Self::new(addr_or_uid, channel_id) {
+                return Ok(cam);
+            }
+        }
+
+        Err(Error::Timeout)
+    }
+
+    ///
+    /// Create a new camera interface with this address/uid and channel ID
+    ///
+    /// # Parameters
+    ///
+    /// * `addr` - An enum of [`SocketAddrOrUid`] that contains the address
+    ///
+    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
+    ///
+    /// # Returns
+    ///
+    /// returns either an error or the camera
+    ///
+    pub fn new(addr: SocketAddrOrUid, channel_id: u8) -> Result<Self> {
+        let source = match addr {
+            SocketAddrOrUid::SocketAddr(addr) => {
+                debug!("Trying address {}", addr);
+                BcSource::new_tcp(addr, RX_TIMEOUT)?
+            }
+            SocketAddrOrUid::Uid(uid) => {
+                debug!("Trying uid {}", uid);
+                BcSource::new_udp(&uid, RX_TIMEOUT)?
+            }
+        };
+
+        let conn = BcConnection::new(source)?;
+
+        debug!("Success");
+        let me = Self {
+            connection: Some(conn),
+            message_num: AtomicU16::new(0),
+            channel_id,
+            logged_in: false,
+            credentials: None,
+        };
+
+        if let Some(conn) = &me.connection {
+            if conn.is_udp() {
+                let keep_alive_msg = Bc {
+                    meta: BcMeta {
+                        msg_id: MSG_ID_UDP_KEEP_ALIVE,
+                        channel_id: me.channel_id,
+                        msg_num: me.new_message_num(),
+                        stream_type: 0,
+                        response_code: 0,
+                        class: 0x6414,
+                    },
+                    body: BcBody::ModernMsg(ModernMsg {
+                        ..Default::default()
+                    }),
+                };
+
+                conn.set_keep_alive_msg(keep_alive_msg);
+            }
+        }
+        Ok(me)
     }
 
     /// This method will get a new message number and increment the message count atomically
@@ -128,13 +217,11 @@ impl BcCamera {
     /// This will drop the connection. It will try to send the logout request to the camera
     /// first
     pub fn disconnect(&mut self) {
-        // Stop polling now. We don't need it for a disconnect
-        // and if we don't then another we might get a deserialise
-        // error from another thread that polls and needs the login.
-        //
-        // It will also ensure that when we drop the connection we don't
-        // get an error for read retrun zero bytes.
         if let Some(connection) = &self.connection {
+            // Stop polling now. We don't need it for a disconnect
+            //
+            // It will also ensure that when we drop the connection we don't
+            // get an error for read return zero bytes from the polling thread;
             connection.stop_polling();
             if let Err(err) = self.logout() {
                 warn!("Could not log out, ignoring: {}", err);
@@ -180,7 +267,7 @@ fn md5_string(input: &str, trunc: Md5Trunc) -> String {
 }
 
 /// This is a convience function to make an AES key from the login password and the NONCE
-/// negociated during login
+/// negotiated during login
 pub fn make_aes_key(nonce: &str, passwd: &str) -> [u8; 16] {
     let key_phrase = format!("{}-{}", nonce, passwd);
     let key_phrase_hash = format!("{:X}\0", md5::compute(&key_phrase))

@@ -14,7 +14,7 @@ bind = "0.0.0.0"
 
 # Choose if the client is required to provide a certificate signed by the server's CA.
 # none|requested|required - default none
-# tls_client_auth = "required" 
+# tls_client_auth = "required"
 
 # You can password protect the rtsp server mount points by adding users
 # like the following me and someone. If you do not add [[users]]
@@ -35,6 +35,9 @@ name = "driveway"
 username = "admin"
 password = "12345678"
 address = "192.168.1.187:9000"
+# If you use a battery camera: **Instead** of an `address` supply the uid
+# as follows
+# uid = "ABCD01234567890EFG"
 
 # By default any of the users can connect (or anyone at all if no users are specfied)
 # You can uncomment the following to permit only specfic users
@@ -50,7 +53,14 @@ name = "storage shed"
 username = "admin"
 password = "987654321"
 address = "192.168.1.245:9000"
+# If you use a battery camera: **Instead** of an `address` supply the uid
+# as follows
+# uid = "ABCD01234567890EFG"
 
+# If you use an NVR that relays several camera connections you can choose which
+# camera to connect to with by setting the `channel_id`
+#
 # By default channel_id = 0. Eg the first connected camera on the device
-# Note this counts from 0. An 8 channel NVR would have channels 0 through 7
-# channel_id = 1
+# **Note**: that unlike in the offical client the  numbering starts from 0 not 1.
+# An 8 channel NVR would have channels 0 through 7
+# channel_id = 0

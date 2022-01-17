@@ -29,7 +29,39 @@ Currently it has been tested on the following cameras:
 Neolink does not support other cameras such as the RLC-420, since they already
 [provide native RTSP](https://support.reolink.com/hc/en-us/articles/360007010473-How-to-Live-View-Reolink-Cameras-via-VLC-Media-Player).
 
-## Installation
+## Usage
+
+1. First, write a configuration yaml file describing your cameras.  See the
+Configuration section below or the provided sample config.
+
+2. Launch Neolink:
+```bash
+neolink rtsp --config=your_config.yaml
+```
+
+3. Then, connect your RTSP viewer to `rtsp://127.0.0.1:8554/your_camera_name`!
+
+### Additional commands
+
+Neolink also has some additional command line tools
+for controlling the camera. They are all used through neolink subcommands like this:
+
+```bash
+neolink subcommand --config=...
+```
+
+The currently supported subcommands are
+
+- **rtsp**: The standard neolink rtsp bridge
+- **status-light**: Control the LED status light
+- **reboot**: Reboot a camera
+- **talk**: Enable talk back through either the microphone or by
+            reading a sound file.
+
+For a full list of commands use `neolink help`, or use
+`neolink help <subcommand>` for details on a subcommand of interest.
+
+## Download & Installation
 
 In the future Neolink will be much easier to install.
 For now, follow these steps.
@@ -39,8 +71,8 @@ Builds are provided for the following platforms:
 - macOS x86_64 ([download][macos-ci-download])
 - Ubuntu x86_64 ([download][ubuntu-ci-download])
 - Debian x86 ([download][debian-x86-ci-download])
-- Debian aarch64 ([download][debian-aarch-ci-download])
-- Debian armhf ([download][debian-armhf-ci-download])
+- Debian aarch64 (Raspberry Pi 64-bit) ([download][debian-aarch-ci-download])
+- Debian armhf (Raspberry Pi 32-bit) ([download][debian-armhf-ci-download])
 - Arch Linux ([AUR](https://aur.archlinux.org/packages/neolink-git/))
 - Docker x86 (see below)
 
@@ -48,6 +80,18 @@ Builds are provided for the following platforms:
 
 1. [Install Gstreamer][gstreamer] from the most recent MSI installer on Windows,
 or your package manager on Linux.
+
+    On Ubuntu/Debian machines gstreamer can be installed with:
+
+    ```bash
+    sudo apt install \
+      libgstrtspserver-1.0-0 \
+      libgstreamer1.0-0 \
+      libgstreamer-plugins-bad1.0-0 \
+      gstreamer1.0-plugins-good \
+      gstreamer1.0-plugins-bad
+    ```
+
 
 2. If you are using Windows, add the following to your `PATH` environment variable:
 
@@ -58,12 +102,18 @@ or your package manager on Linux.
     **Note:** If you use Chocolatey to install Gstreamer, it does this
     automatically.
 
-3. Download and extract a [prebuilt binary from continuous integration][ci-download]
-(click on the topmost commit for the most recent build).
-
 3. Download and unpack Neolink from the links above.
    1. Note: you can also click on [this link][ci-download] to see all historical builds.
-  You will need to be logged in to GitHub to download directly from the builds page.
+  You will need to be logged in to GitHub to download directly from the builds page (wget doesn't work)
+
+   Ubuntu/Debian/Raspberry Pi OS example:
+
+    ```bash
+    unzip release-arm64-buster.zip
+    sudo cp neolink /usr/local/bin/
+    sudo chmod +x /usr/local/bin/neolink
+    ```
+
 4. Write a configuration file for your cameras.  See the section below.
 
 5. Launch Neolink from a shell, passing your configuration file:
@@ -107,8 +157,32 @@ docker run \
   thirtythreeforty/neolink
 ```
 
+Here is an example docker-compose:
+
+```yml
+---
+version: "2"
+services:
+  neolink:
+    image: thirtythreeforty/neolink
+    container_name: neolink
+    ports:
+      - 8554:8554
+    volumes:
+      - $PWD/neolink.toml:/etc/neolink.toml
+    restart: unless-stopped
+```
+
 The Docker image is "best effort" and intended for advanced users; questions
 about running Docker are outside the scope of Neolink.
+
+If you use a battery-powered camera (or other UDP-only camera) you will need to either
+use `--net=host` or setup a [macvlan](https://docs.docker.com/network/macvlan/)
+for the docker image that supports UDP broadcast.
+This is because UDP requires that udp broadcast messages are transmitted across
+the docker network interface, however this is [not possible in the default
+bridging mode](https://github.com/docker/for-linux/issues/637)
+
 
 ## Configuration
 
@@ -116,20 +190,29 @@ about running Docker are outside the scope of Neolink.
 [Blue Iris setup walkthrough in `docs/`][blue-iris-setup] (which is probably
   also helpful even with other NVR software).
 
+**Note**: more comprehensive setup details for linux based devices is provided in
+[docs/unix_setup.md][unix-setup]
+
+**Note**: instructions for also setting up a (systemd based) service for linux
+based devices is provided in [docs/unix_service.md][unix-service]
+
 [blue-iris-setup]: docs/Setting%20Up%20Neolink%20For%20Use%20With%20Blue%20Iris.md
+[unix-setup]: docs/unix_setup.md
+[unix-service]: docs/unix_service.md
 
 Copy and modify the `sample_config.toml` to specify the address, username, and
 password for each camera (if there is no password, you can omit that line).
+The default credentials for some cameras is username `admin` password `123456`.
+
+- For a non battery powered camera you need to provide the address field with the
+ip and port (default 9000).
+
+- For a battery powered camera you need to provide the uid field with the
+camera's UID. In this case your network must support UDP.
+Battery cameras exclusively use this UDP mode so you must always use a UID.
 
 Each `[[cameras]]` block creates a new camera; the `name` determines the RTSP
 path you should connect your client to.
-Currently Neolink cannot auto-detect cameras like the official clients do; you
-must specify their IP addresses directly.
-
-By default the H265 video format is used. Some cameras, for example E1, provide
-H264 streams. To use these you must specify `format = "h264"` in the
-`[[cameras]]` config. Soon this will be auto-detected, and you will not have to know or care about
-the format.
 
 By default, the HD stream is available at the RTSP path `/name` or
 `/name/mainStream`, and the SD stream is available at `/name/subStream`.
@@ -144,16 +227,16 @@ You can modify this by changing the `bind` and the `bind_port` parameter.
 You only need one `bind`/`bind_port` setting at the top of the config file.
 
 You can enable `rtsps` (TLS) by adding a `certificate = "/path/to/pem"` to the
-top section of the config file. This PEM should contain by the certificate
+top section of the config file. This PEM should contain the certificate
 and the key used for the server. If TLS is enabled all connections must use
-`rtsps`. You can also control client side TLS with the config option
+`rtsps`. You can also use client side TLS with the config option
 `tls_client_auth = "none|request|require"`; in this case the client should
 present a certificate signed by the server's CA.
 
 TLS is disabled by default.
 
 You can password-protect the Neolink server by adding `[[users]]` sections to
-the configuration file:
+the configuration file, but this is not secure without also using TLS:
 
 ```
 [[users]]
@@ -186,11 +269,13 @@ You can change the Neolink log level by setting the `RUST_LOG` environment
 variable (not in the configuration file) to one of `error`, `warn`, `info`,
 `debug`, or `trace`:
 
+- On sh:
+
 ```sh
 set RUST_LOG=debug
 ```
 
-On Linux:
+- On Bash:
 
 ```bash
 export RUST_LOG=debug
@@ -246,7 +331,7 @@ been upgraded several times.
 The modern variant uses obfuscated XML commands and sends ordinary H.265 or
 H.264 video streams encapsulated in a custom header.
 
-More details about the on-the-wire protocol will come later.
+More details of the on-the-wire protocol are provided in [`dissector/`](dissector/).
 
 ### Baichuan dissector
 
@@ -255,43 +340,13 @@ directory.
 
 It dissects the BC header and also allows viewing the deobfuscated XML in
 command messages.
+(It cannot deobfuscate newer messages that use AES encryption.)
 To use it, copy or symlink it into your Wireshark plugin directory; typically
 this is `~/.local/lib/wireshark/plugins/` under Linux.
 
 Currently the dissector does not attempt to decode the Baichuan "extension"
 messages except `binaryData`.
 This will change in the future as reverse engineering needs require.
-
-## Additional Commands
-
-Neolink also has some additional command line tools
-for controlling the camera. They are all used through neolink subcommands like this:
-
-
-```bash
-neolink subcommand --config=...
-```
-
-The currently supported subcommands are
-
-- **rtsp**: The standard neolink rtsp bridge
-- **status-light**: A command to control the LED status light
-- **reboot**: Will reboot a camera
-- **talk**: Will enable talk back through either the microphone or by
-            reading a sound file.
-
-For a full list of commands please use
-
-```bash
-neolink help
-```
-
-For further details on the subcommands please use the following
-where `<subcommand>` is replaced with the subcommand of interest
-
-```bash
-neolink help <subcommand>
-```
 
 ## License
 

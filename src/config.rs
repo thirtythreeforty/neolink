@@ -7,7 +7,8 @@ use validator::{Validate, ValidationError};
 use validator_derive::Validate;
 
 lazy_static! {
-    static ref RE_STREAM_SRC: Regex = Regex::new(r"^(mainStream|subStream|both)$").unwrap();
+    static ref RE_STREAM_SRC: Regex =
+        Regex::new(r"^(mainStream|subStream|externStream|both|all)$").unwrap();
     static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
 }
 
@@ -40,11 +41,15 @@ pub(crate) struct Config {
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
+#[validate(schema(function = "validate_camera_config"))]
 pub(crate) struct CameraConfig {
     pub(crate) name: String,
 
     #[serde(rename = "address")]
-    pub(crate) camera_addr: String,
+    pub(crate) camera_addr: Option<String>,
+
+    #[serde(rename = "uid")]
+    pub(crate) camera_uid: Option<String>,
 
     pub(crate) username: String,
     pub(crate) password: Option<String>,
@@ -113,4 +118,16 @@ fn validate_username(name: &str) -> Result<(), ValidationError> {
         return Err(ValidationError::new("This is a reserved username"));
     }
     Ok(())
+}
+
+fn validate_camera_config(camera_config: &CameraConfig) -> Result<(), ValidationError> {
+    match (&camera_config.camera_addr, &camera_config.camera_uid) {
+        (None, None) => Err(ValidationError::new(
+            "Either camera address or uid must be given",
+        )),
+        (Some(_), Some(_)) => Err(ValidationError::new(
+            "Must provide either camera address or uid not both",
+        )),
+        _ => Ok(()),
+    }
 }

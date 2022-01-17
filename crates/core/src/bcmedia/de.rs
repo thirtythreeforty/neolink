@@ -1,9 +1,11 @@
 use super::model::BcMediaIframe;
 use super::model::*;
+use crate::RX_TIMEOUT;
 use err_derive::Error;
 use nom::IResult;
 use nom::{combinator::*, named, number::streaming::*, take, take_str};
 use std::io::Read;
+use time::OffsetDateTime;
 
 // PAD_SIZE: Media packets use 8 byte padding
 const PAD_SIZE: u32 = 8;
@@ -50,15 +52,33 @@ where
             Err(e) => return Err(e.into()),
         };
 
-        if 0 == (&mut rdr)
-            .take(to_read.get() as u64)
-            .read_to_end(&mut input)?
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "Read returned 0 bytes",
-            )
-            .into());
+        let start_time = OffsetDateTime::now_utc();
+        loop {
+            match (&mut rdr)
+                .take(to_read.get() as u64)
+                .read_to_end(&mut input)
+            {
+                Ok(0) => {
+                    if (OffsetDateTime::now_utc() - start_time) > RX_TIMEOUT {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            "Read returned 0 bytes",
+                        )
+                        .into());
+                    }
+                }
+                Ok(_) => break,
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
+                    // This is a temporaily unavaliable resource
+                    // We should just wait and try again
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
         }
     }
 }
@@ -76,8 +96,8 @@ fn bcmedia(buf: &[u8]) -> IResult<&[u8], BcMedia> {
             *x,
             MAGIC_HEADER_BCMEDIA_INFO_V1
                 | MAGIC_HEADER_BCMEDIA_INFO_V2
-                | MAGIC_HEADER_BCMEDIA_IFRAME
-                | MAGIC_HEADER_BCMEDIA_PFRAME
+                | MAGIC_HEADER_BCMEDIA_IFRAME..=MAGIC_HEADER_BCMEDIA_IFRAME_LAST
+                | MAGIC_HEADER_BCMEDIA_PFRAME..=MAGIC_HEADER_BCMEDIA_PFRAME_LAST
                 | MAGIC_HEADER_BCMEDIA_AAC
                 | MAGIC_HEADER_BCMEDIA_ADPCM
         )
@@ -92,11 +112,11 @@ fn bcmedia(buf: &[u8]) -> IResult<&[u8], BcMedia> {
             let (buf, payload) = bcmedia_info_v2(buf)?;
             Ok((buf, BcMedia::InfoV2(payload)))
         }
-        MAGIC_HEADER_BCMEDIA_IFRAME => {
+        MAGIC_HEADER_BCMEDIA_IFRAME..=MAGIC_HEADER_BCMEDIA_IFRAME_LAST => {
             let (buf, payload) = bcmedia_iframe(buf)?;
             Ok((buf, BcMedia::Iframe(payload)))
         }
-        MAGIC_HEADER_BCMEDIA_PFRAME => {
+        MAGIC_HEADER_BCMEDIA_PFRAME..=MAGIC_HEADER_BCMEDIA_PFRAME_LAST => {
             let (buf, payload) = bcmedia_pframe(buf)?;
             Ok((buf, BcMedia::Pframe(payload)))
         }
@@ -312,7 +332,7 @@ fn bcmedia_adpcm(buf: &[u8]) -> IResult<&[u8], BcMediaAdpcm> {
 #[cfg(test)]
 mod tests {
     use super::Error;
-    use crate::bc_protocol::filesub::FileSubscriber;
+    use crate::bc_protocol::FileSubscriber;
     use crate::bcmedia::model::*;
     use env_logger::Env;
     use log::*;

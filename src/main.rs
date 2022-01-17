@@ -7,22 +7,26 @@
 //! It contains sub commands for running an rtsp proxy which can be used on Reolink cameras
 //! that do not nativly support RTSP.
 //!
+use anyhow::{Context, Result};
 use env_logger::Env;
 use log::*;
+use std::fs;
 use structopt::StructOpt;
+use validator::Validate;
 
 mod cmdline;
-mod errors;
+mod config;
 mod mqtt;
 mod reboot;
 mod rtsp;
 mod statusled;
 mod talk;
+mod utils;
 
 use cmdline::{Command, Opt};
-use errors::Error;
+use config::Config;
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     info!(
@@ -33,18 +37,36 @@ fn main() -> Result<(), Error> {
 
     let opt = Opt::from_args();
 
+    let conf_path = opt.config.context("Must supply --config file")?;
+    let config: Config = toml::from_str(
+        &fs::read_to_string(&conf_path)
+            .with_context(|| format!("Failed to read {:?}", conf_path))?,
+    )
+    .with_context(|| format!("Failed to parse the {:?} config file", conf_path))?;
+
+    config
+        .validate()
+        .with_context(|| format!("Failed to validate the {:?} config file", conf_path))?;
+
     match opt.cmd {
-        Command::Rtsp(opts) => {
-            rtsp::main(opts)?;
+        None => {
+            warn!(
+                "Deprecated command line option. Please use: `neolink rtsp --config={:?}`",
+                config
+            );
+            rtsp::main(rtsp::Opt {}, config)?;
         }
-        Command::StatusLight(opts) => {
-            statusled::main(opts)?;
+        Some(Command::Rtsp(opts)) => {
+            rtsp::main(opts, config)?;
         }
-        Command::Reboot(opts) => {
-            reboot::main(opts)?;
+        Some(Command::StatusLight(opts)) => {
+            statusled::main(opts, config)?;
         }
-        Command::Talk(opts) => {
-            talk::main(opts)?;
+        Some(Command::Reboot(opts)) => {
+            reboot::main(opts, config)?;
+        }
+        Some(Command::Talk(opts)) => {
+            talk::main(opts, config)?;
         }
         Command::Mqtt(opts) => {
             mqtt::main(opts)?;

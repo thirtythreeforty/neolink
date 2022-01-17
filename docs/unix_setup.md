@@ -42,7 +42,6 @@ Here are some examples for commands of package managers
     libgstrtspserver-1.0-0 \
     libgstreamer1.0-0 \
     libgstreamer-plugins-bad1.0-0 \
-    libgstreamer-plugins-good1.0-0 \
     gstreamer1.0-plugins-good \
     gstreamer1.0-plugins-bad
   ```

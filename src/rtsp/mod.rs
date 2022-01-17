@@ -28,35 +28,28 @@
 /// neolink rtsp --config=config.toml
 /// ```
 ///
+use anyhow::{Context, Result};
 use log::*;
-use neolink_core::bc_protocol::BcCamera;
+use neolink_core::bc_protocol::{BcCamera, Stream};
 use std::collections::HashSet;
-use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
-use validator::Validate;
 
 // mod adpcm;
 /// The command line parameters for this subcommand
 mod cmdline;
-mod config;
 /// The errors this subcommand can raise
-mod errors;
 mod gst;
 
+use super::config::{CameraConfig, Config, UserConfig};
+use crate::utils::AddressOrUid;
 pub(crate) use cmdline::Opt;
-use config::{CameraConfig, Config, UserConfig};
-pub(crate) use errors::Error;
 use gst::{GstOutputs, RtspServer, TlsAuthenticationMode};
 
 /// Entry point for the rtsp subcommand
 ///
 /// Opt is the command line options
-pub fn main(opt: Opt) -> Result<(), Error> {
-    let config: Config = toml::from_str(&fs::read_to_string(opt.config)?)?;
-
-    config.validate()?;
-
+pub(crate) fn main(_opt: Opt, config: Config) -> Result<()> {
     let rtsp = &RtspServer::new();
 
     set_up_tls(&config, rtsp);
@@ -83,7 +76,7 @@ pub fn main(opt: Opt) -> Result<(), Error> {
                 get_permitted_users(config.users.as_slice(), &arc_cam.permitted_users);
 
             // Set up each main and substream according to all the RTSP mount paths we support
-            if ["both", "mainStream"].iter().any(|&e| e == arc_cam.stream) {
+            if ["all", "both", "mainStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[
                     &*format!("/{}", arc_cam.name),
                     &*format!("/{}/mainStream", arc_cam.name),
@@ -92,16 +85,25 @@ pub fn main(opt: Opt) -> Result<(), Error> {
                     .add_stream(paths, &permitted_users)
                     .unwrap();
                 let main_camera = arc_cam.clone();
-                s.spawn(move |_| camera_loop(&*main_camera, "mainStream", &mut outputs, true));
+                s.spawn(move |_| camera_loop(&*main_camera, Stream::Main, &mut outputs, true));
             }
-            if ["both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
+            if ["all", "both", "subStream"].iter().any(|&e| e == arc_cam.stream) {
                 let paths = &[&*format!("/{}/subStream", arc_cam.name)];
                 let mut outputs = rtsp
                     .add_stream(paths, &permitted_users)
                     .unwrap();
                 let sub_camera = arc_cam.clone();
                 let manage = arc_cam.stream == "subStream";
-                s.spawn(move |_| camera_loop(&*sub_camera, "subStream", &mut outputs, manage));
+                s.spawn(move |_| camera_loop(&*sub_camera, Stream::Sub, &mut outputs, manage));
+            }
+            if ["all", "externStream"].iter().any(|&e| e == arc_cam.stream) {
+                let paths = &[&*format!("/{}/externStream", arc_cam.name)];
+                let mut outputs = rtsp
+                    .add_stream(paths, &permitted_users)
+                    .unwrap();
+                let sub_camera = arc_cam.clone();
+                let manage = arc_cam.stream == "externStream";
+                s.spawn(move |_| camera_loop(&*sub_camera, Stream::Extern, &mut outputs, manage));
             }
         }
 
@@ -114,7 +116,7 @@ pub fn main(opt: Opt) -> Result<(), Error> {
 
 fn camera_loop(
     camera_config: &CameraConfig,
-    stream_name: &str,
+    stream_name: Stream,
     outputs: &mut GstOutputs,
     manage: bool,
 ) -> Result<(), Error> {
@@ -156,7 +158,8 @@ fn camera_loop(
 
 struct CameraErr {
     connected: bool,
-    err: neolink_core::Error,
+    login_fail: bool,
+    err: anyhow::Error,
 }
 
 fn set_up_tls(config: &Config, rtsp: &RtspServer) {
@@ -206,13 +209,24 @@ fn get_permitted_users<'a>(
 
 fn camera_main(
     camera_config: &CameraConfig,
-    stream_name: &str,
+    stream_name: Stream,
     outputs: &mut GstOutputs,
     manage: bool,
 ) -> Result<(), CameraErr> {
     let mut connected = false;
+    let mut login_fail = false;
     (|| {
-        let mut camera = BcCamera::new_with_addr(&camera_config.camera_addr, camera_config.channel_id)?;
+        let camera_addr =
+            AddressOrUid::new(&camera_config.camera_addr, &camera_config.camera_uid).unwrap();
+        let mut camera =
+            camera_addr.connect_camera(camera_config.channel_id)
+                .with_context(|| {
+                    format!(
+                        "Failed to connect to camera {} at {} on channel {}",
+                        camera_config.name, camera_addr, camera_config.channel_id
+                    )
+                })?;
+
         if camera_config.timeout.is_some() {
             warn!("The undocumented `timeout` config option has been removed and is no longer needed.");
             warn!("Please update your config file.");
@@ -220,31 +234,45 @@ fn camera_main(
 
         info!(
             "{}: Connecting to camera at {}",
-            camera_config.name, camera_config.camera_addr
+            camera_config.name, camera_addr
         );
 
-        camera.login(&camera_config.username, camera_config.password.as_deref())?;
+        info!("{}: Logging in", camera_config.name);
+        camera.login(&camera_config.username, camera_config.password.as_deref()).map_err(|e|
+            {
+                if let neolink_core::Error::AuthFailed = e {
+                    login_fail = true;
+                }
+                e
+            }
+        ).with_context(|| format!("Failed to login to {}", camera_config.name))?;
 
         connected = true;
         info!("{}: Connected and logged in", camera_config.name);
 
         if manage {
-            do_camera_management(&mut camera, camera_config)?;
+            do_camera_management(&mut camera, camera_config).context("Failed to manage the camera settings")?;
         }
+
+        let stream_display_name = match stream_name {
+            Stream::Main => "Main Stream (Clear)",
+            Stream::Sub => "Sub Stream (Fluent)",
+            Stream::Extern => "Extern Stream (Balanced)",
+        };
 
         info!(
             "{}: Starting video stream {}",
-            camera_config.name, stream_name
+            camera_config.name, stream_display_name
         );
-        camera.start_video(outputs, stream_name)
-    })()
-    .map_err(|err| CameraErr { connected, err })
+        camera.start_video(outputs, stream_name).with_context(|| format!("Error while streaming {}", camera_config.name))
+    })().map_err(|e| CameraErr{
+        connected,
+        login_fail,
+        err: e,
+    })
 }
 
-fn do_camera_management(
-    camera: &mut BcCamera,
-    camera_config: &CameraConfig,
-) -> Result<(), neolink_core::Error> {
+fn do_camera_management(camera: &mut BcCamera, camera_config: &CameraConfig) -> Result<()> {
     let cam_time = camera.get_time()?;
     if let Some(time) = cam_time {
         info!(
