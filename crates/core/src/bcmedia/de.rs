@@ -249,26 +249,8 @@ fn bcmedia_iframe(buf: &[u8]) -> IResult<&[u8], BcMediaIframe> {
     } else {
         (buf, None)
     };
-    let (buf, _unknown_c) = if additional_header_size >= 8 {
-        let (buf, unknown_c) = le_u32(buf)?;
-        (buf, Some(unknown_c))
-    } else {
-        (buf, None)
-    };
-    let (buf, _unknown_d) = if additional_header_size >= 12 {
-        let (buf, unknown_d) = le_u32(buf)?;
-        (buf, Some(unknown_d))
-    } else {
-        (buf, None)
-    };
-    let (buf, _unknown_e) = if additional_header_size >= 16 {
-        let (buf, unknown_e) = le_u32(buf)?;
-        (buf, Some(unknown_e))
-    } else {
-        (buf, None)
-    };
-    let (buf, _unknown_remained) = if additional_header_size > 16 {
-        let remainder = additional_header_size - 16;
+    let (buf, _unknown_remained) = if additional_header_size > 4 {
+        let remainder = additional_header_size - 4;
         let (buf, unknown_remained) = take!(buf, remainder)?;
         (buf, Some(unknown_remained))
     } else {
