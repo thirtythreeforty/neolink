@@ -141,15 +141,27 @@ fn bcmedia_iframe<W: Write>(payload: &BcMediaIframe) -> impl SerializeFn<W> {
         VideoType::H264 => "H264",
         VideoType::H265 => "H265",
     };
+    let (extra_header, extra_header_size) = if let Some(payload_time) = payload.time {
+        let extra_header = slice(
+            gen(tuple((le_u32(payload_time), le_u32(0))), vec![])
+                .unwrap()
+                .0,
+        );
+        let extra_header_size = 8;
+        (extra_header, extra_header_size)
+    } else {
+        let extra_header = slice(vec![]);
+        let extra_header_size = 0;
+        (extra_header, extra_header_size)
+    };
     tuple((
         le_u32(MAGIC_HEADER_BCMEDIA_IFRAME),
         string(vid_string),
         le_u32(payload.data.len() as u32),
-        le_u32(0), //  unknown. NVR channel count? Known values 1-00/08 2-00 3-00 4-00
+        le_u32(extra_header_size), //  unknown. NVR channel count? Known values 1-00/08 2-00 3-00 4-00
         le_u32(payload.microseconds),
         le_u32(0), // unknown. Known values 1-00/23/5A 2-00 3-00 4-00
-        le_u32(payload.time),
-        le_u32(0), // unknown. Known values 1-00/06/29 2-00/01 3-00/C3 4-00
+        extra_header,
     ))
 }
 

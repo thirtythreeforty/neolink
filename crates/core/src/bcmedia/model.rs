@@ -128,7 +128,7 @@ pub struct BcMediaIframe {
     pub microseconds: u32,
     // unknown: u32, // Known values 1-00/23/5A 2-00 3-00 4-00
     /// POSIX time (seconds since 00:00:00 Jan 1 1970)
-    pub time: u32,
+    pub time: Option<u32>,
     //unknown: u32, // Known values 1-00/06/29 2-00/01 3-00/C3 4-00
     /// Raw IFrame data
     pub data: Vec<u8>,

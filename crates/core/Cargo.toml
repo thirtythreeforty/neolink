@@ -17,7 +17,7 @@ lazy_static = "1.4"
 local-ip-address = "0.4.4"
 log = { version = "0.4" }
 md5 = "0.7"
-nom = "6.1.2"
+nom = { version = "6.1.2", features = ["alloc"] }
 rand = "0.8.4"
 regex = "1.5.4"
 socket2 = "0.3"

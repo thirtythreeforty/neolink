@@ -2,10 +2,11 @@ use super::model::BcMediaIframe;
 use super::model::*;
 use crate::RX_TIMEOUT;
 use err_derive::Error;
-use nom::IResult;
-use nom::{combinator::*, named, number::streaming::*, take, take_str};
+use nom::{combinator::*, error::context, number::streaming::*, take};
 use std::io::Read;
 use time::OffsetDateTime;
+
+type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), nom::Err<E>>;
 
 // PAD_SIZE: Media packets use 8 byte padding
 const PAD_SIZE: u32 = 8;
@@ -20,13 +21,13 @@ pub enum Error {
     #[error(display = "I/O error")]
     IoError(#[error(source)] std::io::Error),
 }
-type NomErrorType<'a> = nom::error::Error<&'a [u8]>;
+type NomErrorType<'a> = nom::error::VerboseError<&'a [u8]>;
 
 impl<'a> From<nom::Err<NomErrorType<'a>>> for Error {
     fn from(k: nom::Err<NomErrorType<'a>>) -> Self {
         let reason = match k {
-            nom::Err::Error(e) => format!("Nom Error: {:?}", e),
-            nom::Err::Failure(e) => format!("Nom Error: {:?}", e),
+            nom::Err::Error(e) => format!("Nom Error: {:x?}", e),
+            nom::Err::Failure(e) => format!("Nom Error: {:x?}", e),
             _ => "Unknown Nom error".to_string(),
         };
         Error::NomError(reason)
@@ -37,7 +38,7 @@ fn read_from_reader<P, O, E, R>(mut parser: P, mut rdr: R) -> Result<O, E>
 where
     R: Read,
     E: for<'a> From<nom::Err<NomErrorType<'a>>> + From<std::io::Error>,
-    P: FnMut(&[u8]) -> nom::IResult<&[u8], O>,
+    P: FnMut(&[u8]) -> IResult<&[u8], O>,
 {
     let mut input: Vec<u8> = Vec::new();
     loop {
@@ -91,17 +92,20 @@ impl BcMedia {
 }
 
 fn bcmedia(buf: &[u8]) -> IResult<&[u8], BcMedia> {
-    let (buf, magic) = verify(le_u32, |x| {
-        matches!(
-            *x,
-            MAGIC_HEADER_BCMEDIA_INFO_V1
-                | MAGIC_HEADER_BCMEDIA_INFO_V2
-                | MAGIC_HEADER_BCMEDIA_IFRAME..=MAGIC_HEADER_BCMEDIA_IFRAME_LAST
-                | MAGIC_HEADER_BCMEDIA_PFRAME..=MAGIC_HEADER_BCMEDIA_PFRAME_LAST
-                | MAGIC_HEADER_BCMEDIA_AAC
-                | MAGIC_HEADER_BCMEDIA_ADPCM
-        )
-    })(buf)?;
+    let (buf, magic) = context(
+        "Failed to match any known bcmedia",
+        verify(le_u32, |x| {
+            matches!(
+                *x,
+                MAGIC_HEADER_BCMEDIA_INFO_V1
+                    | MAGIC_HEADER_BCMEDIA_INFO_V2
+                    | MAGIC_HEADER_BCMEDIA_IFRAME..=MAGIC_HEADER_BCMEDIA_IFRAME_LAST
+                    | MAGIC_HEADER_BCMEDIA_PFRAME..=MAGIC_HEADER_BCMEDIA_PFRAME_LAST
+                    | MAGIC_HEADER_BCMEDIA_AAC
+                    | MAGIC_HEADER_BCMEDIA_ADPCM
+            )
+        }),
+    )(buf)?;
 
     match magic {
         MAGIC_HEADER_BCMEDIA_INFO_V1 => {
@@ -133,7 +137,10 @@ fn bcmedia(buf: &[u8]) -> IResult<&[u8], BcMedia> {
 }
 
 fn bcmedia_info_v1(buf: &[u8]) -> IResult<&[u8], BcMediaInfoV1> {
-    let (buf, _header_size) = verify(le_u32, |x| *x == 32)(buf)?;
+    let (buf, _header_size) = context(
+        "Header size mismatch in BCMedia InfoV1",
+        verify(le_u32, |x| *x == 32),
+    )(buf)?;
     let (buf, video_width) = le_u32(buf)?;
     let (buf, video_height) = le_u32(buf)?;
     let (buf, _unknown) = le_u8(buf)?;
@@ -176,7 +183,10 @@ fn bcmedia_info_v1(buf: &[u8]) -> IResult<&[u8], BcMediaInfoV1> {
 }
 
 fn bcmedia_info_v2(buf: &[u8]) -> IResult<&[u8], BcMediaInfoV2> {
-    let (buf, _header_size) = verify(le_u32, |x| *x == 32)(buf)?;
+    let (buf, _header_size) = context(
+        "Failed to match headersize in BCMedia Info V2",
+        verify(le_u32, |x| *x == 32),
+    )(buf)?;
     let (buf, video_width) = le_u32(buf)?;
     let (buf, video_height) = le_u32(buf)?;
     let (buf, _unknown) = le_u8(buf)?;
@@ -218,21 +228,42 @@ fn bcmedia_info_v2(buf: &[u8]) -> IResult<&[u8], BcMediaInfoV2> {
     ))
 }
 
+fn take4(buf: &[u8]) -> IResult<&[u8], &str> {
+    map_res(nom::bytes::streaming::take(4usize), |r| {
+        std::str::from_utf8(r)
+    })(buf)
+}
+
 fn bcmedia_iframe(buf: &[u8]) -> IResult<&[u8], BcMediaIframe> {
-    named!(take4str( &[u8] ) -> &str, take_str!( 4 ) );
-    let (buf, video_type_str) = verify(take4str, |x| matches!(x, "H264" | "H265"))(buf)?;
+    let (buf, video_type_str) = context(
+        "Video Type is unrecognised in IFrame",
+        verify(take4, |x| matches!(x, "H264" | "H265")),
+    )(buf)?;
     let (buf, payload_size) = le_u32(buf)?;
-    let (buf, _unknown_a) = le_u32(buf)?;
+    let (buf, additional_header_size) = le_u32(buf)?;
     let (buf, microseconds) = le_u32(buf)?;
     let (buf, _unknown_b) = le_u32(buf)?;
-    let (buf, time) = le_u32(buf)?;
-    let (buf, _unknown_c) = le_u32(buf)?;
+    let (buf, time) = if additional_header_size >= 4 {
+        let (buf, time_value) = le_u32(buf)?;
+        (buf, Some(time_value))
+    } else {
+        (buf, None)
+    };
+    let (buf, _unknown_remained) = if additional_header_size > 4 {
+        let remainder = additional_header_size - 4;
+        let (buf, unknown_remained) = take!(buf, remainder)?;
+        (buf, Some(unknown_remained))
+    } else {
+        (buf, None)
+    };
+
     let (buf, data_slice) = take!(buf, payload_size)?;
     let pad_size = match payload_size % PAD_SIZE {
         0 => 0,
         n => PAD_SIZE - n,
     };
     let (buf, _padding) = take!(buf, pad_size)?;
+    assert_eq!(payload_size as usize, data_slice.len());
 
     let video_type = match video_type_str {
         "H264" => VideoType::H264,
@@ -253,18 +284,22 @@ fn bcmedia_iframe(buf: &[u8]) -> IResult<&[u8], BcMediaIframe> {
 }
 
 fn bcmedia_pframe(buf: &[u8]) -> IResult<&[u8], BcMediaPframe> {
-    named!(take4str( &[u8] ) -> &str, take_str!( 4 ) );
-    let (buf, video_type_str) = verify(take4str, |x| matches!(x, "H264" | "H265"))(buf)?;
+    let (buf, video_type_str) = context(
+        "Video Type is unrecognised in PFrame",
+        verify(take4, |x| matches!(x, "H264" | "H265")),
+    )(buf)?;
     let (buf, payload_size) = le_u32(buf)?;
-    let (buf, _unknown_a) = le_u32(buf)?;
+    let (buf, additional_header_size) = le_u32(buf)?;
     let (buf, microseconds) = le_u32(buf)?;
     let (buf, _unknown_b) = le_u32(buf)?;
+    let (buf, _additional_header) = take!(buf, additional_header_size)?;
     let (buf, data_slice) = take!(buf, payload_size)?;
     let pad_size = match payload_size % PAD_SIZE {
         0 => 0,
         n => PAD_SIZE - n,
     };
     let (buf, _padding) = take!(buf, pad_size)?;
+    assert_eq!(payload_size as usize, data_slice.len());
 
     let video_type = match video_type_str {
         "H264" => VideoType::H264,
@@ -307,7 +342,10 @@ fn bcmedia_adpcm(buf: &[u8]) -> IResult<&[u8], BcMediaAdpcm> {
 
     let (buf, payload_size) = le_u16(buf)?;
     let (buf, _payload_size_b) = le_u16(buf)?;
-    let (buf, _magic) = verify(le_u16, |x| *x == MAGIC_HEADER_BCMEDIA_ADPCM_DATA)(buf)?;
+    let (buf, _magic) = context(
+        "ADPCM data magic value is invalid",
+        verify(le_u16, |x| *x == MAGIC_HEADER_BCMEDIA_ADPCM_DATA),
+    )(buf)?;
     // On some camera this value is just 2
     // On other cameras is half the block size without the header
     let (buf, _half_block_size) = le_u16(buf)?;
@@ -388,6 +426,66 @@ mod tests {
     }
 
     #[test]
+    // This method will test the decoding of argus2 cameras output
+    //
+    // This packet has an extended iframe
+    fn test_argus2_iframe_extended() {
+        init();
+
+        let files: Vec<_> = (0..5)
+            .into_iter()
+            .map(|i| sample(&format!("argus2_iframe_{}.raw", i)))
+            .collect();
+
+        let mut subsciber = FileSubscriber::from_files(files);
+        // Should derealise all of this
+        loop {
+            let e = BcMedia::deserialize(&mut subsciber);
+            match e {
+                Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                    // Reach end of files
+                    break;
+                }
+                Err(e) => {
+                    error!("{:?}", e);
+                    panic!();
+                }
+                Ok(_) => {}
+            }
+        }
+    }
+
+    #[test]
+    // This method will test the decoding of argus2 cameras output
+    //
+    // This packet has an extended pframe
+    fn test_argus2_pframe_extended() {
+        init();
+
+        let files: Vec<_> = (0..18)
+            .into_iter()
+            .map(|i| sample(&format!("argus2_pframe_{}.raw", i)))
+            .collect();
+
+        let mut subsciber = FileSubscriber::from_files(files);
+        // Should derealise all of this
+        loop {
+            let e = BcMedia::deserialize(&mut subsciber);
+            match e {
+                Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                    // Reach end of files
+                    break;
+                }
+                Err(e) => {
+                    error!("{:?}", e);
+                    panic!();
+                }
+                Ok(_) => {}
+            }
+        }
+    }
+
+    #[test]
     // Tests the decoding of an info v1
     fn test_info_v1() {
         init();
@@ -433,7 +531,7 @@ mod tests {
         if let Ok(BcMedia::Iframe(BcMediaIframe {
             video_type: VideoType::H264,
             microseconds: 3557705112,
-            time: 1628085232,
+            time: Some(1628085232),
             data: d,
         })) = e
         {
