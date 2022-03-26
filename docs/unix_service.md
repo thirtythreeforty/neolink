@@ -54,7 +54,7 @@ Description=Neolink service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/neolink --config /usr/local/etc/neolink_config.toml
+ExecStart=/usr/local/bin/neolink rtsp --config /usr/local/etc/neolink_config.toml
 Restart=on-failure
 User=neolinker
 Group=neolinker
