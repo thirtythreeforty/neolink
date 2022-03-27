@@ -76,7 +76,7 @@ Note: For **E1 Cameras**, refer to [the readme](https://github.com/thirtythreefo
 1. Open a command prompt in the directory that contains Neolink and your config file.
 2. Run the following command (with your correct config file name):
 
-        neolink --config config.toml
+        neolink rtsp --config config.toml
 
 You should get login messages that look something like this:
 
@@ -156,7 +156,7 @@ _The best way to have Neolink run at startup is create a Scheduled Task that sta
 
       `cd C:\Path\to\Neolink\Folder`
 
-      `neolink --config config.toml`
+      `neolink rtsp --config config.toml`
 
    4. Save the file and run it. Make sure Neolink successfully starts.
 

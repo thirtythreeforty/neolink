@@ -149,7 +149,7 @@ folder where `neolink` and `my_config.toml` are.
 Run neolink with:
 
 ```
-./neolink --config my_config.toml
+./neolink rtsp --config my_config.toml
 ```
 
 You should see messages such as:
@@ -243,7 +243,7 @@ If the mainStream fails but the subStream succeeds you may need to add
   with this command.
 
   ```bash
-  GST_DEBUG=3 ./neolink --config my_config.toml
+  GST_DEBUG=3 ./neolink rtsp --config my_config.toml
   ```
 
   This will print out a lot more information to the terminal. Try to connect
@@ -284,5 +284,5 @@ If the mainStream fails but the subStream succeeds you may need to add
   neolink log. You can save the log to file with the following command:
 
   ```bash
-  GST_DEBUG=3 ./neolink --config my_config.toml 2>&1 > neolink.log
+  GST_DEBUG=3 ./neolink rtsp --config my_config.toml 2>&1 > neolink.log
   ```
