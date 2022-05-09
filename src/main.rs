@@ -17,6 +17,7 @@ use validator::Validate;
 mod cmdline;
 mod config;
 mod reboot;
+mod motion;
 mod rtsp;
 mod statusled;
 mod talk;
@@ -63,6 +64,9 @@ fn main() -> Result<()> {
         }
         Some(Command::Reboot(opts)) => {
             reboot::main(opts, config)?;
+        }
+        Some(Command::Motion(opts)) => {
+            motion::main(opts, config)?;
         }
         Some(Command::Talk(opts)) => {
             talk::main(opts, config)?;

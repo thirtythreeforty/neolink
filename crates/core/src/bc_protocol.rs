@@ -13,6 +13,7 @@ mod login;
 mod logout;
 mod ping;
 mod reboot;
+mod motionstate;
 mod resolution;
 mod stream;
 mod talk;
@@ -24,6 +25,7 @@ use bc::model::*;
 pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
+pub use motionstate::MotionState;
 pub use resolution::*;
 pub use stream::{Stream, StreamOutput, StreamOutputError};
 

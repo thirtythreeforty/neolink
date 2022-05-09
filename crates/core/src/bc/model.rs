@@ -18,6 +18,10 @@ pub const MSG_ID_TALKRESET: u32 = 11;
 pub const MSG_ID_REBOOT: u32 = 23;
 /// Version messages have this ID
 pub const MSG_ID_VERSION: u32 = 80;
+/// Getting PIR status messages have this ID
+pub const MSG_ID_GET_MOTION_ALARM: u32 = 212;
+/// Setting PIR status messages have this ID
+pub const MSG_ID_START_MOTION_ALARM: u32 = 213;
 /// Ping messages have this ID
 pub const MSG_ID_PING: u32 = 93;
 /// General system info messages have this ID
