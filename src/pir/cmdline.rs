@@ -12,7 +12,7 @@ fn onoff_parse(src: &str) -> Result<bool> {
     }
 }
 
-/// The motion command will control the motion status off the camera
+/// The pir command will control the PIR status of the camera
 #[derive(StructOpt, Debug)]
 pub struct Opt {
     /// The name of the camera. Must be a name in the config

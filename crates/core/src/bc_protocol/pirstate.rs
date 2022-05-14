@@ -2,16 +2,16 @@ use super::{BcCamera, Error, Result, RX_TIMEOUT};
 use crate::bc::{model::*, xml::*};
 
 impl BcCamera {
-    /// Get the [RfAlarmCfg] xml which contains the motion status of the camera
-    pub fn get_motionstate(&mut self) -> Result<RfAlarmCfg> {
+    /// Get the [RfAlarmCfg] xml which contains the PIR status of the camera
+    pub fn get_pirstate(&mut self) -> Result<RfAlarmCfg> {
         let connection = self
             .connection
             .as_ref()
             .expect("Must be connected to get time");
-        let sub_get = connection.subscribe(MSG_ID_GET_MOTION_ALARM)?;
+        let sub_get = connection.subscribe(MSG_ID_GET_PIR_ALARM)?;
         let get = Bc {
             meta: BcMeta {
-                msg_id: MSG_ID_GET_MOTION_ALARM,
+                msg_id: MSG_ID_GET_PIR_ALARM,
                 channel_id: self.channel_id,
                 msg_num: self.new_message_num(),
                 response_code: 0,
@@ -33,32 +33,32 @@ impl BcCamera {
         if let BcBody::ModernMsg(ModernMsg {
             payload:
                 Some(BcPayloads::BcXml(BcXml {
-                    rf_alarm_cfg: Some(motionstate),
+                    rf_alarm_cfg: Some(pirstate),
                     ..
                 })),
             ..
         }) = msg.body
         {
-            Ok(motionstate)
+            Ok(pirstate)
         } else {
             Err(Error::UnintelligibleReply {
                 reply: msg,
-                why: "Expected MotionSate xml but it was not recieved",
+                why: "Expected PirSate xml but it was not recieved",
             })
         }
     }
 
     /// Set the PIR sensor using the [RfAlarmCfg] xml
-    pub fn set_motionstate(&mut self, rf_alarm_cfg: RfAlarmCfg) -> Result<()> {
+    pub fn set_pirstate(&mut self, rf_alarm_cfg: RfAlarmCfg) -> Result<()> {
         let connection = self
             .connection
             .as_ref()
             .expect("Must be connected to get time");
-        let sub_set = connection.subscribe(MSG_ID_START_MOTION_ALARM)?;
+        let sub_set = connection.subscribe(MSG_ID_START_PIR_ALARM)?;
 
         let get = Bc {
             meta: BcMeta {
-                msg_id: MSG_ID_START_MOTION_ALARM,
+                msg_id: MSG_ID_START_PIR_ALARM,
                 channel_id: self.channel_id,
                 msg_num: self.new_message_num(),
                 response_code: 0,
@@ -97,20 +97,20 @@ impl BcCamera {
     
     /// This is a convience function to control the PIR status
     /// True is on and false is off
-    pub fn motion_set(&mut self, state: bool) -> Result<()> {
-        let mut motion_state = self.get_motionstate()?;
-        // println!("{:?}", motion_state);
-        motion_state.enable = match state {
+    pub fn pir_set(&mut self, state: bool) -> Result<()> {
+        let mut pir_state = self.get_pirstate()?;
+        // println!("{:?}", pir_state);
+        pir_state.enable = match state {
             true => 1,
             false => 0,
         };
-        self.set_motionstate(motion_state)?;
+        self.set_pirstate(pir_state)?;
         Ok(())
     }
 }
 
 /// Turn PIR ON or OFF
-pub enum MotionState {
+pub enum PirState {
     /// Turn the PIR on
     On,
     /// Turn the PIR off

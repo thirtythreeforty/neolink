@@ -1,16 +1,16 @@
 ///
-/// # Neolink Motion
+/// # Neolink PIR
 ///
-/// This module handles the controls of the motion alarm
+/// This module handles the controls of the pir sensor alarm
 ///
 ///
 /// # Usage
 ///
 /// ```bash
-/// # To turn the motion on
-/// neolink motion --config=config.toml CameraName on
+/// # To turn the pir sensor on
+/// neolink pir --config=config.toml CameraName on
 /// # Or off
-/// neolink motion --config=config.toml CameraName off
+/// neolink pir --config=config.toml CameraName off
 /// ```
 ///
 use anyhow::{Context, Result};
@@ -21,14 +21,14 @@ use super::config::Config;
 use crate::utils::find_and_connect;
 pub(crate) use cmdline::Opt;
 
-/// Entry point for the motion subcommand
+/// Entry point for the pir subcommand
 ///
 /// Opt is the command line options
 pub(crate) fn main(opt: Opt, config: Config) -> Result<()> {
     let mut camera = find_and_connect(&config, &opt.camera)?;
 
     camera
-        .motion_set(opt.on)
-        .context("Unable to set camera motion state")?;
+        .pir_set(opt.on)
+        .context("Unable to set camera PIR state")?;
     Ok(())
 }
