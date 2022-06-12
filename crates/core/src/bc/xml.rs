@@ -326,8 +326,6 @@ pub struct RfAlarmCfg {
     pub timeBlockList: String,
 }
 
-
-
 /// TalkConfig xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct TalkConfig {

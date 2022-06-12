@@ -93,8 +93,6 @@ impl BcCamera {
         }
     }
 
-
-    
     /// This is a convience function to control the PIR status
     /// True is on and false is off
     pub fn pir_set(&mut self, state: bool) -> Result<()> {
@@ -114,5 +112,5 @@ pub enum PirState {
     /// Turn the PIR on
     On,
     /// Turn the PIR off
-    Off,    
+    Off,
 }
