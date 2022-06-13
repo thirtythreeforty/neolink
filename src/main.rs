@@ -16,6 +16,7 @@ use validator::Validate;
 
 mod cmdline;
 mod config;
+mod pir;
 mod reboot;
 mod rtsp;
 mod statusled;
@@ -63,6 +64,9 @@ fn main() -> Result<()> {
         }
         Some(Command::Reboot(opts)) => {
             reboot::main(opts, config)?;
+        }
+        Some(Command::Pir(opts)) => {
+            pir::main(opts, config)?;
         }
         Some(Command::Talk(opts)) => {
             talk::main(opts, config)?;

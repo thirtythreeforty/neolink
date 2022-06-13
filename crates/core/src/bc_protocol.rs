@@ -12,6 +12,7 @@ mod ledstate;
 mod login;
 mod logout;
 mod ping;
+mod pirstate;
 mod reboot;
 mod resolution;
 mod stream;
@@ -24,6 +25,7 @@ use bc::model::*;
 pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
+pub use pirstate::PirState;
 pub use resolution::*;
 pub use stream::{Stream, StreamOutput, StreamOutputError};
 

@@ -63,6 +63,9 @@ pub struct BcXml {
     /// Sent as part of the TalkConfig to prepare the camera for audio talk-back
     #[yaserde(rename = "TalkConfig")]
     pub talk_config: Option<TalkConfig>,
+    /// rfAlarmCfg xml is sent or recieved as part of the PIR get/setting
+    #[yaserde(rename = "rfAlarmCfg")]
+    pub rf_alarm_cfg: Option<RfAlarmCfg>,
     /// Revieced as part of the TalkAbility request
     #[yaserde(rename = "TalkAbility")]
     pub talk_ability: Option<TalkAbility>,
@@ -300,6 +303,27 @@ pub struct LedState {
     /// State of the LED status light (blue on light), values are "open", "close"
     #[yaserde(rename = "lightState")]
     pub light_state: String,
+}
+
+/// rfAlarmCfg xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct RfAlarmCfg {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Rfid
+    #[yaserde(rename = "rfID")]
+    pub rf_id: u8,
+    /// PIR status
+    pub enable: u8,
+    /// PIR sensitivity
+    pub sensitivity: u8,
+    /// PIR sensivalue
+    pub sensiValue: u8,
+    /// reduce False alarm boolean
+    pub reduceFalseAlarm: u8,
+    /// XML time block for all week days
+    pub timeBlockList: String,
 }
 
 /// TalkConfig xml
