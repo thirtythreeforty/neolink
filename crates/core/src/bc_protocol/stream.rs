@@ -2,7 +2,10 @@ use super::{BcCamera, BinarySubscriber, Result};
 use crate::{
     bc::{model::*, xml::*},
     bcmedia::model::*,
-    Never,
+};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
 /// Convience type for the error raised by the [StreamOutput] trait
@@ -46,7 +49,12 @@ impl BcCamera {
     ///
     /// This will block forever or return an error when the camera connection is dropped
     ///
-    pub fn start_video<Outputs>(&self, data_outs: &mut Outputs, stream: Stream) -> Result<Never>
+    pub fn start_video<Outputs>(
+        &self,
+        data_outs: &mut Outputs,
+        stream: Stream,
+        abort_handle: Arc<AtomicBool>,
+    ) -> Result<()>
     where
         Outputs: StreamOutput,
     {
@@ -117,11 +125,14 @@ impl BcCamera {
 
         let mut media_sub = BinarySubscriber::from_bc_sub(&sub_video);
 
-        loop {
+        while !abort_handle.load(Ordering::Relaxed) {
             let bc_media = BcMedia::deserialize(&mut media_sub)?;
             // We now have a complete interesting packet. Send it to on the callback
             data_outs.write(bc_media)?;
         }
+
+        // Aborted
+        Ok(())
     }
 
     /// Stop a camera from sending more stream data.
