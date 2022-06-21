@@ -173,7 +173,7 @@ where
 
 /// A serializer combinator that does nothing with its input
 fn do_nothing<W>() -> impl SerializeFn<W> {
-    move |out: WriteContext<W>| Ok(out)
+    Ok
 }
 
 #[test]

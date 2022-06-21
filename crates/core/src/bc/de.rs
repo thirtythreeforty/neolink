@@ -169,8 +169,7 @@ fn bc_modern_msg<'a, 'b>(
     };
 
     // Now we'll take the buffer that Nom gave a ref to and parse it.
-    let extension;
-    if ext_len > 0 {
+    let extension = if ext_len > 0 {
         // Apply the XML parse function, but throw away the reference to decrypted in the Ok and
         // Err case. This error-error-error thing is the same idiom Nom uses internally.
         let parsed = Extension::try_parse(processed_ext_buf)
@@ -182,10 +181,10 @@ fn bc_modern_msg<'a, 'b>(
         {
             context.in_bin_mode.insert(header.msg_num);
         }
-        extension = Some(parsed);
+        Some(parsed)
     } else {
-        extension = None;
-    }
+        None
+    };
 
     // Now to handle the payload block
     // This block can either be xml or binary depending on what the message expects.

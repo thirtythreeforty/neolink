@@ -40,12 +40,11 @@ impl UdpDiscover {
 
         let addrs: Vec<SocketAddr> = addrs
             .iter()
-            .map(|a| {
+            .flat_map(|a| {
                 a.to_socket_addrs()
                     .ok()
                     .and_then(|mut a_iter| a_iter.next())
             })
-            .flatten()
             .collect();
 
         let mut bytes_send = 0;
@@ -120,13 +119,12 @@ impl UdpDiscover {
         let ports: [u16; 2] = [2015, 2018];
         let destinations: Vec<(Ipv4Addr, u16)> = broadcasts
             .iter()
-            .map(|&addr| {
+            .flat_map(|&addr| {
                 ports
                     .iter()
                     .map(|&port| (addr, port))
                     .collect::<Vec<(Ipv4Addr, u16)>>()
             })
-            .flatten()
             .collect();
         debug!("Broadcasting to: {:?}", destinations);
 
