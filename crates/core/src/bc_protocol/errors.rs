@@ -38,6 +38,10 @@ pub enum Error {
         why: &'static str,
     },
 
+    /// Raised when the camera responds with a status code over than OK
+    #[error(display = "Camera responded with Service Unavaliable")]
+    CameraServiceUnavaliable,
+
     /// Raised when a connection is dropped.
     #[error(display = "Dropped connection")]
     DroppedConnection(#[error(source)] std::sync::mpsc::RecvError),

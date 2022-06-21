@@ -28,6 +28,9 @@ impl BcCamera {
         sub_version.send(version)?;
 
         let modern_reply = sub_version.rx.recv_timeout(RX_TIMEOUT)?;
+        if modern_reply.meta.response_code != 200 {
+            return Err(Error::CameraServiceUnavaliable);
+        }
         let version_info;
         match modern_reply.body {
             BcBody::ModernMsg(ModernMsg {

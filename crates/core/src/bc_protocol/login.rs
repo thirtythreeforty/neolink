@@ -105,6 +105,9 @@ impl BcCamera {
 
             sub_login.send(modern_login)?;
             let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
+            if modern_reply.meta.response_code != 200 {
+                return Err(Error::CameraServiceUnavaliable);
+            }
 
             match modern_reply.body {
                 BcBody::ModernMsg(ModernMsg {
