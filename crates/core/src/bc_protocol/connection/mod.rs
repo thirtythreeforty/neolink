@@ -55,7 +55,7 @@ pub enum Error {
     UdpSerialization(#[error(source)] bcudp::ser::Error),
 
     #[error(display = "Simultaneous subscription")]
-    SimultaneousSubscription { msg_id: u32 },
+    SimultaneousSubscription { msg_num: u16 },
 
     #[error(display = "Timeout")]
     Timeout,

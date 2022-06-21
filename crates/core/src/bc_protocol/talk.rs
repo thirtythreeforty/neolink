@@ -16,13 +16,14 @@ impl BcCamera {
     pub fn talk_stop(&self) -> Result<()> {
         let connection = self.connection.as_ref().expect("Must be connected");
 
-        let sub = connection.subscribe(MSG_ID_TALKRESET)?;
+        let msg_num = self.new_message_num();
+        let sub = connection.subscribe(msg_num)?;
 
         let msg = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_TALKRESET,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414,
@@ -61,12 +62,13 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to get time");
-        let sub_get = connection.subscribe(MSG_ID_TALKABILITY)?;
+        let msg_num = self.new_message_num();
+        let sub_get = connection.subscribe(msg_num)?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_TALKABILITY,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 response_code: 0,
                 stream_type: 0,
                 class: 0x6414,
@@ -120,7 +122,8 @@ impl BcCamera {
     pub fn talk(&self, adpcm: &[u8], talk_config: TalkConfig) -> Result<()> {
         let connection = self.connection.as_ref().expect("Must be connected");
 
-        let sub = connection.subscribe(MSG_ID_TALKCONFIG)?;
+        let msg_num = self.new_message_num();
+        let sub = connection.subscribe(msg_num)?;
 
         if &talk_config.audio_config.audio_type != "adpcm" {
             return Err(Error::UnknownTalkEncoding);
@@ -133,7 +136,7 @@ impl BcCamera {
             meta: BcMeta {
                 msg_id: MSG_ID_TALKCONFIG,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414,
@@ -181,7 +184,8 @@ impl BcCamera {
         }
 
         let full_block_size = block_size + 4; // Block size + predictor state
-        let sub = connection.subscribe(MSG_ID_TALK)?;
+        let msg_num = self.new_message_num();
+        let sub = connection.subscribe(msg_num)?;
 
         const BLOCK_PER_PAYLOAD: usize = 4;
         const BLOCK_HEADER_SIZE: usize = 4;
@@ -200,7 +204,7 @@ impl BcCamera {
                 meta: BcMeta {
                     msg_id: MSG_ID_TALK,
                     channel_id: self.channel_id,
-                    msg_num: self.new_message_num(),
+                    msg_num,
                     stream_type: 0,
                     response_code: 0,
                     class: 0x6414,
@@ -259,7 +263,8 @@ impl BcCamera {
     pub fn talk_stream(&self, rx: Receiver<Vec<u8>>, talk_config: TalkConfig) -> Result<()> {
         let connection = self.connection.as_ref().expect("Must be connected");
 
-        let sub = connection.subscribe(MSG_ID_TALKCONFIG)?;
+        let msg_num = self.new_message_num();
+        let sub = connection.subscribe(msg_num)?;
 
         if &talk_config.audio_config.audio_type != "adpcm" {
             return Err(Error::UnknownTalkEncoding);
@@ -272,7 +277,7 @@ impl BcCamera {
             meta: BcMeta {
                 msg_id: MSG_ID_TALKCONFIG,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414,
@@ -320,7 +325,8 @@ impl BcCamera {
         }
 
         let full_block_size = block_size + 4; // Block size + predictor state
-        let sub = connection.subscribe(MSG_ID_TALK)?;
+        let msg_num = self.new_message_num();
+        let sub = connection.subscribe(msg_num)?;
 
         const BLOCK_PER_PAYLOAD: usize = 1;
         const BLOCK_HEADER_SIZE: usize = 4;
@@ -379,7 +385,7 @@ impl BcCamera {
                 meta: BcMeta {
                     msg_id: MSG_ID_TALK,
                     channel_id: self.channel_id,
-                    msg_num: self.new_message_num(),
+                    msg_num,
                     stream_type: 0,
                     response_code: 0,
                     class: 0x6414,

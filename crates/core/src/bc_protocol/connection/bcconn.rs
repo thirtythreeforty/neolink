@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 /// There can be only one subscriber per kind of message at a time.
 pub struct BcConnection {
     sink: Arc<Mutex<BcSource>>,
-    subscribers: Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
+    subscribers: Arc<Mutex<BTreeMap<u16, Sender<Bc>>>>,
     rx_thread: Option<JoinHandle<()>>,
     // Arc<Mutex<EncryptionProtocol>> because it is shared between context
     // and connection for deserialisation and serialistion respectivly
@@ -31,7 +31,7 @@ pub struct BcConnection {
 
 impl BcConnection {
     pub fn new(source: BcSource) -> Result<Self> {
-        let subscribers: Arc<Mutex<BTreeMap<u32, Sender<Bc>>>> = Default::default();
+        let subscribers: Arc<Mutex<BTreeMap<u16, Sender<Bc>>>> = Default::default();
 
         let mut subs = subscribers.clone();
 
@@ -96,17 +96,17 @@ impl BcConnection {
         Ok(())
     }
 
-    pub fn subscribe(&self, msg_id: u32) -> Result<BcSubscription> {
+    pub fn subscribe(&self, msg_num: u16) -> Result<BcSubscription> {
         let (tx, rx) = channel();
-        match self.subscribers.lock().unwrap().entry(msg_id) {
+        match self.subscribers.lock().unwrap().entry(msg_num) {
             Entry::Vacant(vac_entry) => vac_entry.insert(tx),
-            Entry::Occupied(_) => return Err(Error::SimultaneousSubscription { msg_id }),
+            Entry::Occupied(_) => return Err(Error::SimultaneousSubscription { msg_num }),
         };
-        Ok(BcSubscription::new(rx, msg_id, self))
+        Ok(BcSubscription::new(rx, msg_num, self))
     }
 
-    pub fn unsubscribe(&self, msg_id: u32) -> Result<()> {
-        self.subscribers.lock().unwrap().remove(&msg_id);
+    pub fn unsubscribe(&self, msg_num: u16) -> Result<()> {
+        self.subscribers.lock().unwrap().remove(&msg_num);
         Ok(())
     }
 
@@ -129,7 +129,7 @@ impl BcConnection {
     fn poll(
         context: &mut BcContext,
         connection: &BcSource,
-        subscribers: &mut Arc<Mutex<BTreeMap<u32, Sender<Bc>>>>,
+        subscribers: &mut Arc<Mutex<BTreeMap<u16, Sender<Bc>>>>,
         connections_keep_alive_msg: &Arc<Mutex<Option<Bc>>>,
     ) -> Result<()> {
         // Don't hold the lock during deserialization so we don't poison the subscribers mutex if
@@ -139,10 +139,11 @@ impl BcConnection {
             subscribers.lock().unwrap().clear();
             err
         })?;
+        let msg_num = response.meta.msg_num;
         let msg_id = response.meta.msg_id;
 
         let mut locked_subs = subscribers.lock().unwrap();
-        match locked_subs.entry(msg_id) {
+        match locked_subs.entry(msg_num) {
             Entry::Occupied(mut occ) => {
                 if occ.get_mut().send(response).is_err() {
                     // Exceedingly unlikely, unless you mishandle the subscription object
@@ -152,7 +153,7 @@ impl BcConnection {
             }
             Entry::Vacant(_) => {
                 if msg_id != MSG_ID_UDP_KEEP_ALIVE {
-                    debug!("Ignoring uninteresting message ID {}", msg_id);
+                    debug!("Ignoring uninteresting message num {}", msg_id);
                     trace!("Contents: {:?}", response);
                 } else {
                     // This is a keep alive message let see what the camera says about it

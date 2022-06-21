@@ -10,7 +10,8 @@ impl BcCamera {
                     .connection
                     .as_ref()
                     .expect("Must be connected to log in");
-                let sub_logout = connection.subscribe(MSG_ID_LOGOUT)?;
+                let msg_num = self.new_message_num();
+                let sub_logout = connection.subscribe(msg_num)?;
 
                 let username = credentials.username.clone();
                 let password = credentials
@@ -23,7 +24,7 @@ impl BcCamera {
                     BcMeta {
                         msg_id: MSG_ID_LOGOUT,
                         channel_id: self.channel_id,
-                        msg_num: self.new_message_num(),
+                        msg_num,
                         stream_type: 0,
                         response_code: 0,
                         class: 0x6414,

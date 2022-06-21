@@ -13,7 +13,8 @@ impl BcCamera {
                 .connection
                 .as_ref()
                 .expect("Must be connected to log in");
-            let sub_login = connection.subscribe(MSG_ID_LOGIN)?;
+            let msg_num = self.new_message_num();
+            let sub_login = connection.subscribe(msg_num)?;
 
             // Login flow is: Send legacy login message, expect back a modern message with Encryption
             // details.  Then, re-send the login as a modern login message.  Expect back a device info
@@ -33,7 +34,7 @@ impl BcCamera {
                 meta: BcMeta {
                     msg_id: MSG_ID_LOGIN,
                     channel_id: self.channel_id,
-                    msg_num: self.new_message_num(),
+                    msg_num,
                     stream_type: 0,
                     response_code: 0xdc02,
                     class: 0x6514,
@@ -85,7 +86,7 @@ impl BcCamera {
                 BcMeta {
                     msg_id: MSG_ID_LOGIN,
                     channel_id: self.channel_id,
-                    msg_num: self.new_message_num(),
+                    msg_num,
                     stream_type: 0,
                     response_code: 0,
                     class: 0x6414,

@@ -8,12 +8,13 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to get time");
-        let sub_get = connection.subscribe(MSG_ID_GET_PIR_ALARM)?;
+        let msg_num = self.new_message_num();
+        let sub_get = connection.subscribe(msg_num)?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_GET_PIR_ALARM,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 response_code: 0,
                 stream_type: 0,
                 class: 0x6414,
@@ -54,13 +55,14 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to get time");
-        let sub_set = connection.subscribe(MSG_ID_START_PIR_ALARM)?;
+        let msg_num = self.new_message_num();
+        let sub_set = connection.subscribe(msg_num)?;
 
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_START_PIR_ALARM,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 response_code: 0,
                 stream_type: 0,
                 class: 0x6414,

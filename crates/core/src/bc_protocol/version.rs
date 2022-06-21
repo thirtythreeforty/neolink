@@ -8,13 +8,14 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to get version info");
-        let sub_version = connection.subscribe(MSG_ID_VERSION)?;
+        let msg_num = self.new_message_num();
+        let sub_version = connection.subscribe(msg_num)?;
 
         let version = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_VERSION,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414, // IDK why

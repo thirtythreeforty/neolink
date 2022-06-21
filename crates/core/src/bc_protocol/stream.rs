@@ -54,7 +54,8 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to start video");
-        let sub_video = connection.subscribe(MSG_ID_VIDEO)?;
+        let msg_num = self.new_message_num();
+        let sub_video = connection.subscribe(msg_num)?;
 
         // On an E1 and swann cameras:
         //  - mainStream always has a value of 0
@@ -96,7 +97,7 @@ impl BcCamera {
             BcMeta {
                 msg_id: MSG_ID_VIDEO,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: stream_code,
                 response_code: 0,
                 class: 0x6414, // IDK why
