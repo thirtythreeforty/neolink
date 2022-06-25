@@ -96,6 +96,7 @@ impl BcConnection {
         Ok(())
     }
 
+    #[allow(clippy::significant_drop_in_scrutinee)]
     pub fn subscribe(&self, msg_num: u16) -> Result<BcSubscription> {
         let (tx, rx) = channel();
         match self.subscribers.lock().unwrap().entry(msg_num) {
@@ -126,6 +127,7 @@ impl BcConnection {
         self.sink.lock().unwrap().is_udp()
     }
 
+    #[allow(clippy::significant_drop_in_scrutinee)]
     fn poll(
         context: &mut BcContext,
         connection: &BcSource,

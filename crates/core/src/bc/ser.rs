@@ -164,7 +164,7 @@ where
 {
     move |buf: WriteContext<W>| {
         if let Some(ref val) = opt {
-            ser(&*val)(buf)
+            ser(val)(buf)
         } else {
             do_nothing()(buf)
         }
