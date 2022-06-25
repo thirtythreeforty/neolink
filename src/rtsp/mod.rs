@@ -214,7 +214,7 @@ fn camera_main(
 ) -> Result<(), CameraErr> {
     let mut connected = false;
     let mut login_fail = false;
-    (|| {
+    (|| -> Result<(), anyhow::Error> {
         let camera_addr =
             AddressOrUid::new(&camera_config.camera_addr, &camera_config.camera_uid).unwrap();
         let mut camera =
@@ -274,13 +274,14 @@ fn camera_main(
                 let camera = arc_camera.clone();
                 let outputs = arc_outputs.clone();
                 let abort_handle = arc_abort_handle.clone();
+                let abort_handle_2 = arc_abort_handle.clone();
 
                 s.spawn(move |_| {
                 let camera_result = camera.start_video(&mut *outputs.lock().unwrap(), *stream_name, abort_handle).with_context(|| format!("Error while streaming {}", camera_config.name));
                 (*camera_results.lock().unwrap()).push(camera_result);
 
                 let _ = camera.stop_video(*stream_name);
-                abort_handle.store(true, Ordering::Relaxed);
+                abort_handle_2.store(true, Ordering::Relaxed);
             });
             }
         }).unwrap();
