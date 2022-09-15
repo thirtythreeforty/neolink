@@ -378,7 +378,7 @@ end
 
 local function get_udp_header_len(buffer)
   local udpmagic = buffer(1, 3):le_uint()
-  if not udpmagic == 0x2a87cf then
+  if udpmagic ~= 0x2a87cf then
     return 0
   else
     local udptype = buffer(0, 1):le_uint()
