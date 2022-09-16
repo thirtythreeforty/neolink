@@ -15,7 +15,7 @@ neolink_core = { path = "crates/core", version = "0.4.0" }
 aes = "0.6"
 cfb-mode = "0.6"
 cookie-factory = "0.3"
-crossbeam = "0.7"
+crossbeam = "0.8"
 err-derive = "0.2"
 env_logger = "*"
 gstreamer = "0.17"
