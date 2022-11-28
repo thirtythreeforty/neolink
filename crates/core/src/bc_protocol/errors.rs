@@ -5,10 +5,6 @@ use err_derive::Error;
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
 pub enum Error {
-    /// Error raised when IO fails such as when the connection is lost
-    #[error(display = "Communication error")]
-    Communication(#[error(source)] std::io::Error),
-
     /// Error raised during deserlization
     #[error(display = "Deserialization error")]
     Deserialization(#[error(source)] super::bc::de::Error),

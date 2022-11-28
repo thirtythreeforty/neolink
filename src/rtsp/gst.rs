@@ -1,12 +1,19 @@
 //! This module provides an "RtspServer" abstraction that allows consumers of its API to feed it
 //! data using an ordinary std::io::Write interface.
+mod maybe_app_src;
+mod maybe_inputselect;
+
 pub(crate) use self::maybe_app_src::MaybeAppSrc;
+pub(crate) use self::maybe_inputselect::MaybeInputSelect;
+
+use super::state::States;
 // use super::adpcm::adpcm_to_pcm;
 // use super::errors::Error;
 use gstreamer::prelude::Cast;
 use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
 //use gstreamer_rtsp::RTSPLowerTrans;
+use anyhow::anyhow;
 use gstreamer_rtsp::RTSPAuthMethod;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use gstreamer_rtsp_server::glib;
@@ -18,7 +25,7 @@ use gstreamer_rtsp_server::{
 };
 use log::*;
 use neolink_core::{
-    bc_protocol::{StreamOutput, StreamOutputError},
+    bc_protocol::{Error, StreamOutput, StreamOutputError},
     bcmedia::model::*,
 };
 use std::collections::HashSet;
@@ -27,17 +34,37 @@ use std::io;
 use std::io::Write;
 
 type Result<T> = std::result::Result<T, ()>;
+type AnyResult<T> = std::result::Result<T, anyhow::Error>;
 
 pub(crate) struct RtspServer {
     server: GstRTSPServer,
 }
 
+#[derive(Eq, PartialEq, Debug)]
+pub(crate) enum InputMode {
+    Live,
+    Paused,
+}
+
+#[derive(Eq, PartialEq, Debug)]
+pub(crate) enum PausedSources {
+    TestSrc,
+    Still,
+    Black,
+    None,
+}
+
 pub(crate) struct GstOutputs {
     pub(crate) audsrc: MaybeAppSrc,
     pub(crate) vidsrc: MaybeAppSrc,
+    vid_inputselect: MaybeInputSelect,
+    aud_inputselect: MaybeInputSelect,
     video_format: Option<StreamFormat>,
     audio_format: Option<StreamFormat>,
     factory: RTSPMediaFactory,
+    state: Option<States>,
+    when_paused: PausedSources,
+    last_iframe: Option<Vec<u8>>,
 }
 
 // The stream from the camera will be using one of these formats
@@ -58,6 +85,13 @@ enum StreamFormat {
 
 impl StreamOutput for GstOutputs {
     fn stream_recv(&mut self, media: BcMedia) -> StreamOutputError {
+        let mut should_continue = true;
+
+        // Ensure stream is on cam mode
+        self.set_input_source(InputMode::Live).map_err(|e| {
+            Error::OtherString(format!("Cannot set stream input to camera source {:?}", e))
+        })?;
+
         match media {
             BcMedia::Iframe(payload) => {
                 let video_type = match payload.video_type {
@@ -65,7 +99,15 @@ impl StreamOutput for GstOutputs {
                     VideoType::H265 => StreamFormat::H265,
                 };
                 self.set_format(Some(video_type));
-                self.vidsrc.write_all(&payload.data)?;
+                self.vidsrc.write_all(&payload.data).map_err(|e| {
+                    Error::OtherString(format!("Cannot write IFrame to vidsrc {:?}", e))
+                })?;
+                self.last_iframe = Some(payload.data);
+                // Only stop on an iframe so we have the
+                // last frame to show
+                if let Some(state) = self.state.as_ref() {
+                    should_continue = state.should_stream()
+                }
             }
             BcMedia::Pframe(payload) => {
                 let video_type = match payload.video_type {
@@ -73,36 +115,106 @@ impl StreamOutput for GstOutputs {
                     VideoType::H265 => StreamFormat::H265,
                 };
                 self.set_format(Some(video_type));
-                self.vidsrc.write_all(&payload.data)?;
+                self.vidsrc.write_all(&payload.data).map_err(|e| {
+                    Error::OtherString(format!("Cannot write PFrame to vidsrc {:?}", e))
+                })?;
             }
             BcMedia::Aac(payload) => {
                 self.set_format(Some(StreamFormat::Aac));
-                self.audsrc.write_all(&payload.data)?;
+                self.audsrc.write_all(&payload.data).map_err(|e| {
+                    Error::OtherString(format!("Cannot write AAC to audsrc {:?}", e))
+                })?;
             }
             BcMedia::Adpcm(payload) => {
                 self.set_format(Some(StreamFormat::Adpcm(payload.data.len() as u16)));
-                self.audsrc.write_all(&payload.data)?;
+                self.audsrc.write_all(&payload.data).map_err(|e| {
+                    Error::OtherString(format!("Cannot write ADPCM to audsrc {:?}", e))
+                })?;
             }
             _ => {
                 //Ignore other BcMedia like InfoV1 and InfoV2
             }
         }
 
-        Ok(true)
+        Ok(should_continue)
     }
 }
 
 impl GstOutputs {
-    pub(crate) fn from_appsrcs(vidsrc: MaybeAppSrc, audsrc: MaybeAppSrc) -> GstOutputs {
+    pub(crate) fn from_appsrcs(
+        vidsrc: MaybeAppSrc,
+        audsrc: MaybeAppSrc,
+        vid_inputselect: MaybeInputSelect,
+        aud_inputselect: MaybeInputSelect,
+    ) -> GstOutputs {
         let result = GstOutputs {
             vidsrc,
             audsrc,
+            vid_inputselect,
+            aud_inputselect,
             video_format: None,
             audio_format: None,
+            when_paused: PausedSources::None,
             factory: RTSPMediaFactory::new(),
+            last_iframe: Default::default(),
+            state: Default::default(),
         };
         result.apply_format();
         result
+    }
+
+    pub(crate) fn set_state(&mut self, state: States) {
+        self.vidsrc.state = Some(state.clone());
+        self.state = Some(state)
+    }
+
+    pub(crate) fn set_input_source(&mut self, input_source: InputMode) -> AnyResult<()> {
+        // PausedSources::None is exceptional in that it dosen't swap the stream
+        // to an alterntive source. It just repeats the last buffer meaning not re-encoding
+        // at the cost some clients not handeling the repeating buffers well
+        if self.when_paused != PausedSources::None {
+            match &input_source {
+                InputMode::Live => {
+                    self.vid_inputselect.set_input(0)?;
+                    self.aud_inputselect.set_input(0)?;
+                }
+                InputMode::Paused => {
+                    self.vid_inputselect.set_input(1)?;
+                    self.aud_inputselect.set_input(1)?;
+                }
+            }
+        } else {
+            // For PausedSources::None we still want to use the silence as we don't want to
+            // repeat the audio buffers
+            match &input_source {
+                InputMode::Live => {
+                    self.aud_inputselect.set_input(0)?;
+                }
+                InputMode::Paused => {
+                    self.aud_inputselect.set_input(1)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn set_paused_source(&mut self, paused_source: PausedSources) {
+        self.when_paused = paused_source;
+        self.apply_format();
+    }
+
+    pub(crate) fn has_last_iframe(&self) -> bool {
+        self.last_iframe.is_some()
+    }
+
+    pub(crate) fn write_last_iframe(&mut self) -> AnyResult<()> {
+        self.vidsrc.write_all(
+            self.last_iframe
+                .as_ref()
+                .ok_or_else(|| anyhow!("No iframe data avaliable"))?
+                .as_slice(),
+        )?;
+        Ok(())
     }
 
     fn set_format(&mut self, format: Option<StreamFormat>) {
@@ -124,33 +236,128 @@ impl GstOutputs {
     }
 
     fn apply_format(&self) {
-        let launch_vid = match self.video_format {
-            Some(StreamFormat::H264) => {
-                "! queue silent=true max-size-bytes=10485760  min-threshold-bytes=1024 ! h264parse ! rtph264pay name=pay0"
+        // This is the final sink prior to rtsp
+        // - In the case of PausedSources::None we just pass through without encoding
+        // - In the case of all other pause sources we need to recencode in order
+        //   to get smooth streams when the stream is paused/resumed
+        let launch_vid_select = match self.when_paused {
+            PausedSources::None => match self.video_format {
+                Some(StreamFormat::H264) => "! rtph264pay name=pay0",
+                Some(StreamFormat::H265) => "! rtph265pay name=pay0",
+                _ => "! fakesink",
+            },
+            _ => match self.video_format {
+                Some(StreamFormat::H264) => "! x264enc !  rtph264pay name=pay0",
+                Some(StreamFormat::H265) => "! x265enc ! rtph265pay name=pay0",
+                _ => "! fakesink",
+            },
+        };
+
+        // This is the part that deals with input from camera
+        // - In the case of PausedSources::None it just passes the stream
+        // - In the case of other Paused sources we decode it so that we can manipulate
+        //   the stream smoothly and swap the source on demand
+        let launch_app_src = match self.when_paused {
+            PausedSources::None => {
+                match self.video_format {
+                    Some(StreamFormat::H264) => {
+                        "! queue silent=true max-size-bytes=10485760  min-threshold-bytes=1024 ! h264parse"
+                    }
+                    Some(StreamFormat::H265) => {
+                        "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! h265parse"
+                    }
+                    _ => "",
+                }
             }
-            Some(StreamFormat::H265) => {
-                "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! h265parse ! rtph265pay name=pay0"
+            _ => {
+                match self.video_format {
+                    Some(StreamFormat::H264) => {
+                        "! queue silent=true max-size-bytes=10485760  min-threshold-bytes=1024 ! h264parse ! avdec_h264"
+                    }
+                    Some(StreamFormat::H265) => {
+                        "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! h265parse ! avdec_h265"
+                    }
+                    _ => "",
+                }
+            }
+        };
+
+        // This controls the alternaive source used when in paused state
+        // PausedSources::None is the exception in that it is never swapped to this state
+        let launch_alt_source = match self.when_paused {
+            PausedSources::TestSrc => "videotestsrc ! video/x-raw,width=896,height=512,framerate=25/1",
+            PausedSources::Black => "videotestsrc pattern=black ! video/x-raw,width=896,height=512,framerate=25/1",
+            PausedSources::Still => "vid_src_tee. ! imagefreeze allow-replace=true is-live=true ! video/x-raw,framerate=25/1",
+            PausedSources::None => "",
+        };
+
+        // This is the final pipeline for the audio prior to rtsp
+        let launch_aud_select = match self.audio_format {
+            Some(StreamFormat::Adpcm(_)) | Some(StreamFormat::Aac) => {
+                "! audioconvert ! rtpL16pay name=pay1"
             }
             _ => "! fakesink",
         };
 
+        // This is the audio source from the camera. We decode to xraw always as some clients
+        // like blue iris only support raw audio
         let launch_aud = match self.audio_format {
-            Some(StreamFormat::Adpcm(block_size)) => format!("caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000 ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! adpcmdec  ! audioconvert ! rtpL16pay name=pay1", block_size), // DVI4 is converted to pcm in the appsrc
-            Some(StreamFormat::Aac) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! aacparse ! decodebin ! audioconvert ! rtpL16pay name=pay1 name=pay1".to_string(),
-            _ => "! fakesink".to_string(),
+            Some(StreamFormat::Adpcm(block_size)) => format!("caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000 ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! adpcmdec", block_size), // DVI4 is converted to pcm in the appsrc
+            Some(StreamFormat::Aac) => "! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024 ! aacparse ! decodebin".to_string(),
+            _ => "".to_string(),
         };
 
-        self.factory.set_launch(
-            &vec![
+        // The alternaive audio source is silence
+        let launch_aud_alt = "audiotestsrc wave=silence";
+
+        let launch_str = &vec![
             "( ",
-            "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
-            launch_vid,
-            "appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
-            &launch_aud,
+                // Video out pipe
+                "(",
+                    "input-selector name=vid_inputselect",
+                    launch_vid_select,
+                ")",
+                // Camera vid source
+                "(",
+                    "appsrc name=vidsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME", // 50MB max size so that it won't grow to infinite if the queue blocks
+                    launch_app_src,
+                    // Pipe it though a tee so that the image freeze can grab it
+                    "! tee name=vid_src_tee",
+                    "(",
+                        "vid_src_tee. ! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! vid_inputselect.sink_0",
+                    ")",
+
+                ")",
+                // Alternaive vid source
+                //
+                //  Used during paused mode
+                "(",
+                    launch_alt_source,
+                    "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! vid_inputselect.sink_1",
+                ")",
+                // Image freeze
+                // Audio pipe
+                // Audio out pipe
+                "(",
+                    "input-selector name=aud_inputselect",
+                    launch_aud_select,
+                ")",
+                // Camera aud source
+                "(",
+                    "appsrc name=audsrc is-live=true block=true emit-signals=false max-bytes=52428800 do-timestamp=true format=GST_FORMAT_TIME",
+                    &launch_aud,
+                    "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! aud_inputselect.sink_0",
+                ")",
+                // Camera aud alt source
+                "(",
+                    launch_aud_alt,
+                    "! queue silent=true  max-size-bytes=10485760  min-threshold-bytes=1024 ! aud_inputselect.sink_1",
+                ")",
             ")"
         ]
-            .join(" "),
-        );
+        .join(" ");
+        debug!("Gstreamer launch str: {:?}", launch_str);
+        self.factory.set_launch(launch_str);
     }
 }
 
@@ -185,7 +392,15 @@ impl RtspServer {
         let (maybe_app_src, tx) = MaybeAppSrc::new_with_tx();
         let (maybe_app_src_aud, tx_aud) = MaybeAppSrc::new_with_tx();
 
-        let outputs = GstOutputs::from_appsrcs(maybe_app_src, maybe_app_src_aud);
+        let (maybe_vid_inputselect, tx_vid_inputselect) = MaybeInputSelect::new_with_tx();
+        let (maybe_aud_inputselect, tx_aud_inputselect) = MaybeInputSelect::new_with_tx();
+
+        let outputs = GstOutputs::from_appsrcs(
+            maybe_app_src,
+            maybe_app_src_aud,
+            maybe_vid_inputselect,
+            maybe_aud_inputselect,
+        );
 
         let factory = &outputs.factory;
 
@@ -220,6 +435,16 @@ impl RtspServer {
                 .dynamic_cast::<AppSrc>()
                 .expect("Source element is expected to be an appsrc!");
             let _ = tx_aud.send(app_src_aud); // Receiver may be dropped, don't panic if so
+
+            let maybe_vid_inputselect = bin
+                .by_name_recurse_up("vid_inputselect")
+                .expect("vid_inputselect must be present in created bin");
+            let _ = tx_vid_inputselect.send(maybe_vid_inputselect); // Receiver may be dropped, don't panic if so
+
+            let maybe_aud_inputselect = bin
+                .by_name_recurse_up("aud_inputselect")
+                .expect("aud_inputselect must be present in created bin");
+            let _ = tx_aud_inputselect.send(maybe_aud_inputselect); // Receiver may be dropped, don't panic if so
         });
 
         for path in paths {

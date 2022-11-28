@@ -38,16 +38,18 @@ use std::sync::{
 };
 use std::time::Duration;
 
-// mod adpcm;
-/// The command line parameters for this subcommand
+mod abort;
 mod cmdline;
-/// The errors this subcommand can raise
 mod gst;
+mod motion;
+mod state;
 
 use super::config::{CameraConfig, Config, UserConfig};
 use crate::utils::AddressOrUid;
 pub(crate) use cmdline::Opt;
-use gst::{GstOutputs, RtspServer, TlsAuthenticationMode};
+use gst::{GstOutputs, InputMode, PausedSources, RtspServer, TlsAuthenticationMode};
+use motion::MotionStream;
+use state::States;
 
 /// Entry point for the rtsp subcommand
 ///

@@ -10,7 +10,7 @@ pub const MSG_ID_LOGIN: u32 = 1;
 pub const MSG_ID_LOGOUT: u32 = 2;
 /// Video and Audio Streams messages have this ID
 pub const MSG_ID_VIDEO: u32 = 3;
-/// Video and Audio Streams messages have this ID when a stop is requested
+/// ID used to stop the video stream
 pub const MSG_ID_VIDEO_STOP: u32 = 4;
 /// TalkAbility messages have this ID
 pub const MSG_ID_TALKABILITY: u32 = 10;

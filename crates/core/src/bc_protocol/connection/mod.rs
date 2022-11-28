@@ -7,6 +7,7 @@
 //!
 use crate::bc;
 use crate::bc::model::*;
+use crate::bcmedia;
 use crate::bcudp;
 use err_derive::Error;
 use log::*;
@@ -44,6 +45,9 @@ pub enum Error {
 
     #[error(display = "Deserialization error")]
     Deserialization(#[error(source)] bc::de::Error),
+
+    #[error(display = "BcMedia Deserialization error (conn)")]
+    BcMediaDeserialization(#[error(source)] bcmedia::de::Error),
 
     #[error(display = "Serialization error")]
     Serialization(#[error(source)] bc::ser::Error),

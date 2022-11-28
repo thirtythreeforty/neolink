@@ -1,4 +1,4 @@
-use super::{BcCamera, BinarySubscriber, Result};
+use super::{BcCamera, BinarySubscriber, Error, Result, RX_TIMEOUT};
 use crate::{
     bc::{model::*, xml::*},
     bcmedia::model::*,
@@ -122,13 +122,25 @@ impl BcCamera {
                     version: xml_ver(),
                     channel_id: self.channel_id,
                     handle,
-                    stream_type: stream_name,
+                    stream_type: Some(stream_name),
                 }),
                 ..Default::default()
             },
         );
 
         sub_video.send(start_video)?;
+
+        let msg = sub_video.rx.recv_timeout(RX_TIMEOUT)?;
+        if let BcMeta {
+            response_code: 200, ..
+        } = msg.meta
+        {
+        } else {
+            return Err(Error::UnintelligibleReply {
+                reply: msg,
+                why: "The camera did not accept the stream start command.",
+            });
+        }
 
         let mut media_sub = BinarySubscriber::from_bc_sub(&sub_video);
 
@@ -137,8 +149,14 @@ impl BcCamera {
             // We now have a complete interesting packet. Send it to on the callback
             match data_outs.stream_recv(bc_media) {
                 Ok(true) => {}
-                Ok(false) => return Ok(()),
-                Err(e) => return Err(e),
+                Ok(false) => {
+                    result = Ok(());
+                    break;
+                }
+                Err(e) => {
+                    result = Err(e);
+                    break;
+                }
             };
         }
 
