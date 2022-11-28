@@ -121,7 +121,7 @@ fn camera_loop(
     camera_config: &CameraConfig,
     end_points: Vec<(Stream, Arc<Mutex<GstOutputs>>)>,
     manage: bool,
-) -> Result<()> {
+) -> Result<(), anyhow::Error> {
     let min_backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(15);
     let mut current_backoff = min_backoff;
@@ -143,16 +143,10 @@ fn camera_loop(
             );
             return Err(cam_err.err);
         } else {
-            error!(
-                "Error streaming from camera {}, will retry in {}s: {:?}",
-                camera_config.name,
-                current_backoff.as_secs(),
-                cam_err.err
-            )
+            // Should not occur because we don't set the callback up
+            // in such a way that it requests graceful shutdown
+            return Ok(());
         }
-
-        std::thread::sleep(current_backoff);
-        current_backoff = std::cmp::min(max_backoff, current_backoff * 2);
     }
 }
 

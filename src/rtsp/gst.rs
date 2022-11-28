@@ -57,7 +57,7 @@ enum StreamFormat {
 }
 
 impl StreamOutput for GstOutputs {
-    fn write(&mut self, media: BcMedia) -> StreamOutputError {
+    fn stream_recv(&mut self, media: BcMedia) -> StreamOutputError {
         match media {
             BcMedia::Iframe(payload) => {
                 let video_type = match payload.video_type {
@@ -88,7 +88,7 @@ impl StreamOutput for GstOutputs {
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 }
 

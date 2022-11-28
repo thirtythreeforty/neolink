@@ -3,7 +3,7 @@ use crate::bc::{model::*, xml::*};
 
 impl BcCamera {
     /// Get the [LedState] xml which contains the LED status of the camera
-    pub fn get_ledstate(&mut self) -> Result<LedState> {
+    pub fn get_ledstate(&self) -> Result<LedState> {
         let connection = self
             .connection
             .as_ref()
@@ -53,7 +53,7 @@ impl BcCamera {
     }
 
     /// Set the led lights using the [LedState] xml
-    pub fn set_ledstate(&mut self, mut led_state: LedState) -> Result<()> {
+    pub fn set_ledstate(&self, mut led_state: LedState) -> Result<()> {
         let connection = self
             .connection
             .as_ref()
@@ -106,7 +106,7 @@ impl BcCamera {
     ///
     /// This is for the RED IR lights that can come on automaitcally
     /// during low light.
-    pub fn irled_light_set(&mut self, state: LightState) -> Result<()> {
+    pub fn irled_light_set(&self, state: LightState) -> Result<()> {
         let mut led_state = self.get_ledstate()?;
         led_state.state = match state {
             LightState::On => "open".to_string(),
@@ -121,7 +121,7 @@ impl BcCamera {
     /// True is on and false is off
     ///
     /// This is for the little blue on light of some camera
-    pub fn led_light_set(&mut self, state: bool) -> Result<()> {
+    pub fn led_light_set(&self, state: bool) -> Result<()> {
         let mut led_state = self.get_ledstate()?;
         led_state.light_state = match state {
             true => "open".to_string(),
