@@ -6,13 +6,14 @@ impl BcCamera {
     /// or error
     pub fn ping(&self) -> Result<()> {
         let connection = self.connection.as_ref().expect("Must be connected to ping");
-        let sub_ping = connection.subscribe(MSG_ID_PING)?;
+        let msg_num = self.new_message_num();
+        let sub_ping = connection.subscribe(msg_num)?;
 
         let ping = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_PING,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414,

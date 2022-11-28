@@ -5,6 +5,7 @@ use super::xml::*;
 
 /// Top level udp packet
 #[derive(Debug, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum BcUdp {
     /// Packet from the negotiate stage when connection info is exchanged
     Discovery(UdpDiscovery),

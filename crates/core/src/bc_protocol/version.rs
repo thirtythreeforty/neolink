@@ -8,13 +8,14 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to get version info");
-        let sub_version = connection.subscribe(MSG_ID_VERSION)?;
+        let msg_num = self.new_message_num();
+        let sub_version = connection.subscribe(msg_num)?;
 
         let version = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_VERSION,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414, // IDK why
@@ -27,6 +28,9 @@ impl BcCamera {
         sub_version.send(version)?;
 
         let modern_reply = sub_version.rx.recv_timeout(RX_TIMEOUT)?;
+        if modern_reply.meta.response_code != 200 {
+            return Err(Error::CameraServiceUnavaliable);
+        }
         let version_info;
         match modern_reply.body {
             BcBody::ModernMsg(ModernMsg {

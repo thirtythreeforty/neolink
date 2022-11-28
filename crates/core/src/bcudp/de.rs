@@ -84,7 +84,7 @@ where
 impl BcUdp {
     pub(crate) fn deserialize<R: Read>(r: R) -> Result<BcUdp, Error> {
         // Throw away the nom-specific return types
-        read_from_reader(|reader| bcudp(reader), r)
+        read_from_reader(bcudp, r)
     }
 }
 

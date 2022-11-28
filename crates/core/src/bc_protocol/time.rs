@@ -15,12 +15,13 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to get time");
-        let sub_get_general = connection.subscribe(MSG_ID_GET_GENERAL)?;
+        let msg_num = self.new_message_num();
+        let sub_get_general = connection.subscribe(msg_num)?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_GET_GENERAL,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 response_code: 0,
                 stream_type: 0,
                 class: 0x6414,
@@ -30,6 +31,9 @@ impl BcCamera {
 
         sub_get_general.send(get)?;
         let msg = sub_get_general.rx.recv_timeout(RX_TIMEOUT)?;
+        if msg.meta.response_code != 200 {
+            return Err(Error::CameraServiceUnavaliable);
+        }
 
         if let BcBody::ModernMsg(ModernMsg {
             payload:
@@ -98,12 +102,13 @@ impl BcCamera {
             .connection
             .as_ref()
             .expect("Must be connected to set time");
-        let sub_set_general = connection.subscribe(MSG_ID_SET_GENERAL)?;
+        let msg_num = self.new_message_num();
+        let sub_set_general = connection.subscribe(msg_num)?;
         let set = Bc::new_from_xml(
             BcMeta {
                 msg_id: MSG_ID_SET_GENERAL,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 response_code: 0,
                 stream_type: 0,
                 class: 0x6414,

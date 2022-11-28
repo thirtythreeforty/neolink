@@ -288,6 +288,7 @@ impl UdpTransmit {
         Ok(())
     }
 
+    #[allow(clippy::significant_drop_in_scrutinee)]
     pub fn poll_write(
         &self,
         socket: &UdpSocket,

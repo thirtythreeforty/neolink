@@ -31,7 +31,7 @@ pub use stream::{Stream, StreamOutput, StreamOutputError};
 
 type Result<T> = std::result::Result<T, Error>;
 
-impl<'a> From<std::sync::mpsc::RecvTimeoutError> for Error {
+impl From<std::sync::mpsc::RecvTimeoutError> for Error {
     fn from(k: std::sync::mpsc::RecvTimeoutError) -> Self {
         match k {
             std::sync::mpsc::RecvTimeoutError::Timeout => Error::Timeout,
