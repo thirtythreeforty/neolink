@@ -63,7 +63,7 @@ impl BcCamera {
                 }
                 _ => {
                     return Err(Error::UnintelligibleReply {
-                        reply: legacy_reply,
+                        reply: Box::new(legacy_reply),
                         why: "Expected an Encryption message back",
                     })
                 }
@@ -128,7 +128,7 @@ impl BcCamera {
                 }) => return Err(Error::AuthFailed),
                 _ => {
                     return Err(Error::UnintelligibleReply {
-                        reply: modern_reply,
+                        reply: Box::new(modern_reply),
                         why: "Expected a DeviceInfo message back from login",
                     })
                 }

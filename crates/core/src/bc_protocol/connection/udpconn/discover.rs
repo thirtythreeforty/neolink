@@ -49,7 +49,7 @@ impl UdpDiscover {
 
         let mut bytes_send = 0;
         for addr in addrs.iter() {
-            bytes_send = socket.send_to(buf, &addr)?;
+            bytes_send = socket.send_to(buf, addr)?;
         }
 
         let thread_buffer = buf.to_vec();
@@ -66,7 +66,7 @@ impl UdpDiscover {
                     break;
                 }
                 for addr in thread_addr.iter() {
-                    let _ = thread_socket.send_to(&thread_buffer[..], &addr);
+                    let _ = thread_socket.send_to(&thread_buffer[..], addr);
                 }
                 std::thread::sleep(WAIT_TIME);
             }

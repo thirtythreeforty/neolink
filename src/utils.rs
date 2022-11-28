@@ -73,10 +73,7 @@ pub(crate) fn connect_and_login(camera_config: &CameraConfig) -> Result<BcCamera
     Ok(camera)
 }
 
-pub(crate) fn find_camera_by_name<'a, 'b>(
-    config: &'a Config,
-    name: &'b str,
-) -> Result<&'a CameraConfig> {
+pub(crate) fn find_camera_by_name<'a>(config: &'a Config, name: &str) -> Result<&'a CameraConfig> {
     config
         .cameras
         .iter()

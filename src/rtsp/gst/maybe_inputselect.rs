@@ -17,7 +17,7 @@ impl MaybeInputSelect {
     }
 
     pub(crate) fn try_get_src(&mut self) -> Option<&Element> {
-        while let Some(src) = self.rx.try_recv().ok() {
+        while let Ok(src) = self.rx.try_recv() {
             self.typefind = Some(src);
         }
         self.typefind.as_ref()

@@ -14,11 +14,7 @@ impl BcCamera {
                 let sub_logout = connection.subscribe(msg_num)?;
 
                 let username = credentials.username.clone();
-                let password = credentials
-                    .password
-                    .as_ref()
-                    .cloned()
-                    .unwrap_or_else(|| "".to_string());
+                let password = credentials.password.as_ref().cloned().unwrap_or_default();
 
                 let modern_logout = Bc::new_from_xml(
                     BcMeta {

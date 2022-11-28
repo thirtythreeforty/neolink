@@ -29,7 +29,7 @@ pub enum Error {
     #[error(display = "Communication error")]
     UnintelligibleReply {
         /// The Bc packet that was not understood
-        reply: Bc,
+        reply: Box<Bc>,
         /// The message attached to the error
         why: &'static str,
     },

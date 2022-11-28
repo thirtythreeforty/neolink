@@ -151,7 +151,7 @@ impl<'a> EventCam<'a> {
 
             info!("{}: Setting up camera actions", camera_config.name);
             s.spawn(|_| {
-                let _ = message_handler.listen();
+                message_handler.listen();
             });
         });
 

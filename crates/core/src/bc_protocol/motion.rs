@@ -30,18 +30,19 @@ pub trait MotionOutput {
 impl BcCamera {
     /// This message tells the camera to send the motion events to us
     /// Which are the recieved on msgid 33
-    fn start_motion_query(&self) -> Result<()> {
+    fn start_motion_query(&self) -> Result<u16> {
         let connection = self
             .connection
             .as_ref()
             .expect("Must be connected to listen to messages");
 
-        let sub = connection.subscribe(MSG_ID_MOTION_REQUEST)?;
+        let msg_num = self.new_message_num();
+        let sub = connection.subscribe(msg_num)?;
         let msg = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_MOTION_REQUEST,
                 channel_id: self.channel_id,
-                msg_num: self.new_message_num(),
+                msg_num,
                 stream_type: 0,
                 response_code: 0,
                 class: 0x6414,
@@ -59,10 +60,10 @@ impl BcCamera {
             response_code: 200, ..
         } = msg.meta
         {
-            Ok(())
+            Ok(msg_num)
         } else {
             Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why: "The camera did not accept the request to start motion",
             })
         }
@@ -73,7 +74,7 @@ impl BcCamera {
     ///
     /// The output structure must implement the [`MotionCallback`] trait
     pub fn listen_on_motion<T: MotionOutput>(&self, data_out: &mut T) -> Result<()> {
-        self.start_motion_query()?;
+        let msg_num = self.start_motion_query()?;
 
         let connection = self
             .connection
@@ -82,7 +83,7 @@ impl BcCamera {
 
         // After start_motion_query (MSG_ID 31) the camera sends motion messages
         // when whenever motion is detected.
-        let sub = connection.subscribe(MSG_ID_MOTION)?;
+        let sub = connection.subscribe(msg_num)?;
 
         loop {
             // Mostly ignore when timout is reached because these messages are only

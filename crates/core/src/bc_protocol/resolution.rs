@@ -182,6 +182,6 @@ impl<'a> ToSocketAddrsOrUid for &'a [SocketAddr] {
 impl<T: ToSocketAddrsOrUid + ?Sized> ToSocketAddrsOrUid for &T {
     type UidIter = T::UidIter;
     fn to_socket_addrs_or_uid(&self) -> Result<Self::UidIter, Error> {
-        (&**self).to_socket_addrs_or_uid()
+        (**self).to_socket_addrs_or_uid()
     }
 }

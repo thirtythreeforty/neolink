@@ -85,7 +85,7 @@ impl Bc {
     }
 }
 
-fn bc_msg<'a, 'b>(context: &'a mut BcContext, buf: &'b [u8]) -> IResult<&'b [u8], Bc> {
+fn bc_msg<'a>(context: &mut BcContext, buf: &'a [u8]) -> IResult<&'a [u8], Bc> {
     let (buf, header) = bc_header(buf)?;
     let (buf, body) = bc_body(context, &header, buf)?;
 
@@ -97,11 +97,11 @@ fn bc_msg<'a, 'b>(context: &'a mut BcContext, buf: &'b [u8]) -> IResult<&'b [u8]
     Ok((buf, bc))
 }
 
-fn bc_body<'a, 'b, 'c>(
-    context: &'c mut BcContext,
-    header: &'a BcHeader,
-    buf: &'b [u8],
-) -> IResult<&'b [u8], BcBody> {
+fn bc_body<'a>(
+    context: &mut BcContext,
+    header: &BcHeader,
+    buf: &'a [u8],
+) -> IResult<&'a [u8], BcBody> {
     if header.is_modern() {
         let (buf, body) = bc_modern_msg(context, header, buf)?;
         Ok((buf, BcBody::ModernMsg(body)))
@@ -127,11 +127,11 @@ fn bc_legacy_login_msg(buf: &'_ [u8]) -> IResult<&'_ [u8], LegacyMsg> {
     Ok((buf, LegacyMsg::LoginMsg { username, password }))
 }
 
-fn bc_modern_msg<'a, 'b>(
+fn bc_modern_msg<'a>(
     context: &mut BcContext,
-    header: &'a BcHeader,
-    buf: &'b [u8],
-) -> IResult<&'b [u8], ModernMsg> {
+    header: &BcHeader,
+    buf: &'a [u8],
+) -> IResult<&'a [u8], ModernMsg> {
     use nom::{
         error::{make_error, ErrorKind},
         Err,

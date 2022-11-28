@@ -23,7 +23,7 @@ fn git_ver() -> Option<String> {
 
 fn git_cmd_ver() -> Option<String> {
     let mut git_cmd = Command::new("git");
-    git_cmd.args(&["describe", "--tags"]);
+    git_cmd.args(["describe", "--tags"]);
 
     if let Some(true) = git_cmd.status().ok().map(|exit| exit.success()) {
         println!("cargo:rerun-if-changed=.git/HEAD");

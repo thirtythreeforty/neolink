@@ -32,7 +32,7 @@ impl BcCamera {
             Ok(())
         } else {
             Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why: "The camera did not accept the reboot command",
             })
         }

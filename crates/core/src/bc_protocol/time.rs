@@ -59,7 +59,7 @@ impl BcCamera {
                     Ok(dt) => dt,
                     Err(_) => {
                         return Err(Error::UnintelligibleReply {
-                            reply: msg,
+                            reply: Box::new(msg),
                             why: "Could not parse date",
                         })
                     }
@@ -80,7 +80,7 @@ impl BcCamera {
             }
         } else {
             Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why: "Reply did not contain SystemGeneral with all time fields filled out",
             })
         }

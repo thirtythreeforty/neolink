@@ -137,12 +137,14 @@ impl BcCamera {
         {
         } else {
             return Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why: "The camera did not accept the stream start command.",
             });
         }
 
         let mut media_sub = BinarySubscriber::from_bc_sub(&sub_video);
+
+        let mut result = Ok(());
 
         while !abort_handle.load(Ordering::Relaxed) {
             let bc_media = BcMedia::deserialize(&mut media_sub)?;
@@ -161,7 +163,10 @@ impl BcCamera {
         }
 
         // Aborted
-        Ok(())
+        println!("Stopping video: {:?}", result);
+        self.stop_video(stream)?;
+        println!("Video stopped");
+        result
     }
 
     /// Stop a camera from sending more stream data.
@@ -202,13 +207,6 @@ impl BcCamera {
             Stream::Extern => 1024,
         };
 
-        let stream_name = match stream {
-            Stream::Main => "mainStream",
-            Stream::Sub => "subStream",
-            Stream::Extern => "externStream",
-        }
-        .to_string();
-
         let stop_video = Bc::new_from_xml(
             BcMeta {
                 msg_id: MSG_ID_VIDEO_STOP,
@@ -223,7 +221,7 @@ impl BcCamera {
                     version: xml_ver(),
                     channel_id: self.channel_id,
                     handle,
-                    stream_type: stream_name,
+                    stream_type: None,
                 }),
                 ..Default::default()
             },

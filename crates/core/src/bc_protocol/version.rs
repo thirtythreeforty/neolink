@@ -45,7 +45,7 @@ impl BcCamera {
             }
             _ => {
                 return Err(Error::UnintelligibleReply {
-                    reply: modern_reply,
+                    reply: Box::new(modern_reply),
                     why: "Expected a VersionInfo message",
                 })
             }

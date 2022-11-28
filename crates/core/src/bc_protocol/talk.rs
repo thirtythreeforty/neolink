@@ -46,7 +46,7 @@ impl BcCamera {
         {
         } else {
             return Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why: "The camera did not accept the talk stop command.",
             });
         }
@@ -97,7 +97,7 @@ impl BcCamera {
             Ok(talk_ability)
         } else {
             Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why: "Expected TalkAbility xml but it was not recieved",
             })
         }
@@ -177,7 +177,7 @@ impl BcCamera {
         {
         } else {
             return Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why:
                     "The camera did not accept the TalkConfig xml. Audio format is likely incorrect",
             });
@@ -318,7 +318,7 @@ impl BcCamera {
         {
         } else {
             return Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why:
                     "The camera did not accept the TalkConfig xml. Audio format is likely incorrect",
             });

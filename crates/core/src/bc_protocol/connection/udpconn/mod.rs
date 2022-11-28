@@ -113,7 +113,7 @@ impl UdpSource {
             while !thread_aborter.is_aborted() {
                 if let Err(err) = thread_transmit.poll_read(
                     &thread_socket,
-                    &(*thread_discovery_result),
+                    &thread_discovery_result,
                     &to_incoming,
                 ) {
                     if !thread_aborter.is_aborted() {
@@ -145,7 +145,7 @@ impl UdpSource {
             while !thread_aborter.is_aborted() {
                 if let Err(err) = thread_transmit.poll_write(
                     &thread_socket,
-                    &(*thread_discovery_result),
+                    &thread_discovery_result,
                     &from_outgoing,
                 ) {
                     if !thread_aborter.is_aborted() {

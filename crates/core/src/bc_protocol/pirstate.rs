@@ -46,7 +46,7 @@ impl BcCamera {
             Ok(pirstate)
         } else {
             Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why: "Expected PirSate xml but it was not recieved",
             })
         }
@@ -95,7 +95,7 @@ impl BcCamera {
             Ok(())
         } else {
             Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why: "The camera did not except the RfAlarmCfg xml",
             })
         }

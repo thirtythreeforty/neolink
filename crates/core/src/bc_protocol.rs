@@ -26,10 +26,9 @@ use bc::model::*;
 pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
+pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
 pub use pirstate::PirState;
-pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
 pub use resolution::*;
-pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
 pub use stream::{Stream, StreamOutput, StreamOutputError};
 
 type Result<T> = std::result::Result<T, Error>;
@@ -273,7 +272,7 @@ fn md5_string(input: &str, trunc: Md5Trunc) -> String {
 /// negotiated during login
 pub fn make_aes_key(nonce: &str, passwd: &str) -> [u8; 16] {
     let key_phrase = format!("{}-{}", nonce, passwd);
-    let key_phrase_hash = format!("{:X}\0", md5::compute(&key_phrase))
+    let key_phrase_hash = format!("{:X}\0", md5::compute(key_phrase))
         .to_uppercase()
         .into_bytes();
     key_phrase_hash[0..16].try_into().unwrap()

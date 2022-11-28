@@ -46,7 +46,7 @@ impl BcCamera {
             Ok(ledstate)
         } else {
             Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why: "Expected LEDState xml but it was not recieved",
             })
         }
@@ -96,7 +96,7 @@ impl BcCamera {
             Ok(())
         } else {
             Err(Error::UnintelligibleReply {
-                reply: msg,
+                reply: Box::new(msg),
                 why: "The camera did not except the LEDState xml",
             })
         }

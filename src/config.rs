@@ -94,7 +94,6 @@ pub(crate) struct UserConfig {
     pub(crate) pass: String,
 }
 
-
 #[derive(Debug, Deserialize, Clone, Validate)]
 #[validate(schema(function = "validate_mqtt_config", skip_on_field_errors = true))]
 pub(crate) struct MqttConfig {
@@ -125,6 +124,7 @@ fn validate_mqtt_config(config: &MqttConfig) -> Result<(), ValidationError> {
 
 fn default_mqtt() -> Option<MqttConfig> {
     None
+}
 
 #[derive(Debug, Deserialize, Validate, Clone)]
 pub(crate) struct PauseConfig {
@@ -144,7 +144,6 @@ pub(crate) struct PauseConfig {
         code = "mode"
     ))]
     pub(crate) mode: String,
-
 }
 
 fn default_bind_addr() -> String {
