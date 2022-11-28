@@ -17,6 +17,7 @@ use validator::Validate;
 mod cmdline;
 mod config;
 mod pir;
+mod mqtt;
 mod reboot;
 mod rtsp;
 mod statusled;
@@ -70,6 +71,9 @@ fn main() -> Result<()> {
         }
         Some(Command::Talk(opts)) => {
             talk::main(opts, config)?;
+        }
+        Some(Command::Mqtt(opts)) => {
+            mqtt::main(opts, config)?;
         }
     }
 

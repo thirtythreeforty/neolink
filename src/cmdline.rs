@@ -22,4 +22,5 @@ pub enum Command {
     Reboot(super::reboot::Opt),
     Pir(super::pir::Opt),
     Talk(super::talk::Opt),
+    Mqtt(super::mqtt::Opt),
 }

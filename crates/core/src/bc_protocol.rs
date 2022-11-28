@@ -27,6 +27,7 @@ pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
 pub use pirstate::PirState;
+pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
 pub use resolution::*;
 pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
 pub use stream::{Stream, StreamOutput, StreamOutputError};
