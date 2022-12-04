@@ -2176,6 +2176,87 @@ Message have zero to two payloads.
 
   **Notes**: No reply from camera. After this the client keeps sending this packet with binary in the BcMedia encoded packets of adpcm data
 
+
+- 204: `<rfAlarmCfg>` (write)
+
+  - Client
+
+    - Extension
+    
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <rfId>0</rfId>
+    </Extension>
+    ```
+
+    - Payload 
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <rfAlarmCfg version="1.1">
+    <rfID>0</rfID>
+    <enable>1</enable>
+    <sensitivity>1</sensitivity>
+    <sensiValue>16</sensiValue> <!-- 11 is 90? this doesn't seem like a straight-up value to set... -->
+    <reduceFalseAlarm>0</reduceFalseAlarm>
+    <timeBlockList>
+    <timeBlock>
+    <enable>0</enable>
+    <weekDay>Sunday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>0</enable>
+    <weekDay>Monday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>0</enable>
+    <weekDay>Tuesday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>0</enable>
+    <weekDay>Wednesday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>0</enable>
+    <weekDay>Thursday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>0</enable>
+    <weekDay>Friday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    <timeBlock>
+    <enable>0</enable>
+    <weekDay>Saturday</weekDay>
+    <beginHour>0</beginHour>
+    <endHour>23</endHour>
+    </timeBlock>
+    </timeBlockList>
+    <alarmHandle>
+    <item>
+    <channel>0</channel>
+    <handleType>none</handleType>
+    </item>
+    </alarmHandle>
+    </rfAlarmCfg>
+    </body>
+    ```
+
+  **Notes**: Used for motion config on at least Reolink Floodlight.
+
 - 208: `<LedState>`
 
   - Client
@@ -2256,3 +2337,189 @@ Message have zero to two payloads.
         |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 d1  |  00 00 00 00   |    85 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
+
+
+- 264: `<audioCfg>` (write)
+
+  - Client
+
+    - Extension
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <audioCfg version="1.1">
+    <channelId>0</channelId>
+    <timeout>0</timeout>
+    <audioSelect>0</audioSelect>
+    <volume>85</volume>
+    <preAlarm>0</preAlarm>
+    <pauseAlarm>0</pauseAlarm>
+    <pauseType>0</pauseType>
+    <pauseStartTime>0</pauseStartTime>
+    <pauseTime>0</pauseTime>
+    <audioListId>0</audioListId>
+    <linkageCtrlEnable>1</linkageCtrlEnable>
+    </audioCfg>
+    </body>
+    ```
+
+- 288: `<FloodlightManual>` (write)
+
+  - Client
+
+    - Extension
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <FloodlightManual version="1.1">
+    <channelId>0</channelId>
+    <status>1</status>
+    <duration>180</duration> <!-- in seconds -->
+    </FloodlightManual>
+    </body>
+    ```
+
+- 290: `<FloodlightTask>` (write)
+
+  - Client
+
+    - Extension
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <FloodlightTask version="1.1">
+    <channelId>0</channelId>
+    <enable>1</enable> <!-- if any of the motion/night/schedule settings are enabled -->
+    <alarmMode>1</alarmMode>
+    <preview_auto>0</preview_auto>
+    <brightness_cur>92</brightness_cur> <!-- default brightness, or only brightness if just motion mode -->
+    <duration>300</duration> <!-- seconds light stays on, at least with motion -->
+    <detectType>none</detectType>
+    <lastAlarmMode>2</lastAlarmMode>
+    <Schedule>
+    <startHour>18</startHour>
+    <startMin>0</startMin>
+    <endHour>6</endHour>
+    <endMin>0</endMin>
+    </Schedule>
+    <lightSensThreshold>
+    <lightCur>1000</lightCur>
+    <darkCur>1900</darkCur>
+    </lightSensThreshold>
+    <FloodlightScheduleList />
+    <nightLongViewMultiBrightness>  <!-- night mode with usual/alarm brightness -->
+    <enable>0</enable>
+    <alarmBrightness>
+    <cur>100</cur>
+    </alarmBrightness>
+    <alarmDelay>
+    <cur>10</cur> <!-- seconds for alarm brightness -->
+    </alarmDelay>
+    </nightLongViewMultiBrightness>
+    </FloodlightTask>
+    </body>
+    ```
+
+- 291: `<FloodlightStatusList>` (read)
+
+  - Camera
+
+    - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <FloodlightStatusList version="1.1">
+    <FloodlightStatus>
+    <channel>0</channel>
+    <status>1</status>
+    </FloodlightStatus>
+    </FloodlightStatusList>
+    </body>
+    ```
+
+- 438: `<FloodlightTask>` (read)
+
+  - Camera
+
+    - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <FloodlightTask version="1.1">
+    <channel>0</channel>
+    <alarmMode>1</alarmMode>
+    <enable>1</enable> 
+    <lastAlarmMode>2</lastAlarmMode>
+    <preview_auto>0</preview_auto>
+    <duration>300</duration>
+    <brightness_cur>92</brightness_cur>
+    <brightness_max>100</brightness_max>
+    <brightness_min>1</brightness_min>
+    <schedule>
+    <startHour>18</startHour>
+    <startMin>0</startMin>
+    <endHour>6</endHour>
+    <endMin>0</endMin>
+    </schedule>
+    <lightSensThreshold>
+    <min>1000</min>
+    <max>2300</max>
+    <lightCur>1000</lightCur>
+    <darkCur>1900</darkCur>
+    <lightDef>1000</lightDef>
+    <darkDef>1900</darkDef>
+    </lightSensThreshold>
+    <FloodlightScheduleList>
+    <maxNum>32</maxNum>
+    </FloodlightScheduleList>
+    <nightLongViewMultiBrightness>
+    <enable>0</enable>
+    <alarmBrightness>
+    <min>1</min>
+    <max>100</max>
+    <cur>100</cur>
+    <def>100</def>
+    </alarmBrightness>
+    <alarmDelay>
+    <min>5</min>
+    <max>600</max>
+    <cur>10</cur>
+    <def>10</def>
+    </alarmDelay>
+    </nightLongViewMultiBrightness>
+    <detectType>none</detectType>
+    </FloodlightTask>
+    </body>
+    ```
