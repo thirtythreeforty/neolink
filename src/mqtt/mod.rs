@@ -1,15 +1,13 @@
 use log::*;
 ///
-/// # Neolink Reboot
+/// # Neolink MQTT
 ///
-/// This module handles the reboot subcommand
-///
-/// The subcommand attepts to reboot the camera.
+/// Handles incoming and outgoing MQTT messages
 ///
 /// # Usage
 ///
 /// ```bash
-/// neolink reboot --config=config.toml CameraName
+/// neolink mqtt --config=config.toml
 /// ```
 ///
 use std::sync::Arc;
@@ -34,11 +32,14 @@ pub(crate) fn main(_: Opt, config: Config) -> Result<()> {
     let app = App::new();
     let arc_app = Arc::new(app);
 
+    let mut mqtt_count: u8 = 0;
+
     let _ = crossbeam::scope(|s| {
         for camera_config in &config.cameras {
             if let Some(mqtt_config) = camera_config.mqtt.as_ref() {
                 let loop_arc_app = arc_app.clone();
                 info!("{}: Setting up mqtt", camera_config.name);
+                mqtt_count = mqtt_count + 1;
                 s.spawn(move |_| {
                     while loop_arc_app.running("app") {
                         let _ = listen_on_camera(camera_config, mqtt_config, loop_arc_app.clone());
@@ -47,6 +48,10 @@ pub(crate) fn main(_: Opt, config: Config) -> Result<()> {
             }
         }
     });
+
+    if mqtt_count == 0 {
+        error!("MQTT command run, but no cameras configured with MQTT settings. Exiting.");
+    }
 
     Ok(())
 }
