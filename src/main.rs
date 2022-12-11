@@ -16,8 +16,8 @@ use validator::Validate;
 
 mod cmdline;
 mod config;
-mod pir;
 mod mqtt;
+mod pir;
 mod reboot;
 mod rtsp;
 mod statusled;
