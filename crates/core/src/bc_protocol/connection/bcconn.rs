@@ -1,6 +1,7 @@
 use super::{BcSource, BcSubscription, Error, Result, TcpSource};
 use crate::bc;
 use crate::bc::model::*;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use log::*;
 use socket2::{Domain, Socket, Type};
 use std::collections::btree_map::Entry;
@@ -8,7 +9,6 @@ use std::collections::BTreeMap;
 use std::error::Error as StdErr; // Just need the traits
 use std::io::{Error as IoError, Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -98,7 +98,7 @@ impl BcConnection {
 
     #[allow(clippy::significant_drop_in_scrutinee)]
     pub fn subscribe(&self, msg_num: u16) -> Result<BcSubscription> {
-        let (tx, rx) = channel();
+        let (tx, rx) = unbounded();
         match self.subscribers.lock().unwrap().entry(msg_num) {
             Entry::Vacant(vac_entry) => vac_entry.insert(tx),
             Entry::Occupied(_) => return Err(Error::SimultaneousSubscription { msg_num }),

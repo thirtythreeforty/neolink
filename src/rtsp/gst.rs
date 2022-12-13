@@ -6,14 +6,13 @@ mod maybe_inputselect;
 pub(crate) use self::maybe_app_src::MaybeAppSrc;
 pub(crate) use self::maybe_inputselect::MaybeInputSelect;
 
-use super::state::States;
 // use super::adpcm::adpcm_to_pcm;
 // use super::errors::Error;
 use gstreamer::prelude::Cast;
 use gstreamer::{Bin, Structure};
 use gstreamer_app::AppSrc;
 //use gstreamer_rtsp::RTSPLowerTrans;
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use gstreamer_rtsp::RTSPAuthMethod;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use gstreamer_rtsp_server::glib;
@@ -24,10 +23,7 @@ use gstreamer_rtsp_server::{
     RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
-use neolink_core::{
-    bc_protocol::{Error, StreamOutput, StreamOutputError},
-    bcmedia::model::*,
-};
+use neolink_core::bcmedia::model::*;
 use std::collections::HashSet;
 use std::fs;
 use std::io;
@@ -38,15 +34,16 @@ type AnyResult<T> = std::result::Result<T, anyhow::Error>;
 
 pub(crate) struct RtspServer {
     server: GstRTSPServer,
+    main_loop: glib::MainLoop,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone)]
 pub(crate) enum InputMode {
     Live,
     Paused,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone)]
 pub(crate) enum PausedSources {
     TestSrc,
     Still,
@@ -62,7 +59,6 @@ pub(crate) struct GstOutputs {
     video_format: Option<StreamFormat>,
     audio_format: Option<StreamFormat>,
     factory: RTSPMediaFactory,
-    state: Option<States>,
     when_paused: PausedSources,
     last_iframe: Option<Vec<u8>>,
 }
@@ -83,63 +79,6 @@ enum StreamFormat {
     Adpcm(u16),
 }
 
-impl StreamOutput for GstOutputs {
-    fn stream_recv(&mut self, media: BcMedia) -> StreamOutputError {
-        let mut should_continue = true;
-
-        // Ensure stream is on cam mode
-        self.set_input_source(InputMode::Live).map_err(|e| {
-            Error::OtherString(format!("Cannot set stream input to camera source {:?}", e))
-        })?;
-
-        match media {
-            BcMedia::Iframe(payload) => {
-                let video_type = match payload.video_type {
-                    VideoType::H264 => StreamFormat::H264,
-                    VideoType::H265 => StreamFormat::H265,
-                };
-                self.set_format(Some(video_type));
-                self.vidsrc.write_all(&payload.data).map_err(|e| {
-                    Error::OtherString(format!("Cannot write IFrame to vidsrc {:?}", e))
-                })?;
-                self.last_iframe = Some(payload.data);
-                // Only stop on an iframe so we have the
-                // last frame to show
-                if let Some(state) = self.state.as_ref() {
-                    should_continue = state.should_stream()
-                }
-            }
-            BcMedia::Pframe(payload) => {
-                let video_type = match payload.video_type {
-                    VideoType::H264 => StreamFormat::H264,
-                    VideoType::H265 => StreamFormat::H265,
-                };
-                self.set_format(Some(video_type));
-                self.vidsrc.write_all(&payload.data).map_err(|e| {
-                    Error::OtherString(format!("Cannot write PFrame to vidsrc {:?}", e))
-                })?;
-            }
-            BcMedia::Aac(payload) => {
-                self.set_format(Some(StreamFormat::Aac));
-                self.audsrc.write_all(&payload.data).map_err(|e| {
-                    Error::OtherString(format!("Cannot write AAC to audsrc {:?}", e))
-                })?;
-            }
-            BcMedia::Adpcm(payload) => {
-                self.set_format(Some(StreamFormat::Adpcm(payload.data.len() as u16)));
-                self.audsrc.write_all(&payload.data).map_err(|e| {
-                    Error::OtherString(format!("Cannot write ADPCM to audsrc {:?}", e))
-                })?;
-            }
-            _ => {
-                //Ignore other BcMedia like InfoV1 and InfoV2
-            }
-        }
-
-        Ok(should_continue)
-    }
-}
-
 impl GstOutputs {
     pub(crate) fn from_appsrcs(
         vidsrc: MaybeAppSrc,
@@ -157,15 +96,53 @@ impl GstOutputs {
             when_paused: PausedSources::None,
             factory: RTSPMediaFactory::new(),
             last_iframe: Default::default(),
-            state: Default::default(),
         };
         result.apply_format();
         result
     }
 
-    pub(crate) fn set_state(&mut self, state: States) {
-        self.vidsrc.state = Some(state.clone());
-        self.state = Some(state)
+    pub(crate) fn stream_recv(&mut self, media: BcMedia) -> AnyResult<()> {
+        // Ensure stream is on cam mode
+        match media {
+            BcMedia::Iframe(payload) => {
+                let video_type = match payload.video_type {
+                    VideoType::H264 => StreamFormat::H264,
+                    VideoType::H265 => StreamFormat::H265,
+                };
+                self.set_format(Some(video_type));
+                self.vidsrc
+                    .write_all(&payload.data)
+                    .with_context(|| "Cannot write IFrame to vidsrc")?;
+                self.last_iframe = Some(payload.data);
+            }
+            BcMedia::Pframe(payload) => {
+                let video_type = match payload.video_type {
+                    VideoType::H264 => StreamFormat::H264,
+                    VideoType::H265 => StreamFormat::H265,
+                };
+                self.set_format(Some(video_type));
+                self.vidsrc
+                    .write_all(&payload.data)
+                    .with_context(|| "Cannot write PFrame to vidsrc")?;
+            }
+            BcMedia::Aac(payload) => {
+                self.set_format(Some(StreamFormat::Aac));
+                self.audsrc
+                    .write_all(&payload.data)
+                    .with_context(|| "Cannot write AAC to audsrc")?;
+            }
+            BcMedia::Adpcm(payload) => {
+                self.set_format(Some(StreamFormat::Adpcm(payload.data.len() as u16)));
+                self.audsrc
+                    .write_all(&payload.data)
+                    .with_context(|| "Cannot write ADPCM to audsrc")?;
+            }
+            _ => {
+                //Ignore other BcMedia like InfoV1 and InfoV2
+            }
+        }
+
+        Ok(())
     }
 
     pub(crate) fn set_input_source(&mut self, input_source: InputMode) -> AnyResult<()> {
@@ -359,6 +336,10 @@ impl GstOutputs {
         debug!("Gstreamer launch str: {:?}", launch_str);
         self.factory.set_launch(launch_str);
     }
+
+    pub(crate) fn is_connected(&self) -> bool {
+        self.vidsrc.is_connected() || self.audsrc.is_connected()
+    }
 }
 
 impl Default for RtspServer {
@@ -372,13 +353,14 @@ impl RtspServer {
         gstreamer::init().expect("Gstreamer should not explode");
         RtspServer {
             server: GstRTSPServer::new(),
+            main_loop: glib::MainLoop::new(None, false),
         }
     }
 
-    pub(crate) fn add_stream(
+    pub(crate) fn add_stream<T: AsRef<str>>(
         &self,
         paths: &[&str],
-        permitted_users: &HashSet<&str>,
+        permitted_users: &HashSet<T>,
     ) -> Result<GstOutputs> {
         let mounts = self
             .server
@@ -407,7 +389,7 @@ impl RtspServer {
         debug!(
             "Permitting {} to access {}",
             // This is hashmap or (iter) equivalent of join, it requres itertools
-            itertools::Itertools::intersperse(permitted_users.iter().cloned(), ", ")
+            itertools::Itertools::intersperse(permitted_users.iter().map(|i| i.as_ref()), ", ")
                 .collect::<String>(),
             paths.join(", ")
         );
@@ -424,14 +406,14 @@ impl RtspServer {
                 .expect("Media source's element should be a bin");
             let app_src = bin
                 .by_name_recurse_up("vidsrc")
-                .expect("write_src must be present in created bin")
+                .expect("vidsrc must be present in created bin")
                 .dynamic_cast::<AppSrc>()
                 .expect("Source element is expected to be an appsrc!");
             let _ = tx.send(app_src); // Receiver may be dropped, don't panic if so
 
             let app_src_aud = bin
                 .by_name_recurse_up("audsrc")
-                .expect("write_src must be present in created bin")
+                .expect("audsrc must be present in created bin")
                 .dynamic_cast::<AppSrc>()
                 .expect("Source element is expected to be an appsrc!");
             let _ = tx_aud.send(app_src_aud); // Receiver may be dropped, don't panic if so
@@ -454,14 +436,25 @@ impl RtspServer {
         Ok(outputs)
     }
 
-    pub(crate) fn add_permitted_roles(
+    pub(crate) fn remove_stream(&self, paths: &[&str]) -> Result<()> {
+        let mounts = self
+            .server
+            .mount_points()
+            .expect("The server should have mountpoints");
+        for path in paths {
+            mounts.remove_factory(path);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn add_permitted_roles<T: AsRef<str>>(
         &self,
         factory: &RTSPMediaFactory,
-        permitted_roles: &HashSet<&str>,
+        permitted_roles: &HashSet<T>,
     ) {
         for permitted_role in permitted_roles {
             factory.add_role_from_structure(&Structure::new(
-                permitted_role,
+                permitted_role.as_ref(),
                 &[
                     (*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true),
                     (*RTSP_PERM_MEDIA_FACTORY_CONSTRUCT, &true),
@@ -482,7 +475,12 @@ impl RtspServer {
         // FYI: If no RTSP_PERM_MEDIA_FACTORY_ACCESS then server returns 404 not found
         //      If yes RTSP_PERM_MEDIA_FACTORY_ACCESS but no RTSP_PERM_MEDIA_FACTORY_CONSTRUCT
         //        server returns 401 not authourised
-        if !permitted_roles.contains(&"anonymous") {
+        if !permitted_roles
+            .iter()
+            .map(|i| i.as_ref())
+            .collect::<HashSet<&str>>()
+            .contains(&"anonymous")
+        {
             factory.add_role_from_structure(&Structure::new(
                 "anonymous",
                 &[(*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true)],
@@ -534,7 +532,11 @@ impl RtspServer {
         let _ = self.server.attach(None);
 
         // Run the Glib main loop.
-        let main_loop = glib::MainLoop::new(None, false);
-        main_loop.run();
+        self.main_loop.run();
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn quit(&self) {
+        self.main_loop.quit();
     }
 }

@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Context, Result};
+use crossbeam_channel::{bounded, Receiver, Sender};
 use gstreamer::{
     element_error, parse_launch, prelude::*, Caps, ClockTime, FlowError, FlowSuccess, MessageView,
     Pipeline, ResourceError, State,
 };
 use gstreamer_app::{AppSink, AppSinkCallbacks};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
 use byte_slice_cast::*;
 
@@ -20,7 +20,7 @@ pub(super) fn from_input(
 
 fn input(pipeline: Pipeline) -> Result<Receiver<Vec<u8>>> {
     let appsink = get_sink(&pipeline)?;
-    let (tx, rx) = sync_channel(30);
+    let (tx, rx) = bounded(30);
 
     set_data_channel(&appsink, tx);
 
@@ -69,7 +69,7 @@ fn get_sink(pipeline: &Pipeline) -> Result<AppSink> {
         .map_err(|_| anyhow!("Cannot find appsink in gstreamer, check your gstreamer plugins"))
 }
 
-fn set_data_channel(appsink: &AppSink, tx: SyncSender<Vec<u8>>) {
+fn set_data_channel(appsink: &AppSink, tx: Sender<Vec<u8>>) {
     // Getting data out of the appsink is done by setting callbacks on it.
     // The appsink will then call those handlers, as soon as data is available.
     appsink.set_callbacks(

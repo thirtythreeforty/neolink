@@ -4,10 +4,7 @@ use crate::bc::{model::*, xml::*};
 impl BcCamera {
     /// Get the [RfAlarmCfg] xml which contains the PIR status of the camera
     pub fn get_pirstate(&mut self) -> Result<RfAlarmCfg> {
-        let connection = self
-            .connection
-            .as_ref()
-            .expect("Must be connected to get time");
+        let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let sub_get = connection.subscribe(msg_num)?;
         let get = Bc {
@@ -54,10 +51,7 @@ impl BcCamera {
 
     /// Set the PIR sensor using the [RfAlarmCfg] xml
     pub fn set_pirstate(&mut self, rf_alarm_cfg: RfAlarmCfg) -> Result<()> {
-        let connection = self
-            .connection
-            .as_ref()
-            .expect("Must be connected to get time");
+        let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let sub_set = connection.subscribe(msg_num)?;
 

@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Error as Anyhow};
+use crossbeam_channel::{bounded, Receiver, Sender};
 use gstreamer::prelude::ElementExt;
 use gstreamer::prelude::ObjectExt;
 use gstreamer::{Element, Pad};
 use log::*;
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
 pub(crate) struct MaybeInputSelect {
     rx: Receiver<Element>,
@@ -11,8 +11,8 @@ pub(crate) struct MaybeInputSelect {
 }
 
 impl MaybeInputSelect {
-    pub(crate) fn new_with_tx() -> (Self, SyncSender<Element>) {
-        let (tx, rx) = sync_channel(3); // The sender should not send very often
+    pub(crate) fn new_with_tx() -> (Self, Sender<Element>) {
+        let (tx, rx) = bounded(3); // The sender should not send very often
         (MaybeInputSelect { rx, typefind: None }, tx)
     }
 

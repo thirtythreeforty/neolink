@@ -2,7 +2,10 @@ use crate::{bc, bcmedia};
 use log::*;
 use std::convert::TryInto;
 use std::net::ToSocketAddrs;
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU16, Ordering},
+    Mutex,
+};
 
 use Md5Trunc::*;
 
@@ -26,18 +29,19 @@ use bc::model::*;
 pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
-pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
+pub use motion::{MotionData, MotionStatus};
 pub use pirstate::PirState;
 pub use resolution::*;
-pub use stream::{Stream, StreamOutput, StreamOutputError};
+use std::sync::Arc;
+pub use stream::{Stream, StreamData};
 
 type Result<T> = std::result::Result<T, Error>;
 
-impl From<std::sync::mpsc::RecvTimeoutError> for Error {
-    fn from(k: std::sync::mpsc::RecvTimeoutError) -> Self {
+impl From<crossbeam_channel::RecvTimeoutError> for Error {
+    fn from(k: crossbeam_channel::RecvTimeoutError) -> Self {
         match k {
-            std::sync::mpsc::RecvTimeoutError::Timeout => Error::Timeout,
-            std::sync::mpsc::RecvTimeoutError::Disconnected => Error::TimeoutDisconnected,
+            crossbeam_channel::RecvTimeoutError::Timeout => Error::Timeout,
+            crossbeam_channel::RecvTimeoutError::Disconnected => Error::TimeoutDisconnected,
         }
     }
 }
@@ -47,11 +51,11 @@ impl From<std::sync::mpsc::RecvTimeoutError> for Error {
 ///
 pub struct BcCamera {
     channel_id: u8,
-    connection: Option<BcConnection>,
-    logged_in: bool,
+    connection: Arc<BcConnection>,
+    logged_in: AtomicBool,
     message_num: AtomicU16,
     // Certain commands such as logout require the username/pass in plain text.... why....???
-    credentials: Option<Credentials>,
+    credentials: Mutex<Option<Credentials>>,
 }
 
 // Used for caching the credentials
@@ -182,31 +186,29 @@ impl BcCamera {
 
         debug!("Success");
         let me = Self {
-            connection: Some(conn),
+            connection: Arc::new(conn),
             message_num: AtomicU16::new(0),
             channel_id,
-            logged_in: false,
-            credentials: None,
+            logged_in: AtomicBool::new(false),
+            credentials: Mutex::new(None),
         };
 
-        if let Some(conn) = &me.connection {
-            if conn.is_udp() {
-                let keep_alive_msg = Bc {
-                    meta: BcMeta {
-                        msg_id: MSG_ID_UDP_KEEP_ALIVE,
-                        channel_id: me.channel_id,
-                        msg_num: me.new_message_num(),
-                        stream_type: 0,
-                        response_code: 0,
-                        class: 0x6414,
-                    },
-                    body: BcBody::ModernMsg(ModernMsg {
-                        ..Default::default()
-                    }),
-                };
+        if me.connection.is_udp() {
+            let keep_alive_msg = Bc {
+                meta: BcMeta {
+                    msg_id: MSG_ID_UDP_KEEP_ALIVE,
+                    channel_id: me.channel_id,
+                    msg_num: me.new_message_num(),
+                    stream_type: 0,
+                    response_code: 0,
+                    class: 0x6414,
+                },
+                body: BcBody::ModernMsg(ModernMsg {
+                    ..Default::default()
+                }),
+            };
 
-                conn.set_keep_alive_msg(keep_alive_msg);
-            }
+            me.connection.set_keep_alive_msg(keep_alive_msg);
         }
         Ok(me)
     }
@@ -216,35 +218,37 @@ impl BcCamera {
         self.message_num.fetch_add(1, Ordering::Relaxed)
     }
 
+    fn get_connection(&self) -> Arc<BcConnection> {
+        self.connection.clone()
+    }
+
     /// This will drop the connection. It will try to send the logout request to the camera
     /// first
     pub fn disconnect(&mut self) {
-        if let Some(connection) = &self.connection {
-            // Stop polling now. We don't need it for a disconnect
-            //
-            // It will also ensure that when we drop the connection we don't
-            // get an error for read return zero bytes from the polling thread;
-            connection.stop_polling();
-            if let Err(err) = self.logout() {
-                warn!("Could not log out, ignoring: {}", err);
-            }
+        let connection = &self.connection;
+        // Stop polling now. We don't need it for a disconnect
+        //
+        // It will also ensure that when we drop the connection we don't
+        // get an error for read return zero bytes from the polling thread;
+        connection.stop_polling();
+        if let Err(err) = self.logout() {
+            warn!("Could not log out, ignoring: {}", err);
         }
-        self.connection = None;
     }
 
     // Certains commands like logout need the username and password
     // this command will return it as a tuple of (Username, Option<Password>)
     // This will only work after login
-    fn get_credentials(&self) -> &Option<Credentials> {
-        &self.credentials
+    fn get_credentials(&self) -> Option<Credentials> {
+        self.credentials.lock().unwrap().clone()
     }
     // This is used to store the credentials it is called during login.
-    fn set_credentials(&mut self, username: String, password: Option<String>) {
-        self.credentials = Some(Credentials::new(username, password));
+    fn set_credentials(&self, username: String, password: Option<String>) {
+        *(self.credentials.lock().unwrap()) = Some(Credentials::new(username, password));
     }
     // This is used to clear the stored credentials it is called during logout.
-    fn clear_credentials(&mut self) {
-        self.credentials = None;
+    fn clear_credentials(&self) {
+        *(self.credentials.lock().unwrap()) = None;
     }
 }
 

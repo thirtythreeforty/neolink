@@ -4,10 +4,7 @@ use crate::bc::{model::*, xml::*};
 impl BcCamera {
     /// Get the [LedState] xml which contains the LED status of the camera
     pub fn get_ledstate(&self) -> Result<LedState> {
-        let connection = self
-            .connection
-            .as_ref()
-            .expect("Must be connected to get time");
+        let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let sub_get = connection.subscribe(msg_num)?;
         let get = Bc {
@@ -54,10 +51,7 @@ impl BcCamera {
 
     /// Set the led lights using the [LedState] xml
     pub fn set_ledstate(&self, mut led_state: LedState) -> Result<()> {
-        let connection = self
-            .connection
-            .as_ref()
-            .expect("Must be connected to get time");
+        let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
         let sub_set = connection.subscribe(msg_num)?;

@@ -1,18 +1,16 @@
 use super::{make_aes_key, md5_string, BcCamera, Error, Result, Truncate, ZeroLast, RX_TIMEOUT};
 use crate::bc::{model::*, xml::*};
+use std::sync::atomic::Ordering;
 
 impl BcCamera {
     /// Login to the camera.
     ///
     /// This should be called before most other commands
-    pub fn login(&mut self, username: &str, password: Option<&str>) -> Result<DeviceInfo> {
+    pub fn login(&self, username: &str, password: Option<&str>) -> Result<DeviceInfo> {
         let device_info;
         // This { is here due to the connection and set_credentials both requiring a mutable borrow
         {
-            let connection = self
-                .connection
-                .as_ref()
-                .expect("Must be connected to log in");
+            let connection = self.get_connection();
             let msg_num = self.new_message_num();
             let sub_login = connection.subscribe(msg_num)?;
 
@@ -119,7 +117,7 @@ impl BcCamera {
                     ..
                 }) => {
                     // Login succeeded!
-                    self.logged_in = true;
+                    self.logged_in.store(true, Ordering::Relaxed);
                     device_info = info;
                 }
                 BcBody::ModernMsg(ModernMsg {

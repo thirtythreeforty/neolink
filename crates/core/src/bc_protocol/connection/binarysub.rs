@@ -3,10 +3,8 @@ use super::{
     BcConnection,
 };
 use crate::bc::model::*;
-use std::{
-    io::{BufRead, Error, ErrorKind, Read},
-    sync::mpsc::RecvTimeoutError,
-};
+use crossbeam_channel::RecvTimeoutError;
+use std::io::{BufRead, Error, ErrorKind, Read};
 
 type Result<T> = std::result::Result<T, Error>;
 

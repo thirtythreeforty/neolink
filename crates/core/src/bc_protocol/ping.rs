@@ -5,7 +5,7 @@ impl BcCamera {
     /// Ping the camera will either return Ok(()) which means a sucess reply
     /// or error
     pub fn ping(&self) -> Result<()> {
-        let connection = self.connection.as_ref().expect("Must be connected to ping");
+        let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let sub_ping = connection.subscribe(msg_num)?;
 

@@ -1,7 +1,7 @@
 use super::{BcCamera, Error, Result, RX_TIMEOUT};
 use crate::{bc::model::*, bc::xml::*, bcmedia::model::*};
+use crossbeam_channel::Receiver;
 use std::io::{BufRead, Error as IoError, ErrorKind, Read};
-use std::sync::mpsc::Receiver;
 
 type IoResult<T> = std::result::Result<T, IoError>;
 
@@ -14,7 +14,7 @@ impl BcCamera {
     /// It is also sent when the request for talk config returns status code 422
     ///
     pub fn talk_stop(&self) -> Result<()> {
-        let connection = self.connection.as_ref().expect("Must be connected");
+        let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
         let sub = connection.subscribe(msg_num)?;
@@ -58,10 +58,7 @@ impl BcCamera {
     /// Requests the [`TalkAbility`] xml
     ///
     pub fn talk_ability(&self) -> Result<TalkAbility> {
-        let connection = self
-            .connection
-            .as_ref()
-            .expect("Must be connected to get time");
+        let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let sub_get = connection.subscribe(msg_num)?;
         let get = Bc {
@@ -120,7 +117,7 @@ impl BcCamera {
     ///
     ///
     pub fn talk(&self, adpcm: &[u8], talk_config: TalkConfig) -> Result<()> {
-        let connection = self.connection.as_ref().expect("Must be connected");
+        let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
         let sub = connection.subscribe(msg_num)?;
@@ -261,7 +258,7 @@ impl BcCamera {
     ///
     ///
     pub fn talk_stream(&self, rx: Receiver<Vec<u8>>, talk_config: TalkConfig) -> Result<()> {
-        let connection = self.connection.as_ref().expect("Must be connected");
+        let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
         let sub = connection.subscribe(msg_num)?;

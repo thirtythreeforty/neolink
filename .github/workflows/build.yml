@@ -20,18 +20,20 @@ jobs:
       - if: runner.os == 'Windows'
         name: Install Gstreamer
         run: |
-          choco install -y --no-progress gstreamer --version=1.16.2.20200527
-          choco install -y --no-progress gstreamer-devel --version=1.16.2
+          choco install -y --no-progress gstreamer --version=1.20.0
+          choco install -y --no-progress gstreamer-devel --version=1.20.0
           echo "Updating Cargo environment"
           echo "C:\gstreamer\1.0\x86_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           echo "GSTREAMER_1_0_ROOT_X86_64=C:\gstreamer\1.0\x86_64\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - if: runner.os == 'macOS'
         name: Install Gstreamer on macOS
         run: |
-          curl -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.16.2/gstreamer-1.0-devel-1.16.2-x86_64.pkg' -o "$(pwd)/gstreamer-devel.pkg"
+          curl -L 'https://gstreamer.freedesktop.org/data/pkg/osx/1.20.4/gstreamer-1.0-devel-1.20.4-universal.pkg' -o "$(pwd)/gstreamer-devel.pkg"
           sudo installer -verbose -pkg "$(pwd)/gstreamer-devel.pkg" -target /
           PKG_CONFIG_PATH="/Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          PKG_CONFIG_GSTREAMER_1_0_PREFIX /Library/Frameworks/GStreamer.framework/Versions/1.0
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "${GITHUB_ENV}"
+          echo "PKG_CONFIG_GSTREAMER_1_0_PREFIX=${PKG_CONFIG_GSTREAMER_1_0_PREFIX}" >> "${GITHUB_ENV}"
       - name: Cache cargo registry
         uses: actions/cache@v1
         with:
@@ -102,10 +104,10 @@ jobs:
       - name: Install ${{ matrix.arch }} Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-            toolchain: stable
-            override: true
-            target: ${{ matrix.target }}
-            profile: minimal
+          toolchain: stable
+          override: true
+          target: ${{ matrix.target }}
+          profile: minimal
       - name: Build
         uses: actions-rs/cargo@v1
         with:

@@ -4,9 +4,7 @@ use crate::utils::AddressOrUid;
 use anyhow::{anyhow, Context, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender, TryRecvError};
 use log::*;
-use neolink_core::bc_protocol::{
-    BcCamera, Error as BcError, LightState, MotionOutput, MotionOutputError, MotionStatus,
-};
+use neolink_core::bc_protocol::{BcCamera, Error as BcError, LightState, MotionStatus};
 use std::sync::{Arc, Mutex};
 
 pub(crate) enum Messages {
@@ -106,7 +104,7 @@ impl<'a> EventCam<'a> {
             "{}: Connecting to camera at {}",
             camera_config.name, camera_addr
         );
-        let mut camera = camera_addr
+        let camera = camera_addr
             .connect_camera(camera_config.channel_id)
             .with_context(|| {
                 format!(
@@ -125,27 +123,27 @@ impl<'a> EventCam<'a> {
 
         // Shararble cameras
         let arc_cam = Arc::new(camera);
-        let cam_motion = arc_cam.clone();
-        let cam_mesg = arc_cam;
 
-        let mut motion_callback = MotionCallback {
+        let mut motion_thread = MotionThread {
             app: app.clone(),
             tx,
+            camera: arc_cam.clone(),
             name: camera_config.name.to_string(),
         };
 
         let mut message_handler = MessageHandler {
             app: app.clone(),
             rx,
-            camera: cam_mesg,
+            camera: arc_cam,
             name: camera_config.name.to_string(),
         };
 
         let _ = crossbeam::scope(|s| {
             info!("{}: Listening to Camera Motion", camera_config.name);
             s.spawn(|_| {
-                let _ = cam_motion.listen_on_motion(&mut motion_callback);
-                // If listen_on_motion returns then camera disconnect
+                if let Err(e) = motion_thread.run() {
+                    error!("Motion thread aborted: {:?}", e);
+                }
                 app.abort(&camera_config.name);
             });
 
@@ -159,38 +157,40 @@ impl<'a> EventCam<'a> {
     }
 }
 
-struct MotionCallback {
+struct MotionThread {
     app: Arc<App>,
     tx: Arc<Mutex<Sender<Messages>>>,
+    camera: Arc<BcCamera>,
     name: String,
 }
 
-impl MotionOutput for MotionCallback {
-    fn motion_recv(&mut self, motion_status: MotionStatus) -> MotionOutputError {
-        if self.app.running(&format!("app:{}", self.name)) {
-            match motion_status {
-                MotionStatus::Start => {
-                    (self
-                        .tx
-                        .lock()
-                        .map_err(|_| BcError::Other("Failed to lock mutex"))?)
-                    .send(Messages::MotionStart)
-                    .map_err(|_| BcError::Other("Failed to send Message"))?;
+impl MotionThread {
+    fn run(&mut self) -> Result<()> {
+        let mut motion_data = self.camera.listen_on_motion()?;
+        while self.app.running(&format!("app:{}", self.name)) {
+            for motion_status in motion_data.consume_motion_events()?.drain(..) {
+                match motion_status {
+                    MotionStatus::Start(_) => {
+                        (self
+                            .tx
+                            .lock()
+                            .map_err(|_| BcError::Other("Failed to lock mutex"))?)
+                        .send(Messages::MotionStart)
+                        .map_err(|_| BcError::Other("Failed to send Message"))?;
+                    }
+                    MotionStatus::Stop(_) => {
+                        (self
+                            .tx
+                            .lock()
+                            .map_err(|_| BcError::Other("Failed to lock mutex"))?)
+                        .send(Messages::MotionStop)
+                        .map_err(|_| BcError::Other("Failed to send Message"))?;
+                    }
+                    _ => {}
                 }
-                MotionStatus::Stop => {
-                    (self
-                        .tx
-                        .lock()
-                        .map_err(|_| BcError::Other("Failed to lock mutex"))?)
-                    .send(Messages::MotionStop)
-                    .map_err(|_| BcError::Other("Failed to send Message"))?;
-                }
-                _ => {}
             }
-            Ok(true)
-        } else {
-            Ok(false)
         }
+        Ok(())
     }
 }
 

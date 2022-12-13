@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub(crate) struct AbortHandle {
     live: Arc<AtomicBool>,
 }
@@ -17,6 +17,10 @@ impl AbortHandle {
 
     pub(crate) fn abort(&self) {
         self.live.store(false, Ordering::Relaxed);
+    }
+
+    pub(crate) fn reset(&self) {
+        self.live.store(true, Ordering::Relaxed);
     }
 
     pub(crate) fn is_live(&self) -> bool {

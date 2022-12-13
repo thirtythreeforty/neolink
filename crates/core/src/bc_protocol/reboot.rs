@@ -4,7 +4,7 @@ use crate::bc::model::*;
 impl BcCamera {
     /// Reboot the camera
     pub fn reboot(&self) -> Result<()> {
-        let connection = self.connection.as_ref().expect("Must be connected to ping");
+        let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let sub = connection.subscribe(msg_num)?;
 

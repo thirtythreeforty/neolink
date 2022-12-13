@@ -1,15 +1,13 @@
 use super::{BcCamera, Result};
 use crate::bc::{model::*, xml::*};
+use std::sync::atomic::Ordering;
 
 impl BcCamera {
     /// Logout from the camera
-    pub fn logout(&mut self) -> Result<()> {
-        if self.logged_in {
+    pub fn logout(&self) -> Result<()> {
+        if self.logged_in.load(Ordering::Relaxed) {
             if let Some(credentials) = self.get_credentials() {
-                let connection = self
-                    .connection
-                    .as_ref()
-                    .expect("Must be connected to log in");
+                let connection = self.get_connection();
                 let msg_num = self.new_message_num();
                 let sub_logout = connection.subscribe(msg_num)?;
 
@@ -41,7 +39,7 @@ impl BcCamera {
             }
         }
         self.clear_credentials();
-        self.logged_in = false;
+        self.logged_in.store(false, Ordering::Relaxed);
         Ok(())
     }
 }
