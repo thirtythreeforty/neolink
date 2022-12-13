@@ -4,10 +4,7 @@ use crate::bc::{model::*, xml::*};
 impl BcCamera {
     /// Request the [VersionInfo] xml
     pub fn version(&self) -> Result<VersionInfo> {
-        let connection = self
-            .connection
-            .as_ref()
-            .expect("Must be connected to get version info");
+        let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let sub_version = connection.subscribe(msg_num)?;
 

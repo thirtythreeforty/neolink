@@ -11,10 +11,7 @@ impl BcCamera {
     /// returns either an error or an option with the offsetted date time
     ///
     pub fn get_time(&self) -> Result<Option<OffsetDateTime>> {
-        let connection = self
-            .connection
-            .as_ref()
-            .expect("Must be connected to get time");
+        let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let sub_get_general = connection.subscribe(msg_num)?;
         let get = Bc {
@@ -98,10 +95,7 @@ impl BcCamera {
     /// returns Ok(()) or error
     ///
     pub fn set_time(&self, timestamp: OffsetDateTime) -> Result<()> {
-        let connection = self
-            .connection
-            .as_ref()
-            .expect("Must be connected to set time");
+        let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let sub_set_general = connection.subscribe(msg_num)?;
         let set = Bc::new_from_xml(

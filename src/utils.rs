@@ -54,7 +54,7 @@ pub(crate) fn connect_and_login(camera_config: &CameraConfig) -> Result<BcCamera
         camera_config.name, camera_addr
     );
 
-    let mut camera = camera_addr
+    let camera = camera_addr
         .connect_camera(camera_config.channel_id)
         .with_context(|| {
             format!(

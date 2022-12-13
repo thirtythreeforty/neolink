@@ -40,7 +40,11 @@ pub enum Error {
 
     /// Raised when a connection is dropped.
     #[error(display = "Dropped connection")]
-    DroppedConnection(#[error(source)] std::sync::mpsc::RecvError),
+    DroppedConnection(#[error(source)] crossbeam_channel::RecvError),
+
+    /// Raised when a connection is dropped during a TryRecv event
+    #[error(display = "Dropped connection")]
+    DroppedConnectionTry(#[error(source)] crossbeam_channel::TryRecvError),
 
     /// Raised when the RX_TIMEOUT is reach
     #[error(display = "Timeout")]

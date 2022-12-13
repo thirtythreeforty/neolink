@@ -1,6 +1,6 @@
 use super::{BcConnection, Result};
 use crate::bc::model::*;
-use std::sync::mpsc::Receiver;
+use crossbeam_channel::Receiver;
 
 pub struct BcSubscription<'a> {
     pub rx: Receiver<Bc>,

@@ -2,7 +2,6 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Deserialize;
 use std::clone::Clone;
-use std::time::Duration;
 use validator::{Validate, ValidationError};
 use validator_derive::Validate;
 
@@ -54,12 +53,6 @@ pub(crate) struct CameraConfig {
 
     pub(crate) username: String,
     pub(crate) password: Option<String>,
-
-    // no longer used, but still here so we can warn users:
-    pub(crate) timeout: Option<Duration>,
-
-    // no longer used, but still here so we can warn users:
-    pub(crate) format: Option<String>,
 
     #[validate(regex(
         path = "RE_STREAM_SRC",

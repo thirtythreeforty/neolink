@@ -9,6 +9,7 @@ use crate::bc;
 use crate::bc::model::*;
 use crate::bcmedia;
 use crate::bcudp;
+use crossbeam_channel::{unbounded, Receiver, RecvError, Sender};
 use err_derive::Error;
 use log::*;
 use socket2::{Domain, Socket, Type};
@@ -16,7 +17,6 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::error::Error as StdErr; // Just need the traits
 use std::net::{SocketAddr, TcpStream};
-use std::sync::mpsc::{channel, Receiver, RecvError, Sender};
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex};
 
 use std::thread::JoinHandle;

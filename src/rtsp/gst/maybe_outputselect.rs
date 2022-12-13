@@ -1,5 +1,5 @@
 use gstreamer::Element;
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use crossbeam_channel::{sync_channel, Receiver, SyncSender};
 
 pub(crate) struct MaybeOutputSelect {
     rx: Receiver<Element>,

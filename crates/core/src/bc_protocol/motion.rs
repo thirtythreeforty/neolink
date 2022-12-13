@@ -1,40 +1,95 @@
 use super::{BcCamera, Error, Result, RX_TIMEOUT};
 use crate::bc::{model::*, xml::*};
+use crossbeam_channel::{bounded, Receiver, TryRecvError};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 /// Motion Status that the callback can send
+#[derive(Clone, Copy, Debug)]
 pub enum MotionStatus {
     /// Sent when motion is first detected
-    Start,
+    Start(Instant),
     /// Sent when motion stops
-    Stop,
+    Stop(Instant),
     /// Sent when an Alarm about something other than motion was received
-    NoChange,
+    NoChange(Instant),
 }
 
-/// This is a conveince type for the error of the MotionOutput callback
-pub type MotionOutputError = Result<bool>;
+/// A handle on current motion related events comming from the camera
+///
+/// When this object is dropped the motion events are stopped
+pub struct MotionData {
+    handle: Option<JoinHandle<Result<()>>>,
+    rx: Receiver<MotionStatus>,
+    abort_handle: Arc<AtomicBool>,
+    last_update: MotionStatus,
+}
 
-/// Trait used as part of [`listen_on_motion`] to send motion messages
-pub trait MotionOutput {
-    /// This is the callback used when motion is received
+impl MotionData {
+    /// Get if motion has been detected. Returns None if
+    /// no motion data has yet been recieved from the camera
     ///
-    /// If result is `Ok(true)` more messages will be sent
+    /// An error is raised if the motion connection to the camera is dropped
+    pub fn motion_detected(&mut self) -> Result<Option<bool>> {
+        self.consume_motion_events()?;
+        Ok(match &self.last_update {
+            MotionStatus::Start(_) => Some(true),
+            MotionStatus::Stop(_) => Some(false),
+            MotionStatus::NoChange(_) => None,
+        })
+    }
+
+    /// Get if motion has been detected within given duration. Returns None if
+    /// no motion data has yet been recieved from the camera
     ///
-    /// If result if `Ok(false)` then message will be stopped
+    /// An error is raised if the motion connection to the camera is dropped
+    pub fn motion_detected_within(&mut self, duration: Duration) -> Result<Option<bool>> {
+        self.consume_motion_events()?;
+        Ok(match &self.last_update {
+            MotionStatus::Start(time) => Some((Instant::now() - *time) < duration),
+            MotionStatus::Stop(time) => Some((Instant::now() - *time) < duration),
+            MotionStatus::NoChange(_) => None,
+        })
+    }
+
+    /// Consume the motion events diretly
     ///
-    /// If result is `Err(E)` then motion messages be stopped
-    /// and an error will be thrown
-    fn motion_recv(&mut self, motion_status: MotionStatus) -> MotionOutputError;
+    /// An error is raised if the motion connection to the camera is dropped
+    pub fn consume_motion_events(&mut self) -> Result<Vec<MotionStatus>> {
+        let mut results: Vec<MotionStatus> = vec![];
+        loop {
+            match self.rx.try_recv() {
+                Ok(motion) => results.push(motion),
+                Err(TryRecvError::Empty) => break,
+                Err(e) => return Err(Error::from(e)),
+            }
+        }
+        for res in results.iter() {
+            log::info!("Mption: {:?}", res);
+        }
+        if let Some(last) = results.last() {
+            self.last_update = *last;
+        }
+        Ok(results)
+    }
+}
+
+impl Drop for MotionData {
+    fn drop(&mut self) {
+        self.abort_handle.store(true, Ordering::Relaxed);
+        self.handle.take().map(|h| h.join());
+    }
 }
 
 impl BcCamera {
     /// This message tells the camera to send the motion events to us
     /// Which are the recieved on msgid 33
     fn start_motion_query(&self) -> Result<u16> {
-        let connection = self
-            .connection
-            .as_ref()
-            .expect("Must be connected to listen to messages");
+        let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
         let sub = connection.subscribe(msg_num)?;
@@ -69,65 +124,74 @@ impl BcCamera {
         }
     }
 
-    /// This requests that motion messages be listen to and sent to the
-    /// output struct.
-    ///
-    /// The output structure must implement the [`MotionCallback`] trait
-    pub fn listen_on_motion<T: MotionOutput>(&self, data_out: &mut T) -> Result<()> {
+    /// This returns a data structure which can be used to
+    /// query motion events
+    pub fn listen_on_motion(&self) -> Result<MotionData> {
         let msg_num = self.start_motion_query()?;
 
-        let connection = self
-            .connection
-            .as_ref()
-            .expect("Must be connected to listen to messages");
+        let connection = self.get_connection();
 
         // After start_motion_query (MSG_ID 31) the camera sends motion messages
         // when whenever motion is detected.
-        let sub = connection.subscribe(msg_num)?;
+        let abort_handle = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = bounded(20);
 
-        loop {
-            // Mostly ignore when timout is reached because these messages are only
-            // sent when motion is detected which might means hours between messages
-            // being received
-            let msg = sub.rx.recv_timeout(RX_TIMEOUT);
-            let status = match msg {
-                Ok(motion_msg) => {
-                    if let BcBody::ModernMsg(ModernMsg {
-                        payload:
-                            Some(BcPayloads::BcXml(BcXml {
-                                alarm_event_list: Some(alarm_event_list),
-                                ..
-                            })),
-                        ..
-                    }) = motion_msg.body
-                    {
-                        let mut result = MotionStatus::NoChange;
-                        for alarm_event in &alarm_event_list.alarm_events {
-                            if alarm_event.channel_id == self.channel_id {
-                                if alarm_event.status == "MD" {
-                                    result = MotionStatus::Start;
-                                    break;
-                                } else if alarm_event.status == "none" {
-                                    result = MotionStatus::Stop;
-                                    break;
+        let abort_handle_thread = abort_handle.clone();
+        let channel_id = self.channel_id;
+        let handle = thread::spawn(move || {
+            let sub = connection.subscribe(msg_num)?;
+
+            while !abort_handle_thread.load(Ordering::Relaxed) {
+                let msg = sub.rx.recv_timeout(RX_TIMEOUT);
+                let status = match msg {
+                    Ok(motion_msg) => {
+                        if let BcBody::ModernMsg(ModernMsg {
+                            payload:
+                                Some(BcPayloads::BcXml(BcXml {
+                                    alarm_event_list: Some(alarm_event_list),
+                                    ..
+                                })),
+                            ..
+                        }) = motion_msg.body
+                        {
+                            let mut result = MotionStatus::NoChange(Instant::now());
+                            for alarm_event in &alarm_event_list.alarm_events {
+                                if alarm_event.channel_id == channel_id {
+                                    if alarm_event.status == "MD" {
+                                        result = MotionStatus::Start(Instant::now());
+                                        break;
+                                    } else if alarm_event.status == "none" {
+                                        result = MotionStatus::Stop(Instant::now());
+                                        break;
+                                    }
                                 }
                             }
+                            Ok(result)
+                        } else {
+                            Ok(MotionStatus::NoChange(Instant::now()))
                         }
-                        Ok(result)
-                    } else {
-                        Ok(MotionStatus::NoChange)
                     }
-                }
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Ok(MotionStatus::NoChange),
-                // On connection drop we stop
-                Err(e @ std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(e),
-            }?;
+                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                        Ok(MotionStatus::NoChange(Instant::now()))
+                    }
+                    // On connection drop we stop
+                    Err(e @ crossbeam_channel::RecvTimeoutError::Disconnected) => Err(e),
+                }?;
 
-            match data_out.motion_recv(status) {
-                Ok(true) => {}
-                Ok(false) => return Ok(()),
-                Err(e) => return Err(e),
+                if tx.send(status).is_err() {
+                    // Motion reciever has been dropped
+                    abort_handle_thread.store(true, Ordering::Relaxed);
+                    break;
+                }
             }
-        }
+            Ok(())
+        });
+
+        Ok(MotionData {
+            handle: Some(handle),
+            rx,
+            abort_handle,
+            last_update: MotionStatus::NoChange(Instant::now()),
+        })
     }
 }
