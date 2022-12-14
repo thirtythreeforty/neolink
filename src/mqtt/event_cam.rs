@@ -2,7 +2,7 @@ use super::App;
 use crate::config::CameraConfig;
 use crate::utils::AddressOrUid;
 use anyhow::{anyhow, Context, Result};
-use crossbeam_channel::{unbounded, Receiver, Sender, TryRecvError};
+use crossbeam_channel::{bounded, unbounded, Receiver, Sender, TryRecvError};
 use log::*;
 use neolink_core::bc_protocol::{BcCamera, Error as BcError, LightState, MotionStatus};
 use std::sync::{Arc, Mutex};
@@ -18,13 +18,32 @@ pub(crate) enum Messages {
     IRLedOn,
     IRLedOff,
     IRLedAuto,
+    Battery,
+    Ptz(Direction),
+}
+
+pub(crate) enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+    In,
+    Out,
+}
+
+enum ToCamera {
+    Send(Messages),
+    SendAndReply {
+        message: Messages,
+        reply: Sender<String>,
+    },
 }
 
 pub(crate) struct EventCam<'a> {
     config: &'a CameraConfig,
     app: Arc<App>,
     channel_out: Arc<Mutex<Option<Receiver<Messages>>>>,
-    channel_in: Arc<Mutex<Option<Sender<Messages>>>>,
+    channel_in: Arc<Mutex<Option<Sender<ToCamera>>>>,
 }
 
 impl<'a> EventCam<'a> {
@@ -53,8 +72,28 @@ impl<'a> EventCam<'a> {
         if let Ok(ref mut channel_in) = self.channel_in.lock() {
             if let Some(channel_in) = channel_in.as_mut() {
                 channel_in
-                    .send(msg)
+                    .send(ToCamera::Send(msg))
                     .context("Failed to send message from camera")
+            } else {
+                Err(anyhow!("Failed to send camera data over crossbeam"))
+            }
+        } else {
+            Err(anyhow!("Failed to lock"))
+        }
+    }
+
+    pub(crate) fn send_message_with_reply(&self, msg: Messages) -> Result<String> {
+        if let Ok(ref mut channel_in) = self.channel_in.lock() {
+            if let Some(channel_in) = channel_in.as_mut() {
+                let (tx, rx) = bounded(1);
+                channel_in
+                    .send(ToCamera::SendAndReply {
+                        message: msg,
+                        reply: tx,
+                    })
+                    .context("Failed to send message from camera")?;
+                rx.recv_timeout(std::time::Duration::from_secs(3))
+                    .context("Failed to recieve reply")
             } else {
                 Err(anyhow!("Failed to send camera data over crossbeam"))
             }
@@ -94,7 +133,7 @@ impl<'a> EventCam<'a> {
     fn cam_run(
         camera_config: &CameraConfig,
         tx: Arc<Mutex<Sender<Messages>>>,
-        rx: Arc<Mutex<Receiver<Messages>>>,
+        rx: Arc<Mutex<Receiver<ToCamera>>>,
         app: Arc<App>,
     ) -> Result<()> {
         let camera_addr =
@@ -196,7 +235,7 @@ impl MotionThread {
 
 struct MessageHandler {
     app: Arc<App>,
-    rx: Arc<Mutex<Receiver<Messages>>>,
+    rx: Arc<Mutex<Receiver<ToCamera>>>,
     camera: Arc<BcCamera>,
     name: String,
 }
@@ -207,45 +246,78 @@ impl MessageHandler {
             // Try and lock don't worry if not
             if let Ok(ref mut channel_out) = self.rx.try_lock() {
                 match channel_out.try_recv() {
-                    Ok(message) => match message {
-                        Messages::Reboot => {
-                            if self.camera.reboot().is_err() {
-                                error!("Failed to reboot the camera");
-                                self.abort()
+                    Ok(to_camera) => {
+                        let (replier, message) = match to_camera {
+                            ToCamera::Send(message) => (None, message),
+                            ToCamera::SendAndReply { message, reply } => (Some(reply), message),
+                        };
+                        let reply = match message {
+                            Messages::Reboot => {
+                                if self.camera.reboot().is_err() {
+                                    error!("Failed to reboot the camera");
+                                    self.abort();
+                                    "FAIL".to_string()
+                                } else {
+                                    "OK".to_string()
+                                }
                             }
-                        }
-                        Messages::StatusLedOn => {
-                            if self.camera.led_light_set(true).is_err() {
-                                error!("Failed to turn on the status light");
-                                self.abort();
+                            Messages::StatusLedOn => {
+                                if self.camera.led_light_set(true).is_err() {
+                                    error!("Failed to turn on the status light");
+                                    self.abort();
+                                    "FAIL".to_string()
+                                } else {
+                                    "OK".to_string()
+                                }
                             }
-                        }
-                        Messages::StatusLedOff => {
-                            if self.camera.led_light_set(false).is_err() {
-                                error!("Failed to turn off the status light");
-                                self.abort();
+                            Messages::StatusLedOff => {
+                                if self.camera.led_light_set(false).is_err() {
+                                    error!("Failed to turn off the status light");
+                                    self.abort();
+                                    "FAIL".to_string()
+                                } else {
+                                    "OK".to_string()
+                                }
                             }
-                        }
-                        Messages::IRLedOn => {
-                            if self.camera.irled_light_set(LightState::On).is_err() {
-                                error!("Failed to turn on the status light");
-                                self.abort();
+                            Messages::IRLedOn => {
+                                if self.camera.irled_light_set(LightState::On).is_err() {
+                                    error!("Failed to turn on the status light");
+                                    self.abort();
+                                    "FAIL".to_string()
+                                } else {
+                                    "OK".to_string()
+                                }
                             }
-                        }
-                        Messages::IRLedOff => {
-                            if self.camera.irled_light_set(LightState::Off).is_err() {
-                                error!("Failed to turn on the status light");
-                                self.abort();
+                            Messages::IRLedOff => {
+                                if self.camera.irled_light_set(LightState::Off).is_err() {
+                                    error!("Failed to turn on the status light");
+                                    self.abort();
+                                    "FAIL".to_string()
+                                } else {
+                                    "OK".to_string()
+                                }
                             }
-                        }
-                        Messages::IRLedAuto => {
-                            if self.camera.irled_light_set(LightState::Auto).is_err() {
-                                error!("Failed to turn on the status light");
-                                self.abort();
+                            Messages::IRLedAuto => {
+                                if self.camera.irled_light_set(LightState::Auto).is_err() {
+                                    error!("Failed to turn on the status light");
+                                    self.abort();
+                                    "FAIL".to_string()
+                                } else {
+                                    "OK".to_string()
+                                }
                             }
+                            Messages::Battery => {
+                                unimplemented!()
+                            }
+                            Messages::Ptz(_direction) => {
+                                unimplemented!()
+                            }
+                            _ => "UNKNOWN COMMAND".to_string(),
+                        };
+                        if let Some(replier) = replier {
+                            let _ = replier.send(reply);
                         }
-                        _ => {}
-                    },
+                    }
                     Err(TryRecvError::Empty) => (),
                     Err(TryRecvError::Disconnected) => self.abort(),
                 }

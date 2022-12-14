@@ -22,7 +22,7 @@ use anyhow::{anyhow, Result};
 pub(crate) use app::App;
 pub(crate) use cmdline::Opt;
 use event_cam::EventCam;
-pub(crate) use event_cam::Messages;
+pub(crate) use event_cam::{Direction, Messages};
 use mqttc::{Mqtt, MqttReplyRef};
 
 /// Entry point for the mqtt subcommand
@@ -156,6 +156,37 @@ fn listen_on_camera(
                                 error!("Failed to set camera status light off");
                             }
                         }
+                        MqttReplyRef {
+                            topic: "control/ptz",
+                            message,
+                        } => {
+                            let direction = match message.to_lowercase().as_str() {
+                                "up" => Direction::Up,
+                                "down" => Direction::Down,
+                                "left" => Direction::Left,
+                                "right" => Direction::Right,
+                                "in" => Direction::In,
+                                "out" => Direction::Out,
+                                _ => {
+                                    error!("Unrecongnized PTZ direction");
+                                    continue;
+                                }
+                            };
+                            if event_cam.send_message(Messages::Ptz(direction)).is_err() {
+                                error!("Failed to send PTZ");
+                            }
+                        }
+                        MqttReplyRef {
+                            topic: "query/battery",
+                            ..
+                        } => match event_cam.send_message_with_reply(Messages::Battery) {
+                            Ok(reply) => {
+                                if mqtt.send_message("status/battery", &reply, false).is_err() {
+                                    error!("Failed to send battery status reply");
+                                }
+                            }
+                            Err(_) => error!("Failed to set camera status light off"),
+                        },
                         _ => {}
                     }
                 }
