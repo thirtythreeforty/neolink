@@ -50,7 +50,7 @@ use gst::{RtspServer, TlsAuthenticationMode};
 ///
 /// Opt is the command line options
 pub(crate) fn main(_opt: Opt, mut config: Config) -> Result<()> {
-    let rtsp = Arc::new(RtspServer::new());
+    let rtsp = Arc::new(RtspServer::new()?);
 
     set_up_tls(&config, &rtsp);
 
@@ -144,6 +144,7 @@ fn camera_main(
     };
 
     let motion_timeout: Duration = Duration::from_secs_f64(config.pause.motion_timeout);
+    let mut ready_to_pause_print = false;
     loop {
         match camera.get_state() {
             StateInfo::Streaming => {
@@ -153,7 +154,8 @@ fn camera_main(
                         if can_pause {
                             info!("Pause on disconnect");
                             camera.pause().map_err(CameraFailureKind::Retry)?;
-                        } else {
+                        } else if !ready_to_pause_print {
+                            ready_to_pause_print = true;
                             warn!("Not ready to pause");
                         }
                     }
@@ -169,7 +171,8 @@ fn camera_main(
                                 if can_pause {
                                     info!("Pause on motion");
                                     camera.pause().map_err(CameraFailureKind::Retry)?;
-                                } else {
+                                } else if !ready_to_pause_print {
+                                    ready_to_pause_print = true;
                                     warn!("Not ready to pause");
                                 }
                             }
@@ -177,7 +180,8 @@ fn camera_main(
                                 if can_pause {
                                     info!("Pause on motion (start)");
                                     camera.pause().map_err(CameraFailureKind::Retry)?;
-                                } else {
+                                } else if !ready_to_pause_print {
+                                    ready_to_pause_print = true;
                                     warn!("Not ready to pause");
                                 }
                             }

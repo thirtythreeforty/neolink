@@ -9,7 +9,7 @@ pub(crate) use self::maybe_inputselect::MaybeInputSelect;
 // use super::adpcm::adpcm_to_pcm;
 // use super::errors::Error;
 use gstreamer::prelude::Cast;
-use gstreamer::{Bin, Structure};
+use gstreamer::{Bin, ElementFactory, Structure};
 use gstreamer_app::AppSrc;
 //use gstreamer_rtsp::RTSPLowerTrans;
 use anyhow::{anyhow, Context};
@@ -344,17 +344,121 @@ impl GstOutputs {
 
 impl Default for RtspServer {
     fn default() -> RtspServer {
-        Self::new()
+        Self::new().unwrap()
     }
 }
 
 impl RtspServer {
-    pub(crate) fn new() -> RtspServer {
-        gstreamer::init().expect("Gstreamer should not explode");
-        RtspServer {
+    pub(crate) fn new() -> AnyResult<RtspServer> {
+        gstreamer::init().context("Gstreamer failed to initialise")?;
+        let needed_elements = &[
+            (
+                "appsrc",
+                "app (gst-plugins-base)",
+                "Cannot run without an appsrc",
+            ),
+            (
+                "audioconvert",
+                "audioconvert (gst-plugins-base)",
+                "Required for audio",
+            ),
+            ("rtpL16pay", "rtp (gst-plugins-good)", "Required for audio"),
+        ];
+        let sometimes_needed_elements = &[
+            ("adpcmdec", "adpcmdec", "Required for audio"),
+            (
+                "h264parse",
+                "videoparsersbad (gst-plugins-bad)",
+                "Required for certain types of camera",
+            ),
+            (
+                "h265parse",
+                "videoparsersbad (gst-plugins-bad)",
+                "Required for certain types of camera",
+            ),
+            (
+                "x264enc",
+                "x264 (gst-plugins-ugly)",
+                "Required to paused certain cameras",
+            ),
+            (
+                "x265enc",
+                "x265 (gst-plugins-bad)",
+                "Required to paused certain cameras",
+            ),
+            (
+                "avdec_h264",
+                "libav (gst-libav)",
+                "Required to paused certain cameras",
+            ),
+            (
+                "avdec_h265",
+                "libav (gst-libav)",
+                "Required to paused certain cameras",
+            ),
+            (
+                "videotestsrc",
+                "videotestsrc (gst-plugins-base)",
+                "Required to paused certain cameras",
+            ),
+            (
+                "imagefreeze",
+                "imagefreeze (gst-plugins-good)",
+                "Required to paused certain cameras",
+            ),
+            (
+                "rtph264pay",
+                "rtp (gst-plugins-good)",
+                "Required for certain types of camera",
+            ),
+            (
+                "rtph265pay",
+                "rtp (gst-plugins-good)",
+                "Required for certain types of camera",
+            ),
+            (
+                "aacparse",
+                "audioparsers (gst-plugins-good)",
+                "Required for certain types of camera's audio",
+            ),
+            (
+                "audiotestsrc",
+                "audiotestsrc (gst-plugins-base)",
+                "Required for pausing",
+            ),
+            (
+                "decodebin",
+                "playback (gst-plugins-good)",
+                "Required for pausing",
+            ),
+        ];
+        let mut fatal = false;
+        for (element, plugin, msg) in needed_elements.iter() {
+            if ElementFactory::find(element).is_none() {
+                error!(
+                    "Missing required gstreamer plugin `{}` for `{}` element. {}",
+                    plugin, element, msg
+                );
+                fatal = true;
+            }
+        }
+
+        for (element, plugin, msg) in sometimes_needed_elements.iter() {
+            if ElementFactory::find(element).is_none() {
+                warn!(
+                    "Missing the gstreamer plugin `{}` for `{}` element. {}",
+                    plugin, element, msg
+                );
+            }
+        }
+
+        if fatal {
+            return Err(anyhow!("Required Gstreamer Elements are missing"));
+        }
+        Ok(RtspServer {
             server: GstRTSPServer::new(),
             main_loop: glib::MainLoop::new(None, false),
-        }
+        })
     }
 
     pub(crate) fn add_stream<T: AsRef<str>>(
