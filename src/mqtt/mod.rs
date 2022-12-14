@@ -160,20 +160,33 @@ fn listen_on_camera(
                             topic: "control/ptz",
                             message,
                         } => {
-                            let direction = match message.to_lowercase().as_str() {
-                                "up" => Direction::Up,
-                                "down" => Direction::Down,
-                                "left" => Direction::Left,
-                                "right" => Direction::Right,
-                                "in" => Direction::In,
-                                "out" => Direction::Out,
-                                _ => {
-                                    error!("Unrecongnized PTZ direction");
-                                    continue;
+                            let lowercase_message = message.to_lowercase();
+                            let mut words = lowercase_message.split_whitespace();
+                            if let Some(direction_txt) = words.next() {
+                                let amount = words.next().unwrap_or("32.0");
+                                if let Ok(amount) = amount.parse::<f32>() {
+                                    let direction = match direction_txt {
+                                        "up" => Direction::Up(amount),
+                                        "down" => Direction::Down(amount),
+                                        "left" => Direction::Left(amount),
+                                        "right" => Direction::Right(amount),
+                                        "in" => Direction::In(amount),
+                                        "out" => Direction::Out(amount),
+                                        _ => {
+                                            error!("Unrecongnized PTZ direction");
+                                            continue;
+                                        }
+                                    };
+                                    if event_cam.send_message(Messages::Ptz(direction)).is_err() {
+                                        error!("Failed to send PTZ");
+                                    }
+                                } else {
+                                    error!("No PTZ direction speed was not a valid number");
                                 }
-                            };
-                            if event_cam.send_message(Messages::Ptz(direction)).is_err() {
-                                error!("Failed to send PTZ");
+                            } else {
+                                error!(
+                                    "No PTZ Direction given. Please add up/down/left/right/in/out"
+                                );
                             }
                         }
                         MqttReplyRef {

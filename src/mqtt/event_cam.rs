@@ -23,12 +23,12 @@ pub(crate) enum Messages {
 }
 
 pub(crate) enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
-    In,
-    Out,
+    Up(f32),
+    Down(f32),
+    Left(f32),
+    Right(f32),
+    In(f32),
+    Out(f32),
 }
 
 enum ToCamera {
