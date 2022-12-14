@@ -24,6 +24,7 @@ jobs:
           choco install -y --no-progress gstreamer-devel --version=1.20.0
           echo "Updating Cargo environment"
           echo "C:\gstreamer\1.0\x86_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "c:\gstreamer\1.0\msvc_x86_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           echo "GSTREAMER_1_0_ROOT_X86_64=C:\gstreamer\1.0\x86_64\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - if: runner.os == 'macOS'
         name: Install Gstreamer on macOS
