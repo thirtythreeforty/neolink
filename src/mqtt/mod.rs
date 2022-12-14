@@ -18,28 +18,31 @@ mod event_cam;
 mod mqttc;
 
 use crate::config::{CameraConfig, Config, MqttConfig};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 pub(crate) use app::App;
 pub(crate) use cmdline::Opt;
 use event_cam::EventCam;
 pub(crate) use event_cam::Messages;
 use mqttc::{Mqtt, MqttReplyRef};
 
-/// Entry point for the reboot subcommand
+/// Entry point for the mqtt subcommand
 ///
 /// Opt is the command line options
 pub(crate) fn main(_: Opt, config: Config) -> Result<()> {
     let app = App::new();
     let arc_app = Arc::new(app);
 
-    let mut mqtt_count: u8 = 0;
+    if config.cameras.iter().all(|config| config.mqtt.is_none()) {
+        return Err(anyhow!(
+            "MQTT command run, but no cameras configured with MQTT settings. Exiting."
+        ));
+    }
 
     let _ = crossbeam::scope(|s| {
         for camera_config in &config.cameras {
             if let Some(mqtt_config) = camera_config.mqtt.as_ref() {
                 let loop_arc_app = arc_app.clone();
                 info!("{}: Setting up mqtt", camera_config.name);
-                mqtt_count = mqtt_count + 1;
                 s.spawn(move |_| {
                     while loop_arc_app.running("app") {
                         let _ = listen_on_camera(camera_config, mqtt_config, loop_arc_app.clone());
@@ -48,10 +51,6 @@ pub(crate) fn main(_: Opt, config: Config) -> Result<()> {
             }
         }
     });
-
-    if mqtt_count == 0 {
-        error!("MQTT command run, but no cameras configured with MQTT settings. Exiting.");
-    }
 
     Ok(())
 }
