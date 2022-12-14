@@ -4,6 +4,28 @@ use log::*;
 ///
 /// Handles incoming and outgoing MQTT messages
 ///
+/// This acts as a bridge between cameras and MQTT servers
+///
+/// Messages are prefixed with `neolink/{CAMERANAME}`
+///
+/// Control messages:
+///
+/// - `/control/led [on|off]` Turns status LED on/off
+/// - `/control/ir [on|off|auti]` Turn IR lights on/off or automatically via light detection
+/// - `/control/reboot` Reboot the camera
+/// - `/control/ptz` [up|down|left|right|in|out] (amount) Control the PTZ movements, amount defaults to 32.0
+///
+/// Status Messages:
+///
+/// `/status offline` Sent when the neolink goes offline this is a LastWill message
+/// `/status disconnected` Sent when the camera goes offline
+/// `/status/battery` Sent in reply to a `/query/battery`
+///
+/// Query Messages:
+///
+/// `/query/battery` Request that the camera reports its battery level (Not Yet Implemented)
+///
+///
 /// # Usage
 ///
 /// ```bash
@@ -24,8 +46,8 @@ use log::*;
 //   credentials = ["username", "password"]
 // ```
 //
-// `server` is the mqtt server that messages will be sent to
-// `port` is the server's mqtt port
+// `server` is the mqtt server
+// `port` is the mqtt server's port
 // `credentials` are the username and password required to identify with the mqtt server
 //
 use std::sync::Arc;
