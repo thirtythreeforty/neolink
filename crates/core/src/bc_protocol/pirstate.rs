@@ -3,7 +3,7 @@ use crate::bc::{model::*, xml::*};
 
 impl BcCamera {
     /// Get the [RfAlarmCfg] xml which contains the PIR status of the camera
-    pub fn get_pirstate(&mut self) -> Result<RfAlarmCfg> {
+    pub fn get_pirstate(&self) -> Result<RfAlarmCfg> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let sub_get = connection.subscribe(msg_num)?;
@@ -50,7 +50,7 @@ impl BcCamera {
     }
 
     /// Set the PIR sensor using the [RfAlarmCfg] xml
-    pub fn set_pirstate(&mut self, rf_alarm_cfg: RfAlarmCfg) -> Result<()> {
+    pub fn set_pirstate(&self, rf_alarm_cfg: RfAlarmCfg) -> Result<()> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let sub_set = connection.subscribe(msg_num)?;
@@ -97,7 +97,7 @@ impl BcCamera {
 
     /// This is a convience function to control the PIR status
     /// True is on and false is off
-    pub fn pir_set(&mut self, state: bool) -> Result<()> {
+    pub fn pir_set(&self, state: bool) -> Result<()> {
         let mut pir_state = self.get_pirstate()?;
         // println!("{:?}", pir_state);
         pir_state.enable = match state {

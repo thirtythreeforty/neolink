@@ -16,6 +16,8 @@ pub const MSG_ID_VIDEO_STOP: u32 = 4;
 pub const MSG_ID_TALKABILITY: u32 = 10;
 /// TalkReset messages have this ID
 pub const MSG_ID_TALKRESET: u32 = 11;
+/// PtzControl messages have this ID
+pub const MSG_ID_PTZ_CONTROL: u32 = 18;
 /// Reboot messages have this ID
 pub const MSG_ID_REBOOT: u32 = 23;
 /// Request motion detection messages
@@ -50,7 +52,7 @@ pub const EMPTY_LEGACY_PASSWORD: &str =
     "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
 /// Top level bc message
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct Bc {
     /// header part of the message
     pub meta: BcMeta,
@@ -61,7 +63,7 @@ pub struct Bc {
 ///
 ///  The body of a bc message is either legacy or modern
 ///
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub enum BcBody {
     /// Legacy is unsupported except for login where it is used
@@ -86,7 +88,7 @@ pub enum BcBody {
 /// `extension` or `payload` these are header only messages. This usually occurs to acknoledge receipt
 /// of a command. In such cases the header `response_code` should be checked.
 ///
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct ModernMsg {
     /// Extension describes the following payload such as which channel id it is for
     pub extension: Option<Extension>,

@@ -10,7 +10,7 @@ use yaserde_derive::{YaDeserialize, YaSerialize};
 use indoc::indoc;
 
 /// There are two types of payloads xml and binary
-#[derive(PartialEq, Eq, Debug, YaDeserialize)]
+#[derive(PartialEq, Debug, YaDeserialize)]
 #[yaserde(flatten)]
 #[allow(clippy::large_enum_variant)]
 pub enum BcPayloads {
@@ -31,7 +31,7 @@ impl Default for BcPayloads {
 }
 
 /// The top level BC Xml
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Default, Debug, YaDeserialize, YaSerialize)]
 #[yaserde(rename = "body")]
 pub struct BcXml {
     /// Encryption xml is received during login and contain the NONCE
@@ -73,6 +73,9 @@ pub struct BcXml {
     /// Received when motion is detected
     #[yaserde(rename = "AlarmEventList")]
     pub alarm_event_list: Option<AlarmEventList>,
+    /// Sent to move the camera
+    #[yaserde(rename = "PtzControl")]
+    pub ptz_control: Option<PtzControl>,
 }
 
 impl BcXml {
@@ -443,6 +446,21 @@ pub struct AlarmEvent {
     /// The timestamp associated with the recording. `0` if not recording
     #[yaserde(rename = "timeStamp")]
     pub timeStamp: i32,
+}
+
+/// The Ptz messages used to move the camera
+#[derive(PartialEq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct PtzControl {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// The channel the event occured on. Usually zero unless from an NVR
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// The amount of movement to perform
+    pub speed: f32,
+    /// The direction to transverse. Known directions: "right"
+    pub command: String,
 }
 
 /// Convience function to return the xml version used throughout the library

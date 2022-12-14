@@ -4,7 +4,9 @@ use crate::utils::AddressOrUid;
 use anyhow::{anyhow, Context, Result};
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender, TryRecvError};
 use log::*;
-use neolink_core::bc_protocol::{BcCamera, Error as BcError, LightState, MotionStatus};
+use neolink_core::bc_protocol::{
+    BcCamera, Direction as BcDirection, Error as BcError, LightState, MotionStatus,
+};
 use std::sync::{Arc, Mutex};
 
 pub(crate) enum Messages {
@@ -309,8 +311,22 @@ impl MessageHandler {
                             Messages::Battery => {
                                 unimplemented!()
                             }
-                            Messages::Ptz(_direction) => {
-                                unimplemented!()
+                            Messages::Ptz(direction) => {
+                                let (bc_direction, amount) = match direction {
+                                    Direction::Up(amount) => (BcDirection::Up, amount),
+                                    Direction::Down(amount) => (BcDirection::Down, amount),
+                                    Direction::Left(amount) => (BcDirection::Left, amount),
+                                    Direction::Right(amount) => (BcDirection::Right, amount),
+                                    Direction::In(amount) => (BcDirection::In, amount),
+                                    Direction::Out(amount) => (BcDirection::Out, amount),
+                                };
+                                if self.camera.send_ptz(bc_direction, amount).is_err() {
+                                    error!("Failed to turn on the status light");
+                                    self.abort();
+                                    "FAIL".to_string()
+                                } else {
+                                    "OK".to_string()
+                                }
                             }
                             _ => "UNKNOWN COMMAND".to_string(),
                         };
