@@ -10,6 +10,24 @@ use log::*;
 /// neolink mqtt --config=config.toml
 /// ```
 ///
+/// # Example Config
+///
+/// ```toml
+// [[cameras]]
+// name = "Cammy"
+// username = "****"
+// password = "****"
+// address = "****:9000"
+//   [cameras.mqtt]
+//   server = "127.0.0.1"
+//   port = 1883
+//   credentials = ["username", "password"]
+// ```
+//
+// `server` is the mqtt server that messages will be sent to
+// `port` is the server's mqtt port
+// `credentials` are the username and password required to identify with the mqtt server
+//
 use std::sync::Arc;
 
 mod app;
