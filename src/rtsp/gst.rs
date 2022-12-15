@@ -362,9 +362,6 @@ impl RtspServer {
                 "audioconvert (gst-plugins-base)",
                 "Required for audio",
             ),
-            ("rtpL16pay", "rtp (gst-plugins-good)", "Required for audio"),
-        ];
-        let sometimes_needed_elements = &[
             ("adpcmdec", "adpcmdec", "Required for audio"),
             (
                 "h264parse",
@@ -376,6 +373,24 @@ impl RtspServer {
                 "videoparsersbad (gst-plugins-bad)",
                 "Required for certain types of camera",
             ),
+            (
+                "rtph264pay",
+                "rtp (gst-plugins-good)",
+                "Required for certain types of camera",
+            ),
+            (
+                "rtph265pay",
+                "rtp (gst-plugins-good)",
+                "Required for certain types of camera",
+            ),
+            (
+                "aacparse",
+                "audioparsers (gst-plugins-good)",
+                "Required for certain types of camera's audio",
+            ),
+            ("rtpL16pay", "rtp (gst-plugins-good)", "Required for audio"),
+        ];
+        let sometimes_needed_elements = &[
             (
                 "x264enc",
                 "x264 (gst-plugins-ugly)",
@@ -405,21 +420,6 @@ impl RtspServer {
                 "imagefreeze",
                 "imagefreeze (gst-plugins-good)",
                 "Required to paused certain cameras",
-            ),
-            (
-                "rtph264pay",
-                "rtp (gst-plugins-good)",
-                "Required for certain types of camera",
-            ),
-            (
-                "rtph265pay",
-                "rtp (gst-plugins-good)",
-                "Required for certain types of camera",
-            ),
-            (
-                "aacparse",
-                "audioparsers (gst-plugins-good)",
-                "Required for certain types of camera's audio",
             ),
             (
                 "audiotestsrc",
