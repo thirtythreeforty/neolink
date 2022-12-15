@@ -453,7 +453,9 @@ impl RtspServer {
         }
 
         if fatal {
-            return Err(anyhow!("Required Gstreamer Elements are missing"));
+            return Err(anyhow!(
+                "Required Gstreamer Elements are missing. Ensure gstreamer is installed correctly"
+            ));
         }
         Ok(RtspServer {
             server: GstRTSPServer::new(),
