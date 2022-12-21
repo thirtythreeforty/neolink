@@ -64,8 +64,6 @@ For a full list of commands use `neolink help`, or use
 
 ## Download & Installation
 
-In the future Neolink will be much easier to install.
-For now, follow these steps.
 Builds are provided for the following platforms:
 
 - Windows x86_64 ([download][win-ci-download])
@@ -133,9 +131,9 @@ or your package manager on Linux.
 [gstreamer]: https://gstreamer.freedesktop.org/documentation/installing/index.html
 [ci-download]: https://github.com/thirtythreeforty/neolink/actions?query=workflow%3ACI+branch%3Amaster+
 
-[win-ci-download]:          https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-windows-2019.zip
-[macos-ci-download]:        https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-macos-10.15.zip
-[ubuntu-ci-download]:       https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-ubuntu-18.04.zip
+[win-ci-download]:          https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-windows-2022.zip
+[macos-ci-download]:        https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-macos-12.zip
+[ubuntu-ci-download]:       https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-ubuntu-20.04.zip
 [debian-x86-ci-download]:   https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-i386-buster.zip
 [debian-armhf-ci-download]: https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-armhf-buster.zip
 [debian-aarch-ci-download]: https://nightly.link/thirtythreeforty/neolink/workflows/build/master/release-arm64-buster.zip
