@@ -4,12 +4,52 @@ use log::*;
 ///
 /// Handles incoming and outgoing MQTT messages
 ///
+/// This acts as a bridge between cameras and MQTT servers
+///
+/// Messages are prefixed with `neolink/{CAMERANAME}`
+///
+/// Control messages:
+///
+/// - `/control/led [on|off]` Turns status LED on/off
+/// - `/control/ir [on|off|auti]` Turn IR lights on/off or automatically via light detection
+/// - `/control/reboot` Reboot the camera
+/// - `/control/ptz` [up|down|left|right|in|out] (amount) Control the PTZ movements, amount defaults to 32.0
+///
+/// Status Messages:
+///
+/// `/status offline` Sent when the neolink goes offline this is a LastWill message
+/// `/status disconnected` Sent when the camera goes offline
+/// `/status/battery` Sent in reply to a `/query/battery`
+///
+/// Query Messages:
+///
+/// `/query/battery` Request that the camera reports its battery level (Not Yet Implemented)
+///
+///
 /// # Usage
 ///
 /// ```bash
 /// neolink mqtt --config=config.toml
 /// ```
 ///
+/// # Example Config
+///
+/// ```toml
+// [[cameras]]
+// name = "Cammy"
+// username = "****"
+// password = "****"
+// address = "****:9000"
+//   [cameras.mqtt]
+//   server = "127.0.0.1"
+//   port = 1883
+//   credentials = ["username", "password"]
+// ```
+//
+// `server` is the mqtt server
+// `port` is the mqtt server's port
+// `credentials` are the username and password required to identify with the mqtt server
+//
 use std::sync::Arc;
 
 mod app;
@@ -18,28 +58,31 @@ mod event_cam;
 mod mqttc;
 
 use crate::config::{CameraConfig, Config, MqttConfig};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 pub(crate) use app::App;
 pub(crate) use cmdline::Opt;
 use event_cam::EventCam;
-pub(crate) use event_cam::Messages;
+pub(crate) use event_cam::{Direction, Messages};
 use mqttc::{Mqtt, MqttReplyRef};
 
-/// Entry point for the reboot subcommand
+/// Entry point for the mqtt subcommand
 ///
 /// Opt is the command line options
 pub(crate) fn main(_: Opt, config: Config) -> Result<()> {
     let app = App::new();
     let arc_app = Arc::new(app);
 
-    let mut mqtt_count: u8 = 0;
+    if config.cameras.iter().all(|config| config.mqtt.is_none()) {
+        return Err(anyhow!(
+            "MQTT command run, but no cameras configured with MQTT settings. Exiting."
+        ));
+    }
 
     let _ = crossbeam::scope(|s| {
         for camera_config in &config.cameras {
             if let Some(mqtt_config) = camera_config.mqtt.as_ref() {
                 let loop_arc_app = arc_app.clone();
                 info!("{}: Setting up mqtt", camera_config.name);
-                mqtt_count = mqtt_count + 1;
                 s.spawn(move |_| {
                     while loop_arc_app.running("app") {
                         let _ = listen_on_camera(camera_config, mqtt_config, loop_arc_app.clone());
@@ -48,10 +91,6 @@ pub(crate) fn main(_: Opt, config: Config) -> Result<()> {
             }
         }
     });
-
-    if mqtt_count == 0 {
-        error!("MQTT command run, but no cameras configured with MQTT settings. Exiting.");
-    }
 
     Ok(())
 }
@@ -157,6 +196,50 @@ fn listen_on_camera(
                                 error!("Failed to set camera status light off");
                             }
                         }
+                        MqttReplyRef {
+                            topic: "control/ptz",
+                            message,
+                        } => {
+                            let lowercase_message = message.to_lowercase();
+                            let mut words = lowercase_message.split_whitespace();
+                            if let Some(direction_txt) = words.next() {
+                                let amount = words.next().unwrap_or("32.0");
+                                if let Ok(amount) = amount.parse::<f32>() {
+                                    let direction = match direction_txt {
+                                        "up" => Direction::Up(amount),
+                                        "down" => Direction::Down(amount),
+                                        "left" => Direction::Left(amount),
+                                        "right" => Direction::Right(amount),
+                                        "in" => Direction::In(amount),
+                                        "out" => Direction::Out(amount),
+                                        _ => {
+                                            error!("Unrecongnized PTZ direction");
+                                            continue;
+                                        }
+                                    };
+                                    if event_cam.send_message(Messages::Ptz(direction)).is_err() {
+                                        error!("Failed to send PTZ");
+                                    }
+                                } else {
+                                    error!("No PTZ direction speed was not a valid number");
+                                }
+                            } else {
+                                error!(
+                                    "No PTZ Direction given. Please add up/down/left/right/in/out"
+                                );
+                            }
+                        }
+                        MqttReplyRef {
+                            topic: "query/battery",
+                            ..
+                        } => match event_cam.send_message_with_reply(Messages::Battery) {
+                            Ok(reply) => {
+                                if mqtt.send_message("status/battery", &reply, false).is_err() {
+                                    error!("Failed to send battery status reply");
+                                }
+                            }
+                            Err(_) => error!("Failed to set camera status light off"),
+                        },
                         _ => {}
                     }
                 }

@@ -28,6 +28,30 @@
 /// neolink rtsp --config=config.toml
 /// ```
 ///
+/// # Example Config
+///
+/// ```toml
+// [[cameras]]
+// name = "Cammy"
+// username = "****"
+// password = "****"
+// address = "****:9000"
+//   [cameras.pause]
+//   on_motion = false
+//   on_client = false
+//   mode = "none"
+//   timeout = 1.0
+// ```
+//
+// - When `on_motion` is true the camera will pause streaming when motion is stopped and resume it when motion is started
+// - When `on_client` is true the camera will pause while there is no client connected.
+// - `timeout` handels how long to wait after motion stops before pausing the stream
+// - `mode` has the following values:
+//   - `"black"`: Switches to a black screen. Requires more cpu as the stream is fully reencoded
+//   - `"still"`: Switches to a still image. Requires more cpu as the stream is fully reencoded
+//   - `"test"`: Switches to the gstreamer test image. Requires more cpu as the stream is fully reencoded
+//   - `"none"`: Resends the last iframe the camera. This does not reencode at all.  **Most use cases should use this one as it has the least effort on the cpu and gives what you would expect**
+//
 use anyhow::{anyhow, Context, Result};
 use crossbeam::utils::Backoff;
 use log::*;
@@ -50,7 +74,7 @@ use gst::{RtspServer, TlsAuthenticationMode};
 ///
 /// Opt is the command line options
 pub(crate) fn main(_opt: Opt, mut config: Config) -> Result<()> {
-    let rtsp = Arc::new(RtspServer::new());
+    let rtsp = Arc::new(RtspServer::new()?);
 
     set_up_tls(&config, &rtsp);
 
@@ -144,6 +168,7 @@ fn camera_main(
     };
 
     let motion_timeout: Duration = Duration::from_secs_f64(config.pause.motion_timeout);
+    let mut ready_to_pause_print = false;
     loop {
         match camera.get_state() {
             StateInfo::Streaming => {
@@ -153,7 +178,8 @@ fn camera_main(
                         if can_pause {
                             info!("Pause on disconnect");
                             camera.pause().map_err(CameraFailureKind::Retry)?;
-                        } else {
+                        } else if !ready_to_pause_print {
+                            ready_to_pause_print = true;
                             warn!("Not ready to pause");
                         }
                     }
@@ -169,7 +195,8 @@ fn camera_main(
                                 if can_pause {
                                     info!("Pause on motion");
                                     camera.pause().map_err(CameraFailureKind::Retry)?;
-                                } else {
+                                } else if !ready_to_pause_print {
+                                    ready_to_pause_print = true;
                                     warn!("Not ready to pause");
                                 }
                             }
@@ -177,7 +204,8 @@ fn camera_main(
                                 if can_pause {
                                     info!("Pause on motion (start)");
                                     camera.pause().map_err(CameraFailureKind::Retry)?;
-                                } else {
+                                } else if !ready_to_pause_print {
+                                    ready_to_pause_print = true;
                                     warn!("Not ready to pause");
                                 }
                             }

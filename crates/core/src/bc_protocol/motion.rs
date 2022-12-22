@@ -68,9 +68,6 @@ impl MotionData {
                 Err(e) => return Err(Error::from(e)),
             }
         }
-        for res in results.iter() {
-            log::info!("Mption: {:?}", res);
-        }
         if let Some(last) = results.last() {
             self.last_update = *last;
         }

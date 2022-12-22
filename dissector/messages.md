@@ -2182,7 +2182,7 @@ Message have zero to two payloads.
   - Client
 
     - Extension
-    
+
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
     <Extension version="1.1">
@@ -2190,7 +2190,7 @@ Message have zero to two payloads.
     </Extension>
     ```
 
-    - Payload 
+    - Payload
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
@@ -2480,7 +2480,7 @@ Message have zero to two payloads.
     <FloodlightTask version="1.1">
     <channel>0</channel>
     <alarmMode>1</alarmMode>
-    <enable>1</enable> 
+    <enable>1</enable>
     <lastAlarmMode>2</lastAlarmMode>
     <preview_auto>0</preview_auto>
     <duration>300</duration>
@@ -2523,3 +2523,40 @@ Message have zero to two payloads.
     </FloodlightTask>
     </body>
     ```
+
+- 252: BatteryList
+
+  - Client
+
+    Camera Only Message.
+
+  - Camera
+
+    - Header
+
+    |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
+    |--------------|--------------|----------------|-------------------|-------------------|---------------|----------------|
+    | f0 de bc 0a  | fc 00 00 00  |  1c 02 00 00   |    00 00 00 00    |       c8 00       |      00 00    |   00 00 00 00  |
+
+    - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+        <BatteryList version="1.1">
+            <BatteryInfo>
+                <channelId>0</channelId>
+                <chargeStatus>chargeComplete</chargeStatus>
+                <adapterStatus>solarPanel</adapterStatus>
+                <voltage>3999</voltage>
+                <current>0</current>
+                <temperature>21</temperature>
+                <batteryPercent>100</batteryPercent>
+                <lowPower>0</lowPower>
+                <batteryVersion>2</batteryVersion>
+            </BatteryInfo>
+        </BatteryList>
+    </body>
+    ```
+
+    **Notes**: Sent after login, with a message handle of 0 (usually 0 means not sent in reply to a specific request). TODO: Find out how to request on demand.
