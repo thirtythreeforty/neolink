@@ -1,20 +1,21 @@
 # Neolink Docker image build scripts
-# Copyright (c) 2020 George Hilliard
+# Copyright (c) 2020 George Hilliard,
+#                    Andrew King,
+#                    Miroslav Šedivý
 # SPDX-License-Identifier: AGPL-3.0-only
 
-FROM docker.io/rust:1-alpine AS build
-MAINTAINER thirtythreeforty@gmail.com
+FROM docker.io/rust:slim-buster AS build
+LABEL authours="George Hilliard <thirtythreeforty@gmail.com>"
 
-# Until Alpine merges gst-rtsp-server into a release, pull all Gstreamer packages
-# from the "testing" release
-RUN apk add --no-cache \
-    -X http://dl-cdn.alpinelinux.org/alpine/edge/main \
-    -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
-  gst-rtsp-server-dev
-RUN apk add --no-cache musl-dev gcc
-
-# Use static linking to work around https://github.com/rust-lang/rust/pull/58575
-ENV RUSTFLAGS='-C target-feature=-crt-static'
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essential \
+      libgstrtspserver-1.0-dev \
+      libgstreamer1.0-dev \
+      libgtk2.0-dev \
+      libglib2.0-dev && \
+    apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/local/src/neolink
 
@@ -23,19 +24,15 @@ COPY . /usr/local/src/neolink
 RUN cargo build --release
 
 # Create the release container. Match the base OS used to build
-FROM docker.io/alpine:latest
+FROM debian:buster-slim
 
-RUN apk add --no-cache \
-    -X http://dl-cdn.alpinelinux.org/alpine/edge/main \
-    -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
-  libgcc \
-  tzdata \
-  gstreamer \
-  gst-plugins-base \
-  gst-plugins-good \
-  gst-plugins-bad \
-  gst-plugins-ugly \
-  gst-rtsp-server
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libgstrtspserver-1.0-0 \
+        libgstreamer1.0-0 \
+        gstreamer1.0-plugins-good \
+        gstreamer1.0-plugins-bad && \
+    apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build \
   /usr/local/src/neolink/target/release/neolink \

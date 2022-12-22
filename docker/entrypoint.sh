@@ -4,6 +4,6 @@
 exit_func() {
     exit 1
 }
-trap exit_func SIGTERM SIGINT
+trap exit_func TERM INT
 
 "$@"
