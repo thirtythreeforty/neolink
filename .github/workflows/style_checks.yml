@@ -5,7 +5,7 @@ on: [push, pull_request]
 jobs:
   check_clippy:
     name: Clippy
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v1
     - name: apt install gstreamer
@@ -30,7 +30,7 @@ jobs:
 
   check_fmt:
     name: Rust-fmt
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v1
     - uses: actions-rs/toolchain@v1
