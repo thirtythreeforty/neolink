@@ -16,7 +16,8 @@ jobs:
         name: apt install gstreamer
         run: |
           sudo apt update
-          sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev
+          sudo apt install -y aptitude
+          sudo aptitude install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev
       - if: runner.os == 'Windows'
         name: Install Gstreamer
         run: |
