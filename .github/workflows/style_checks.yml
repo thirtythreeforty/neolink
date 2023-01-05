@@ -15,7 +15,7 @@ jobs:
         sudo aptitude install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev
     - name: Install nightly rust
       run: |
-          rustup toolchain install nightly --component cargo
+          rustup toolchain install nightly --component clippy
           rustup override set nightly
     - name: Run clippy manually
       run: cargo +nightly clippy --workspace --all-targets --all-features
