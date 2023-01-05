@@ -10,7 +10,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, windows-2022, macos-12]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         name: Checkout onto ${{ runner.os }}
       - if: runner.os == 'Linux'
         name: apt install gstreamer
@@ -45,26 +45,26 @@ jobs:
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "${GITHUB_ENV}"
           echo "PKG_CONFIG_GSTREAMER_1_0_PREFIX=${PKG_CONFIG_GSTREAMER_1_0_PREFIX}" >> "${GITHUB_ENV}"
       - name: Cache cargo registry
-        uses: actions/cache@v1
+        uses: actions/cache@v3
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
       - name: Cache cargo index
-        uses: actions/cache@v1
+        uses: actions/cache@v3
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
       - name: Cache cargo build
         if: runner.os != 'macOS' # Random missing crates on macOS, unclear why
-        uses: actions/cache@v1
+        uses: actions/cache@v3
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions-rs/cargo@v1
+      - uses: actions-rs/cargo@v2
         with:
           command: build
           args: --release --all-features
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: release-${{ matrix.os }}
           path: "target/release/neolink*"
@@ -93,7 +93,7 @@ jobs:
             # on i686, the pkgconfig path doesn't match the prefix!
             pkgconfig: i386-linux-gnu
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install basic tools
         run: |
           apt-get update
@@ -119,7 +119,7 @@ jobs:
           target: ${{ matrix.target }}
           profile: minimal
       - name: Build
-        uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v2
         with:
           command: build
           args: --release --all-features --target=${{ matrix.target }}
@@ -127,7 +127,7 @@ jobs:
           # Retarget pkg-config as described in https://www.freedesktop.org/wiki/Software/pkg-config/CrossCompileProposal/
           PKG_CONFIG_ALLOW_CROSS: 1
           PKG_CONFIG_LIBDIR: /usr/lib/${{ matrix.pkgconfig }}/pkgconfig
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: release-${{ matrix.arch }}-buster
           path: "target/${{ matrix.target }}/release/neolink*"
@@ -141,7 +141,7 @@ jobs:
       - "native"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Install latest rust
         uses: actions-rs/toolchain@v1
         with:
@@ -155,7 +155,7 @@ jobs:
         id: toml
         run: |
           NEOLINK_VERSION="$(toml get Cargo.toml  package.version | sed 's|"||g')"
-          echo "::set-output name=version::${NEOLINK_VERSION}"
+          echo "version=${NEOLINK_VERSION}"  >> $GITHUB_OUTPUT
       - name: Download Windows
         uses: actions/download-artifact@v3
         with:

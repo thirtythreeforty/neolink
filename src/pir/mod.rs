@@ -25,7 +25,7 @@ pub(crate) use cmdline::Opt;
 ///
 /// Opt is the command line options
 pub(crate) fn main(opt: Opt, config: Config) -> Result<()> {
-    let mut camera = find_and_connect(&config, &opt.camera)?;
+    let camera = find_and_connect(&config, &opt.camera)?;
 
     camera
         .pir_set(opt.on)

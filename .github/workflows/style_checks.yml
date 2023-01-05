@@ -7,7 +7,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
     - name: apt install gstreamer
       run: |
         sudo apt update
@@ -33,7 +33,7 @@ jobs:
     name: Rust-fmt
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
     - uses: actions-rs/toolchain@v1
       with:
           toolchain: nightly
@@ -47,7 +47,7 @@ jobs:
     name: Luacheck
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v3
     - name: Run luacheck
       uses: nebularg/actions-luacheck@v1
       with:
