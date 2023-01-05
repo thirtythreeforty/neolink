@@ -110,6 +110,10 @@ jobs:
           libgstreamer1.0-dev:${{ matrix.arch }} \
           libgtk2.0-dev:${{ matrix.arch }} \
           libglib2.0-dev:${{ matrix.arch }}
+      - name: Install rustup
+        run: |
+          curl https://sh.rustup.rs -sSf | sh -s -- --no-modify-path --quiet -y
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
       - name: Install ${{ matrix.arch }} Rust toolchain
         run: |
           rustup install stable-${TARGET}
