@@ -195,7 +195,7 @@ jobs:
             neolink_linux_i386
           )
           for d in "${dirs[@]}"; do
-            chmod +x "${d}/neolink"
+            chmod +x "${d}/neolink"*
             zip -r "${d}.zip" "${d}"
           done
       - name: Release
