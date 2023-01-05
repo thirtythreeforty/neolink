@@ -13,20 +13,11 @@ jobs:
         sudo apt update
         sudo apt install -y aptitude
         sudo aptitude install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev
-    - uses: actions-rs/toolchain@v1
-      with:
-          toolchain: nightly
-          components: clippy
-          override: true
-    - name: Run clippy action to produce annotations
-      uses: actions-rs/clippy-check@v1
-      if: steps.check_permissions.outputs.has-permission
-      with:
-        toolchain: nightly
-        token: ${{ secrets.GITHUB_TOKEN }}
-        args: --workspace --all-targets --all-features
-    - name: Run clippy manually without annotations
-      if: ${{ !steps.check_permissions.outputs.has-permission }}
+    - name: Install nightly rust
+      run: |
+          rustup toolchain install nightly --component cargo
+          rustup override set nightly
+    - name: Run clippy manually
       run: cargo +nightly clippy --workspace --all-targets --all-features
 
   check_fmt:
@@ -34,11 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: actions-rs/toolchain@v1
-      with:
-          toolchain: nightly
-          components: rustfmt
-          override: true
+    - name: Install nightly rust
+      run: |
+          rustup toolchain install nightly --component rustfmt
+          rustup override set nightly
     - name: rustfmt
       run: |
         cargo +nightly fmt --all -- --check

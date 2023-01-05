@@ -111,12 +111,11 @@ jobs:
           libgtk2.0-dev:${{ matrix.arch }} \
           libglib2.0-dev:${{ matrix.arch }}
       - name: Install ${{ matrix.arch }} Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          target: ${{ matrix.target }}
-          profile: minimal
+        run: |
+          rustup install stable-${TARGET}
+          rustup override set stable-${TARGET}
+        env:
+          TARGET: ${{ matrix.target }}
       - name: Build
         run: |
           cargo build --release --all-features --target=${TARGET}
@@ -141,14 +140,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
       - name: Install latest rust
-        uses: actions-rs/toolchain@v1
-        with:
-            toolchain: stable
+        run: |
+            rustup toolchain install stable
       - name: Install toml-cli
-        uses: actions-rs/install@v0.1
-        with:
-          crate: toml-cli
-          version: latest
+        run: |
+          cargo install toml-cli
       - name: Get project version
         id: toml
         run: |
