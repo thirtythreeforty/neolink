@@ -131,3 +131,85 @@ jobs:
         with:
           name: release-${{ matrix.arch }}-buster
           path: "target/${{ matrix.target }}/release/neolink*"
+
+  create_release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    # if: startsWith(github.ref, 'refs/tags/') # Ensure this only runs on a tag or expect issues
+    needs:
+      - "cross"
+      - "native"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Install latest rust
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+      - name: Install toml-cli
+        uses: actions-rs/install@v0.1
+        with:
+          crate: toml-cli
+          version: latest
+      - name: Get project version
+        id: toml
+        run: |
+          NEOLINK_VERSION="$(toml get Cargo.toml  package.version | sed 's|"||g')"
+          echo "::set-output name=version::${NEOLINK_VERSION}"
+      - name: Download Windows
+        uses: actions/download-artifact@v3
+        with:
+          name: release-windows-2022
+          path: neolink_windows
+      - name: Download Macos
+        uses: actions/download-artifact@v3
+        with:
+          name: release-macos-12
+          path: neolink_macos
+      - name: Download Linux x86_64
+        uses: actions/download-artifact@v3
+        with:
+          name: release-ubuntu-22.04
+          path: neolink_linux_x86_64
+      - name: Download Linux armhf
+        uses: actions/download-artifact@v3
+        with:
+          name: release-armhf-buster
+          path: neolink_linux_armhf
+      - name: Download Linux arm64
+        uses: actions/download-artifact@v3
+        with:
+          name: release-arm64-buster
+          path: neolink_linux_arm64
+      - name: Download Linux i386
+        uses: actions/download-artifact@v3
+        with:
+          name: release-i386-buster
+          path: neolink_linux_i386
+      - name: Prepare Releases
+        run: |
+          dirs=(
+            neolink_windows
+            neolink_macos
+            neolink_linux_x86_64
+            neolink_linux_armhf
+            neolink_linux_arm64
+            neolink_linux_i386
+          )
+          for d in "${dirs[@]}"; do
+            zip -r "${d}.zip" "${d}"
+          done
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Neolink ${{steps.toml.outputs.version}}
+          files: |
+            neolink_windows.zip
+            neolink_macos.zip
+            neolink_linux_x86_64.zip
+            neolink_linux_armhf.zip
+            neolink_linux_arm64.zip
+            neolink_linux_i386.zip
+          body: |
+            Neolink Release ${{steps.toml.outputs.version}}
+          draft: true
