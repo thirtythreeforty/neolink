@@ -4,7 +4,7 @@ on: [push, pull_request, workflow_dispatch]
 
 jobs:
   native:
-    name: build
+    name: native
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -26,8 +26,9 @@ jobs:
           $env:GSTREAMER_1_0_ROOT_MSVC_X86_64=$env:SYSTEMDRIVE + '\gstreamer\1.0\msvc_x86_64\'
           echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=$env:GSTREAMER_1_0_ROOT_MSVC_X86_64"
           echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=$env:GSTREAMER_1_0_ROOT_MSVC_X86_64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "%GSTREAMER_1_0_ROOT_MSVC_X86_64%\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           echo "$env:GSTREAMER_1_0_ROOT_MSVC_X86_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          dir $env:GSTREAMER_1_0_ROOT_MSVC_X86_64\bin
+          Get-Content -Path $env:GITHUB_PATH
       - if: runner.os == 'macOS'
         name: Install Gstreamer on macOS
         run: |
