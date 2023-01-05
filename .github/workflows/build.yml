@@ -60,10 +60,9 @@ jobs:
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions-rs/cargo@v2
-        with:
-          command: build
-          args: --release --all-features
+      - name: Build
+        run: |
+          cargo  build --release --all-features
       - uses: actions/upload-artifact@v3
         with:
           name: release-${{ matrix.os }}
@@ -119,14 +118,13 @@ jobs:
           target: ${{ matrix.target }}
           profile: minimal
       - name: Build
-        uses: actions-rs/cargo@v2
-        with:
-          command: build
-          args: --release --all-features --target=${{ matrix.target }}
+        run: |
+          cargo build --release --all-features --target=${TARGET}
         env:
           # Retarget pkg-config as described in https://www.freedesktop.org/wiki/Software/pkg-config/CrossCompileProposal/
           PKG_CONFIG_ALLOW_CROSS: 1
           PKG_CONFIG_LIBDIR: /usr/lib/${{ matrix.pkgconfig }}/pkgconfig
+          TARGET: ${{ matrix.target }}
       - uses: actions/upload-artifact@v3
         with:
           name: release-${{ matrix.arch }}-buster
