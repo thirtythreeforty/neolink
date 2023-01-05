@@ -222,7 +222,7 @@ jobs:
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         uses: docker/build-push-action@v3
         with:
-          platforms: linux/amd64,linux/arm/v7,linux/arm/v6,linux/arm64
+          platforms: linux/amd64,linux/arm/v7,linux/arm64,linux/386
           push: true
           file: Dockerfile
           tags: ${{ steps.tags.outputs.TAGS }}

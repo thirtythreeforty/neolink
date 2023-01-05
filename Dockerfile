@@ -22,7 +22,8 @@ WORKDIR /usr/local/src/neolink
 
 # Build the main program or copy from github build ones
 COPY . /usr/local/src/neolink
-RUN  if [ -f "${TARGETPLATFORM}/neolink" ]; then \
+RUN  echo "TARGETPLATFORM; ${TARGETPLATFORM}"; \
+  if [ -f "${TARGETPLATFORM}/neolink" ]; then \
     mkdir -p /usr/local/src/neolink/target/release/; \
     cp "${TARGETPLATFORM}/neolink" "/usr/local/src/neolink/target/release/neolink"; \
   else \
