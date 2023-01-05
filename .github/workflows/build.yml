@@ -198,6 +198,7 @@ jobs:
         run: |
           mkdir linux
           mkdir linux/arm
+          mkdir linux/arm64
       - name: Download Linux x86_64
         uses: actions/download-artifact@v3
         with:
@@ -212,7 +213,7 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: release-arm64-buster
-          path: linux/arm64
+          path: linux/arm64/v8
       - name: Download Linux i386
         uses: actions/download-artifact@v3
         with:
@@ -222,7 +223,7 @@ jobs:
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         uses: docker/build-push-action@v3
         with:
-          platforms: linux/amd64,linux/arm/v7,linux/arm64,linux/386
+          platforms: linux/amd64,linux/arm/v7,linux/arm64/v8,linux/386
           push: true
           file: Dockerfile
           tags: ${{ steps.tags.outputs.TAGS }}

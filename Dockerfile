@@ -8,25 +8,28 @@ FROM docker.io/rust:slim-buster AS build
 ARG TARGETPLATFORM
 
 ENV DEBIAN_FRONTEND=noninteractive
-# hadolint ignore=DL3008
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      build-essential \
-      libgstrtspserver-1.0-dev \
-      libgstreamer1.0-dev \
-      libgtk2.0-dev \
-      libglib2.0-dev && \
-    apt-get clean -y && rm -rf /var/lib/apt/lists/*
+
 
 WORKDIR /usr/local/src/neolink
-
-# Build the main program or copy from github build ones
 COPY . /usr/local/src/neolink
-RUN  echo "TARGETPLATFORM; ${TARGETPLATFORM}"; \
+
+# Build the main program or copy from artifact
+# hadolint ignore=DL3008
+RUN  echo "TARGETPLATFORM: ${TARGETPLATFORM}"; \
   if [ -f "${TARGETPLATFORM}/neolink" ]; then \
+    echo "Restoring from artifact"; \
     mkdir -p /usr/local/src/neolink/target/release/; \
     cp "${TARGETPLATFORM}/neolink" "/usr/local/src/neolink/target/release/neolink"; \
   else \
+    echo "Building from scratch"; \
+    apt-get update && \
+        apt-get install -y --no-install-recommends \
+          build-essential \
+          libgstrtspserver-1.0-dev \
+          libgstreamer1.0-dev \
+          libgtk2.0-dev \
+          libglib2.0-dev && \
+        apt-get clean -y && rm -rf /var/lib/apt/lists/* ; \
     cargo build --release; \
   fi
 
