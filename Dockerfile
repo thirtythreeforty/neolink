@@ -5,9 +5,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 FROM docker.io/rust:slim-buster AS build
-LABEL authours="George Hilliard <thirtythreeforty@gmail.com>"
+ARG TARGETPLATFORM
 
 ENV DEBIAN_FRONTEND=noninteractive
+# hadolint ignore=DL3008
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       build-essential \
@@ -19,13 +20,32 @@ RUN apt-get update && \
 
 WORKDIR /usr/local/src/neolink
 
-# Build the main program
+# Build the main program or copy from github build ones
 COPY . /usr/local/src/neolink
-RUN cargo build --release
+RUN  if [ -f "${TARGETPLATFORM}/neolink" ]; then \
+    mkdir -p /usr/local/src/neolink/target/release/; \
+    cp "${TARGETPLATFORM}/neolink" "/usr/local/src/neolink/target/release/neolink"; \
+  else \
+    cargo build --release; \
+  fi
+
+# Check it works
+RUN chmod +x "/usr/local/src/neolink/target/release/neolink" && \
+  "/usr/local/src/neolink/target/release/neolink" --version
 
 # Create the release container. Match the base OS used to build
 FROM debian:buster-slim
+ARG TARGETPLATFORM
+ARG REPO
+ARG VERSION
+ARG OWNER
 
+LABEL description="An image for the neolink program which is a reolink camera to rtsp translator"
+LABEL repository="$REPO"
+LABEL version="$VERSION"
+LABEL maintainer="$OWNER"
+
+# hadolint ignore=DL3008
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libgstrtspserver-1.0-0 \

@@ -133,6 +133,108 @@ jobs:
           name: release-${{ matrix.arch }}-buster
           path: "target/${{ matrix.target }}/release/neolink*"
 
+  push_to_registry:
+    name: Build Docker image
+    # if: ${{ github.event_name }} == 'push'
+    runs-on: ubuntu-latest
+    needs:
+      - "cross"
+      - "native"
+    steps:
+      - name: Check token is set
+        id: vars
+        shell: bash
+        run: |
+            unset HAS_SECRET
+            if [ -n $SECRET ]; then HAS_SECRET='true' ; fi
+            echo "HAS_SECRET_TOKEN=${HAS_SECRET}" >> $GITHUB_OUTPUT
+        env:
+          SECRET: "${{ secrets.DOCKER_TOKEN }}"
+      - name: Check out the repo
+        uses: actions/checkout@v3
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+      - name: Convert username to lower case for docker
+        id: string_user
+        uses: ASzc/change-string-case-action@v5
+        with:
+          string: ${{ github.repository_owner }}
+      - name: Convert repo to lower case for docker
+        id: string_repo
+        uses: ASzc/change-string-case-action@v5
+        with:
+          string: ${{ github.repository }}
+      - name: Set up QEMU
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/setup-buildx-action@v2
+      - name: Login to Docker Hub
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/login-action@v2
+        with:
+          registry: docker.io
+          username: ${{ steps.string_user.outputs.lowercase }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+      - name: Get tag name
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        id: tags
+        run: |
+          branch="${GITHUB_REF#refs/heads/}"
+          tags="${REPO_NAME}:${branch}"
+          if [ "${branch}" == "master" ]; then
+            tags="${tags},${REPO_NAME}:latest"
+          fi
+          echo "TAGS=${tags}"  >> $GITHUB_OUTPUT
+        env:
+          REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
+      - name: Install latest rust
+        run: |
+            rustup toolchain install stable
+      - name: Install toml-cli
+        run: |
+          cargo install toml-cli
+      - name: Get project version
+        id: toml
+        run: |
+          NEOLINK_VERSION="$(toml get Cargo.toml  package.version | sed 's|"||g')"
+          echo "version=${NEOLINK_VERSION}"  >> $GITHUB_OUTPUT
+      - name: Prepare directory
+        run: |
+          mkdir linux
+          mkdir linux/arm
+      - name: Download Linux x86_64
+        uses: actions/download-artifact@v3
+        with:
+          name: release-ubuntu-22.04
+          path: linux/amd64
+      - name: Download Linux armv7
+        uses: actions/download-artifact@v3
+        with:
+          name: release-armhf-buster
+          path: linux/arm/v7
+      - name: Download Linux arm64
+        uses: actions/download-artifact@v3
+        with:
+          name: release-arm64-buster
+          path: linux/arm64
+      - name: Download Linux i386
+        uses: actions/download-artifact@v3
+        with:
+          name: release-i386-buster
+          path: linux/386
+      - name: Push to Docker Hub
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: docker/build-push-action@v3
+        with:
+          platforms: linux/amd64,linux/arm/v7,linux/arm/v6,linux/arm64
+          push: true
+          file: Dockerfile
+          tags: ${{ steps.tags.outputs.TAGS }}
+          build-args: VERSION=${{ steps.toml.outputs.version }}, REPO=${{ github.repository }}, OWNER=${{ github.repository_owner }}
+        env:
+          DOCKER_BUILDKIT: 1
+
   create_release:
     name: Create Release
     runs-on: ubuntu-latest
