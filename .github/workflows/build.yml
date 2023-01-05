@@ -117,7 +117,7 @@ jobs:
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
       - name: Install ${{ matrix.arch }} Rust toolchain
         run: |
-          rustup install stable-${TARGET}
+          rustup target add ${TARGET}
         env:
           TARGET: ${{ matrix.target }}
       - name: Build
