@@ -13,6 +13,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /usr/local/src/neolink
 COPY . /usr/local/src/neolink
 
+RUN ls
+RUN ls linux
+RUN ls linux\*
+
 # Build the main program or copy from artifact
 # hadolint ignore=DL3008
 RUN  echo "TARGETPLATFORM: ${TARGETPLATFORM}"; \
