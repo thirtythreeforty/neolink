@@ -219,16 +219,12 @@ jobs:
         with:
           name: release-i386-buster
           path: linux/386
-      - name: Check Content of Artifacts
-        run: |
-          ls
-          ls linux
-          ls linux/*
       - name: Push to Docker Hub
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         uses: docker/build-push-action@v3
         with:
           platforms: linux/amd64,linux/arm/v7,linux/arm64,linux/386
+          context: .
           push: true
           file: Dockerfile
           tags: ${{ steps.tags.outputs.TAGS }}
