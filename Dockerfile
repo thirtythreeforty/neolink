@@ -33,10 +33,6 @@ RUN  echo "TARGETPLATFORM: ${TARGETPLATFORM}"; \
     cargo build --release; \
   fi
 
-# Check it works
-RUN chmod +x "/usr/local/src/neolink/target/release/neolink" && \
-  "/usr/local/src/neolink/target/release/neolink" --version
-
 # Create the release container. Match the base OS used to build
 FROM debian:buster-slim
 ARG TARGETPLATFORM
@@ -63,7 +59,8 @@ COPY --from=build \
   /usr/local/bin/neolink
 COPY docker/entrypoint.sh /entrypoint.sh
 
-RUN "/usr/local/bin/neolink" --version
+RUN chmod +x "/usr/local/bin/neolink" && \
+    "/usr/local/bin/neolink" --version
 
 CMD ["/usr/local/bin/neolink", "rtsp", "--config", "/etc/neolink.toml"]
 ENTRYPOINT ["/entrypoint.sh"]
