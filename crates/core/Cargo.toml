@@ -1,8 +1,8 @@
 [package]
 name = "neolink_core"
 description = "Core services and structure for Reolink IP cameras"
-version = "0.4.0"
-authors = ["George Hilliard <thirtythreeforty@gmail.com>"]
+version = "0.5.0"
+authors = ["George Hilliard <thirtythreeforty@gmail.com>", "Andrew King <sheepchaan@gmail.com>"]
 edition = "2018"
 
 [dependencies]

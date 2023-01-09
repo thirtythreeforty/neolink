@@ -11,7 +11,7 @@ use log::*;
 /// Control messages:
 ///
 /// - `/control/led [on|off]` Turns status LED on/off
-/// - `/control/ir [on|off|auti]` Turn IR lights on/off or automatically via light detection
+/// - `/control/ir [on|off|auto]` Turn IR lights on/off or automatically via light detection
 /// - `/control/reboot` Reboot the camera
 /// - `/control/ptz` [up|down|left|right|in|out] (amount) Control the PTZ movements, amount defaults to 32.0
 ///
