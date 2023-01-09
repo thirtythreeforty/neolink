@@ -59,7 +59,7 @@ Make a config file see below.
 
 ### RTSP
 
-To use neolinks you need a config file.
+To use `neolink` you need a config file.
 
 There's a more complete example [here](https://github.com/QuantumEntangledAndy/neolink/blob/master/sample_config.toml),
 but the following should work as a minimal example.
@@ -80,8 +80,10 @@ password = "password"
 uid = "BCDEF0123456789A"
 ```
 
-Create a text file with those contents named `neolink.toml` in the same folder as neolink and then run the following command
-in your terminal in the same folder as neolink and the config file.
+Create a text file with called `neolink.toml` in the same folder as the neolink binary. With your config options.
+
+When ready start `neolink` with the following command
+using the terminal in the same folder the neolink binary is in.
 
 ```bash
 ./neolink rtsp --config=neolink.toml
@@ -132,7 +134,7 @@ Query Messages:
 
 ### Pause
 
-To use the pause featrue you will need to adjust your config file as such:
+To use the pause feature you will need to adjust your config file as such:
 
 ```toml
 bind = "0.0.0.0"
@@ -144,7 +146,7 @@ password = "password"
 uid = "ABCDEF0123456789"
   [cameras.pause]
   on_motion = true # Should pause when no motion
-  on_client = false # Should pause when no rtsp client
+  on_client = true # Should pause when no rtsp client
   mode = "none"  # What to do when paused values are: none, black, still, test
   timeout = 2.1 # How long to wait after motion stops before pausing
 ```
