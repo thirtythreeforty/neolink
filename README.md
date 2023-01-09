@@ -157,6 +157,16 @@ Then start the rtsp server as usual:
 ./neolink rtsp --config=neolink.toml
 ```
 
+
+### Docker
+
+[Docker](https://hub.docker.com/r/quantumentangledandy/neolink) builds are also provided
+in multiple architectures. The latest tag tracks master while each branch gets it's own tag.
+
+```bash
+docker pull quantumentangledandy/neolink
+```
+
 ## License
 
 Neolink is free software, released under the GNU Affero General Public License
