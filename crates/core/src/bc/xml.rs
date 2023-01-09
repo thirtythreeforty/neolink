@@ -69,6 +69,9 @@ pub struct BcXml {
     /// Revieced as part of the TalkAbility request
     #[yaserde(rename = "TalkAbility")]
     pub talk_ability: Option<TalkAbility>,
+    /// Received when motion is detected
+    #[yaserde(rename = "AlarmEventList")]
+    pub alarm_event_list: Option<AlarmEventList>,
 }
 
 impl BcXml {
@@ -410,6 +413,35 @@ pub struct AudioConfigList {
     /// The supported audio configs
     #[yaserde(rename = "audioConfig")]
     pub audio_config: AudioConfig,
+}
+
+/// An XML that desctibes a list of events such as motion detection
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AlarmEventList {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// List of events
+    #[yaserde(rename = "AlarmEvent")]
+    pub alarm_events: Vec<AlarmEvent>,
+}
+
+/// An alarm event. Camera can send multiple per message as an array in AlarmEventList.
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AlarmEvent {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// The channel the event occured on. Usually zero unless from an NVR
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// Motion status. Known values are `"MD"` or `"none"`
+    pub status: String,
+    /// The recording status. Known values `0` or `1`
+    pub recording: i32,
+    /// The timestamp associated with the recording. `0` if not recording
+    #[yaserde(rename = "timeStamp")]
+    pub timeStamp: i32,
 }
 
 /// Convience function to return the xml version used throughout the library

@@ -11,6 +11,7 @@ mod errors;
 mod ledstate;
 mod login;
 mod logout;
+mod motion;
 mod ping;
 mod pirstate;
 mod reboot;
@@ -27,6 +28,7 @@ pub use errors::Error;
 pub use ledstate::LightState;
 pub use pirstate::PirState;
 pub use resolution::*;
+pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
 pub use stream::{Stream, StreamOutput, StreamOutputError};
 
 type Result<T> = std::result::Result<T, Error>;
