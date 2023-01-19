@@ -35,7 +35,7 @@ impl Shared {
     }
 
     pub(super) fn get_paths(&self, stream: &Stream) -> Vec<String> {
-        match stream {
+        let mut streams = match stream {
             Stream::Main => vec![
                 format!("/{}", &self.name),
                 format!("/{}/mainStream", &self.name),
@@ -44,7 +44,11 @@ impl Shared {
             Stream::Extern => {
                 vec![format!("/{}/externStream", &self.name)]
             }
-        }
+        };
+        // Later VLC clients seem to only support lower case streams
+        let mut lowercase_streams: Vec<String> = streams.iter().map(|i| i.to_lowercase()).collect();
+        streams.append(&mut lowercase_streams);
+        streams
     }
 }
 
