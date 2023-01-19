@@ -1,7 +1,7 @@
 [package]
 name = "neolink"
 description = "A standards-compliant bridge to Reolink IP cameras"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["George Hilliard <thirtythreeforty@gmail.com>", "Andrew King <sheepchaan@gmail.com>"]
 edition = "2018"
 
@@ -11,7 +11,7 @@ members = [
 ]
 
 [dependencies]
-neolink_core = { path = "crates/core", version = "0.5.0" }
+neolink_core = { path = "crates/core", version = "0.5.1" }
 aes = "0.6"
 cfb-mode = "0.6"
 cookie-factory = "0.3"
