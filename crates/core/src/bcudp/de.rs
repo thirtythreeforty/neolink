@@ -1,27 +1,36 @@
 use super::{crc::calc_crc, model::*, xml::*, xml_crypto::decrypt};
 use crate::RX_TIMEOUT;
 use err_derive::Error;
-use nom::IResult;
 use nom::{
     combinator::*,
-    error::{make_error, ErrorKind},
+    error::{context as error_context, ContextError, ErrorKind, ParseError},
     number::streaming::*,
     take, Err,
 };
 use std::io::Read;
 use time::OffsetDateTime;
 
+fn make_error<I, E: ParseError<I>>(input: I, ctx: &'static str, kind: ErrorKind) -> E
+where
+    I: std::marker::Copy,
+    E: ContextError<I>,
+{
+    E::add_context(input, ctx, E::from_error_kind(input, kind))
+}
+
+type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), nom::Err<E>>;
+
 /// The error types used during deserialisation
 #[derive(Debug, Error)]
 pub enum Error {
     /// A Nom parsing error usually a malformed packet
-    #[error(display = "Parsing error")]
+    #[error(display = "Parsing error: {}", _0)]
     NomError(String),
     /// An IO error such as the stream being dropped
     #[error(display = "I/O error")]
     IoError(#[error(source)] std::io::Error),
 }
-type NomErrorType<'a> = nom::error::Error<&'a [u8]>;
+type NomErrorType<'a> = nom::error::VerboseError<&'a [u8]>;
 
 impl<'a> From<nom::Err<NomErrorType<'a>>> for Error {
     fn from(k: nom::Err<NomErrorType<'a>>) -> Self {
@@ -38,7 +47,7 @@ fn read_from_reader<P, O, E, R>(mut parser: P, mut rdr: R) -> Result<O, E>
 where
     R: Read,
     E: for<'a> From<nom::Err<NomErrorType<'a>>> + From<std::io::Error>,
-    P: FnMut(&[u8]) -> nom::IResult<&[u8], O>,
+    P: FnMut(&[u8]) -> IResult<&[u8], O>,
 {
     let mut input: Vec<u8> = Vec::new();
     loop {
@@ -89,12 +98,15 @@ impl BcUdp {
 }
 
 fn bcudp(buf: &[u8]) -> IResult<&[u8], BcUdp> {
-    let (buf, magic) = verify(le_u32, |x| {
-        matches!(
-            *x,
-            MAGIC_HEADER_UDP_NEGO | MAGIC_HEADER_UDP_ACK | MAGIC_HEADER_UDP_DATA
-        )
-    })(buf)?;
+    let (buf, magic) = error_context(
+        "Magic is invalid",
+        verify(le_u32, |x| {
+            matches!(
+                *x,
+                MAGIC_HEADER_UDP_NEGO | MAGIC_HEADER_UDP_ACK | MAGIC_HEADER_UDP_DATA
+            )
+        }),
+    )(buf)?;
 
     match magic {
         MAGIC_HEADER_UDP_NEGO => {
@@ -114,31 +126,41 @@ fn bcudp(buf: &[u8]) -> IResult<&[u8], BcUdp> {
 }
 
 fn udp_disc(buf: &[u8]) -> IResult<&[u8], UdpDiscovery> {
-    let (buf, payload_size) = le_u32(buf)?;
-    let (buf, _unknown_a) = verify(le_u32, |&x| x == 1)(buf)?;
-    let (buf, tid) = le_u32(buf)?;
-    let (buf, checksum) = le_u32(buf)?;
+    let (buf, payload_size) = error_context("DISC: Missing payload size", le_u32)(buf)?;
+    let (buf, _unknown_a) = error_context(
+        "DISC: Unable to verify UnknowA",
+        verify(le_u32, |&x| x == 1),
+    )(buf)?;
+    let (buf, tid) = error_context("DISC: Missing TID", le_u32)(buf)?;
+    let (buf, checksum) = error_context("DISC: Missing checksum", le_u32)(buf)?;
     let (buf, enc_data_slice) = take!(buf, payload_size)?;
 
     let actual_checksum = calc_crc(enc_data_slice);
     assert_eq!(checksum, actual_checksum);
 
     let decrypted_payload = decrypt(tid, enc_data_slice);
-    let payload = UdpXml::try_parse(decrypted_payload.as_slice())
-        .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
+    let payload = UdpXml::try_parse(decrypted_payload.as_slice()).map_err(|_| {
+        Err::Error(make_error(
+            buf,
+            "DISC: Unable to decode UDPXml",
+            ErrorKind::MapRes,
+        ))
+    })?;
 
     let data = UdpDiscovery { tid, payload };
     Ok((buf, data))
 }
 
 fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
-    let (buf, connection_id) = le_i32(buf)?;
-    let (buf, _unknown_a) = verify(le_u32, |&x| x == 0)(buf)?;
-    let (buf, _unknown_b) = verify(le_u32, |&x| x == 0)(buf)?;
-    let (buf, packet_id) = le_u32(buf)?; // This is the point at which the camera has contigious
-                                         // packets to
-    let (buf, _unknown) = le_u32(buf)?;
-    let (buf, payload_size) = le_u32(buf)?;
+    let (buf, connection_id) = error_context("ACK: Missing connect ID", le_i32)(buf)?;
+    let (buf, _unknown_a) =
+        error_context("ACK: Unable to verify UnknowA", verify(le_u32, |&x| x == 0))(buf)?;
+    let (buf, _unknown_b) =
+        error_context("ACK: Unable to verify UnknowB", verify(le_u32, |&x| x == 0))(buf)?;
+    let (buf, packet_id) = error_context("Missing packet_id", le_u32)(buf)?; // This is the point at which the camera has contigious
+                                                                             // packets to
+    let (buf, _unknown) = error_context("ACK: Missing unknown", le_u32)(buf)?;
+    let (buf, payload_size) = error_context("ACK: Missing payload_size", le_u32)(buf)?;
     let (buf, payload) = if payload_size > 0 {
         let (buf, t_payload) = take!(buf, payload_size)?; // It is a binary payload of
                                                           // `00 01 01 01 01 00 01`
@@ -159,10 +181,11 @@ fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
 }
 
 fn udp_data(buf: &[u8]) -> IResult<&[u8], UdpData> {
-    let (buf, connection_id) = le_i32(buf)?;
-    let (buf, _unknown_a) = verify(le_u32, |&x| x == 0)(buf)?;
-    let (buf, packet_id) = le_u32(buf)?;
-    let (buf, payload_size) = le_u32(buf)?;
+    let (buf, connection_id) = error_context("DATA: Missing connection_id", le_i32)(buf)?;
+    let (buf, _unknown_a) =
+        error_context("DATA: Unable to verify UnownA", verify(le_u32, |&x| x == 0))(buf)?;
+    let (buf, packet_id) = error_context("DATA: Missing packet_id", le_u32)(buf)?;
+    let (buf, payload_size) = error_context("DATA: Missing payload_size", le_u32)(buf)?;
     let (buf, payload) = take!(buf, payload_size)?;
 
     let data = UdpData {

@@ -3,22 +3,26 @@ use super::xml::{BcPayloads, BcXml};
 use super::xml_crypto;
 use crate::RX_TIMEOUT;
 use err_derive::Error;
-use nom::IResult;
-use nom::{bytes::streaming::take, combinator::*, number::streaming::*, sequence::*};
+use nom::{
+    bytes::streaming::take, combinator::*, error::context as error_context, number::streaming::*,
+    sequence::*,
+};
 use std::io::Read;
 use time::OffsetDateTime;
+
+type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), nom::Err<E>>;
 
 /// The error types used during deserialisation
 #[derive(Debug, Error)]
 pub enum Error {
     /// A Nom parsing error usually a malformed packet
-    #[error(display = "Parsing error")]
+    #[error(display = "Parsing error: {}", _0)]
     NomError(String),
     /// An IO error such as the stream being dropped
     #[error(display = "I/O error")]
     IoError(#[error(source)] std::io::Error),
 }
-type NomErrorType<'a> = nom::error::Error<&'a [u8]>;
+type NomErrorType<'a> = nom::error::VerboseError<&'a [u8]>;
 
 impl<'a> From<nom::Err<NomErrorType<'a>>> for Error {
     fn from(k: nom::Err<NomErrorType<'a>>) -> Self {
@@ -35,7 +39,7 @@ fn read_from_reader<P, O, E, R>(mut parser: P, mut rdr: R) -> Result<O, E>
 where
     R: Read,
     E: for<'a> From<nom::Err<NomErrorType<'a>>> + From<std::io::Error>,
-    P: FnMut(&[u8]) -> nom::IResult<&[u8], O>,
+    P: FnMut(&[u8]) -> IResult<&[u8], O>,
 {
     let mut input: Vec<u8> = Vec::new();
     loop {
@@ -133,9 +137,17 @@ fn bc_modern_msg<'a>(
     buf: &'a [u8],
 ) -> IResult<&'a [u8], ModernMsg> {
     use nom::{
-        error::{make_error, ErrorKind},
+        error::{ContextError, ErrorKind, ParseError},
         Err,
     };
+
+    fn make_error<I, E: ParseError<I>>(input: I, ctx: &'static str, kind: ErrorKind) -> E
+    where
+        I: std::marker::Copy,
+        E: ContextError<I>,
+    {
+        E::add_context(input, ctx, E::from_error_kind(input, kind))
+    }
 
     let ext_len = match header.payload_offset {
         Some(off) => off,
@@ -150,7 +162,13 @@ fn bc_modern_msg<'a>(
             0x00 => context.set_encrypted(EncryptionProtocol::Unencrypted),
             0x01 => context.set_encrypted(EncryptionProtocol::BCEncrypt),
             0x02 => context.set_encrypted(EncryptionProtocol::Aes(None)),
-            _ => return Err(Err::Error(make_error(buf, ErrorKind::MapRes))),
+            _ => {
+                return Err(Err::Error(make_error(
+                    buf,
+                    "Encryption Protocol is Unknown",
+                    ErrorKind::MapRes,
+                )));
+            }
         }
     }
 
@@ -172,8 +190,13 @@ fn bc_modern_msg<'a>(
     let extension = if ext_len > 0 {
         // Apply the XML parse function, but throw away the reference to decrypted in the Ok and
         // Err case. This error-error-error thing is the same idiom Nom uses internally.
-        let parsed = Extension::try_parse(processed_ext_buf)
-            .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
+        let parsed = Extension::try_parse(processed_ext_buf).map_err(|_| {
+            Err::Error(make_error(
+                buf,
+                "Unable to parse Extension XML",
+                ErrorKind::MapRes,
+            ))
+        })?;
         if let Extension {
             binary_data: Some(1),
             ..
@@ -199,8 +222,13 @@ fn bc_modern_msg<'a>(
         if context.in_bin_mode.contains(&(header.msg_num)) {
             payload = Some(BcPayloads::Binary(payload_buf.to_vec()));
         } else {
-            let xml = BcXml::try_parse(processed_payload_buf.as_slice())
-                .map_err(|_| Err::Error(make_error(buf, ErrorKind::MapRes)))?;
+            let xml = BcXml::try_parse(processed_payload_buf.as_slice()).map_err(|_| {
+                Err::Error(make_error(
+                    buf,
+                    "Unable to parse Payload XML",
+                    ErrorKind::MapRes,
+                ))
+            })?;
             payload = Some(BcPayloads::BcXml(xml));
         }
     } else {
@@ -211,15 +239,20 @@ fn bc_modern_msg<'a>(
 }
 
 fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
-    let (buf, _magic) = verify(le_u32, |x| *x == MAGIC_HEADER)(buf)?;
-    let (buf, msg_id) = le_u32(buf)?;
-    let (buf, body_len) = le_u32(buf)?;
-    let (buf, channel_id) = le_u8(buf)?;
-    let (buf, stream_type) = le_u8(buf)?;
-    let (buf, msg_num) = le_u16(buf)?;
-    let (buf, (response_code, class)) = tuple((le_u16, le_u16))(buf)?;
+    let (buf, _magic) =
+        error_context("Magic invalid", verify(le_u32, |x| *x == MAGIC_HEADER))(buf)?;
+    let (buf, msg_id) = error_context("MsgID missing", le_u32)(buf)?;
+    let (buf, body_len) = error_context("BodyLen missing", le_u32)(buf)?;
+    let (buf, channel_id) = error_context("ChannelID missing", le_u8)(buf)?;
+    let (buf, stream_type) = error_context("StreamType missing", le_u8)(buf)?;
+    let (buf, msg_num) = error_context("MsgNum missing", le_u16)(buf)?;
+    let (buf, (response_code, class)) =
+        error_context("ResponseCode missing", tuple((le_u16, le_u16)))(buf)?;
 
-    let (buf, payload_offset) = cond(has_payload_offset(class), le_u32)(buf)?;
+    let (buf, payload_offset) = error_context(
+        "Payload Offset is missing",
+        cond(has_payload_offset(class), le_u32),
+    )(buf)?;
 
     Ok((
         buf,

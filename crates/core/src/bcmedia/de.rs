@@ -15,7 +15,7 @@ const PAD_SIZE: u32 = 8;
 #[derive(Debug, Error)]
 pub enum Error {
     /// A Nom parsing error usually a malformed packet
-    #[error(display = "Parsing error")]
+    #[error(display = "Parsing error: {}", _0)]
     NomError(String),
     /// An IO error such as the stream being dropped
     #[error(display = "I/O error")]
