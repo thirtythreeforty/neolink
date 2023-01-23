@@ -11,11 +11,17 @@ use std::io::Write;
 const PAD_SIZE: u32 = 8;
 
 /// The error types used during serialisation
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum Error {
     /// A Cookie Factor  GenError
     #[error(display = "Cookie GenError")]
-    GenError(#[error(source)] GenError),
+    GenError(#[error(source)] std::sync::Arc<GenError>),
+}
+
+impl From<GenError> for Error {
+    fn from(k: GenError) -> Self {
+        Error::GenError(std::sync::Arc::new(k))
+    }
 }
 
 impl BcMedia {

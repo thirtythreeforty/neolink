@@ -154,7 +154,7 @@ impl BcCamera {
             {
             } else {
                 return Err(Error::UnintelligibleReply {
-                    reply: Box::new(msg),
+                    reply: std::sync::Arc::new(Box::new(msg)),
                     why: "The camera did not accept the stream start command.",
                 });
             }

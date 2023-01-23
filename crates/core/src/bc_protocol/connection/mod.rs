@@ -1,4 +1,3 @@
-#![allow(unused_imports)]
 //! This module handles connections and subscribers
 //!
 //! This includes a tcp and udp connections. As well
@@ -35,10 +34,10 @@ pub(crate) use self::{
     filesub::FileSubscriber, tcpconn::TcpSource, udpconn::UdpSource,
 };
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum Error {
     #[error(display = "Communication error")]
-    Communication(#[error(source)] std::io::Error),
+    Communication(#[error(source)] Arc<std::io::Error>),
 
     #[error(display = "Communication Reciever error")]
     RecvCommunication(#[error(source)] RecvError),
@@ -69,6 +68,12 @@ pub enum Error {
 
     #[error(display = "Camera Not Findable")]
     ConnectionUnavaliable,
+}
+
+impl From<std::io::Error> for Error {
+    fn from(k: std::io::Error) -> Self {
+        Error::Communication(std::sync::Arc::new(k))
+    }
 }
 
 type Result<T> = std::result::Result<T, Error>;

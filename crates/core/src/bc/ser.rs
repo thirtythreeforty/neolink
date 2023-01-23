@@ -5,11 +5,23 @@ use cookie_factory::bytes::*;
 use cookie_factory::sequence::tuple;
 use cookie_factory::{combinator::*, gen};
 use cookie_factory::{GenError, SerializeFn, WriteContext};
+use err_derive::Error;
 use log::error;
 use std::io::Write;
 
 /// The error types used during serialisation
-pub type Error = GenError;
+#[derive(Debug, Error, Clone)]
+pub enum Error {
+    /// A Cookie Factor  GenError
+    #[error(display = "Cookie GenError")]
+    GenError(#[error(source)] std::sync::Arc<GenError>),
+}
+
+impl From<GenError> for Error {
+    fn from(k: GenError) -> Self {
+        Error::GenError(std::sync::Arc::new(k))
+    }
+}
 
 impl Bc {
     pub(crate) fn serialize<W: Write>(

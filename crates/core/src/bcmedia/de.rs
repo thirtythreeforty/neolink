@@ -12,14 +12,14 @@ type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), nom::Err<E>
 const PAD_SIZE: u32 = 8;
 
 /// The error types used during deserialisation
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum Error {
     /// A Nom parsing error usually a malformed packet
     #[error(display = "Parsing error: {}", _0)]
     NomError(String),
     /// An IO error such as the stream being dropped
     #[error(display = "I/O error")]
-    IoError(#[error(source)] std::io::Error),
+    IoError(#[error(source)] std::sync::Arc<std::io::Error>),
 }
 type NomErrorType<'a> = nom::error::VerboseError<&'a [u8]>;
 
@@ -31,6 +31,12 @@ impl<'a> From<nom::Err<NomErrorType<'a>>> for Error {
             _ => "Unknown Nom error".to_string(),
         };
         Error::NomError(reason)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(k: std::io::Error) -> Self {
+        Error::IoError(std::sync::Arc::new(k))
     }
 }
 

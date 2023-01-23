@@ -2,7 +2,7 @@ use super::bc::model::Bc;
 use err_derive::Error;
 
 /// This is the primary error type of the library
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum Error {
     /// Error raised during deserlization
@@ -29,7 +29,7 @@ pub enum Error {
     #[error(display = "Communication error")]
     UnintelligibleReply {
         /// The Bc packet that was not understood
-        reply: Box<Bc>,
+        reply: std::sync::Arc<Box<Bc>>,
         /// The message attached to the error
         why: &'static str,
     },
