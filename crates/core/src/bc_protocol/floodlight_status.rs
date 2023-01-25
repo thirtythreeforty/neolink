@@ -98,13 +98,18 @@ impl BcCamera {
         let mut floodlight_state = self.get_floodlight_status()?;
         for floodlight in floodlight_state.floodlight_status_list.iter_mut() {
             if floodlight.channel_id == self.channel_id {
-                self.set_floodlight_manual(FloodlightManual { version: "1".to_string(), channel_id: floodlight.channel_id, status: match state {
-                    true => 1,
-                    false => 0,
-                } , duration: duration })?;
+                self.set_floodlight_manual(FloodlightManual {
+                    version: "1".to_string(),
+                    channel_id: floodlight.channel_id,
+                    status: match state {
+                        true => 1,
+                        false => 0,
+                    },
+                    duration: duration,
+                })?;
             }
         }
-       
+
         Ok(())
     }
 }

@@ -51,7 +51,6 @@ pub const MSG_ID_FLOODLIGHT_MANUAL: u32 = 288;
 /// Floodlight status report from the camera
 pub const MSG_ID_FLOODLIGHT_STATUS_LIST: u32 = 291;
 
-
 /// An empty password in legacy format
 pub const EMPTY_LEGACY_PASSWORD: &str =
     "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";

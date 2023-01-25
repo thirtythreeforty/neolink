@@ -318,7 +318,6 @@ pub struct LedState {
     pub light_state: String,
 }
 
-
 /// FloodlightStatus xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct FloodlightStatus {
@@ -359,7 +358,6 @@ pub struct FloodlightManual {
     /// How long the manual control should apply for
     pub duration: u16,
 }
-
 
 /// rfAlarmCfg xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
