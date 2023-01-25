@@ -266,8 +266,9 @@ impl MessageHandler {
                                 }
                             }
                             Messages::FloodlightOn => {
-                                if self.camera.floodlight_light_set(true, 180).is_err() {
-                                    error!("Failed to turn on the floodlight light");
+                                let res =  self.camera.floodlight_light_set(true, 180);
+                                if res.is_err() {
+                                    error!("Failed to turn on the floodlight light: {:?}", res.err());
                                     self.abort();
                                     "FAIL".to_string()
                                 } else {
@@ -275,8 +276,9 @@ impl MessageHandler {
                                 }
                             }
                             Messages::FloodlightOff => {
-                                if self.camera.floodlight_light_set(false, 180).is_err() {
-                                    error!("Failed to turn off the floodlight light");
+                                let res = self.camera.floodlight_light_set(false, 180);
+                                if res.is_err() {
+                                    error!("Failed to turn off the floodlight light: {:?}", res.err());
                                     self.abort();
                                     "FAIL".to_string()
                                 } else {

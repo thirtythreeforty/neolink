@@ -152,16 +152,18 @@ fn listen_on_camera(
                             topic: "control/floodlight",
                             message: "on",
                         } => {
-                            if event_cam.send_message(Messages::FloodlightOn).is_err() {
-                                error!("Failed to set floodlight on");
+                            let res = event_cam.send_message(Messages::FloodlightOn);
+                            if res.is_err() {
+                                error!("Failed to set floodlight on: {:?}", res.err());
                             }
                         }
                         MqttReplyRef {
                             topic: "control/floodlight",
                             message: "off",
                         } => {
-                            if event_cam.send_message(Messages::FloodlightOff).is_err() {
-                                error!("Failed to set floodlight off");
+                            let res = event_cam.send_message(Messages::FloodlightOff);
+                            if res.is_err() {
+                                error!("Failed to set floodlight off: {:?}", res.err());
                             }
                         }
                         MqttReplyRef {
