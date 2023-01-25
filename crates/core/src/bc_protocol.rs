@@ -11,6 +11,7 @@ use Md5Trunc::*;
 
 mod connection;
 mod errors;
+mod floodlight_status;
 mod ledstate;
 mod login;
 mod logout;

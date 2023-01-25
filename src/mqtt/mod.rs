@@ -149,6 +149,22 @@ fn listen_on_camera(
                 if let Ok(msg) = mqtt.poll() {
                     match msg.as_ref() {
                         MqttReplyRef {
+                            topic: "control/floodlight",
+                            message: "on",
+                        } => {
+                            if event_cam.send_message(Messages::FloodlightOn).is_err() {
+                                error!("Failed to set floodlight on");
+                            }
+                        }
+                        MqttReplyRef {
+                            topic: "control/floodlight",
+                            message: "off",
+                        } => {
+                            if event_cam.send_message(Messages::FloodlightOff).is_err() {
+                                error!("Failed to set floodlight off");
+                            }
+                        }
+                        MqttReplyRef {
                             topic: "control/led",
                             message: "on",
                         } => {

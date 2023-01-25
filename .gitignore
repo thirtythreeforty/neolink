@@ -14,3 +14,6 @@
 
 # Committing IntelliJ project files is a violation of intergalactic law
 .idea/
+
+# We prefer to keep .vscode files outside the repo
+.vscode/

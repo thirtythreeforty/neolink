@@ -15,6 +15,8 @@ pub(crate) enum Messages {
     MotionStop,
     MotionStart,
     Reboot,
+    FloodlightOn,
+    FloodlightOff,
     StatusLedOn,
     StatusLedOff,
     IRLedOn,
@@ -257,6 +259,24 @@ impl MessageHandler {
                             Messages::Reboot => {
                                 if self.camera.reboot().is_err() {
                                     error!("Failed to reboot the camera");
+                                    self.abort();
+                                    "FAIL".to_string()
+                                } else {
+                                    "OK".to_string()
+                                }
+                            }
+                            Messages::FloodlightOn => {
+                                if self.camera.floodlight_light_set(true, 180).is_err() {
+                                    error!("Failed to turn on the floodlight light");
+                                    self.abort();
+                                    "FAIL".to_string()
+                                } else {
+                                    "OK".to_string()
+                                }
+                            }
+                            Messages::FloodlightOff => {
+                                if self.camera.floodlight_light_set(false, 180).is_err() {
+                                    error!("Failed to turn off the floodlight light");
                                     self.abort();
                                     "FAIL".to_string()
                                 } else {

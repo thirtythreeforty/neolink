@@ -76,6 +76,12 @@ pub struct BcXml {
     /// Sent to move the camera
     #[yaserde(rename = "PtzControl")]
     pub ptz_control: Option<PtzControl>,
+    /// Sent to manually control the floodlight
+    #[yaserde(rename = "FloodlightManual")]
+    pub floodlight_manual: Option<FloodlightManual>,
+    /// Received when the floodlight status is updated
+    #[yaserde(rename = "FloodlightStatusList")]
+    pub floodlight_status_list: Option<FloodlightStatusList>,
 }
 
 impl BcXml {
@@ -311,6 +317,49 @@ pub struct LedState {
     #[yaserde(rename = "lightState")]
     pub light_state: String,
 }
+
+
+/// FloodlightStatus xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct FloodlightStatus {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Channel ID of floodlight
+    #[yaserde(rename = "channel")]
+    pub channel_id: u8,
+    /// On or off
+    #[yaserde(rename = "status")]
+    pub status: u8,
+}
+
+/// FloodlightStatusList xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct FloodlightStatusList {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// List of events
+    #[yaserde(rename = "FloodlightStatusList")]
+    pub floodlight_status_list: Vec<FloodlightStatus>,
+}
+
+/// FloodlightManual xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct FloodlightManual {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Channel ID of floodlight
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// On or off
+    #[yaserde(rename = "status")]
+    pub status: u8,
+    /// How long the manual control should apply for
+    pub duration: u16,
+}
+
 
 /// rfAlarmCfg xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
