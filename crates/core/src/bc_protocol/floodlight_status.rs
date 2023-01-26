@@ -2,55 +2,8 @@ use super::{BcCamera, Error, Result, RX_TIMEOUT};
 use crate::bc::{model::*, xml::*};
 
 impl BcCamera {
-    /// Get the [FloodlightStatusList] xml which contains the Floodlist status of the camera
-    pub fn get_floodlight_status(&self) -> Result<FloodlightStatusList> {
-        let connection = self.get_connection();
-        let msg_num = self.new_message_num();
-        let sub_get = connection.subscribe(msg_num)?;
-        let get = Bc {
-            meta: BcMeta {
-                msg_id: MSG_ID_FLOODLIGHT_STATUS_LIST,
-                channel_id: self.channel_id,
-                msg_num,
-                response_code: 0,
-                stream_type: 0,
-                class: 0x6414,
-            },
-            body: BcBody::ModernMsg(ModernMsg {
-                extension: Some(Extension {
-                    channel_id: Some(self.channel_id),
-                    ..Default::default()
-                }),
-                payload: None,
-            }),
-        };
-
-        sub_get.send(get)?;
-        let msg = sub_get.rx.recv_timeout(RX_TIMEOUT)?;
-        if msg.meta.response_code != 200 {
-            return Err(Error::CameraServiceUnavaliable);
-        }
-
-        if let BcBody::ModernMsg(ModernMsg {
-            payload:
-                Some(BcPayloads::BcXml(BcXml {
-                    floodlight_status_list: Some(floodlight_status_list),
-                    ..
-                })),
-            ..
-        }) = msg.body
-        {
-            Ok(floodlight_status_list)
-        } else {
-            Err(Error::UnintelligibleReply {
-                reply: Box::new(msg),
-                why: "Expected FloodlightStatusList xml but it was not recieved",
-            })
-        }
-    }
-
     /// Set the floodlight status using the [FloodlightManual] xml
-    pub fn set_floodlight_manual(&self, floodlight_manual: FloodlightManual) -> Result<()> {
+    pub fn set_floodlight_manual(&self, state: bool, duration: u16) -> Result<()> {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
@@ -71,7 +24,15 @@ impl BcCamera {
                     ..Default::default()
                 }),
                 payload: Some(BcPayloads::BcXml(BcXml {
-                    floodlight_manual: Some(floodlight_manual),
+                    floodlight_manual: Some(FloodlightManual {
+                        version: "1".to_string(),
+                        channel_id: self.channel_id,
+                        status: match state {
+                            true => 1,
+                            false => 0,
+                        },
+                        duration: duration,
+                    }),
                     ..Default::default()
                 })),
             }),
@@ -93,23 +54,4 @@ impl BcCamera {
         }
     }
 
-    /// Set the floodlight status for a duration
-    pub fn floodlight_light_set(&self, state: bool, duration: u16) -> Result<()> {
-        let mut floodlight_state = self.get_floodlight_status()?;
-        for floodlight in floodlight_state.floodlight_status_list.iter_mut() {
-            if floodlight.channel_id == self.channel_id {
-                self.set_floodlight_manual(FloodlightManual {
-                    version: "1".to_string(),
-                    channel_id: floodlight.channel_id,
-                    status: match state {
-                        true => 1,
-                        false => 0,
-                    },
-                    duration: duration,
-                })?;
-            }
-        }
-
-        Ok(())
-    }
 }
