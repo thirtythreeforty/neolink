@@ -4,12 +4,12 @@ use std::sync::atomic::Ordering;
 
 impl BcCamera {
     /// Logout from the camera
-    pub fn logout(&self) -> Result<()> {
+    pub async fn logout(&self) -> Result<()> {
         if self.logged_in.load(Ordering::Relaxed) {
             if let Some(credentials) = self.get_credentials() {
                 let connection = self.get_connection();
                 let msg_num = self.new_message_num();
-                let sub_logout = connection.subscribe(msg_num)?;
+                let sub_logout = connection.subscribe(msg_num).await?;
 
                 let username = credentials.username.clone();
                 let password = credentials.password.as_ref().cloned().unwrap_or_default();
@@ -35,7 +35,7 @@ impl BcCamera {
                     },
                 );
 
-                sub_logout.send(modern_logout)?;
+                sub_logout.send(modern_logout).await?;
             }
         }
         self.clear_credentials();

@@ -1,99 +1,24 @@
 use super::model::BcMediaIframe;
 use super::model::*;
-use crate::RX_TIMEOUT;
-use err_derive::Error;
+use crate::Error;
+use bytes::{Buf, BytesMut};
 use nom::{combinator::*, error::context, number::streaming::*, take};
-use std::io::Read;
-use time::OffsetDateTime;
 
 type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), nom::Err<E>>;
 
 // PAD_SIZE: Media packets use 8 byte padding
 const PAD_SIZE: u32 = 8;
 
-/// The error types used during deserialisation
-#[derive(Debug, Error, Clone)]
-pub enum Error {
-    /// A Nom parsing error usually a malformed packet
-    #[error(display = "Parsing error: {}", _0)]
-    NomError(String),
-    /// An IO error such as the stream being dropped
-    #[error(display = "I/O error")]
-    IoError(#[error(source)] std::sync::Arc<std::io::Error>),
-}
-type NomErrorType<'a> = nom::error::VerboseError<&'a [u8]>;
-
-impl<'a> From<nom::Err<NomErrorType<'a>>> for Error {
-    fn from(k: nom::Err<NomErrorType<'a>>) -> Self {
-        let reason = match k {
-            nom::Err::Error(e) => format!("Nom Error: {:x?}", e),
-            nom::Err::Failure(e) => format!("Nom Error: {:x?}", e),
-            _ => "Unknown Nom error".to_string(),
-        };
-        Error::NomError(reason)
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(k: std::io::Error) -> Self {
-        Error::IoError(std::sync::Arc::new(k))
-    }
-}
-
-fn read_from_reader<P, O, E, R>(mut parser: P, mut rdr: R) -> Result<O, E>
-where
-    R: Read,
-    E: for<'a> From<nom::Err<NomErrorType<'a>>> + From<std::io::Error>,
-    P: FnMut(&[u8]) -> IResult<&[u8], O>,
-{
-    let mut input: Vec<u8> = Vec::new();
-    loop {
-        let to_read = match parser(&input) {
-            Ok((_, parsed)) => return Ok(parsed),
-            Err(nom::Err::Incomplete(needed)) => {
-                match needed {
-                    nom::Needed::Unknown => std::num::NonZeroUsize::new(1).unwrap(), // read one byte
-                    nom::Needed::Size(len) => len,
-                }
-            }
-            Err(e) => return Err(e.into()),
-        };
-
-        let start_time = OffsetDateTime::now_utc();
-        loop {
-            match (&mut rdr)
-                .take(to_read.get() as u64)
-                .read_to_end(&mut input)
-            {
-                Ok(0) => {
-                    if (OffsetDateTime::now_utc() - start_time) > RX_TIMEOUT {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::UnexpectedEof,
-                            "Read returned 0 bytes",
-                        )
-                        .into());
-                    }
-                }
-                Ok(_) => break,
-                Err(e)
-                    if e.kind() == std::io::ErrorKind::WouldBlock
-                        || e.kind() == std::io::ErrorKind::TimedOut =>
-                {
-                    // This is a temporaily unavaliable resource
-                    // We should just wait and try again
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-        }
-    }
-}
-
 impl BcMedia {
-    pub(crate) fn deserialize<R: Read>(r: R) -> Result<BcMedia, Error> {
-        // Throw away the nom-specific return types
-        read_from_reader(bcmedia, r)
+    pub(crate) fn deserialize(buf: &mut BytesMut) -> Result<BcMedia, Error> {
+        const TYPICAL_HEADER: usize = 25;
+        let (result, len) = match consumed(bcmedia)(buf) {
+            Ok((_, (parsed_buff, result))) => Ok((result, parsed_buff.len())),
+            Err(e) => Err(e),
+        }?;
+        buf.advance(len);
+        buf.reserve(len + TYPICAL_HEADER); // Preallocate for future buffer calls
+        Ok(result)
     }
 }
 
@@ -376,22 +301,16 @@ fn bcmedia_adpcm(buf: &[u8]) -> IResult<&[u8], BcMediaAdpcm> {
 #[cfg(test)]
 mod tests {
     use super::Error;
-    use crate::bc_protocol::FileSubscriber;
     use crate::bcmedia::model::*;
+    use bytes::BytesMut;
     use env_logger::Env;
     use log::*;
     use std::io::ErrorKind;
-    use std::path::PathBuf;
 
     fn init() {
         let _ = env_logger::Builder::from_env(Env::default().default_filter_or("info"))
             .is_test(true)
             .try_init();
-    }
-
-    fn sample(name: &str) -> PathBuf {
-        let dir = std::env::current_dir().unwrap(); // This is crate root during cargo test
-        dir.join("src").join("bcmedia").join("samples").join(name)
     }
 
     #[test]
@@ -401,24 +320,25 @@ mod tests {
     fn test_swan_deser() {
         init();
 
-        let mut subsciber = FileSubscriber::from_files(vec![
-            sample("video_stream_swan_00.raw"),
-            sample("video_stream_swan_01.raw"),
-            sample("video_stream_swan_02.raw"),
-            sample("video_stream_swan_03.raw"),
-            sample("video_stream_swan_04.raw"),
-            sample("video_stream_swan_05.raw"),
-            sample("video_stream_swan_06.raw"),
-            sample("video_stream_swan_07.raw"),
-            sample("video_stream_swan_08.raw"),
-            sample("video_stream_swan_09.raw"),
-        ]);
+        let sample = [
+            include_bytes!("samples/video_stream_swan_00.raw").as_ref(),
+            include_bytes!("samples/video_stream_swan_01.raw").as_ref(),
+            include_bytes!("samples/video_stream_swan_02.raw").as_ref(),
+            include_bytes!("samples/video_stream_swan_03.raw").as_ref(),
+            include_bytes!("samples/video_stream_swan_04.raw").as_ref(),
+            include_bytes!("samples/video_stream_swan_05.raw").as_ref(),
+            include_bytes!("samples/video_stream_swan_06.raw").as_ref(),
+            include_bytes!("samples/video_stream_swan_07.raw").as_ref(),
+            include_bytes!("samples/video_stream_swan_08.raw").as_ref(),
+            include_bytes!("samples/video_stream_swan_09.raw").as_ref(),
+        ]
+        .concat();
 
         // Should derealise all of this
         loop {
-            let e = BcMedia::deserialize(&mut subsciber);
+            let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
             match e {
-                Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                Err(Error::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => {
                     // Reach end of files
                     break;
                 }
@@ -438,17 +358,20 @@ mod tests {
     fn test_argus2_iframe_extended() {
         init();
 
-        let files: Vec<_> = (0..5)
-            .into_iter()
-            .map(|i| sample(&format!("argus2_iframe_{}.raw", i)))
-            .collect();
+        let sample = [
+            include_bytes!("samples/argus2_iframe_0.raw").as_ref(),
+            include_bytes!("samples/argus2_iframe_1.raw").as_ref(),
+            include_bytes!("samples/argus2_iframe_2.raw").as_ref(),
+            include_bytes!("samples/argus2_iframe_3.raw").as_ref(),
+            include_bytes!("samples/argus2_iframe_4.raw").as_ref(),
+        ]
+        .concat();
 
-        let mut subsciber = FileSubscriber::from_files(files);
         // Should derealise all of this
         loop {
-            let e = BcMedia::deserialize(&mut subsciber);
+            let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
             match e {
-                Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                Err(Error::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => {
                     // Reach end of files
                     break;
                 }
@@ -468,17 +391,33 @@ mod tests {
     fn test_argus2_pframe_extended() {
         init();
 
-        let files: Vec<_> = (0..18)
-            .into_iter()
-            .map(|i| sample(&format!("argus2_pframe_{}.raw", i)))
-            .collect();
+        let sample = [
+            include_bytes!("samples/argus2_pframe_0.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_1.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_2.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_3.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_4.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_5.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_6.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_7.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_8.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_9.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_10.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_11.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_12.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_13.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_14.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_15.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_16.raw").as_ref(),
+            include_bytes!("samples/argus2_pframe_17.raw").as_ref(),
+        ]
+        .concat();
 
-        let mut subsciber = FileSubscriber::from_files(files);
         // Should derealise all of this
         loop {
-            let e = BcMedia::deserialize(&mut subsciber);
+            let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
             match e {
-                Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                Err(Error::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => {
                     // Reach end of files
                     break;
                 }
@@ -496,9 +435,9 @@ mod tests {
     fn test_info_v1() {
         init();
 
-        let mut subsciber = FileSubscriber::from_files(vec![sample("info_v1.raw")]);
+        let sample = include_bytes!("samples/info_v1.raw");
 
-        let e = BcMedia::deserialize(&mut subsciber);
+        let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
         assert!(matches!(
             e,
             Ok(BcMedia::InfoV1(BcMediaInfoV1 {
@@ -525,15 +464,16 @@ mod tests {
     fn test_iframe() {
         init();
 
-        let mut subsciber = FileSubscriber::from_files(vec![
-            sample("iframe_0.raw"),
-            sample("iframe_1.raw"),
-            sample("iframe_2.raw"),
-            sample("iframe_3.raw"),
-            sample("iframe_4.raw"),
-        ]);
+        let sample = [
+            include_bytes!("samples/iframe_0.raw").as_ref(),
+            include_bytes!("samples/iframe_1.raw").as_ref(),
+            include_bytes!("samples/iframe_2.raw").as_ref(),
+            include_bytes!("samples/iframe_3.raw").as_ref(),
+            include_bytes!("samples/iframe_4.raw").as_ref(),
+        ]
+        .concat();
 
-        let e = BcMedia::deserialize(&mut subsciber);
+        let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
         if let Ok(BcMedia::Iframe(BcMediaIframe {
             video_type: VideoType::H264,
             microseconds: 3557705112,
@@ -551,10 +491,13 @@ mod tests {
     fn test_pframe() {
         init();
 
-        let mut subsciber =
-            FileSubscriber::from_files(vec![sample("pframe_0.raw"), sample("pframe_1.raw")]);
+        let sample = [
+            include_bytes!("samples/pframe_0.raw").as_ref(),
+            include_bytes!("samples/pframe_1.raw").as_ref(),
+        ]
+        .concat();
 
-        let e = BcMedia::deserialize(&mut subsciber);
+        let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
         if let Ok(BcMedia::Pframe(BcMediaPframe {
             video_type: VideoType::H264,
             microseconds: 3557767112,
@@ -571,9 +514,9 @@ mod tests {
     fn test_adpcm() {
         init();
 
-        let mut subsciber = FileSubscriber::from_files(vec![sample("adpcm_0.raw")]);
+        let sample = include_bytes!("samples/adpcm_0.raw");
 
-        let e = BcMedia::deserialize(&mut subsciber);
+        let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
         if let Ok(BcMedia::Adpcm(BcMediaAdpcm { data: d })) = e {
             assert_eq!(d.len(), 244);
         } else {

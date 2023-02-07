@@ -1,3 +1,4 @@
+pub(crate) mod codex;
 /// Deserlizer for BCMedia
 pub mod de;
 /// Structure model for BCMedia

@@ -1,13 +1,13 @@
-use super::{BcCamera, Result, RX_TIMEOUT};
+use super::{BcCamera, Result};
 use crate::bc::model::*;
 
 impl BcCamera {
     /// Ping the camera will either return Ok(()) which means a sucess reply
     /// or error
-    pub fn ping(&self) -> Result<()> {
+    pub async fn ping(&self) -> Result<()> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_ping = connection.subscribe(msg_num)?;
+        let mut sub_ping = connection.subscribe(msg_num).await?;
 
         let ping = Bc {
             meta: BcMeta {
@@ -23,9 +23,9 @@ impl BcCamera {
             }),
         };
 
-        sub_ping.send(ping)?;
+        sub_ping.send(ping).await?;
 
-        sub_ping.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_ping.recv().await?;
 
         Ok(())
     }

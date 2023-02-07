@@ -1,4 +1,4 @@
-use super::{BcCamera, Error, Result, RX_TIMEOUT};
+use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
 use time::{date, Date, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
 
@@ -10,10 +10,10 @@ impl BcCamera {
     ///
     /// returns either an error or an option with the offsetted date time
     ///
-    pub fn get_time(&self) -> Result<Option<OffsetDateTime>> {
+    pub async fn get_time(&self) -> Result<Option<OffsetDateTime>> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_get_general = connection.subscribe(msg_num)?;
+        let mut sub_get_general = connection.subscribe(msg_num).await?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_GET_GENERAL,
@@ -26,8 +26,8 @@ impl BcCamera {
             body: BcBody::ModernMsg(ModernMsg::default()),
         };
 
-        sub_get_general.send(get)?;
-        let msg = sub_get_general.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_get_general.send(get).await?;
+        let msg = sub_get_general.recv().await?;
         if msg.meta.response_code != 200 {
             return Err(Error::CameraServiceUnavaliable);
         }
@@ -94,10 +94,10 @@ impl BcCamera {
     ///
     /// returns Ok(()) or error
     ///
-    pub fn set_time(&self, timestamp: OffsetDateTime) -> Result<()> {
+    pub async fn set_time(&self, timestamp: OffsetDateTime) -> Result<()> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_set_general = connection.subscribe(msg_num)?;
+        let mut sub_set_general = connection.subscribe(msg_num).await?;
         let set = Bc::new_from_xml(
             BcMeta {
                 msg_id: MSG_ID_SET_GENERAL,
@@ -126,8 +126,18 @@ impl BcCamera {
             },
         );
 
-        sub_set_general.send(set)?;
-        let _ = sub_set_general.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_set_general.send(set).await?;
+        let msg = sub_set_general.recv().await?;
+        if let BcMeta {
+            response_code: 200, ..
+        } = msg.meta
+        {
+        } else {
+            return Err(Error::UnintelligibleReply {
+                reply: std::sync::Arc::new(Box::new(msg)),
+                why: "The camera did not accept the set time command.",
+            });
+        }
 
         Ok(())
     }

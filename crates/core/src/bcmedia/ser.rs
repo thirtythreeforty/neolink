@@ -1,28 +1,13 @@
 use super::model::*;
+use crate::Error;
 use cookie_factory::bytes::*;
 use cookie_factory::sequence::tuple;
+use cookie_factory::SerializeFn;
 use cookie_factory::{combinator::*, gen};
-use cookie_factory::{GenError, SerializeFn};
-use err_derive::Error;
-use log::error;
 use std::io::Write;
 
 // PAD_SIZE: Media packets use 8 byte padding
 const PAD_SIZE: u32 = 8;
-
-/// The error types used during serialisation
-#[derive(Debug, Error, Clone)]
-pub enum Error {
-    /// A Cookie Factor  GenError
-    #[error(display = "Cookie GenError")]
-    GenError(#[error(source)] std::sync::Arc<GenError>),
-}
-
-impl From<GenError> for Error {
-    fn from(k: GenError) -> Self {
-        Error::GenError(std::sync::Arc::new(k))
-    }
-}
 
 impl BcMedia {
     pub(crate) fn serialize<W: Write>(&self, buf: W) -> Result<W, Error> {

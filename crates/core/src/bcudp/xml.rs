@@ -45,6 +45,9 @@ pub struct UdpXml {
     /// R2C_T xml register to clinet with device ID etc
     #[yaserde(rename = "R2C_T")]
     pub r2c_t: Option<R2cT>,
+    /// R2C_T xml register to clinet with device ID etc handled over dmap ONLY
+    #[yaserde(rename = "R2C_C_R")]
+    pub r2c_c_r: Option<R2cCr>,
     /// C2R_CFM xml client to register CFM
     #[yaserde(rename = "C2R_CFM")]
     pub c2r_cfm: Option<C2rCfm>,
@@ -239,6 +242,9 @@ pub struct C2rC {
     /// Os of the machine known values are `"MAC"`, `"WIN"`
     #[yaserde(rename = "p")]
     pub os: String,
+    /// The revision. Known values None and 3
+    #[yaserde(rename = "r")]
+    pub revision: Option<i32>,
 }
 
 /// R2C_T xml
@@ -248,11 +254,34 @@ pub struct C2rC {
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct R2cT {
     /// The location of the camera
-    pub dev: IpPort,
+    pub dmap: Option<IpPort>,
+    /// The location of the camera
+    pub dev: Option<IpPort>,
     /// The client id
     pub cid: i32,
     /// The camera SID
     pub sid: u32,
+}
+
+/// R2C_C_R xml
+///
+/// This is from register reolink server to clinet with device ip and did etc
+/// during a relay
+///
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct R2cCr {
+    /// Dmap camera location
+    pub dmap: IpPort,
+    /// The location of the relay
+    pub relay: IpPort,
+    /// The nat type. Known values `"NULL"`
+    pub nat: String,
+    /// The camera SID
+    pub sid: u32,
+    /// rsp. Known values `0`
+    pub rsp: i32,
+    /// ac. Known values. `127536491`
+    pub ac: u32,
 }
 
 /// D2C_CFM xml

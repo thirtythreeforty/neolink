@@ -1,4 +1,4 @@
-use super::{BcCamera, Error, Result, RX_TIMEOUT};
+use super::{BcCamera, Error, Result};
 use crate::{bc::model::*, bc::xml::*, bcmedia::model::*};
 use crossbeam_channel::Receiver;
 use std::io::{BufRead, Error as IoError, ErrorKind, Read};
@@ -13,11 +13,11 @@ impl BcCamera {
     ///
     /// It is also sent when the request for talk config returns status code 422
     ///
-    pub fn talk_stop(&self) -> Result<()> {
+    pub async fn talk_stop(&self) -> Result<()> {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let sub = connection.subscribe(msg_num)?;
+        let mut sub = connection.subscribe(msg_num).await?;
 
         let msg = Bc {
             meta: BcMeta {
@@ -37,8 +37,8 @@ impl BcCamera {
             }),
         };
 
-        sub.send(msg)?;
-        let msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+        sub.send(msg).await?;
+        let msg = sub.recv().await?;
 
         if let BcMeta {
             response_code: 200, ..
@@ -57,10 +57,10 @@ impl BcCamera {
     ///
     /// Requests the [`TalkAbility`] xml
     ///
-    pub fn talk_ability(&self) -> Result<TalkAbility> {
+    pub async fn talk_ability(&self) -> Result<TalkAbility> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_get = connection.subscribe(msg_num)?;
+        let mut sub_get = connection.subscribe(msg_num).await?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_TALKABILITY,
@@ -79,8 +79,8 @@ impl BcCamera {
             }),
         };
 
-        sub_get.send(get)?;
-        let msg = sub_get.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_get.send(get).await?;
+        let msg = sub_get.recv().await?;
 
         if let BcBody::ModernMsg(ModernMsg {
             payload:
@@ -116,11 +116,11 @@ impl BcCamera {
     /// * `talk_config` - The talk config that describes the adpcm data
     ///
     ///
-    pub fn talk(&self, adpcm: &[u8], talk_config: TalkConfig) -> Result<()> {
+    pub async fn talk(&self, adpcm: &[u8], talk_config: TalkConfig) -> Result<()> {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let sub = connection.subscribe(msg_num)?;
+        let mut sub = connection.subscribe(msg_num).await?;
 
         if &talk_config.audio_config.audio_type != "adpcm" {
             return Err(Error::UnknownTalkEncoding);
@@ -150,8 +150,8 @@ impl BcCamera {
             }),
         };
 
-        sub.send(msg)?;
-        let mut msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+        sub.send(msg).await?;
+        let mut msg = sub.recv().await?;
 
         // If another client is already talking OR if we crashed before sending
         // msgid 11 the camera will reply 422
@@ -162,10 +162,10 @@ impl BcCamera {
             response_code: 422, ..
         } = msg.meta
         {
-            self.talk_stop()?;
+            self.talk_stop().await?;
             // Retry
-            sub.send(msg)?;
-            msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+            sub.send(msg).await?;
+            msg = sub.recv().await?;
         }
 
         if let BcMeta {
@@ -182,7 +182,7 @@ impl BcCamera {
 
         let full_block_size = block_size + 4; // Block size + predictor state
         let msg_num = self.new_message_num();
-        let sub = connection.subscribe(msg_num)?;
+        let sub = connection.subscribe(msg_num).await?;
 
         const BLOCK_PER_PAYLOAD: usize = 4;
         const BLOCK_HEADER_SIZE: usize = 4;
@@ -216,7 +216,7 @@ impl BcCamera {
                 }),
             };
 
-            sub.send(msg)?;
+            sub.send(msg).await?;
 
             let adpcm_len = payload_bytes.len();
             // There are two samples per byte
@@ -234,7 +234,7 @@ impl BcCamera {
             std::thread::sleep(std::time::Duration::from_secs_f32(play_length));
         }
 
-        self.talk_stop()?;
+        self.talk_stop().await?;
 
         Ok(())
     }
@@ -257,11 +257,11 @@ impl BcCamera {
     /// * `talk_config` - The talk config that describes the adpcm data
     ///
     ///
-    pub fn talk_stream(&self, rx: Receiver<Vec<u8>>, talk_config: TalkConfig) -> Result<()> {
+    pub async fn talk_stream(&self, rx: Receiver<Vec<u8>>, talk_config: TalkConfig) -> Result<()> {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let sub = connection.subscribe(msg_num)?;
+        let mut sub = connection.subscribe(msg_num).await?;
 
         if &talk_config.audio_config.audio_type != "adpcm" {
             return Err(Error::UnknownTalkEncoding);
@@ -291,8 +291,8 @@ impl BcCamera {
             }),
         };
 
-        sub.send(msg)?;
-        let mut msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+        sub.send(msg).await?;
+        let mut msg = sub.recv().await?;
 
         // If another client is already talking OR if we crashed before sending
         // msgid 11 the camera will reply 422
@@ -303,10 +303,10 @@ impl BcCamera {
             response_code: 422, ..
         } = msg.meta
         {
-            self.talk_stop()?;
+            self.talk_stop().await?;
             // Retry
-            sub.send(msg)?;
-            msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+            sub.send(msg).await?;
+            msg = sub.recv().await?;
         }
 
         if let BcMeta {
@@ -323,7 +323,7 @@ impl BcCamera {
 
         let full_block_size = block_size + 4; // Block size + predictor state
         let msg_num = self.new_message_num();
-        let sub = connection.subscribe(msg_num)?;
+        let sub = connection.subscribe(msg_num).await?;
 
         const BLOCK_PER_PAYLOAD: usize = 1;
         const BLOCK_HEADER_SIZE: usize = 4;
@@ -397,12 +397,12 @@ impl BcCamera {
                 }),
             };
 
-            sub.send(msg)?;
+            sub.send(msg).await?;
 
             std::thread::sleep(std::time::Duration::from_secs_f32(play_length * 0.95));
         }
 
-        self.talk_stop()?;
+        self.talk_stop().await?;
 
         Ok(())
     }

@@ -1,6 +1,5 @@
 pub use super::xml::{BcPayloads, BcXml, Extension};
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -181,10 +180,8 @@ pub enum EncryptionProtocol {
 
 #[derive(Debug)]
 pub(crate) struct BcContext {
-    pub(super) in_bin_mode: HashSet<u16>,
-    // Arc<Mutex<EncryptionProtocol>> because it is shared between context
-    // and connection for deserialisation and serialistion respectivly
-    pub(super) encryption_protocol: Arc<Mutex<EncryptionProtocol>>,
+    pub(crate) in_bin_mode: HashSet<u16>,
+    pub(crate) encryption_protocol: EncryptionProtocol,
 }
 
 impl Bc {
@@ -221,7 +218,15 @@ impl Bc {
 }
 
 impl BcContext {
-    pub(crate) fn new(encryption_protocol: Arc<Mutex<EncryptionProtocol>>) -> BcContext {
+    pub(crate) fn new() -> BcContext {
+        BcContext {
+            in_bin_mode: HashSet::new(),
+            encryption_protocol: EncryptionProtocol::Unencrypted,
+        }
+    }
+
+    #[allow(unused)] // Used in tests
+    pub(crate) fn new_with_encryption(encryption_protocol: EncryptionProtocol) -> BcContext {
         BcContext {
             in_bin_mode: HashSet::new(),
             encryption_protocol,
@@ -229,11 +234,20 @@ impl BcContext {
     }
 
     pub(crate) fn set_encrypted(&mut self, encryption_protocol: EncryptionProtocol) {
-        *(self.encryption_protocol.lock().unwrap()) = encryption_protocol;
+        self.encryption_protocol = encryption_protocol;
     }
 
-    pub(crate) fn get_encrypted(&self) -> EncryptionProtocol {
-        (*(self.encryption_protocol.lock().unwrap())).clone()
+    pub(crate) fn get_encrypted(&self) -> &EncryptionProtocol {
+        &self.encryption_protocol
+    }
+
+    pub(crate) fn binary_on(&mut self, msg_id: u16) {
+        self.in_bin_mode.insert(msg_id);
+    }
+
+    #[allow(unused)] // Used in tests
+    pub(crate) fn binary_off(&mut self, msg_id: u16) {
+        self.in_bin_mode.remove(&msg_id);
     }
 }
 

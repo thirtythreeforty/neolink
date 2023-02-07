@@ -1,12 +1,12 @@
-use super::{BcCamera, Error, Result, RX_TIMEOUT};
+use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
 
 impl BcCamera {
     /// Get the [RfAlarmCfg] xml which contains the PIR status of the camera
-    pub fn get_pirstate(&self) -> Result<RfAlarmCfg> {
+    pub async fn get_pirstate(&self) -> Result<RfAlarmCfg> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_get = connection.subscribe(msg_num)?;
+        let mut sub_get = connection.subscribe(msg_num).await?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_GET_PIR_ALARM,
@@ -25,8 +25,8 @@ impl BcCamera {
             }),
         };
 
-        sub_get.send(get)?;
-        let msg = sub_get.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_get.send(get).await?;
+        let msg = sub_get.recv().await?;
         if msg.meta.response_code != 200 {
             return Err(Error::CameraServiceUnavaliable);
         }
@@ -50,10 +50,10 @@ impl BcCamera {
     }
 
     /// Set the PIR sensor using the [RfAlarmCfg] xml
-    pub fn set_pirstate(&self, rf_alarm_cfg: RfAlarmCfg) -> Result<()> {
+    pub async fn set_pirstate(&self, rf_alarm_cfg: RfAlarmCfg) -> Result<()> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_set = connection.subscribe(msg_num)?;
+        let mut sub_set = connection.subscribe(msg_num).await?;
 
         let get = Bc {
             meta: BcMeta {
@@ -76,8 +76,8 @@ impl BcCamera {
             }),
         };
 
-        sub_set.send(get)?;
-        let msg = sub_set.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_set.send(get).await?;
+        let msg = sub_set.recv().await?;
         if msg.meta.response_code != 200 {
             return Err(Error::CameraServiceUnavaliable);
         }
@@ -97,14 +97,14 @@ impl BcCamera {
 
     /// This is a convience function to control the PIR status
     /// True is on and false is off
-    pub fn pir_set(&self, state: bool) -> Result<()> {
-        let mut pir_state = self.get_pirstate()?;
+    pub async fn pir_set(&self, state: bool) -> Result<()> {
+        let mut pir_state = self.get_pirstate().await?;
         // println!("{:?}", pir_state);
         pir_state.enable = match state {
             true => 1,
             false => 0,
         };
-        self.set_pirstate(pir_state)?;
+        self.set_pirstate(pir_state).await?;
         Ok(())
     }
 }

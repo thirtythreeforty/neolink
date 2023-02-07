@@ -5,23 +5,8 @@ use cookie_factory::bytes::*;
 use cookie_factory::sequence::tuple;
 use cookie_factory::{combinator::*, gen};
 use cookie_factory::{GenError, SerializeFn, WriteContext};
-use err_derive::Error;
 use log::error;
 use std::io::Write;
-
-/// The error types used during serialisation
-#[derive(Debug, Error, Clone)]
-pub enum Error {
-    /// A Cookie Factor  GenError
-    #[error(display = "Cookie GenError")]
-    GenError(#[error(source)] std::sync::Arc<GenError>),
-}
-
-impl From<GenError> for Error {
-    fn from(k: GenError) -> Self {
-        Error::GenError(std::sync::Arc::new(k))
-    }
-}
 
 impl Bc {
     pub(crate) fn serialize<W: Write>(
@@ -190,36 +175,33 @@ fn do_nothing<W>() -> impl SerializeFn<W> {
 
 #[test]
 fn test_legacy_login_roundtrip() {
-    let encryption_protocol =
-        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-    let mut context = BcContext::new(encryption_protocol);
+    let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_legacy_login.bin");
-    let msg = Bc::deserialize::<&[u8]>(&mut context, &sample[..]).unwrap();
+    let msg = Bc::deserialize(&context, &mut bytes::BytesMut::from(&sample[..])).unwrap();
 
     let ser_buf = msg
         .serialize(vec![], &EncryptionProtocol::BCEncrypt)
         .unwrap();
-    let msg2 = Bc::deserialize::<&[u8]>(&mut context, ser_buf.as_ref()).unwrap();
+    let msg2 = Bc::deserialize(&context, &mut bytes::BytesMut::from(ser_buf.as_slice())).unwrap();
     assert_eq!(msg, msg2);
     assert_eq!(&sample[..], ser_buf.as_slice());
 }
 
 #[test]
 fn test_modern_login_roundtrip() {
-    let encryption_protocol =
-        std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-    let mut context = BcContext::new(encryption_protocol);
+    let mut context = BcContext::new();
+    context.set_encrypted(EncryptionProtocol::BCEncrypt);
 
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_modern_login.bin");
 
-    let msg = Bc::deserialize::<&[u8]>(&mut context, &sample[..]).unwrap();
+    let msg = Bc::deserialize(&context, &mut bytes::BytesMut::from(&sample[..])).unwrap();
 
     let ser_buf = msg
         .serialize(vec![], &EncryptionProtocol::BCEncrypt)
         .unwrap();
-    let msg2 = Bc::deserialize::<&[u8]>(&mut context, ser_buf.as_ref()).unwrap();
+    let msg2 = Bc::deserialize(&context, &mut bytes::BytesMut::from(ser_buf.as_slice())).unwrap();
     assert_eq!(msg, msg2);
 }

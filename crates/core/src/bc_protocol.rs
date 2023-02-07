@@ -1,4 +1,4 @@
-use crate::{bc, bcmedia};
+use crate::bc;
 use log::*;
 use std::convert::TryInto;
 use std::net::ToSocketAddrs;
@@ -25,8 +25,6 @@ mod talk;
 mod time;
 mod version;
 
-use super::RX_TIMEOUT;
-use bc::model::*;
 pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
@@ -37,7 +35,7 @@ pub use resolution::*;
 use std::sync::Arc;
 pub use stream::{Stream, StreamData};
 
-type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 impl From<crossbeam_channel::RecvTimeoutError> for Error {
     fn from(k: crossbeam_channel::RecvTimeoutError) -> Self {
@@ -94,13 +92,13 @@ impl BcCamera {
     ///
     /// returns either an error or the camera
     ///
-    pub fn new_with_addr<T: ToSocketAddrs>(host: T, channel_id: u8) -> Result<Self> {
+    pub async fn new_with_addr<T: ToSocketAddrs>(host: T, channel_id: u8) -> Result<Self> {
         let addr_iter = match host.to_socket_addrs() {
             Ok(iter) => iter,
             Err(_) => return Err(Error::AddrResolutionError),
         };
         for addr in addr_iter {
-            if let Ok(cam) = Self::new(SocketAddrOrUid::SocketAddr(addr), channel_id) {
+            if let Ok(cam) = Self::new(SocketAddrOrUid::SocketAddr(addr), channel_id).await {
                 return Ok(cam);
             }
         }
@@ -121,8 +119,8 @@ impl BcCamera {
     ///
     /// returns either an error or the camera
     ///
-    pub fn new_with_uid(uid: &str, channel_id: u8) -> Result<Self> {
-        Self::new(SocketAddrOrUid::Uid(uid.to_string()), channel_id)
+    pub async fn new_with_uid(uid: &str, channel_id: u8) -> Result<Self> {
+        Self::new(SocketAddrOrUid::Uid(uid.to_string()), channel_id).await
     }
 
     ///
@@ -145,13 +143,16 @@ impl BcCamera {
     ///
     /// returns either an error or the camera
     ///
-    pub fn new_with_addr_or_uid<T: ToSocketAddrsOrUid>(host: T, channel_id: u8) -> Result<Self> {
+    pub async fn new_with_addr_or_uid<T: ToSocketAddrsOrUid>(
+        host: T,
+        channel_id: u8,
+    ) -> Result<Self> {
         let addr_iter = match host.to_socket_addrs_or_uid() {
             Ok(iter) => iter,
             Err(_) => return Err(Error::AddrResolutionError),
         };
         for addr_or_uid in addr_iter {
-            if let Ok(cam) = Self::new(addr_or_uid, channel_id) {
+            if let Ok(cam) = Self::new(addr_or_uid, channel_id).await {
                 return Ok(cam);
             }
         }
@@ -172,19 +173,20 @@ impl BcCamera {
     ///
     /// returns either an error or the camera
     ///
-    pub fn new(addr: SocketAddrOrUid, channel_id: u8) -> Result<Self> {
-        let source = match addr {
+    pub async fn new(addr: SocketAddrOrUid, channel_id: u8) -> Result<Self> {
+        let source: Box<dyn Source> = match addr {
             SocketAddrOrUid::SocketAddr(addr) => {
                 debug!("Trying address {}", addr);
-                BcSource::new_tcp(addr, RX_TIMEOUT)?
+                Box::new(TcpSource::new(addr).await?)
             }
             SocketAddrOrUid::Uid(uid) => {
                 debug!("Trying uid {}", uid);
-                BcSource::new_udp(&uid, RX_TIMEOUT)?
+                let discovery = Discovery::local(&uid).await?;
+                Box::new(UdpSource::new_from_discovery(discovery).await?)
             }
         };
 
-        let conn = BcConnection::new(source)?;
+        let conn = BcConnection::new(source).await?;
 
         debug!("Success");
         let me = Self {
@@ -194,24 +196,6 @@ impl BcCamera {
             logged_in: AtomicBool::new(false),
             credentials: Mutex::new(None),
         };
-
-        if me.connection.is_udp() {
-            let keep_alive_msg = Bc {
-                meta: BcMeta {
-                    msg_id: MSG_ID_UDP_KEEP_ALIVE,
-                    channel_id: me.channel_id,
-                    msg_num: me.new_message_num(),
-                    stream_type: 0,
-                    response_code: 0,
-                    class: 0x6414,
-                },
-                body: BcBody::ModernMsg(ModernMsg {
-                    ..Default::default()
-                }),
-            };
-
-            me.connection.set_keep_alive_msg(keep_alive_msg);
-        }
         Ok(me)
     }
 
@@ -224,18 +208,13 @@ impl BcCamera {
         self.connection.clone()
     }
 
-    /// This will drop the connection. It will try to send the logout request to the camera
-    /// first
+    /// This will drop the connection.
     pub fn disconnect(&mut self) {
-        let connection = &self.connection;
         // Stop polling now. We don't need it for a disconnect
         //
         // It will also ensure that when we drop the connection we don't
         // get an error for read return zero bytes from the polling thread;
-        connection.stop_polling();
-        if let Err(err) = self.logout() {
-            warn!("Could not log out, ignoring: {}", err);
-        }
+        self.connection.stop_polling();
     }
 
     // Certains commands like logout need the username and password

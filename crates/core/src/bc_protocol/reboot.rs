@@ -1,12 +1,12 @@
-use super::{BcCamera, Error, Result, RX_TIMEOUT};
+use super::{BcCamera, Error, Result};
 use crate::bc::model::*;
 
 impl BcCamera {
     /// Reboot the camera
-    pub fn reboot(&self) -> Result<()> {
+    pub async fn reboot(&self) -> Result<()> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub = connection.subscribe(msg_num)?;
+        let mut sub = connection.subscribe(msg_num).await?;
 
         let msg = Bc {
             meta: BcMeta {
@@ -22,8 +22,8 @@ impl BcCamera {
             }),
         };
 
-        sub.send(msg)?;
-        let msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+        sub.send(msg).await?;
+        let msg = sub.recv().await?;
 
         if let BcMeta {
             response_code: 200, ..

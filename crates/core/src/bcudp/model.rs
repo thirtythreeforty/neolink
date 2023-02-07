@@ -15,6 +15,17 @@ pub enum BcUdp {
     Data(UdpData),
 }
 
+impl BcUdp {
+    /// Gets a connection ID for any kind packet
+    pub fn get_connection_id(&self) -> i32 {
+        match self {
+            Self::Discovery(_) => 0,
+            Self::Ack(data) => data.connection_id,
+            Self::Data(data) => data.connection_id,
+        }
+    }
+}
+
 /// Magic for the UDP Discovery packet
 pub const MAGIC_HEADER_UDP_NEGO: u32 = 0x2a87cf3a;
 
@@ -38,7 +49,7 @@ pub const MAGIC_HEADER_UDP_ACK: u32 = 0x2a87cf20;
 
 /// Send to acknoledge a [`UdpData`] packet. If this is not sent then the camera will
 /// resend the packet
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UdpAck {
     /// The connection ID
     ///
@@ -69,7 +80,7 @@ pub struct UdpAck {
 pub const MAGIC_HEADER_UDP_DATA: u32 = 0x2a87cf10;
 
 /// Contains the data of a [`crate::bc::model::Bc`] packet
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UdpData {
     /// The connection ID of the other party
     ///

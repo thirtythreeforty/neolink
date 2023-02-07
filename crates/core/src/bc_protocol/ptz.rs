@@ -1,4 +1,4 @@
-use super::{BcCamera, Error, Result, RX_TIMEOUT};
+use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
 
 /// Directions used for Ptz
@@ -19,10 +19,10 @@ pub enum Direction {
 
 impl BcCamera {
     /// Send a PTZ message to the camera
-    pub fn send_ptz(&self, direction: Direction, amount: f32) -> Result<()> {
+    pub async fn send_ptz(&self, direction: Direction, amount: f32) -> Result<()> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_set = connection.subscribe(msg_num)?;
+        let mut sub_set = connection.subscribe(msg_num).await?;
 
         let direction_str = match direction {
             Direction::Up => "up",
@@ -63,8 +63,8 @@ impl BcCamera {
             }),
         };
 
-        sub_set.send(send)?;
-        let msg = sub_set.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_set.send(send).await?;
+        let msg = sub_set.recv().await?;
 
         if let BcMeta {
             response_code: 200, ..

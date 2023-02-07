@@ -1,4 +1,4 @@
-use super::{make_aes_key, md5_string, BcCamera, Error, Result, Truncate, ZeroLast, RX_TIMEOUT};
+use super::{make_aes_key, md5_string, BcCamera, Error, Result, Truncate, ZeroLast};
 use crate::bc::{model::*, xml::*};
 use std::sync::atomic::Ordering;
 
@@ -6,13 +6,13 @@ impl BcCamera {
     /// Login to the camera.
     ///
     /// This should be called before most other commands
-    pub fn login(&self, username: &str, password: Option<&str>) -> Result<DeviceInfo> {
+    pub async fn login(&self, username: &str, password: Option<&str>) -> Result<DeviceInfo> {
         let device_info;
         // This { is here due to the connection and set_credentials both requiring a mutable borrow
         {
             let connection = self.get_connection();
             let msg_num = self.new_message_num();
-            let sub_login = connection.subscribe(msg_num)?;
+            let mut sub_login = connection.subscribe(msg_num).await?;
 
             // Login flow is: Send legacy login message, expect back a modern message with Encryption
             // details.  Then, re-send the login as a modern login message.  Expect back a device info
@@ -43,12 +43,12 @@ impl BcCamera {
                 }),
             };
 
-            sub_login.send(legacy_login)?;
+            sub_login.send(legacy_login).await?;
 
-            let legacy_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
+            let legacy_reply = sub_login.recv().await?;
 
             let nonce;
-            match legacy_reply.body {
+            match &legacy_reply.body {
                 BcBody::ModernMsg(ModernMsg {
                     payload:
                         Some(BcPayloads::BcXml(BcXml {
@@ -57,7 +57,7 @@ impl BcCamera {
                         })),
                     ..
                 }) => {
-                    nonce = encryption.nonce;
+                    nonce = &encryption.nonce;
                 }
                 _ => {
                     return Err(Error::UnintelligibleReply {
@@ -101,8 +101,8 @@ impl BcCamera {
                 },
             );
 
-            sub_login.send(modern_login)?;
-            let modern_reply = sub_login.rx.recv_timeout(RX_TIMEOUT)?;
+            sub_login.send(modern_login).await?;
+            let modern_reply = sub_login.recv().await?;
             if modern_reply.meta.response_code != 200 {
                 return Err(Error::CameraServiceUnavaliable);
             }
@@ -132,12 +132,14 @@ impl BcCamera {
                 }
             }
 
-            if let EncryptionProtocol::Aes(_) = connection.get_encrypted() {
+            if let EncryptionProtocol::Aes(_) = connection.get_encrypted().await {
                 // We setup the data for the AES key now
                 // as all subsequent communications will use it
                 let passwd = password.unwrap_or("");
-                let full_key = make_aes_key(&nonce, passwd);
-                connection.set_encrypted(EncryptionProtocol::Aes(Some(full_key)));
+                let full_key = make_aes_key(nonce, passwd);
+                connection
+                    .set_encrypted(EncryptionProtocol::Aes(Some(full_key)))
+                    .await;
             }
         }
         self.set_credentials(username.to_string(), password.map(|s| s.to_string()));

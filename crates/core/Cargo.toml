@@ -7,11 +7,16 @@ edition = "2018"
 
 [dependencies]
 aes = "0.6"
+async-trait = "0.1.63"
+bytes = "1.0.0"
 cfb-mode = "0.6"
 cookie-factory = "0.3"
 crc32fast = "1.2.1"
+crossbeam = "0.8"
 crossbeam-channel = "0.5.6"
+delegate = "0.9.0"
 err-derive = "0.2"
+futures = "0.3.25"
 get_if_addrs = "0.5.3"
 lazy_static = "1.4"
 local-ip-address = "0.4.4"
@@ -23,6 +28,8 @@ regex = "1.5.4"
 socket2 = "0.3"
 time = "0.2"
 tokio = { version = "1.24.2", features = ["full"] }
+tokio-stream = { version = "0.1.11", features = ["sync", "time", "net"] }
+tokio-util = { version = "0.7.4", features = ["full"] }
 xml-rs = "0.8"
 yaserde = "0.3.16"
 yaserde_derive = "0.3.16"

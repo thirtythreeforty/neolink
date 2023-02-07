@@ -2,7 +2,7 @@ use super::{aborthandle::AbortHandle, Error, Result, MTU, P2P_RELAY_HOSTNAMES, W
 use crate::bcudp::{model::*, xml::*};
 use local_ip_address::local_ip;
 use log::*;
-use rand::{seq::SliceRandom, thread_rng, Rng};
+use rand::{thread_rng, Rng};
 use std::io::{Error as IoError, ErrorKind, Result as IoResult};
 use std::net::{Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket};
 use std::time::Duration;

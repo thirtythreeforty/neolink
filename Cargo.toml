@@ -19,10 +19,10 @@ crossbeam = "0.8"
 crossbeam-channel = "0.5.1"
 err-derive = "0.2"
 env_logger = "*"
-gstreamer = "0.17"
-gstreamer-app = "0.17"
-gstreamer-rtsp = "0.17"
-gstreamer-rtsp-server = { version = "0.17", features = ["v1_12", "v1_14"]}
+gstreamer = "0.19.0"
+gstreamer-app = "0.19.0"
+gstreamer-rtsp = "0.19.0"
+gstreamer-rtsp-server = { version = "0.19.0", features = ["v1_16"]}
 lazy_static = "1.4"
 log = { version = "0.4" }
 itertools = "0.9"

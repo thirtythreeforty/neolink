@@ -1,12 +1,8 @@
-use super::{BcCamera, Error, Result, RX_TIMEOUT};
+use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
-use crossbeam_channel::{bounded, Receiver, TryRecvError};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc::{channel, error::TryRecvError, Receiver};
+use tokio::task::{self, JoinHandle};
 
 /// Motion Status that the callback can send
 #[derive(Clone, Copy, Debug)]
@@ -25,7 +21,6 @@ pub enum MotionStatus {
 pub struct MotionData {
     handle: Option<JoinHandle<Result<()>>>,
     rx: Receiver<MotionStatus>,
-    abort_handle: Arc<AtomicBool>,
     last_update: MotionStatus,
 }
 
@@ -77,19 +72,24 @@ impl MotionData {
 
 impl Drop for MotionData {
     fn drop(&mut self) {
-        self.abort_handle.store(true, Ordering::Relaxed);
-        self.handle.take().map(|h| h.join());
+        if let Some(h) = self.handle.take() {
+            let backoff = crossbeam::utils::Backoff::new();
+            h.abort();
+            while !h.is_finished() {
+                backoff.snooze();
+            }
+        }
     }
 }
 
 impl BcCamera {
     /// This message tells the camera to send the motion events to us
     /// Which are the recieved on msgid 33
-    fn start_motion_query(&self) -> Result<u16> {
+    async fn start_motion_query(&self) -> Result<u16> {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let sub = connection.subscribe(msg_num)?;
+        let mut sub = connection.subscribe(msg_num).await?;
         let msg = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_MOTION_REQUEST,
@@ -104,9 +104,9 @@ impl BcCamera {
             }),
         };
 
-        sub.send(msg)?;
+        sub.send(msg).await?;
 
-        let msg = sub.rx.recv_timeout(RX_TIMEOUT)?;
+        let msg = sub.recv().await?;
 
         if let BcMeta {
             response_code: 200, ..
@@ -123,23 +123,21 @@ impl BcCamera {
 
     /// This returns a data structure which can be used to
     /// query motion events
-    pub fn listen_on_motion(&self) -> Result<MotionData> {
-        let msg_num = self.start_motion_query()?;
+    pub async fn listen_on_motion(&self) -> Result<MotionData> {
+        let msg_num = self.start_motion_query().await?;
 
         let connection = self.get_connection();
 
         // After start_motion_query (MSG_ID 31) the camera sends motion messages
         // when whenever motion is detected.
-        let abort_handle = Arc::new(AtomicBool::new(false));
-        let (tx, rx) = bounded(20);
+        let (tx, rx) = channel(20);
 
-        let abort_handle_thread = abort_handle.clone();
         let channel_id = self.channel_id;
-        let handle = thread::spawn(move || {
-            let sub = connection.subscribe(msg_num)?;
+        let handle = task::spawn(async move {
+            let mut sub = connection.subscribe(msg_num).await?;
 
-            while !abort_handle_thread.load(Ordering::Relaxed) {
-                let msg = sub.rx.recv_timeout(RX_TIMEOUT);
+            loop {
+                let msg = sub.recv().await;
                 let status = match msg {
                     Ok(motion_msg) => {
                         if let BcBody::ModernMsg(ModernMsg {
@@ -168,16 +166,12 @@ impl BcCamera {
                             Ok(MotionStatus::NoChange(Instant::now()))
                         }
                     }
-                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-                        Ok(MotionStatus::NoChange(Instant::now()))
-                    }
                     // On connection drop we stop
-                    Err(e @ crossbeam_channel::RecvTimeoutError::Disconnected) => Err(e),
+                    Err(e) => Err(e),
                 }?;
 
-                if tx.send(status).is_err() {
+                if tx.send(status).await.is_err() {
                     // Motion reciever has been dropped
-                    abort_handle_thread.store(true, Ordering::Relaxed);
                     break;
                 }
             }
@@ -187,7 +181,6 @@ impl BcCamera {
         Ok(MotionData {
             handle: Some(handle),
             rx,
-            abort_handle,
             last_update: MotionStatus::NoChange(Instant::now()),
         })
     }
