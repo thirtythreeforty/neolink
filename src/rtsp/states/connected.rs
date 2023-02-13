@@ -4,15 +4,17 @@
 // but has not logged in
 use super::{CameraState, Shared};
 use anyhow::{Error, Result};
+use async_trait::async_trait;
 
 #[derive(Default)]
 pub(crate) struct Connected {}
 
+#[async_trait]
 impl CameraState for Connected {
-    fn setup(&mut self, _shared: &Shared) -> Result<(), Error> {
+    async fn setup(&mut self, _shared: &Shared) -> Result<(), Error> {
         Ok(())
     }
-    fn tear_down(&mut self, _shared: &Shared) -> Result<(), Error> {
+    async fn tear_down(&mut self, _shared: &Shared) -> Result<(), Error> {
         Ok(())
     }
 }

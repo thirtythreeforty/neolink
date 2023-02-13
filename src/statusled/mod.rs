@@ -26,11 +26,12 @@ pub(crate) use cmdline::Opt;
 /// Entry point for the ledstatus subcommand
 ///
 /// Opt is the command line options
-pub(crate) fn main(opt: Opt, config: Config) -> Result<()> {
-    let camera = find_and_connect(&config, &opt.camera)?;
+pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
+    let camera = find_and_connect(&config, &opt.camera).await?;
 
     camera
         .led_light_set(opt.on)
+        .await
         .context("Unable to set camera light state")?;
     Ok(())
 }

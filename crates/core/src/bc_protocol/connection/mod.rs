@@ -25,3 +25,9 @@ pub(crate) struct DiscoveryResult {
     client_id: i32,
     camera_id: i32,
 }
+
+impl DiscoveryResult {
+    pub(crate) fn get_addr(&self) -> &SocketAddr {
+        &self.addr
+    }
+}

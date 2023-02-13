@@ -30,10 +30,10 @@ impl BcCamera {
             Direction::Left => "left",
             Direction::Right => "right",
             Direction::In => {
-                unimplemented!()
+                todo!()
             }
             Direction::Out => {
-                unimplemented!()
+                todo!()
             }
         }
         .to_string();

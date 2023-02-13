@@ -3,6 +3,7 @@
 //!
 //!
 use anyhow::{Error, Result};
+use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -52,8 +53,9 @@ impl Shared {
     }
 }
 
+#[async_trait]
 pub(crate) trait CameraState: Default {
-    fn setup(&mut self, shared: &Shared) -> Result<(), Error>;
+    async fn setup(&mut self, shared: &Shared) -> Result<(), Error>;
 
-    fn tear_down(&mut self, shared: &Shared) -> Result<(), Error>;
+    async fn tear_down(&mut self, shared: &Shared) -> Result<(), Error>;
 }

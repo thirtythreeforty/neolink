@@ -6,7 +6,7 @@ use yaserde::{ser::Config, YaDeserialize, YaSerialize};
 use yaserde_derive::{YaDeserialize, YaSerialize};
 
 /// The top level of the UDP xml is P2P
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 #[yaserde(rename = "P2P")]
 pub struct UdpXml {
     /// C2D_S xml Discovery of any client
@@ -68,14 +68,14 @@ impl UdpXml {
 /// to whoever it gets this message from
 ///
 /// It should be broadcasted to port 2015
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct C2dS {
     /// The destination to reply to
     pub to: PortList,
 }
 
 /// Port list xml
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct PortList {
     /// Port to open udp connections with
     pub port: u32,
@@ -85,7 +85,7 @@ pub struct PortList {
 ///
 /// This will start a connection with any camera that has this UID
 /// It should be broadcasted to port 2018
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct C2dC {
     /// UID of the camera the client wants to connect with
     pub uid: String,
@@ -103,7 +103,7 @@ pub struct C2dC {
 }
 
 /// Client List xml
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct ClientList {
     /// Port to start udp communication with
     pub port: u32,
@@ -113,7 +113,7 @@ pub struct ClientList {
 ///
 /// This will start a connection with any camera that has this UID
 /// It should be broadcasted to port 2018
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct D2cCr {
     /// Called timer but not sure what it is a timer of
     pub timer: Timer,
@@ -126,7 +126,7 @@ pub struct D2cCr {
 }
 
 /// Timer provided by D2C_C_R
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct Timer {
     /// Unknown
     def: u32,
@@ -137,7 +137,7 @@ pub struct Timer {
 }
 
 /// C2D_DISC xml
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct C2dDisc {
     /// The client connection ID
     pub cid: i32,
@@ -146,7 +146,7 @@ pub struct C2dDisc {
 }
 
 /// D2C_DISC xml
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct D2cDisc {
     /// The client connection ID
     pub cid: i32,
@@ -155,11 +155,11 @@ pub struct D2cDisc {
 }
 
 /// D2C_T xml
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct D2cT {
     /// The camera SID
     pub sid: u32,
-    /// Type of connection observed values are `"local"`
+    /// Type of connection observed values are `"local"` `"relay"`, `"map"`
     pub conn: String,
     /// The client connection ID
     pub cid: i32,
@@ -168,7 +168,7 @@ pub struct D2cT {
 }
 
 /// C2D_T xml
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct C2dT {
     /// The camera SID
     pub sid: u32,
@@ -185,7 +185,7 @@ pub struct C2dT {
 /// This is from client to a reolink middle man server
 ///
 /// It should be sent to a reolink p2p sever on port 9999
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct C2mQ {
     /// UID to look up
     pub uid: String,
@@ -198,7 +198,7 @@ pub struct C2mQ {
 ///
 /// This is from middle man reolink server to client
 ///
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct M2cQr {
     /// The register server location
     pub reg: IpPort,
@@ -213,7 +213,7 @@ pub struct M2cQr {
 /// Used as part of M2C_Q_R to provide the host and port
 ///
 /// of the register, relay and log servers
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct IpPort {
     /// Ip of the service
     pub ip: String,
@@ -225,7 +225,7 @@ pub struct IpPort {
 ///
 /// This is from client to the register reolink server
 ///
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct C2rC {
     /// The UID to register connecition request with
     pub uid: String,
@@ -251,7 +251,7 @@ pub struct C2rC {
 ///
 /// This is from register reolink server to clinet with device ip and did etc
 ///
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct R2cT {
     /// The location of the camera
     pub dmap: Option<IpPort>,
@@ -268,7 +268,7 @@ pub struct R2cT {
 /// This is from register reolink server to clinet with device ip and did etc
 /// during a relay
 ///
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct R2cCr {
     /// Dmap camera location
     pub dmap: IpPort,
@@ -287,7 +287,7 @@ pub struct R2cCr {
 /// D2C_CFM xml
 ///
 /// Device to client, with connection started from middle man server
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct D2cCfm {
     /// The camera SID
     pub sid: u32,
@@ -306,7 +306,7 @@ pub struct D2cCfm {
 /// C2R_CFM xml
 ///
 /// Client to register
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct C2rCfm {
     /// The camera SID
     pub sid: u32,

@@ -27,7 +27,8 @@ mod utils;
 use cmdline::{Command, Opt};
 use config::Config;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     info!(
@@ -55,25 +56,25 @@ fn main() -> Result<()> {
                 "Deprecated command line option. Please use: `neolink rtsp --config={:?}`",
                 config
             );
-            rtsp::main(rtsp::Opt {}, config)?;
+            rtsp::main(rtsp::Opt {}, config).await?;
         }
         Some(Command::Rtsp(opts)) => {
-            rtsp::main(opts, config)?;
+            rtsp::main(opts, config).await?;
         }
         Some(Command::StatusLight(opts)) => {
-            statusled::main(opts, config)?;
+            statusled::main(opts, config).await?;
         }
         Some(Command::Reboot(opts)) => {
-            reboot::main(opts, config)?;
+            reboot::main(opts, config).await?;
         }
         Some(Command::Pir(opts)) => {
-            pir::main(opts, config)?;
+            pir::main(opts, config).await?;
         }
         Some(Command::Talk(opts)) => {
-            talk::main(opts, config)?;
+            talk::main(opts, config).await?;
         }
         Some(Command::Mqtt(opts)) => {
-            mqtt::main(opts, config)?;
+            mqtt::main(opts, config).await?;
         }
     }
 

@@ -181,7 +181,80 @@ impl BcCamera {
             }
             SocketAddrOrUid::Uid(uid) => {
                 debug!("Trying uid {}", uid);
-                let discovery = Discovery::local(&uid).await?;
+                // TODO Make configurable
+                let allow_local = false;
+                let allow_remote = false;
+                let allow_relay = true;
+
+                let discovery = {
+                    let mut set = tokio::task::JoinSet::new();
+                    if allow_local {
+                        let uid_local = uid.clone();
+                        set.spawn(async move {
+                            debug!("Starting Local discovery");
+                            let result = Discovery::local(&uid_local).await;
+                            if let Ok(disc) = &result {
+                                debug!(
+                                    "Local discovery success {} at {}",
+                                    uid_local,
+                                    disc.get_addr()
+                                );
+                            }
+                            result
+                        });
+                    }
+                    if allow_remote {
+                        let uid_remote = uid.clone();
+                        set.spawn(async move {
+                            debug!("Starting Remote discovery");
+                            let result = Discovery::remote(&uid_remote).await;
+                            if let Ok(disc) = &result {
+                                debug!(
+                                    "Remote discovery success {} at {}",
+                                    uid_remote,
+                                    disc.get_addr()
+                                );
+                            }
+                            result
+                        });
+                    }
+                    if allow_relay {
+                        let uid_relay = uid.clone();
+                        set.spawn(async move {
+                            debug!("Starting Relay");
+                            let result = Discovery::relay(&uid_relay).await;
+                            if let Ok(disc) = &result {
+                                debug!("Relay success {} at {}", uid_relay, disc.get_addr());
+                            }
+                            result
+                        });
+                    }
+
+                    let last_result;
+                    loop {
+                        match set.join_next().await {
+                            Some(Ok(Ok(disc))) => {
+                                last_result = Ok(disc);
+                                break;
+                            }
+                            Some(Ok(Err(e))) => {
+                                debug!("Discovery Error: {:?}", e);
+                            }
+                            Some(Err(join_error)) => {
+                                last_result = Err(Error::OtherString(format!(
+                                    "Panic while joining Discovery threads: {:?}",
+                                    join_error
+                                )));
+                                break;
+                            }
+                            None => {
+                                last_result = Err(Error::DiscoveryTimeout);
+                                break;
+                            }
+                        }
+                    }
+                    last_result
+                }?;
                 Box::new(UdpSource::new_from_discovery(discovery).await?)
             }
         };

@@ -28,13 +28,14 @@ use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::io::Write;
+use std::sync::Arc;
 
 type Result<T> = std::result::Result<T, ()>;
 type AnyResult<T> = std::result::Result<T, anyhow::Error>;
 
 pub(crate) struct RtspServer {
     server: GstRTSPServer,
-    main_loop: glib::MainLoop,
+    main_loop: Arc<glib::MainLoop>,
 }
 
 #[derive(Eq, PartialEq, Debug, Copy, Clone)]
@@ -459,7 +460,7 @@ impl RtspServer {
         }
         Ok(RtspServer {
             server: GstRTSPServer::new(),
-            main_loop: glib::MainLoop::new(None, false),
+            main_loop: Arc::new(glib::MainLoop::new(None, false)),
         })
     }
 
@@ -507,7 +508,7 @@ impl RtspServer {
             debug!("RTSP: media was configured");
             let bin = media
                 .element()
-                .expect("Media should have an element")
+                // .expect("Media should have an element")
                 .dynamic_cast::<Bin>()
                 .expect("Media source's element should be a bin");
             let app_src = bin
@@ -631,14 +632,14 @@ impl RtspServer {
         Ok(())
     }
 
-    pub(crate) fn run(&self, bind_addr: &str, bind_port: u16) {
+    pub(crate) async fn run(&self, bind_addr: &str, bind_port: u16) {
         self.server.set_address(bind_addr);
         self.server.set_service(&format!("{}", bind_port));
         // Attach server to default Glib context
         let _ = self.server.attach(None);
-
+        let main_loop = self.main_loop.clone();
         // Run the Glib main loop.
-        self.main_loop.run();
+        let _ = tokio::task::spawn_blocking(move || main_loop.run()).await;
     }
 
     #[allow(dead_code)]

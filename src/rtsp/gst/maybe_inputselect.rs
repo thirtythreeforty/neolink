@@ -29,36 +29,23 @@ impl MaybeInputSelect {
                 .static_pad(&format!("sink_{}", path_num))
                 .ok_or_else(|| anyhow!("Unable to set input pad"))?;
 
-            match element.property("active-pad").map(|e| e.get::<'_, Pad>()) {
-                Ok(Ok(active_pad)) => {
+            match element.property_value("active-pad").get::<'_, Pad>() {
+                Ok(active_pad) => {
                     if active_pad != new_pad {
                         debug!("Pad need changing");
-                        if let Err(e) = element.set_property("active-pad", new_pad) {
-                            debug!("Element is invalid: {:?}", e);
-                            self.clear();
-                        } else {
-                            debug!("Pad chanaged to {}", path_num);
-                        }
-                    }
-                }
-                Ok(Err(e)) => {
-                    debug!("Pad need changing: Active pad invalid: {:?}", e);
-                    if let Err(e) = element.set_property("active-pad", new_pad) {
-                        debug!("Element is invalid: {:?}", e);
-                        self.clear();
-                    } else {
-                        debug!("Pad chanaged to {}", path_num);
+                        element.set_property("active-pad", new_pad);
                     }
                 }
                 Err(e) => {
-                    debug!("Element is invalid: Err({:?})", e);
-                    self.clear();
+                    debug!("Pad need changing: Active pad invalid: {:?}", e);
+                    element.set_property("active-pad", new_pad);
                 }
             }
         }
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub(crate) fn clear(&mut self) {
         self.typefind = None;
     }

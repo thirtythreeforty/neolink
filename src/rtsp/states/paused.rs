@@ -4,6 +4,7 @@
 // instead dummy data is sent into the gstreamer source
 
 use anyhow::{anyhow, Error, Result};
+use async_trait::async_trait;
 use crossbeam::utils::Backoff;
 use log::*;
 use std::collections::HashMap;
@@ -26,8 +27,9 @@ pub(crate) struct Paused {
     abort_handle: AbortHandle,
 }
 
+#[async_trait]
 impl CameraState for Paused {
-    fn setup(&mut self, shared: &Shared) -> Result<(), Error> {
+    async fn setup(&mut self, shared: &Shared) -> Result<(), Error> {
         self.abort_handle.reset();
         // Create new gst outputs
         //
@@ -103,7 +105,7 @@ impl CameraState for Paused {
         Ok(())
     }
 
-    fn tear_down(&mut self, shared: &Shared) -> Result<(), Error> {
+    async fn tear_down(&mut self, shared: &Shared) -> Result<(), Error> {
         self.abort_handle.abort();
 
         if !self.handles.is_empty() {

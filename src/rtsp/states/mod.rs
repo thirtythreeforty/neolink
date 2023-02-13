@@ -47,7 +47,7 @@ pub(crate) struct RtspCamera {
 }
 
 impl RtspCamera {
-    pub(crate) fn new(
+    pub(crate) async fn new(
         config: &CameraConfig,
         users: &[UserConfig],
         rtsp: Arc<RtspServer>,
@@ -63,6 +63,7 @@ impl RtspCamera {
         info!("{}: Connecting to camera at {}", config.name, camera_addr);
         let camera = camera_addr
             .connect_camera(config.channel_id)
+            .await
             .with_context(|| {
                 format!(
                     "Failed to connect to camera {} at {} on channel {}",
@@ -119,7 +120,7 @@ impl RtspCamera {
         };
 
         let mut state: Connected = Default::default();
-        state.setup(&shared)?;
+        state.setup(&shared).await?;
 
         Ok(Self {
             shared,
@@ -135,29 +136,29 @@ impl RtspCamera {
             State::Paused(_) => StateInfo::Paused,
         }
     }
-    pub(crate) fn login(&mut self) -> Result<()> {
+    pub(crate) async fn login(&mut self) -> Result<()> {
         match &mut self.state {
             State::Connected(ref mut connected) => {
                 info!("{}: Logging in", &self.shared.name);
-                connected.tear_down(&self.shared)?;
+                connected.tear_down(&self.shared).await?;
                 let mut state: LoggedIn = Default::default();
-                state.setup(&self.shared)?;
+                state.setup(&self.shared).await?;
                 self.state = State::LoggedIn(state);
                 info!("{}: Successfully logged in", &self.shared.name);
             }
             State::Streaming(ref mut connected) => {
                 info!("{}: Logging in", &self.shared.name);
-                connected.tear_down(&self.shared)?;
+                connected.tear_down(&self.shared).await?;
                 let mut state: LoggedIn = Default::default();
-                state.setup(&self.shared)?;
+                state.setup(&self.shared).await?;
                 self.state = State::LoggedIn(state);
                 info!("{}: Successfully stopped straming", &self.shared.name);
             }
             State::Paused(ref mut connected) => {
                 info!("{}: Logging in", &self.shared.name);
-                connected.tear_down(&self.shared)?;
+                connected.tear_down(&self.shared).await?;
                 let mut state: LoggedIn = Default::default();
-                state.setup(&self.shared)?;
+                state.setup(&self.shared).await?;
                 self.state = State::LoggedIn(state);
                 info!(
                     "{}: Successfully stopped paused streaming",
@@ -171,7 +172,7 @@ impl RtspCamera {
         Ok(())
     }
 
-    pub(crate) fn stream(&mut self) -> Result<()> {
+    pub(crate) async fn stream(&mut self) -> Result<()> {
         match &mut self.state {
             State::Connected(_) => {
                 return Err(anyhow!("{}: Must login first", &self.shared.name));
@@ -183,20 +184,20 @@ impl RtspCamera {
                 info!("{}: Resuming stream", &self.shared.name);
                 let outputs = paused.take_outputs()?;
 
-                paused.tear_down(&self.shared)?;
+                paused.tear_down(&self.shared).await?;
                 let mut state: Streaming = Default::default();
 
                 state.insert_outputs(outputs)?;
 
-                state.setup(&self.shared)?;
+                state.setup(&self.shared).await?;
                 self.state = State::Streaming(state);
                 info!("{}: Successfully resumed streaming", &self.shared.name);
             }
             State::LoggedIn(ref mut loggedin) => {
                 info!("{}: Starting stream", &self.shared.name);
-                loggedin.tear_down(&self.shared)?;
+                loggedin.tear_down(&self.shared).await?;
                 let mut state: Streaming = Default::default();
-                state.setup(&self.shared)?;
+                state.setup(&self.shared).await?;
                 self.state = State::Streaming(state);
                 info!("{}: Successfully started streaming", &self.shared.name);
             }
@@ -204,21 +205,21 @@ impl RtspCamera {
         Ok(())
     }
 
-    pub(crate) fn pause(&mut self) -> Result<()> {
+    pub(crate) async fn pause(&mut self) -> Result<()> {
         match &mut self.state {
             State::Connected(_) => {
                 return Err(anyhow!("{}: Must login first", &self.shared.name));
             }
             State::Streaming(ref mut old_state) => {
                 info!("{}: Pausing stream", &self.shared.name);
-                let outputs = old_state.take_outputs()?;
+                let outputs = old_state.take_outputs().await?;
 
-                old_state.tear_down(&self.shared)?;
+                old_state.tear_down(&self.shared).await?;
                 let mut state: Paused = Default::default();
 
                 state.insert_outputs(outputs)?;
 
-                state.setup(&self.shared)?;
+                state.setup(&self.shared).await?;
                 self.state = State::Paused(state);
                 info!("{}: Successfully paused streaming", &self.shared.name);
             }
@@ -243,10 +244,11 @@ impl RtspCamera {
         }
     }
 
-    pub(crate) fn motion_data(&self) -> Result<MotionData> {
+    pub(crate) async fn motion_data(&self) -> Result<MotionData> {
         self.shared
             .camera
             .listen_on_motion()
+            .await
             .with_context(|| "Cannot get motion data")
     }
 
@@ -265,11 +267,11 @@ impl RtspCamera {
         }
     }
 
-    pub(crate) fn manage(&self) -> Result<()> {
+    pub(crate) async fn manage(&self) -> Result<()> {
         if let State::Connected(_) = self.state {
             return Err(anyhow!("Cannot manage a camera that is not logged in"));
         }
-        let cam_time = self.shared.camera.get_time()?;
+        let cam_time = self.shared.camera.get_time().await?;
         if let Some(time) = cam_time {
             info!("{}: Camera time is already set: {}", self.shared.name, time);
         } else {
@@ -283,8 +285,8 @@ impl RtspCamera {
                 "{}: Camera has no time set, setting to {}",
                 self.shared.name, new_time
             );
-            self.shared.camera.set_time(new_time)?;
-            let cam_time = self.shared.camera.get_time()?;
+            self.shared.camera.set_time(new_time).await?;
+            let cam_time = self.shared.camera.get_time().await?;
             if let Some(time) = cam_time {
                 info!("{}: Camera time is now set: {}", self.shared.name, time);
             } else {
@@ -299,7 +301,7 @@ impl RtspCamera {
         if let Ok(VersionInfo {
             firmwareVersion: firmware_version,
             ..
-        }) = self.shared.camera.version()
+        }) = self.shared.camera.version().await
         {
             info!(
                 "{}: Camera reports firmware version {}",

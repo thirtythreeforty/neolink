@@ -3,11 +3,12 @@
 // Data is streamed into a gstreamer source
 
 use anyhow::{anyhow, Error, Result};
+use async_trait::async_trait;
 use crossbeam::utils::Backoff;
 use log::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::thread::{self, JoinHandle};
+use tokio::task::{self, JoinHandle};
 
 use neolink_core::bc_protocol::Stream;
 
@@ -25,8 +26,9 @@ pub(crate) struct Streaming {
     abort_handle: AbortHandle,
 }
 
+#[async_trait]
 impl CameraState for Streaming {
-    fn setup(&mut self, shared: &Shared) -> Result<(), Error> {
+    async fn setup(&mut self, shared: &Shared) -> Result<(), Error> {
         self.abort_handle.reset();
         // Create new gst outputs
         //
@@ -89,9 +91,9 @@ impl CameraState for Streaming {
             let output_thread = output.clone();
 
             let stream_thead = *stream;
-            let handle = thread::spawn(move || {
+            let handle = task::spawn(async move {
                 let backoff = Backoff::new();
-                let stream_data = arc_camera.start_video(stream_thead, 0)?;
+                let mut stream_data = arc_camera.start_video(stream_thead, 0).await?;
 
                 while arc_abort_handle.is_live() {
                     let mut data = stream_data.get_data()?;
@@ -109,7 +111,8 @@ impl CameraState for Streaming {
 
         Ok(())
     }
-    fn tear_down(&mut self, shared: &Shared) -> Result<(), Error> {
+
+    async fn tear_down(&mut self, shared: &Shared) -> Result<(), Error> {
         self.abort_handle.abort();
 
         if !self.handles.is_empty() {
@@ -120,7 +123,7 @@ impl CameraState for Streaming {
             }
 
             for (stream, handle) in self.handles.drain() {
-                match handle.join() {
+                match handle.await {
                     Ok(Err(e)) => return Err(e),
                     Err(_) => return Err(anyhow!("Panicked while streaming {:?}", stream)),
                     Ok(Ok(_)) => {}
@@ -136,11 +139,10 @@ impl Drop for Streaming {
     fn drop(&mut self) {
         self.abort_handle.abort();
 
-        for (stream, handle) in self.handles.drain() {
-            if let Ok(Err(e)) = handle.join() {
-                warn!("During drop: {:?} did not stop cleanly: {:?}", stream, e);
-            } else {
-                warn!("During drop: Panicked while streaming");
+        for (_, handle) in self.handles.drain() {
+            let backoff = crossbeam::utils::Backoff::new();
+            while !handle.is_finished() {
+                backoff.spin();
             }
         }
     }
@@ -151,10 +153,10 @@ impl Streaming {
         self.handles.iter().all(|(_, h)| !h.is_finished()) && self.abort_handle.is_live()
     }
 
-    pub(crate) fn take_outputs(&mut self) -> Result<HashMap<Stream, GstOutputs>> {
+    pub(crate) async fn take_outputs(&mut self) -> Result<HashMap<Stream, GstOutputs>> {
         self.abort_handle.abort();
         for (stream, handle) in self.handles.drain() {
-            match handle.join() {
+            match handle.await {
                 Ok(Err(e)) => return Err(e),
                 Err(_) => return Err(anyhow!("Panicked while streaming {:?}", stream)),
                 Ok(Ok(_)) => {}

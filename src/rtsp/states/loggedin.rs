@@ -7,20 +7,23 @@
 
 use super::{CameraState, Shared};
 use anyhow::Result;
+use async_trait::async_trait;
 
 #[derive(Default)]
 pub(crate) struct LoggedIn {}
 
+#[async_trait]
 impl CameraState for LoggedIn {
-    fn setup(&mut self, shared: &Shared) -> Result<(), anyhow::Error> {
+    async fn setup(&mut self, shared: &Shared) -> Result<(), anyhow::Error> {
         shared
             .camera
-            .login(&shared.username, shared.password.as_deref())?;
+            .login(&shared.username, shared.password.as_deref())
+            .await?;
         Ok(())
     }
 
-    fn tear_down(&mut self, shared: &Shared) -> Result<(), anyhow::Error> {
-        shared.camera.logout()?;
+    async fn tear_down(&mut self, shared: &Shared) -> Result<(), anyhow::Error> {
+        shared.camera.logout().await?;
         Ok(())
     }
 }

@@ -33,20 +33,20 @@ impl AddressOrUid {
     }
 
     // Convience method to get the BcCamera with the appropiate method
-    pub(crate) fn connect_camera(&self, channel_id: u8) -> Result<BcCamera, Error> {
+    pub(crate) async fn connect_camera(&self, channel_id: u8) -> Result<BcCamera, Error> {
         match self {
-            AddressOrUid::Address(host) => Ok(BcCamera::new_with_addr(host, channel_id)?),
-            AddressOrUid::Uid(host) => Ok(BcCamera::new_with_uid(host, channel_id)?),
+            AddressOrUid::Address(host) => Ok(BcCamera::new_with_addr(host, channel_id).await?),
+            AddressOrUid::Uid(host) => Ok(BcCamera::new_with_uid(host, channel_id).await?),
         }
     }
 }
 
-pub(crate) fn find_and_connect(config: &Config, name: &str) -> Result<BcCamera> {
+pub(crate) async fn find_and_connect(config: &Config, name: &str) -> Result<BcCamera> {
     let camera_config = find_camera_by_name(config, name)?;
-    connect_and_login(camera_config)
+    connect_and_login(camera_config).await
 }
 
-pub(crate) fn connect_and_login(camera_config: &CameraConfig) -> Result<BcCamera> {
+pub(crate) async fn connect_and_login(camera_config: &CameraConfig) -> Result<BcCamera> {
     let camera_addr =
         AddressOrUid::new(&camera_config.camera_addr, &camera_config.camera_uid).unwrap();
     info!(
@@ -56,6 +56,7 @@ pub(crate) fn connect_and_login(camera_config: &CameraConfig) -> Result<BcCamera
 
     let camera = camera_addr
         .connect_camera(camera_config.channel_id)
+        .await
         .with_context(|| {
             format!(
                 "Failed to connect to camera {} at {} on channel {}",
@@ -66,6 +67,7 @@ pub(crate) fn connect_and_login(camera_config: &CameraConfig) -> Result<BcCamera
     info!("{}: Logging in", camera_config.name);
     camera
         .login(&camera_config.username, camera_config.password.as_deref())
+        .await
         .with_context(|| format!("Failed to login to {}", camera_config.name))?;
 
     info!("{}: Connected and logged in", camera_config.name);

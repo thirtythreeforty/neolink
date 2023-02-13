@@ -4,7 +4,7 @@
 use super::xml::*;
 
 /// Top level udp packet
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum BcUdp {
     /// Packet from the negotiate stage when connection info is exchanged
@@ -30,7 +30,7 @@ impl BcUdp {
 pub const MAGIC_HEADER_UDP_NEGO: u32 = 0x2a87cf3a;
 
 /// The Discovery packet is sent and received to init a connection
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct UdpDiscovery {
     // The packet also contains these header fields not deserialized into this struct:
     // 4 Bytes Magic

@@ -24,11 +24,12 @@ pub(crate) use cmdline::Opt;
 /// Entry point for the pir subcommand
 ///
 /// Opt is the command line options
-pub(crate) fn main(opt: Opt, config: Config) -> Result<()> {
-    let camera = find_and_connect(&config, &opt.camera)?;
+pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
+    let camera = find_and_connect(&config, &opt.camera).await?;
 
     camera
         .pir_set(opt.on)
+        .await
         .context("Unable to set camera PIR state")?;
     Ok(())
 }

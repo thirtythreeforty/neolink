@@ -134,9 +134,26 @@ fn bc_modern_msg<'a>(
     let payload;
     if payload_len > 0 {
         // Extract remainder of message as binary, if it exists
-        let encryption_protocol = context.get_encrypted();
+        let encryption_protocol = match header {
+            BcHeader {
+                msg_id: 1,
+                response_code,
+                ..
+            } if (response_code & 0xff) == 0x00 => EncryptionProtocol::Unencrypted,
+            BcHeader {
+                msg_id: 1,
+                response_code,
+                ..
+            } if (response_code & 0xff) == 0x01 => EncryptionProtocol::BCEncrypt,
+            BcHeader {
+                msg_id: 1,
+                response_code,
+                ..
+            } if (response_code & 0xff) == 0x02 => EncryptionProtocol::Aes(None),
+            _ => context.get_encrypted().clone(),
+        };
         let processed_payload_buf =
-            xml_crypto::decrypt(header.channel_id as u32, payload_buf, encryption_protocol);
+            xml_crypto::decrypt(header.channel_id as u32, payload_buf, &encryption_protocol);
         if context.in_bin_mode.contains(&(header.msg_num)) {
             payload = Some(BcPayloads::Binary(payload_buf.to_vec()));
         } else {

@@ -15,10 +15,10 @@ impl BcUdpCodex {
     }
 }
 
-impl Encoder<&BcUdp> for BcUdpCodex {
+impl Encoder<BcUdp> for BcUdpCodex {
     type Error = Error;
 
-    fn encode(&mut self, item: &BcUdp, dst: &mut BytesMut) -> Result<()> {
+    fn encode(&mut self, item: BcUdp, dst: &mut BytesMut) -> Result<()> {
         let buf: Vec<u8> = Default::default();
         let buf = item.serialize(buf)?;
         dst.reserve(buf.len());

@@ -2,13 +2,17 @@ use super::App;
 use crate::config::CameraConfig;
 use crate::utils::AddressOrUid;
 use anyhow::{anyhow, Context, Result};
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender, TryRecvError};
 use log::*;
 use neolink_core::bc_protocol::{
     BcCamera, Direction as BcDirection, Error as BcError, LightState, MotionStatus,
 };
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::{
+    mpsc::{channel, error::TryRecvError, Receiver, Sender},
+    Mutex,
+};
 
+#[derive(Debug, Copy, Clone)]
 pub(crate) enum Messages {
     None,
     Login,
@@ -24,6 +28,7 @@ pub(crate) enum Messages {
     Ptz(Direction),
 }
 
+#[derive(Debug, Copy, Clone)]
 pub(crate) enum Direction {
     Up(f32),
     Down(f32),
@@ -33,6 +38,7 @@ pub(crate) enum Direction {
     Out(f32),
 }
 
+#[derive(Debug)]
 enum ToCamera {
     Send(Messages),
     SendAndReply {
@@ -41,15 +47,15 @@ enum ToCamera {
     },
 }
 
-pub(crate) struct EventCam<'a> {
-    config: &'a CameraConfig,
+pub(crate) struct EventCam {
+    config: Arc<CameraConfig>,
     app: Arc<App>,
     channel_out: Arc<Mutex<Option<Receiver<Messages>>>>,
     channel_in: Arc<Mutex<Option<Sender<ToCamera>>>>,
 }
 
-impl<'a> EventCam<'a> {
-    pub(crate) fn new(config: &'a CameraConfig, app: Arc<App>) -> Self {
+impl EventCam {
+    pub(crate) fn new(config: Arc<CameraConfig>, app: Arc<App>) -> Self {
         Self {
             config,
             app,
@@ -58,10 +64,10 @@ impl<'a> EventCam<'a> {
         }
     }
 
-    pub(crate) fn poll(&self) -> Result<Messages> {
+    pub(crate) async fn poll(&self) -> Result<Messages> {
         if let Ok(ref mut channel_out) = self.channel_out.try_lock() {
             if let Some(channel_out) = channel_out.as_mut() {
-                channel_out.recv().context("Camera failed to poll")
+                channel_out.recv().await.context("Camera failed to poll")
             } else {
                 Ok(Messages::None)
             }
@@ -70,37 +76,35 @@ impl<'a> EventCam<'a> {
         }
     }
 
-    pub(crate) fn send_message(&self, msg: Messages) -> Result<()> {
-        if let Ok(ref mut channel_in) = self.channel_in.lock() {
-            if let Some(channel_in) = channel_in.as_mut() {
-                channel_in
-                    .send(ToCamera::Send(msg))
-                    .context("Failed to send message from camera")
-            } else {
-                Err(anyhow!("Failed to send camera data over crossbeam"))
-            }
+    pub(crate) async fn send_message(&self, msg: Messages) -> Result<()> {
+        let mut channel_in = self.channel_in.lock().await;
+        if let Some(channel_in) = channel_in.as_mut() {
+            channel_in
+                .send(ToCamera::Send(msg))
+                .await
+                .context("Failed to send message from camera")
         } else {
-            Err(anyhow!("Failed to lock"))
+            Err(anyhow!("Failed to send camera data over crossbeam"))
         }
     }
 
-    pub(crate) fn send_message_with_reply(&self, msg: Messages) -> Result<String> {
-        if let Ok(ref mut channel_in) = self.channel_in.lock() {
-            if let Some(channel_in) = channel_in.as_mut() {
-                let (tx, rx) = bounded(1);
-                channel_in
-                    .send(ToCamera::SendAndReply {
-                        message: msg,
-                        reply: tx,
-                    })
-                    .context("Failed to send message from camera")?;
-                rx.recv_timeout(std::time::Duration::from_secs(3))
-                    .context("Failed to recieve reply")
-            } else {
-                Err(anyhow!("Failed to send camera data over crossbeam"))
-            }
+    pub(crate) async fn send_message_with_reply(&self, msg: Messages) -> Result<String> {
+        let mut channel_in = self.channel_in.lock().await;
+        if let Some(channel_in) = channel_in.as_mut() {
+            let (tx, mut rx) = channel(1);
+            channel_in
+                .send(ToCamera::SendAndReply {
+                    message: msg,
+                    reply: tx,
+                })
+                .await
+                .context("Failed to send message from camera")?;
+            tokio::time::timeout(std::time::Duration::from_secs(3), rx.recv())
+                .await
+                .context("Failed to recieve reply Timeout")?
+                .ok_or_else(|| anyhow!("Failed to recieve reply"))
         } else {
-            Err(anyhow!("Failed to lock"))
+            Err(anyhow!("Failed to send camera data over crossbeam"))
         }
     }
 
@@ -108,31 +112,32 @@ impl<'a> EventCam<'a> {
         self.app.abort(&self.config.name);
     }
 
-    pub(crate) fn start_listening(&self) {
-        let loop_config = self.config;
+    pub(crate) async fn start_listening(&self) {
+        let loop_config = self.config.clone();
 
         // Channels from the camera
-        let (tx, rx) = unbounded();
+        let (tx, rx) = channel(40);
         let loop_tx = Arc::new(Mutex::new(tx));
-        *self.channel_out.lock().unwrap() = Some(rx);
+        *self.channel_out.lock().await = Some(rx);
 
         // Channels to the camera
-        let (stx, srx) = unbounded();
+        let (stx, srx) = channel(40);
         let loop_rx = Arc::new(Mutex::new(srx));
-        *self.channel_in.lock().unwrap() = Some(stx);
+        *self.channel_in.lock().await = Some(stx);
 
         while self.app.running(&self.config.name) {
             // Ignore errors and just loop
             let _ = Self::cam_run(
-                loop_config,
+                &loop_config,
                 loop_tx.clone(),
                 loop_rx.clone(),
                 self.app.clone(),
-            );
+            )
+            .await;
         }
     }
 
-    fn cam_run(
+    async fn cam_run(
         camera_config: &CameraConfig,
         tx: Arc<Mutex<Sender<Messages>>>,
         rx: Arc<Mutex<Receiver<ToCamera>>>,
@@ -147,6 +152,7 @@ impl<'a> EventCam<'a> {
         );
         let camera = camera_addr
             .connect_camera(camera_config.channel_id)
+            .await
             .with_context(|| {
                 format!(
                     "Failed to connect to camera {} at {} on channel {}",
@@ -157,10 +163,11 @@ impl<'a> EventCam<'a> {
         info!("{}: Logging in", camera_config.name);
         camera
             .login(&camera_config.username, camera_config.password.as_deref())
+            .await
             .context("Failed to login to the camera")?;
         info!("{}: Connected and logged in", camera_config.name);
 
-        (tx.lock().map_err(|_| anyhow!("Failed to lock"))?).send(Messages::Login)?;
+        (tx.lock().await).send(Messages::Login).await?;
 
         // Shararble cameras
         let arc_cam = Arc::new(camera);
@@ -179,20 +186,23 @@ impl<'a> EventCam<'a> {
             name: camera_config.name.to_string(),
         };
 
-        let _ = crossbeam::scope(|s| {
-            info!("{}: Listening to Camera Motion", camera_config.name);
-            s.spawn(|_| {
-                if let Err(e) = motion_thread.run() {
-                    error!("Motion thread aborted: {:?}", e);
-                }
-                app.abort(&camera_config.name);
-            });
-
-            info!("{}: Setting up camera actions", camera_config.name);
-            s.spawn(|_| {
-                message_handler.listen();
-            });
+        let camera_name = camera_config.name.clone();
+        info!("{}: Listening to Camera Motion", camera_config.name);
+        let handle_motion = tokio::task::spawn(async move {
+            if let Err(e) = motion_thread.run().await {
+                error!("Motion thread aborted: {:?}", e);
+            }
+            app.abort(&camera_name);
         });
+        info!("{}: Setting up camera actions", camera_config.name);
+        let handle_camera = tokio::task::spawn(async move {
+            message_handler.listen().await;
+        });
+
+        tokio::select! {
+            val = async {handle_motion.await} => {val},
+            val = async {handle_camera.await} => {val}
+        }?;
 
         Ok(())
     }
@@ -206,26 +216,22 @@ struct MotionThread {
 }
 
 impl MotionThread {
-    fn run(&mut self) -> Result<()> {
-        let mut motion_data = self.camera.listen_on_motion()?;
+    async fn run(&mut self) -> Result<()> {
+        let mut motion_data = self.camera.listen_on_motion().await?;
         while self.app.running(&format!("app:{}", self.name)) {
             for motion_status in motion_data.consume_motion_events()?.drain(..) {
                 match motion_status {
                     MotionStatus::Start(_) => {
-                        (self
-                            .tx
-                            .lock()
-                            .map_err(|_| BcError::Other("Failed to lock mutex"))?)
-                        .send(Messages::MotionStart)
-                        .map_err(|_| BcError::Other("Failed to send Message"))?;
+                        (self.tx.lock().await)
+                            .send(Messages::MotionStart)
+                            .await
+                            .map_err(|_| BcError::Other("Failed to send Message"))?;
                     }
                     MotionStatus::Stop(_) => {
-                        (self
-                            .tx
-                            .lock()
-                            .map_err(|_| BcError::Other("Failed to lock mutex"))?)
-                        .send(Messages::MotionStop)
-                        .map_err(|_| BcError::Other("Failed to send Message"))?;
+                        (self.tx.lock().await)
+                            .send(Messages::MotionStop)
+                            .await
+                            .map_err(|_| BcError::Other("Failed to send Message"))?;
                     }
                     _ => {}
                 }
@@ -243,7 +249,7 @@ struct MessageHandler {
 }
 
 impl MessageHandler {
-    fn listen(&mut self) {
+    async fn listen(&mut self) {
         while self.app.running(&format!("app:{}", self.name)) {
             // Try and lock don't worry if not
             if let Ok(ref mut channel_out) = self.rx.try_lock() {
@@ -255,7 +261,7 @@ impl MessageHandler {
                         };
                         let reply = match message {
                             Messages::Reboot => {
-                                if self.camera.reboot().is_err() {
+                                if self.camera.reboot().await.is_err() {
                                     error!("Failed to reboot the camera");
                                     self.abort();
                                     "FAIL".to_string()
@@ -264,7 +270,7 @@ impl MessageHandler {
                                 }
                             }
                             Messages::StatusLedOn => {
-                                if self.camera.led_light_set(true).is_err() {
+                                if self.camera.led_light_set(true).await.is_err() {
                                     error!("Failed to turn on the status light");
                                     self.abort();
                                     "FAIL".to_string()
@@ -273,7 +279,7 @@ impl MessageHandler {
                                 }
                             }
                             Messages::StatusLedOff => {
-                                if self.camera.led_light_set(false).is_err() {
+                                if self.camera.led_light_set(false).await.is_err() {
                                     error!("Failed to turn off the status light");
                                     self.abort();
                                     "FAIL".to_string()
@@ -282,7 +288,7 @@ impl MessageHandler {
                                 }
                             }
                             Messages::IRLedOn => {
-                                if self.camera.irled_light_set(LightState::On).is_err() {
+                                if self.camera.irled_light_set(LightState::On).await.is_err() {
                                     error!("Failed to turn on the status light");
                                     self.abort();
                                     "FAIL".to_string()
@@ -291,7 +297,7 @@ impl MessageHandler {
                                 }
                             }
                             Messages::IRLedOff => {
-                                if self.camera.irled_light_set(LightState::Off).is_err() {
+                                if self.camera.irled_light_set(LightState::Off).await.is_err() {
                                     error!("Failed to turn on the status light");
                                     self.abort();
                                     "FAIL".to_string()
@@ -300,7 +306,7 @@ impl MessageHandler {
                                 }
                             }
                             Messages::IRLedAuto => {
-                                if self.camera.irled_light_set(LightState::Auto).is_err() {
+                                if self.camera.irled_light_set(LightState::Auto).await.is_err() {
                                     error!("Failed to turn on the status light");
                                     self.abort();
                                     "FAIL".to_string()
@@ -309,7 +315,7 @@ impl MessageHandler {
                                 }
                             }
                             Messages::Battery => {
-                                unimplemented!()
+                                todo!()
                             }
                             Messages::Ptz(direction) => {
                                 let (bc_direction, amount) = match direction {
@@ -320,7 +326,7 @@ impl MessageHandler {
                                     Direction::In(amount) => (BcDirection::In, amount),
                                     Direction::Out(amount) => (BcDirection::Out, amount),
                                 };
-                                if self.camera.send_ptz(bc_direction, amount).is_err() {
+                                if self.camera.send_ptz(bc_direction, amount).await.is_err() {
                                     error!("Failed to turn on the status light");
                                     self.abort();
                                     "FAIL".to_string()
@@ -331,7 +337,7 @@ impl MessageHandler {
                             _ => "UNKNOWN COMMAND".to_string(),
                         };
                         if let Some(replier) = replier {
-                            let _ = replier.send(reply);
+                            let _ = replier.send(reply).await;
                         }
                     }
                     Err(TryRecvError::Empty) => (),
