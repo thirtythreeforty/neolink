@@ -7,10 +7,13 @@ use async_trait::async_trait;
 use crossbeam::utils::Backoff;
 use log::*;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use tokio::task::{self, JoinHandle};
+use std::sync::Arc;
+use tokio::{
+    sync::Mutex,
+    task::{self, JoinHandle},
+};
 
-use neolink_core::bc_protocol::Stream;
+use neolink_core::bc_protocol::StreamKind as Stream;
 
 use super::{CameraState, Shared};
 
@@ -77,7 +80,7 @@ impl CameraState for Streaming {
 
             // Lock and setup output
             {
-                let mut locked_output = output.lock().unwrap();
+                let mut locked_output = output.lock().await;
                 locked_output.set_input_source(InputMode::Live)?;
             }
 
@@ -93,11 +96,12 @@ impl CameraState for Streaming {
             let stream_thead = *stream;
             let handle = task::spawn(async move {
                 let backoff = Backoff::new();
+                info!("Pre start_video");
                 let mut stream_data = arc_camera.start_video(stream_thead, 0).await?;
-
+                info!("Post start_video");
                 while arc_abort_handle.is_live() {
                     let mut data = stream_data.get_data()?;
-                    let mut locked_output = output_thread.lock().unwrap();
+                    let mut locked_output = output_thread.lock().await;
                     for datum in data.drain(..) {
                         locked_output.stream_recv(datum?)?;
                     }
@@ -166,7 +170,7 @@ impl Streaming {
         for (stream, arc_mutex_output) in self.outputs.drain() {
             let mutex_output =
                 Arc::try_unwrap(arc_mutex_output).map_err(|_| anyhow!("Failed to unwrap ARC"))?;
-            let output = mutex_output.into_inner()?;
+            let output = mutex_output.into_inner();
             result.insert(stream, output);
         }
         Ok(result)
@@ -180,15 +184,21 @@ impl Streaming {
         Ok(())
     }
 
-    pub(crate) fn client_connected(&self) -> bool {
-        self.outputs
-            .iter()
-            .any(|(_, output)| output.lock().unwrap().is_connected())
+    pub(crate) async fn client_connected(&self) -> bool {
+        for (_, output) in self.outputs.iter() {
+            if output.lock().await.is_connected() {
+                return true;
+            }
+        }
+        false
     }
 
-    pub(crate) fn can_pause(&self) -> bool {
-        self.outputs
-            .iter()
-            .all(|(_, output)| output.lock().unwrap().has_last_iframe())
+    pub(crate) async fn can_pause(&self) -> bool {
+        for (_, output) in self.outputs.iter() {
+            if !output.lock().await.has_last_iframe() {
+                return false;
+            }
+        }
+        true
     }
 }

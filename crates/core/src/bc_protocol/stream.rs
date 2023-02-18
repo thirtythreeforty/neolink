@@ -4,6 +4,7 @@ use crate::{
     bcmedia::model::*,
 };
 use futures::stream::StreamExt;
+use log::*;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -13,7 +14,7 @@ use tokio::task::{self, JoinHandle};
 
 /// The stream names supported by BC
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Stream {
+pub enum StreamKind {
     /// This is the HD stream
     Main,
     /// This is the SD stream
@@ -74,20 +75,30 @@ impl BcCamera {
     /// To pull frames from the camera's buffer use `recv_data` on the returned object
     ///
     /// The buffer_size represents number of compete messages so 1 would be one complete message
-    /// which may be a single audio frame or a whole video key frame
+    /// which may be a single audio frame or a whole video key frame. If 0 a default of 100 is used
     ///
-    pub async fn start_video(&self, stream: Stream, buffer_size: usize) -> Result<StreamData> {
+    pub async fn start_video(
+        &self,
+        stream: StreamKind,
+        mut buffer_size: usize,
+    ) -> Result<StreamData> {
+        info!("start_video");
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
 
         let abort_handle = Arc::new(AtomicBool::new(false));
         let abort_handle_thread = abort_handle.clone();
 
+        if buffer_size == 0 {
+            buffer_size = 100;
+        }
         let (tx, rx) = channel(buffer_size);
         let channel_id = self.channel_id;
 
         let handle = task::spawn(async move {
+            info!("sub_video");
             let mut sub_video = connection.subscribe(msg_num).await?;
+            info!("post sub_video");
 
             // On an E1 and swann cameras:
             //  - mainStream always has a value of 0
@@ -98,9 +109,9 @@ impl BcCamera {
             //  - subStream is 0
             //  - externStream is 0
             let stream_code = match stream {
-                Stream::Main => 0,
-                Stream::Sub => 1,
-                Stream::Extern => 0,
+                StreamKind::Main => 0,
+                StreamKind::Sub => 1,
+                StreamKind::Extern => 0,
             };
 
             // Theses are the numbers used with the offical client
@@ -113,15 +124,15 @@ impl BcCamera {
             //  - subStream is 256
             //  - externStram is 1024
             let handle = match stream {
-                Stream::Main => 0,
-                Stream::Sub => 256,
-                Stream::Extern => 1024,
+                StreamKind::Main => 0,
+                StreamKind::Sub => 256,
+                StreamKind::Extern => 1024,
             };
 
             let stream_name = match stream {
-                Stream::Main => "mainStream",
-                Stream::Sub => "subStream",
-                Stream::Extern => "externStream",
+                StreamKind::Main => "mainStream",
+                StreamKind::Sub => "subStream",
+                StreamKind::Extern => "externStream",
             }
             .to_string();
 
@@ -145,7 +156,9 @@ impl BcCamera {
                 },
             );
 
+            info!("Sending stream start");
             sub_video.send(start_video).await?;
+            info!("Sent stream start");
 
             let msg = sub_video.recv().await?;
             if let BcMeta {
@@ -207,7 +220,7 @@ impl BcCamera {
     }
 
     /// Stop a camera from sending more stream data.
-    pub async fn stop_video(&self, stream: Stream) -> Result<()> {
+    pub async fn stop_video(&self, stream: StreamKind) -> Result<()> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let mut sub_video = connection.subscribe(msg_num).await?;
@@ -221,9 +234,9 @@ impl BcCamera {
         //  - subStream is 0
         //  - externStream is 0
         let stream_code = match stream {
-            Stream::Main => 0,
-            Stream::Sub => 1,
-            Stream::Extern => 0,
+            StreamKind::Main => 0,
+            StreamKind::Sub => 1,
+            StreamKind::Extern => 0,
         };
 
         // Theses are the numbers used with the offical client
@@ -236,9 +249,9 @@ impl BcCamera {
         //  - subStream is 256
         //  - externStram is 1024
         let handle = match stream {
-            Stream::Main => 0,
-            Stream::Sub => 256,
-            Stream::Extern => 1024,
+            StreamKind::Main => 0,
+            StreamKind::Sub => 256,
+            StreamKind::Extern => 1024,
         };
 
         let stop_video = Bc::new_from_xml(

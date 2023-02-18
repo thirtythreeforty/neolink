@@ -1,11 +1,8 @@
-use crate::bc::codex::BcCodex;
 use crate::bc::model::*;
 use crate::Result;
+use crate::{bc::codex::BcCodex, Credentials};
 use delegate::delegate;
-use futures::{
-    sink::{Sink, SinkExt},
-    stream::{Stream, StreamExt},
-};
+use futures::{sink::Sink, stream::Stream};
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -17,29 +14,16 @@ pub(crate) struct TcpSource {
 }
 
 impl TcpSource {
-    pub(crate) async fn new(addr: SocketAddr) -> Result<TcpSource> {
+    pub(crate) async fn new<T: Into<String>, U: Into<String>>(
+        addr: SocketAddr,
+        username: T,
+        password: Option<U>,
+    ) -> Result<TcpSource> {
         let stream = connect_to(addr).await?;
 
         Ok(Self {
-            inner: Framed::new(stream, BcCodex::new()),
+            inner: Framed::new(stream, BcCodex::new(Credentials::new(username, password))),
         })
-    }
-
-    pub(crate) async fn send(&mut self, bc: Bc) -> Result<()> {
-        self.inner.send(bc).await
-    }
-    pub(crate) async fn recv(&mut self) -> Result<Bc> {
-        loop {
-            if let Some(result) = self.inner.next().await {
-                return result;
-            }
-        }
-    }
-    pub(crate) fn get_encrypted(&self) -> &EncryptionProtocol {
-        self.inner.codec().get_encrypted()
-    }
-    pub(crate) fn set_encrypted(&mut self, protocol: EncryptionProtocol) {
-        self.inner.codec_mut().set_encrypted(protocol)
     }
 }
 

@@ -151,7 +151,11 @@ impl EventCam {
             camera_config.name, camera_addr
         );
         let camera = camera_addr
-            .connect_camera(camera_config.channel_id)
+            .connect_camera(
+                camera_config.channel_id,
+                &camera_config.username,
+                camera_config.password.as_ref(),
+            )
             .await
             .with_context(|| {
                 format!(
@@ -162,7 +166,7 @@ impl EventCam {
 
         info!("{}: Logging in", camera_config.name);
         camera
-            .login(&camera_config.username, camera_config.password.as_deref())
+            .login()
             .await
             .context("Failed to login to the camera")?;
         info!("{}: Connected and logged in", camera_config.name);

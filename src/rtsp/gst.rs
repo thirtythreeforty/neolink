@@ -218,6 +218,8 @@ impl GstOutputs {
         // - In the case of PausedSources::None we just pass through without encoding
         // - In the case of all other pause sources we need to recencode in order
         //   to get smooth streams when the stream is paused/resumed
+        info!("self.video_format: {:?}", self.video_format);
+        info!("self.audio_format: {:?}", self.audio_format);
         let launch_vid_select = match self.when_paused {
             PausedSources::None => match self.video_format {
                 Some(StreamFormat::H264) => "! rtph264pay name=pay0",

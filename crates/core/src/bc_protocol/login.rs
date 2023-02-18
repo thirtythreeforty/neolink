@@ -1,4 +1,4 @@
-use super::{make_aes_key, md5_string, BcCamera, Error, Result, Truncate, ZeroLast};
+use super::{md5_string, BcCamera, Error, Result, Truncate, ZeroLast};
 use crate::bc::{model::*, xml::*};
 use std::sync::atomic::Ordering;
 
@@ -6,10 +6,11 @@ impl BcCamera {
     /// Login to the camera.
     ///
     /// This should be called before most other commands
-    pub async fn login(&self, username: &str, password: Option<&str>) -> Result<DeviceInfo> {
+    pub async fn login(&self) -> Result<DeviceInfo> {
         let device_info;
         // This { is here due to the connection and set_credentials both requiring a mutable borrow
         {
+            let credentials = self.get_credentials();
             let connection = self.get_connection();
             let msg_num = self.new_message_num();
             let mut sub_login = connection.subscribe(msg_num).await?;
@@ -23,8 +24,10 @@ impl BcCamera {
             // Note: I suspect there may be a buffer overflow opportunity in the firmware since in the
             // Baichuan library, these strings are capped at 32 bytes with a null terminator.  This
             // could also be a mistake in the library, the effect being it only compares 31 chars, not 32.
-            let md5_username = md5_string(username, ZeroLast);
-            let md5_password = password
+            let md5_username = md5_string(&credentials.username, ZeroLast);
+            let md5_password = credentials
+                .password
+                .as_ref()
                 .map(|p| md5_string(p, ZeroLast))
                 .unwrap_or_else(|| EMPTY_LEGACY_PASSWORD.to_owned());
 
@@ -70,12 +73,12 @@ impl BcCamera {
             // In the modern login flow, the username/password are concat'd with the server's nonce
             // string, then MD5'd, then the hex of this MD5 is sent as the password.  This nonce
             // prevents replay attacks if the server were to require modern flow, but not rainbow table
-            // attacks (since the plain user/password MD5s have already been sent).  The upshot is that
+            // attacks (since  the plain user/password MD5s have already been sent).  The upshot is that
             // you should use a very strong random password that is not found in a rainbow table and
             // not feasibly crackable with John the Ripper.
 
-            let modern_password = password.unwrap_or("");
-            let concat_username = format!("{}{}", username, nonce);
+            let modern_password = credentials.password.clone().unwrap_or_default();
+            let concat_username = format!("{}{}", credentials.username, nonce);
             let concat_password = format!("{}{}", modern_password, nonce);
             let md5_username = md5_string(&concat_username, Truncate);
             let md5_password = md5_string(&concat_password, Truncate);
@@ -131,18 +134,7 @@ impl BcCamera {
                     })
                 }
             }
-
-            if let EncryptionProtocol::Aes(_) = connection.get_encrypted().await {
-                // We setup the data for the AES key now
-                // as all subsequent communications will use it
-                let passwd = password.unwrap_or("");
-                let full_key = make_aes_key(nonce, passwd);
-                connection
-                    .set_encrypted(EncryptionProtocol::Aes(Some(full_key)))
-                    .await;
-            }
         }
-        self.set_credentials(username.to_string(), password.map(|s| s.to_string()));
         Ok(device_info)
     }
 }

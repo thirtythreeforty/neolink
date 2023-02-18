@@ -1,11 +1,13 @@
-use super::{BcSubscription, Source};
+use super::BcSubscription;
 use crate::{bc::model::*, Error, Result};
+use futures::sink::{Sink, SinkExt};
+use futures::stream::{Stream, StreamExt};
 use log::*;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::sync::Mutex;
 use tokio::sync::mpsc::{channel, Sender};
+use tokio::sync::Mutex;
 
 use tokio::{
     sync::RwLock,
@@ -13,6 +15,8 @@ use tokio::{
 };
 
 type Subscriber = Arc<RwLock<BTreeMap<u16, Sender<Bc>>>>;
+pub(crate) type BcConnSink = Box<dyn Sink<Bc, Error = Error> + Send + Sync + Unpin>;
+pub(crate) type BcConnSource = Box<dyn Stream<Item = Result<Bc>> + Send + Sync + Unpin>;
 
 /// A shareable connection to a camera.  Handles serialization of messages.  To send/receive, call
 /// .[subscribe()] with a message number.  You can use the BcSubscription to send or receive only
@@ -20,28 +24,29 @@ type Subscriber = Arc<RwLock<BTreeMap<u16, Sender<Bc>>>>;
 ///
 /// There can be only one subscriber per kind of message at a time.
 pub struct BcConnection {
-    sink: Arc<RwLock<Box<dyn Source>>>,
+    sink: Arc<Mutex<BcConnSink>>,
     subscribers: Subscriber,
     rx_thread: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl BcConnection {
-    pub async fn new(source: Box<dyn Source>) -> Result<Self> {
+    pub async fn new(sink: BcConnSink, mut source: BcConnSource) -> Result<BcConnection> {
         let subscribers: Subscriber = Default::default();
 
         let subs = subscribers.clone();
 
-        let arc_source = Arc::new(RwLock::new(source));
-        let conn = arc_source.clone();
-
         let rx_thread = task::spawn(async move {
             loop {
-                let bc = match conn.write().await.recv().await {
-                    Ok(bc) => bc,
-                    Err(e) => {
+                trace!("packet Wait");
+                let packet = source.next().await;
+                trace!("packet: {:?}", packet);
+                let bc = match packet {
+                    Some(Ok(bc)) => bc,
+                    Some(Err(e)) => {
                         error!("Deserialization error: {:?}", e);
                         break;
                     }
+                    None => continue,
                 };
 
                 if let Err(e) = Self::poll(bc, &subs).await {
@@ -52,20 +57,22 @@ impl BcConnection {
         });
 
         Ok(BcConnection {
-            sink: arc_source,
+            sink: Arc::new(Mutex::new(sink)),
             subscribers,
             rx_thread: Mutex::new(Some(rx_thread)),
         })
     }
 
     pub fn stop_polling(&self) {
-        if let Some(t) = self.rx_thread.lock().unwrap().take() {
+        if let Some(t) = self.rx_thread.blocking_lock().take() {
             t.abort()
         };
     }
 
     pub(super) async fn send(&self, bc: Bc) -> crate::Result<()> {
-        self.sink.write().await.send(bc).await?;
+        trace!("send Wait: {:?}", bc);
+        self.sink.lock().await.send(bc).await?;
+        trace!("send Complete");
         Ok(())
     }
 
@@ -79,7 +86,11 @@ impl BcConnection {
     }
 
     pub fn unsubscribe(&self, msg_num: u16) -> Result<()> {
-        self.subscribers.blocking_write().remove(&msg_num);
+        let subs = self.subscribers.clone();
+        tokio::task::spawn(async move {
+            subs.write().await.remove(&msg_num);
+        });
+
         Ok(())
     }
 
@@ -109,19 +120,12 @@ impl BcConnection {
 
         Ok(())
     }
-
-    pub(crate) async fn get_encrypted(&self) -> EncryptionProtocol {
-        self.sink.read().await.get_encrypted().clone()
-    }
-    pub(crate) async fn set_encrypted(&self, protocol: EncryptionProtocol) {
-        self.sink.write().await.set_encrypted(protocol)
-    }
 }
 
 impl Drop for BcConnection {
     fn drop(&mut self) {
         debug!("Shutting down BcConnection...");
-        if let Some(t) = self.rx_thread.get_mut().unwrap().take() {
+        if let Some(t) = self.rx_thread.get_mut().take() {
             t.abort()
         };
     }

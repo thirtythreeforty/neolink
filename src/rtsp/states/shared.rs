@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use neolink_core::bc_protocol::{BcCamera, Stream};
+use neolink_core::bc_protocol::{BcCamera, StreamKind as Stream};
 
 use crate::config::PauseConfig;
 use crate::rtsp::gst::RtspServer;

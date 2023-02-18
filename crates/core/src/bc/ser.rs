@@ -191,8 +191,7 @@ fn test_legacy_login_roundtrip() {
 
 #[test]
 fn test_modern_login_roundtrip() {
-    let mut context = BcContext::new();
-    context.set_encrypted(EncryptionProtocol::BCEncrypt);
+    let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
     // I don't want to make up a sample message; just load it
     let sample = include_bytes!("samples/model_sample_modern_login.bin");

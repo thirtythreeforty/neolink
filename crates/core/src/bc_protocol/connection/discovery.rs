@@ -16,7 +16,7 @@ use local_ip_address::local_ip;
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use std::collections::{btree_map::Entry, BTreeMap};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
+use std::net::{Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 use tokio::{
     net::UdpSocket,
@@ -29,6 +29,25 @@ use tokio::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::udp::UdpFramed;
+
+#[derive(Debug)]
+struct RegisterResult {
+    dmap: Option<SocketAddr>,
+    dev: Option<SocketAddr>,
+    sid: u32,
+}
+
+#[derive(Debug)]
+struct ConnectResult {
+    addr: SocketAddr,
+    camera_id: i32,
+}
+
+#[derive(Debug)]
+struct UidLookupResults {
+    reg: SocketAddr,
+    relay: SocketAddr,
+}
 
 pub(crate) struct Discovery {}
 
@@ -73,14 +92,19 @@ impl Discoverer {
             loop {
                 match reader.next().await {
                     Some(Ok((BcUdp::Discovery(bcudp), addr))) => {
-                        let tid = bcudp.tid;
+                        let mut tid = bcudp.tid;
                         let mut needs_removal = false;
                         if let Some(sender) = thread_subscriber.read().await.get(&tid) {
                             if sender.send(Ok((bcudp, addr))).await.is_err() {
                                 needs_removal = true;
                             }
+                        } else if let Some(any_sender) = thread_subscriber.read().await.get(&0) {
+                            if any_sender.send(Ok((bcudp, addr))).await.is_err() {
+                                tid = 0; // To make is remove 0
+                                needs_removal = true;
+                            }
                         } else {
-                            debug!("Udp Discovery got this unexpected BcUdp {:?}", bcudp);
+                            trace!("Udp Discovery got this unexpected BcUdp {:?}", bcudp);
                         }
                         if needs_removal {
                             thread_subscriber.write().await.remove(&tid);
@@ -88,8 +112,7 @@ impl Discoverer {
                     }
                     Some(Ok(bcudp)) => {
                         // Only discovery packets should be possible atm
-                        error!("Got non Discovery during discovery: {:?}", bcudp);
-                        unreachable!()
+                        trace!("Got non Discovery during discovery: {:?}", bcudp);
                     }
                     Some(Err(e)) => {
                         let mut locked_sub = thread_subscriber.write().await;
@@ -201,6 +224,7 @@ impl Discoverer {
         } else {
             disc.tid
         };
+
         let mut reply = ReceiverStream::new(self.subscribe(target_tid).await?);
         let msg = BcUdp::Discovery(disc);
 
@@ -221,11 +245,402 @@ impl Discoverer {
         }
         Err(Error::DiscoveryTimeout)
     }
+
+    // This function will contact the p2p relay servers
+    //
+    // It will ask each of the servers for details on a specific UID
+    //
+    // On success it returns the M2cQr that the p2p relay
+    // server has about the UID
+    async fn uid_loopup(&self, uid: &str) -> Result<UidLookupResults> {
+        let mut addrs = vec![];
+        for p2p_relay in P2P_RELAY_HOSTNAMES.iter() {
+            addrs.append(
+                &mut format!("{}:9999", p2p_relay)
+                    .to_socket_addrs()
+                    .map(|i| i.collect::<Vec<SocketAddr>>())
+                    .unwrap_or_else(|_| vec![]),
+            );
+        }
+        let msg = UdpDiscovery {
+            tid: 0,
+            payload: UdpXml {
+                c2m_q: Some(C2mQ {
+                    uid: uid.to_string(),
+                    os: "MAC".to_string(),
+                }),
+                ..Default::default()
+            },
+        };
+        let (packet, _) = self
+            .retry_send_multi(msg, addrs.as_slice(), |bc, addr| match bc {
+                UdpDiscovery {
+                    tid: _,
+                    payload:
+                        UdpXml {
+                            m2c_q_r: Some(m2c_q_r),
+                            ..
+                        },
+                } if m2c_q_r.reg.port != 0 || !m2c_q_r.reg.ip.is_empty() => Some((m2c_q_r, addr)),
+                _ => None,
+            })
+            .await?;
+
+        Ok(UidLookupResults {
+            reg: SocketAddr::new(packet.reg.ip.parse()?, packet.reg.port),
+            relay: SocketAddr::new(packet.relay.ip.parse()?, packet.relay.port),
+        })
+    }
+
+    async fn send_and_forget(&self, mut disc: UdpDiscovery, dest: SocketAddr) -> Result<()> {
+        if disc.tid == 0 {
+            // If 0 make a random one
+            let target_tid = generate_tid();
+            disc.tid = target_tid;
+        }
+        let mut inter = interval(Duration::from_millis(50));
+        let msg = BcUdp::Discovery(disc);
+
+        for _i in 0..5 {
+            inter.tick().await;
+
+            self.send(msg.clone(), dest).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn device_initiated_connect(
+        &self,
+        client_id: i32,
+        register_result: &RegisterResult,
+    ) -> Result<ConnectResult> {
+        let (addr, local_tid, local_did) = self
+            .handle_incoming(|bc, addr| {
+                trace!("bc: {:?}", bc);
+                match (bc, register_result) {
+                    (
+                        UdpDiscovery {
+                            tid,
+                            payload:
+                                UdpXml {
+                                    d2c_t: Some(D2cT { sid, cid, did, .. }),
+                                    ..
+                                },
+                        },
+                        RegisterResult {
+                            dmap: Some(register_dmap),
+                            sid: register_sid,
+                            ..
+                        },
+                    ) if cid == client_id && &sid == register_sid && &addr == register_dmap => {
+                        Some((addr, tid, did))
+                    }
+                    (
+                        UdpDiscovery {
+                            tid,
+                            payload:
+                                UdpXml {
+                                    d2c_t: Some(D2cT { sid, cid, did, .. }),
+                                    ..
+                                },
+                        },
+                        RegisterResult {
+                            dev: Some(register_dev),
+                            sid: register_sid,
+                            ..
+                        },
+                    ) if cid == client_id && &sid == register_sid && &addr == register_dev => {
+                        Some((addr, tid, did))
+                    }
+                    _ => None,
+                }
+            })
+            .await?;
+
+        let msg = UdpDiscovery {
+            tid: local_tid,
+            payload: UdpXml {
+                c2d_a: Some(C2dA {
+                    sid: register_result.sid,
+                    conn: "map".to_string(),
+                    cid: client_id,
+                    did: local_did,
+                    mtu: MTU,
+                }),
+                ..Default::default()
+            },
+        };
+
+        // Send and await confirm
+        self.retry_send(msg, addr, |bc, _| {
+            trace!("msg: {:?}", &bc);
+            match bc {
+                UdpDiscovery {
+                    tid: _,
+                    payload:
+                        UdpXml {
+                            d2c_cfm: Some(D2cCfm { sid, cid, did, .. }),
+                            ..
+                        },
+                } if sid == register_result.sid && did == local_did && cid == client_id => Some(()),
+                _ => None,
+            }
+        })
+        .await?;
+
+        Ok(ConnectResult {
+            addr,
+            camera_id: local_did,
+        })
+    }
+
+    async fn client_initiated_connect(
+        &self,
+        local_sid: u32,
+        client_id: i32,
+        dev_addr: SocketAddr,
+    ) -> Result<ConnectResult> {
+        let tid = generate_tid();
+
+        let msg = UdpDiscovery {
+            tid,
+            payload: UdpXml {
+                c2d_t: Some(C2dT {
+                    sid: local_sid,
+                    cid: client_id,
+                    mtu: MTU,
+                    conn: "local".to_string(),
+                }),
+                ..Default::default()
+            },
+        };
+
+        let (final_addr, local_did) = self
+            .retry_send(msg, dev_addr, |bc, addr| match bc {
+                UdpDiscovery {
+                    tid: _,
+                    payload:
+                        UdpXml {
+                            d2c_cfm: Some(D2cCfm { cid, did, sid, .. }),
+                            ..
+                        },
+                } if cid == client_id && sid == local_sid => Some((addr, did)),
+                _ => None,
+            })
+            .await?;
+
+        Ok(ConnectResult {
+            addr: final_addr,
+            camera_id: local_did,
+        })
+    }
+
+    /// Register our local ip address with the reolink servers
+    /// This will be used for the device to contact us
+    async fn register_address(
+        &self,
+        uid: &str,
+        client_id: i32,
+        reg_addr: SocketAddr,
+        relay_addr: SocketAddr,
+    ) -> Result<RegisterResult> {
+        let tid = generate_tid();
+        let local_addr = SocketAddr::new(local_ip()?, self.local_addr().port());
+        let local_ip = local_addr.ip();
+        let local_port = local_addr.port();
+        let local_family = if local_addr.ip().is_ipv4() { 4 } else { 6 };
+
+        let msg = UdpDiscovery {
+            tid,
+            payload: UdpXml {
+                c2r_c: Some(C2rC {
+                    uid: uid.to_string(),
+                    cli: IpPort {
+                        ip: local_ip.to_string(),
+                        port: local_port,
+                    },
+                    relay: IpPort {
+                        ip: relay_addr.ip().to_string(),
+                        port: relay_addr.port(),
+                    },
+                    cid: client_id,
+                    family: local_family,
+                    debug: false,
+                    os: "MAC".to_string(),
+                    revision: Some(3),
+                }),
+                ..Default::default()
+            },
+        };
+
+        // Send and await acceptance
+        let (sid, dmap, dev) = self
+            .retry_send(msg, reg_addr, |bc, _| match bc {
+                UdpDiscovery {
+                    tid: _,
+                    payload:
+                        UdpXml {
+                            r2c_t:
+                                Some(R2cT {
+                                    dmap: Some(dmap),
+                                    sid,
+                                    cid,
+                                    dev: Some(dev),
+                                }),
+                            ..
+                        },
+                } if !dmap.ip.is_empty()
+                    && dmap.port > 0
+                    && !dev.ip.is_empty()
+                    && dev.port > 0
+                    && cid == client_id =>
+                {
+                    Some(Ok((sid, Some(dmap), Some(dev))))
+                }
+                UdpDiscovery {
+                    tid: _,
+                    payload:
+                        UdpXml {
+                            r2c_t:
+                                Some(R2cT {
+                                    dmap: Some(dmap),
+                                    sid,
+                                    cid,
+                                    dev: None,
+                                }),
+                            ..
+                        },
+                } if !dmap.ip.is_empty() && dmap.port > 0 && cid == client_id => {
+                    Some(Ok((sid, Some(dmap), None)))
+                }
+                UdpDiscovery {
+                    tid: _,
+                    payload:
+                        UdpXml {
+                            r2c_t:
+                                Some(R2cT {
+                                    dmap: None,
+                                    sid,
+                                    cid,
+                                    dev: Some(dev),
+                                }),
+                            ..
+                        },
+                } if !dev.ip.is_empty() && dev.port > 0 && cid == client_id => {
+                    Some(Ok((sid, None, Some(dev))))
+                }
+                UdpDiscovery {
+                    tid: _,
+                    payload:
+                        UdpXml {
+                            r2c_c_r: Some(R2cCr { dmap, sid, rsp, .. }),
+                            ..
+                        },
+                } if !dmap.ip.is_empty() && dmap.port > 0 && rsp != -1 => {
+                    Some(Ok((sid, Some(dmap), None)))
+                }
+                UdpDiscovery {
+                    tid: _,
+                    payload:
+                        UdpXml {
+                            r2c_c_r: Some(R2cCr { dmap, rsp, .. }),
+                            ..
+                        },
+                } if !dmap.ip.is_empty() && dmap.port > 0 && rsp == -1 => {
+                    Some(Err(Error::RegisterError))
+                }
+                _ => None,
+            })
+            .await??;
+
+        Ok(RegisterResult {
+            sid,
+            dmap: dmap.map(|dmap| {
+                SocketAddr::new(dmap.ip.parse().expect("Could not read ip addr"), dmap.port)
+            }),
+            dev: dev.map(|dev| {
+                SocketAddr::new(dev.ip.parse().expect("Could not read ip addr"), dev.port)
+            }),
+        })
+    }
+
+    /// Confirm connection with relay
+    /// This is sent once all data has been found
+    async fn confirm_relay(
+        &self,
+        client_id: i32,
+        device_id: i32,
+        sid: u32,
+        reg_addr: SocketAddr,
+    ) -> Result<()> {
+        let msg = UdpDiscovery {
+            tid: 0,
+            payload: UdpXml {
+                c2r_cfm: Some(C2rCfm {
+                    sid,
+                    cid: client_id,
+                    did: device_id,
+                    rsp: 0,
+                    conn: "map".to_string(),
+                }),
+                ..Default::default()
+            },
+        };
+
+        self.send_and_forget(msg, reg_addr).await?;
+
+        Ok(())
+    }
+
+    /// Confirm Map. This is sent if we learned the IP via the relay
+    /// then connected locally. We tell the relay they we are establishing
+    /// a local then tell the camera to connect to us via map
+    async fn confirm_map(
+        &self,
+        client_id: i32,
+        device_id: i32,
+        sid: u32,
+        reg_addr: SocketAddr,
+        dev_addr: SocketAddr,
+    ) -> Result<()> {
+        let msg = UdpDiscovery {
+            tid: 0,
+            payload: UdpXml {
+                c2r_cfm: Some(C2rCfm {
+                    sid,
+                    cid: client_id,
+                    did: device_id,
+                    conn: "local".to_string(),
+                    rsp: 0,
+                }),
+                ..Default::default()
+            },
+        };
+
+        self.send_and_forget(msg, reg_addr).await?;
+
+        let msg = UdpDiscovery {
+            tid: 0,
+            payload: UdpXml {
+                c2d_t: Some(C2dT {
+                    sid,
+                    cid: client_id,
+                    mtu: MTU,
+                    conn: "map".to_string(),
+                }),
+                ..Default::default()
+            },
+        };
+
+        self.send_and_forget(msg, dev_addr).await?;
+
+        Ok(())
+    }
 }
 
 impl Discovery {
     pub(crate) async fn local(uid: &str) -> Result<DiscoveryResult> {
-        trace!("Local");
         let discoverer = Discoverer::new().await?;
 
         let client_id = generate_cid();
@@ -248,7 +663,6 @@ impl Discovery {
             },
         };
 
-        trace!("Local: Sending Broadcast");
         let dests = get_broadcasts(&[2015, 2018])?;
         let (camera_address, camera_id) = discoverer
             .retry_send_multi(msg, &dests, |bc, addr| match bc {
@@ -264,7 +678,6 @@ impl Discovery {
             })
             .await?;
 
-        trace!("Local: Success");
         Ok(DiscoveryResult {
             socket: discoverer.into_socket().await,
             addr: camera_address,
@@ -285,196 +698,38 @@ impl Discovery {
     // - Send a message to the camera that we could connect remotely
     #[allow(unused)]
     pub(crate) async fn remote(uid: &str) -> Result<DiscoveryResult> {
-        trace!("Remote");
         let mut discoverer = Discoverer::new().await?;
 
         let client_id = generate_cid();
 
-        let local_addr = *discoverer.local_addr();
-        let local_port = local_addr.port();
+        let lookup = discoverer.uid_loopup(uid).await?;
+        let reg_addr = lookup.reg;
+        let relay_addr = lookup.relay;
 
-        trace!("Remote: Finding Register");
-        let reg_packet = get_register(&discoverer, uid).await?;
-        trace!("Remote: Register Found");
+        let reg_result = discoverer
+            .register_address(uid, client_id, lookup.reg, relay_addr)
+            .await?;
+        let dev_addr = reg_result.dev.ok_or(Error::NoDev)?;
 
-        let register_address = reg_packet.reg;
-        let relay_address = reg_packet.relay;
-        let log_address = reg_packet.log;
+        let connect_result = discoverer
+            .client_initiated_connect(reg_result.sid, client_id, dev_addr)
+            .await?;
 
-        let default_local_address = local_ip().expect("There to be a local ip");
-        debug!("Register address found: {:?}", register_address);
-        debug!("Registering this address: {:?}", default_local_address);
-
-        trace!("Remote: Registering local IP");
-        let local_family = if local_addr.ip().is_ipv4() { 4 } else { 6 };
-        let msg = UdpDiscovery {
-            tid: 0,
-            payload: UdpXml {
-                c2r_c: Some(C2rC {
-                    uid: uid.to_string(),
-                    cli: IpPort {
-                        ip: default_local_address.to_string(),
-                        port: local_port,
-                    },
-                    relay: relay_address,
-                    cid: client_id,
-                    family: local_family,
-                    debug: false,
-                    os: "MAC".to_string(),
-                    revision: None,
-                }),
-                ..Default::default()
-            },
-        };
-
-        let register_address_ip: IpAddr = register_address.ip.parse()?;
-        let (device_sid, dev_loc) = discoverer
-            .retry_send_multi(
-                msg,
-                &[SocketAddr::new(register_address_ip, register_address.port)],
-                |bc, _| match bc {
-                    UdpDiscovery {
-                        tid: _,
-                        payload:
-                            UdpXml {
-                                r2c_t:
-                                    Some(R2cT {
-                                        dev: Some(dev),
-                                        cid,
-                                        sid,
-                                        ..
-                                    }),
-                                ..
-                            },
-                    } if cid == client_id && !dev.ip.is_empty() && dev.port > 0 => Some((sid, dev)),
-                    _ => None,
-                },
+        discoverer
+            .confirm_map(
+                client_id,
+                connect_result.camera_id,
+                reg_result.sid,
+                reg_addr,
+                dev_addr,
             )
             .await?;
 
-        debug!("Register revealed address as SID: {:?}", device_sid);
-        debug!("Register revealed address as IP: {:?}", dev_loc);
-
-        trace!("Remote: Aquiring device ID");
-        let msg = UdpDiscovery {
-            tid: 0,
-            payload: UdpXml {
-                c2d_t: Some(C2dT {
-                    sid: device_sid,
-                    cid: client_id,
-                    mtu: MTU,
-                    conn: "local".to_string(),
-                }),
-                ..Default::default()
-            },
-        };
-
-        let mut device_addr = SocketAddr::new(dev_loc.ip.parse()?, dev_loc.port);
-        let device_id = tokio::select! {
-            v = discoverer
-                .retry_send(
-                    msg,
-                    device_addr,
-                    |bc, _| match bc {
-                        UdpDiscovery {
-                            tid: _,
-                            payload:
-                                UdpXml {
-                                    d2c_disc: Some(D2cDisc { cid, did, .. }),
-                                    ..
-                                },
-                        } if cid == client_id => Some(did),
-                        UdpDiscovery {
-                            tid: _,
-                            payload:
-                                UdpXml {
-                                    d2c_t: Some(D2cT { cid, did, .. }),
-                                    ..
-                                },
-                        } if cid == client_id => Some(did),
-                        _ => None,
-                    },
-                ) => {v?},
-            // The camera can observe the registered details above and
-            // use them to establish it's own connection (hold punching)
-            // This branch handles those new camera connections
-            v =
-                discoverer
-                .handle_incoming(|bc, addr| match bc {
-                        UdpDiscovery {
-                            tid: _,
-                            payload:
-                                UdpXml {
-                                    d2c_t:
-                                        Some(D2cT {
-                                            sid,
-                                            cid,
-                                            did,
-                                            conn,
-                                            ..
-                                        }),
-                                    ..
-                                },
-                        } if cid == client_id && sid == device_sid => {
-                            Some((did, addr))
-                        }
-                        _ => None,
-                    }) => {
-                        let (result, addr) = v?;
-                        device_addr = addr;
-                        result
-                    }
-        };
-
-        debug!("Got device ID as: {:?}", device_id);
-
-        trace!("Remote: Declare local");
-        let msg = UdpDiscovery {
-            tid: 0,
-            payload: UdpXml {
-                c2r_cfm: Some(C2rCfm {
-                    sid: device_sid,
-                    cid: client_id,
-                    did: device_id,
-                    conn: "local".to_string(),
-                    rsp: 0,
-                }),
-                ..Default::default()
-            },
-        };
-
-        discoverer
-            .retry_send(
-                msg,
-                SocketAddr::new(log_address.ip.parse()?, log_address.port),
-                |_, _| Some(()),
-            )
-            .await?;
-
-        trace!("Remote: Declare map");
-        let msg = UdpDiscovery {
-            tid: generate_tid(),
-            payload: UdpXml {
-                c2d_t: Some(C2dT {
-                    sid: device_sid,
-                    cid: client_id,
-                    mtu: MTU,
-                    conn: "map".to_string(),
-                }),
-                ..Default::default()
-            },
-        };
-
-        discoverer
-            .retry_send(msg, device_addr, |_, _| Some(()))
-            .await?;
-
-        trace!("Remote: Success");
         Ok(DiscoveryResult {
             socket: discoverer.into_socket().await,
-            addr: device_addr,
+            addr: connect_result.addr,
             client_id,
-            camera_id: device_id,
+            camera_id: connect_result.camera_id,
         })
     }
 
@@ -485,236 +740,47 @@ impl Discovery {
     //
     #[allow(unused)]
     pub(crate) async fn relay(uid: &str) -> Result<DiscoveryResult> {
-        trace!("Relay");
         let mut discoverer = Discoverer::new().await?;
-
         let client_id = generate_cid();
 
-        let local_addr = *discoverer.local_addr();
-        let local_port = local_addr.port();
+        let client_id = generate_cid();
+        trace!("client_id: {}", client_id);
 
-        trace!("Relay: Finding Register");
-        let reg_packet = get_register(&discoverer, uid).await?;
-        trace!("Relay: Register Found");
+        let lookup = discoverer.uid_loopup(uid).await?;
+        trace!("lookup: {:?}", lookup);
+        let reg_addr = lookup.reg;
+        let relay_addr = lookup.relay;
 
-        let register_address = reg_packet.reg;
-        let relay_address = reg_packet.relay;
-        let log_address = reg_packet.log;
-
-        let register_socket = SocketAddr::new(register_address.ip.parse()?, register_address.port);
-
-        let default_local_address = local_ip().expect("There to be a local ip");
-        debug!("Register address found: {:?}", register_address);
-        debug!("Registering this address: {:?}", default_local_address);
-
-        let local_family = if local_addr.ip().is_ipv4() { 4 } else { 6 };
-        let msg = UdpDiscovery {
-            tid: 0,
-            payload: UdpXml {
-                c2r_c: Some(C2rC {
-                    uid: uid.to_string(),
-                    cli: IpPort {
-                        ip: default_local_address.to_string(),
-                        port: local_port,
-                    },
-                    relay: relay_address,
-                    cid: client_id,
-                    family: local_family,
-                    debug: false,
-                    os: "MAC".to_string(),
-                    revision: Some(3),
-                }),
-                ..Default::default()
-            },
-        };
-        trace!("Relay: Declaring Local IP: {}", msg.tid);
-
-        let (device_sid, dmap, did) = discoverer
-            .retry_send(msg, register_socket, |bc, _| match bc {
-                UdpDiscovery {
-                    tid: _,
-                    payload:
-                        UdpXml {
-                            r2c_t:
-                                Some(R2cT {
-                                    dmap: Some(dmap),
-                                    sid,
-                                    cid,
-                                    ..
-                                }),
-                            ..
-                        },
-                } if !dmap.ip.is_empty() && dmap.port > 0 && cid == client_id => {
-                    Some((sid, Some(dmap), None))
-                }
-                UdpDiscovery {
-                    tid: _,
-                    payload:
-                        UdpXml {
-                            r2c_c_r: Some(R2cCr { dmap, sid, .. }),
-                            ..
-                        },
-                } if !dmap.ip.is_empty() && dmap.port > 0 => Some((sid, Some(dmap), None)),
-                UdpDiscovery {
-                    tid: _,
-                    payload:
-                        UdpXml {
-                            d2c_t: Some(D2cT { sid, did, .. }),
-                            ..
-                        },
-                } => Some((sid, None, Some(did))),
-                _ => None,
-            })
+        let reg_result = discoverer
+            .register_address(uid, client_id, lookup.reg, relay_addr)
             .await?;
+        trace!("reg_result: {:?}", reg_result);
 
-        debug!("Register revealed dmap address as SID: {:?}", device_sid);
-        debug!("Register revealed dmap address as IP: {:?}", dmap);
-        debug!("Register revealed device ID: {:?}", did);
+        let dmap_addr = reg_result.dmap.ok_or(Error::NoDmap)?;
 
-        let mut device_addr = register_socket;
-        let device_id = if let Some(dmap) = dmap {
-            let msg = UdpDiscovery {
-                tid: 0,
-                payload: UdpXml {
-                    c2d_t: Some(C2dT {
-                        sid: device_sid,
-                        cid: client_id,
-                        mtu: MTU,
-                        conn: "relay".to_string(),
-                    }),
-                    ..Default::default()
-                },
-            };
-            trace!("Relay: Aquiring Device ID: {}", msg.tid);
-
-            tokio::select! {
-                v = discoverer
-                .retry_send(msg, device_addr, |bc, _| match bc {
-                    UdpDiscovery {
-                        tid: _,
-                        payload:
-                            UdpXml {
-                                d2c_cfm: Some(D2cCfm { cid, did, .. }),
-                                ..
-                            },
-                    } if cid == client_id => Some(did),
-                    _ => None,
-                }) => {v?},
-                // The camera can observe the registered details above and
-                // use them to establish it's own connection (hold punching)
-                // This branch handles those new camera connections
-                v =
-                    discoverer
-                    .handle_incoming(|bc, addr| match bc {
-                            UdpDiscovery {
-                                tid: _,
-                                payload:
-                                    UdpXml {
-                                        d2c_t:
-                                            Some(D2cT {
-                                                sid,
-                                                cid,
-                                                did,
-                                                conn,
-                                                ..
-                                            }),
-                                        ..
-                                    },
-                            } if cid == client_id && sid == device_sid => {
-                                Some((did, addr))
-                            }
-                            _ => None,
-                        }) => {
-                            let (result, addr) = v?;
-                            device_addr = addr;
-                            result
-                        }
-            }
-        } else {
-            did.unwrap()
-        };
-
-        debug!("Got device ID as: {:?}", device_id);
-
-        let msg = UdpDiscovery {
-            tid: 0,
-            payload: UdpXml {
-                c2r_cfm: Some(C2rCfm {
-                    sid: device_sid,
-                    cid: client_id,
-                    did: device_id,
-                    rsp: 0,
-                    conn: "relay".to_string(),
-                }),
-                ..Default::default()
-            },
-        };
-        trace!("Relay: Declare Relay: {}", msg.tid);
+        let connect_result = discoverer
+            .device_initiated_connect(client_id, &reg_result)
+            .await?;
+        trace!("connect_result: {:?}", connect_result);
 
         discoverer
-            .retry_send(
-                msg,
-                SocketAddr::new(log_address.ip.parse()?, log_address.port),
-                |_, _| Some(()),
+            .confirm_relay(
+                client_id,
+                connect_result.camera_id,
+                reg_result.sid,
+                reg_addr,
             )
             .await?;
 
-        trace!("Relay: Success");
+        trace!("confirmed");
+
         Ok(DiscoveryResult {
             socket: discoverer.into_socket().await,
-            addr: device_addr,
+            addr: connect_result.addr,
             client_id,
-            camera_id: device_id,
+            camera_id: connect_result.camera_id,
         })
     }
-}
-
-// This function will contact the p2p relay servers
-//
-// It will ask each of the servers for details on a specific UID
-//
-// On success it returns the M2cQr that the p2p relay
-// server has about the UID
-async fn get_register(discoverer: &Discoverer, uid: &str) -> Result<M2cQr> {
-    let mut addrs = vec![];
-    for p2p_relay in P2P_RELAY_HOSTNAMES.iter() {
-        debug!("Trying register: {}", p2p_relay);
-        addrs.append(
-            &mut format!("{}:9999", p2p_relay)
-                .to_socket_addrs()
-                .map(|i| i.collect::<Vec<SocketAddr>>())
-                .unwrap_or_else(|_| vec![]),
-        );
-    }
-    let msg = UdpDiscovery {
-        tid: 0,
-        payload: UdpXml {
-            c2m_q: Some(C2mQ {
-                uid: uid.to_string(),
-                os: "MAC".to_string(),
-            }),
-            ..Default::default()
-        },
-    };
-    let (packet, addr) = discoverer
-        .retry_send_multi(msg, addrs.as_slice(), |bc, addr| match bc {
-            UdpDiscovery {
-                tid: _,
-                payload:
-                    UdpXml {
-                        m2c_q_r: Some(m2c_q_r),
-                        ..
-                    },
-            } if m2c_q_r.reg.port != 0 || !m2c_q_r.reg.ip.is_empty() => Some((m2c_q_r, addr)),
-            _ => None,
-        })
-        .await?;
-
-    debug!(
-        "Registry details found at {:?}: {}:{}",
-        addr, packet.reg.ip, packet.reg.port,
-    );
-    Ok(packet)
 }
 
 fn get_broadcasts(ports: &[u16]) -> Result<Vec<SocketAddr>> {
@@ -768,3 +834,247 @@ async fn connect() -> Result<UdpSocket> {
 
     Ok(socket)
 }
+
+/*
+    # Discovery Methods
+
+    # Register
+
+    This is the inital query to known hosts with a known UID
+
+    - C->R Port 9999
+    ```xml
+    <P2P>
+    <C2M_Q>
+    <uid>95270000YGAKNWKJ</uid>
+    <p>MAC</p>
+    </C2M_Q>
+    </P2P>
+    ```
+
+    Replies with details of the camera we want to connect to
+
+    - R->C
+    ```xml
+    <P2P>
+        <M2C_Q_R>
+            <reg>
+                <ip>18.162.200.47</ip>
+                <port>58200</port>
+            </reg>
+            <relay>
+                <ip>18.162.200.47</ip>
+                <port>58100</port>
+            </relay>
+            <log>
+                <ip>18.162.200.47</ip>
+                <port>57850</port>
+            </log>
+            <t>
+                <ip>18.162.200.47</ip>
+                <port>9996</port>
+            </t>
+            <timer/>
+            <retry/>
+            <mtu>1350</mtu>
+            <debug>251658240</debug>
+            <ac>-1700607721</ac>
+            <rsp>0</rsp>
+        </M2C_Q_R>
+    </P2P>
+    ```
+
+    ## Thread 1: Observed during relay
+
+    - D->C 59733
+    ```xml
+    <P2P>
+    <D2C_T>
+    <sid>495151439</sid>
+    <conn>map</conn>
+    <cid>254000</cid>
+    <did>735</did>
+    </D2C_T>
+    </P2P>
+    ```
+
+    - C->D
+    ```xml
+    <P2P>
+    <C2D_A>
+    <sid>495151439</sid>
+    <conn>map</conn>
+    <cid>254000</cid>
+    <did>735</did>
+    <mtu>1350</mtu>
+    </C2D_A>
+    </P2P>
+    ```
+
+    - D->C
+    ```xml
+    <P2P>
+    <D2C_CFM>
+    <sid>495151439</sid>
+    <conn>map</conn>
+    <rsp>0</rsp>
+    <cid>254000</cid>
+    <did>735</did>
+    <time_r>55607</time_r>
+    </D2C_CFM>
+    </P2P>
+     ```
+
+    ## Thread 2: Observed during relay
+
+    - C->R: 58200
+    ```xml
+    <P2P>
+    <C2R_C>
+    <uid>95270000YGAKNWKJ</uid>
+    <cli>
+    <ip>10.202.133.237</ip>
+    <port>12254</port>
+    </cli>
+    <relay>
+    <ip>18.162.200.47</ip>
+    <port>58100</port>
+    </relay>
+    <cid>254000</cid>
+    <debug>251658240</debug>
+    <family>4</family>
+    <p>MAC</p>
+    <r>3</r>
+    </C2R_C>
+    </P2P>
+    ```
+
+    - R->C
+    ```xml
+    <P2P><R2C_T><dev><ip>192.168.1.100</ip><port>57933</port></dev><dmap><ip>184.22.90.67</ip><port>57933</port></dmap><sid>495151439</sid><cid>254000</cid><rsp>0</rsp></R2C_T></P2P>
+    ```
+
+    - R->C
+    ```xml
+    <P2P>
+        <R2C_C_R>
+            <dmap>
+                <ip>184.22.90.67</ip>
+                <port>57933</port>
+            </dmap>
+            <dev>
+                <ip>192.168.1.100</ip>
+                <port>57933</port>
+            </dev>
+            <relay>
+                <ip>18.162.200.47</ip>
+                <port>51134</port>
+            </relay>
+            <relayt>
+                <ip>18.162.200.47</ip>
+                <port>9997</port>
+            </relayt>
+            <nat>NULL</nat>
+            <sid>495151439</sid>
+            <rsp>0</rsp>
+            <ac>495151439</ac>
+        </R2C_C_R>
+    </P2P>
+    ```
+
+    - R->C
+    ```xml
+    <P2P>
+        <R2C_T>
+            <dev>
+                <ip>192.168.1.100</ip>
+                <port>57933</port>
+            </dev>
+            <dmap>
+                <ip>184.22.90.67</ip>
+                <port>57933</port>
+            </dmap>
+            <sid>495151439</sid>
+            <cid>254000</cid>
+            <rsp>0</rsp>
+        </R2C_T>
+    </P2P>
+    ```
+
+    - R->C Repeats later so possibly was not responded to by client
+    ```xml
+    <P2P>
+        <R2C_C_R>
+            <dmap>
+                <ip>184.22.90.67</ip>
+                <port>57933</port>
+            </dmap>
+            <dev>
+                <ip>192.168.1.100</ip>
+                <port>57933</port>
+            </dev>
+            <relay>
+                <ip>18.162.200.47</ip>
+                <port>51134</port>
+            </relay>
+            <relayt>
+                <ip>18.162.200.47</ip>
+                <port>9997</port>
+            </relayt>
+            <nat>NULL</nat>
+            <sid>495151439</sid>
+            <rsp>0</rsp>
+            <ac>495151439</ac>
+        </R2C_C_R>
+    </P2P>
+    ```
+
+    - C->R
+    ```xml
+    <P2P>
+    <C2R_CFM>
+    <sid>495151439</sid>
+    <conn>map</conn>
+    <rsp>0</rsp>
+    <cid>254000</cid>
+    <did>735</did>
+    </C2R_CFM>
+    </P2P>
+    ```
+
+    - R->C
+    ```xml
+    <P2P>
+        <R2C_T>
+            <dev>
+                <ip>192.168.1.100</ip>
+                <port>57933</port>
+            </dev>
+            <dmap>
+                <ip>184.22.90.67</ip>
+                <port>57933</port>
+            </dmap>
+            <sid>495151439</sid>
+            <cid>254000</cid>
+            <rsp>0</rsp>
+        </R2C_T>
+    </P2P>
+    ```
+
+    # Thread 3: Observed during relay
+    After connection. No response
+
+    - C->R
+    ```xml
+    <P2P>
+    <C2R_CFM>
+    <sid>495151439</sid>
+    <conn>map</conn>
+    <rsp>0</rsp>
+    <cid>254000</cid>
+    <did>735</did>
+    </C2R_CFM>
+    </P2P>
+    ```
+
+*/

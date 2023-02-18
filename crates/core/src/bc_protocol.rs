@@ -1,11 +1,8 @@
-use crate::bc;
+use crate::{bc, Credentials};
+use futures::stream::StreamExt;
 use log::*;
-use std::convert::TryInto;
 use std::net::ToSocketAddrs;
-use std::sync::{
-    atomic::{AtomicBool, AtomicU16, Ordering},
-    Mutex,
-};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 
 use Md5Trunc::*;
 
@@ -33,7 +30,7 @@ pub use pirstate::PirState;
 pub use ptz::Direction;
 pub use resolution::*;
 use std::sync::Arc;
-pub use stream::{Stream, StreamData};
+pub use stream::{StreamData, StreamKind};
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
@@ -55,20 +52,7 @@ pub struct BcCamera {
     logged_in: AtomicBool,
     message_num: AtomicU16,
     // Certain commands such as logout require the username/pass in plain text.... why....???
-    credentials: Mutex<Option<Credentials>>,
-}
-
-// Used for caching the credentials
-#[derive(Clone)]
-struct Credentials {
-    username: String,
-    password: Option<String>,
-}
-
-impl Credentials {
-    fn new(username: String, password: Option<String>) -> Self {
-        Self { username, password }
-    }
+    credentials: Credentials,
 }
 
 impl Drop for BcCamera {
@@ -92,13 +76,27 @@ impl BcCamera {
     ///
     /// returns either an error or the camera
     ///
-    pub async fn new_with_addr<T: ToSocketAddrs>(host: T, channel_id: u8) -> Result<Self> {
+    pub async fn new_with_addr<U: ToSocketAddrs, V: Into<String>, W: Into<String>>(
+        host: U,
+        channel_id: u8,
+        username: V,
+        passwd: Option<W>,
+    ) -> Result<Self> {
+        let username: String = username.into();
+        let passwd: Option<String> = passwd.map(|t| t.into());
         let addr_iter = match host.to_socket_addrs() {
             Ok(iter) => iter,
             Err(_) => return Err(Error::AddrResolutionError),
         };
         for addr in addr_iter {
-            if let Ok(cam) = Self::new(SocketAddrOrUid::SocketAddr(addr), channel_id).await {
+            if let Ok(cam) = Self::new(
+                SocketAddrOrUid::SocketAddr(addr),
+                channel_id,
+                &username,
+                passwd.as_ref(),
+            )
+            .await
+            {
                 return Ok(cam);
             }
         }
@@ -119,8 +117,19 @@ impl BcCamera {
     ///
     /// returns either an error or the camera
     ///
-    pub async fn new_with_uid(uid: &str, channel_id: u8) -> Result<Self> {
-        Self::new(SocketAddrOrUid::Uid(uid.to_string()), channel_id).await
+    pub async fn new_with_uid<U: Into<String>, V: Into<String>>(
+        uid: &str,
+        channel_id: u8,
+        username: U,
+        passwd: Option<V>,
+    ) -> Result<Self> {
+        Self::new(
+            SocketAddrOrUid::Uid(uid.to_string()),
+            channel_id,
+            username,
+            passwd,
+        )
+        .await
     }
 
     ///
@@ -143,16 +152,20 @@ impl BcCamera {
     ///
     /// returns either an error or the camera
     ///
-    pub async fn new_with_addr_or_uid<T: ToSocketAddrsOrUid>(
-        host: T,
+    pub async fn new_with_addr_or_uid<U: ToSocketAddrsOrUid, V: Into<String>, W: Into<String>>(
+        host: U,
         channel_id: u8,
+        username: V,
+        passwd: Option<W>,
     ) -> Result<Self> {
         let addr_iter = match host.to_socket_addrs_or_uid() {
             Ok(iter) => iter,
             Err(_) => return Err(Error::AddrResolutionError),
         };
+        let username: String = username.into();
+        let passwd: Option<String> = passwd.map(|t| t.into());
         for addr_or_uid in addr_iter {
-            if let Ok(cam) = Self::new(addr_or_uid, channel_id).await {
+            if let Ok(cam) = Self::new(addr_or_uid, channel_id, &username, passwd.as_ref()).await {
                 return Ok(cam);
             }
         }
@@ -169,15 +182,30 @@ impl BcCamera {
     ///
     /// * `channel_id` - The channel ID this is usually zero unless using a NVR
     ///
+    /// * `username` - The username to login with
+    ///
+    /// * `passed` - The password to login with required for AES encrypted camera
+    ///
     /// # Returns
     ///
     /// returns either an error or the camera
     ///
-    pub async fn new(addr: SocketAddrOrUid, channel_id: u8) -> Result<Self> {
-        let source: Box<dyn Source> = match addr {
+    pub async fn new<U: Into<String>, V: Into<String>>(
+        addr: SocketAddrOrUid,
+        channel_id: u8,
+        username: U,
+        passwd: Option<V>,
+    ) -> Result<Self> {
+        let username: String = username.into();
+        let passwd: Option<String> = passwd.map(|t| t.into());
+
+        let (sink, source): (BcConnSink, BcConnSource) = match addr {
             SocketAddrOrUid::SocketAddr(addr) => {
                 debug!("Trying address {}", addr);
-                Box::new(TcpSource::new(addr).await?)
+                let (x, r) = TcpSource::new(addr, &username, passwd.as_ref())
+                    .await?
+                    .split();
+                (Box::new(x), Box::new(r))
             }
             SocketAddrOrUid::Uid(uid) => {
                 debug!("Trying uid {}", uid);
@@ -255,11 +283,14 @@ impl BcCamera {
                     }
                     last_result
                 }?;
-                Box::new(UdpSource::new_from_discovery(discovery).await?)
+                let (x, r) = UdpSource::new_from_discovery(discovery, &username, passwd.as_ref())
+                    .await?
+                    .split();
+                (Box::new(x), Box::new(r))
             }
         };
 
-        let conn = BcConnection::new(source).await?;
+        let conn = BcConnection::new(sink, source).await?;
 
         debug!("Success");
         let me = Self {
@@ -267,7 +298,7 @@ impl BcCamera {
             message_num: AtomicU16::new(0),
             channel_id,
             logged_in: AtomicBool::new(false),
-            credentials: Mutex::new(None),
+            credentials: Credentials::new(username, passwd),
         };
         Ok(me)
     }
@@ -291,18 +322,10 @@ impl BcCamera {
     }
 
     // Certains commands like logout need the username and password
-    // this command will return it as a tuple of (Username, Option<Password>)
+    // this command will return
     // This will only work after login
-    fn get_credentials(&self) -> Option<Credentials> {
-        self.credentials.lock().unwrap().clone()
-    }
-    // This is used to store the credentials it is called during login.
-    fn set_credentials(&self, username: String, password: Option<String>) {
-        *(self.credentials.lock().unwrap()) = Some(Credentials::new(username, password));
-    }
-    // This is used to clear the stored credentials it is called during logout.
-    fn clear_credentials(&self) {
-        *(self.credentials.lock().unwrap()) = None;
+    fn get_credentials(&self) -> &Credentials {
+        &self.credentials
     }
 }
 
@@ -324,16 +347,6 @@ fn md5_string(input: &str, trunc: Md5Trunc) -> String {
     let mut md5 = format!("{:X}\0", md5::compute(input));
     md5.replace_range(31.., if trunc == Truncate { "" } else { "\0" });
     md5
-}
-
-/// This is a convience function to make an AES key from the login password and the NONCE
-/// negotiated during login
-pub fn make_aes_key(nonce: &str, passwd: &str) -> [u8; 16] {
-    let key_phrase = format!("{}-{}", nonce, passwd);
-    let key_phrase_hash = format!("{:X}\0", md5::compute(key_phrase))
-        .to_uppercase()
-        .into_bytes();
-    key_phrase_hash[0..16].try_into().unwrap()
 }
 
 #[test]

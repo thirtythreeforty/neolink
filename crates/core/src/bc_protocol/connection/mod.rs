@@ -10,12 +10,12 @@ use tokio::net::UdpSocket;
 mod bcconn;
 mod bcsub;
 mod discovery;
-mod source;
+// mod source;
 mod tcpsource;
 mod udpsource;
 
 pub(crate) use self::{
-    bcconn::BcConnection, bcsub::BcSubscription, discovery::Discovery, source::*,
+    bcconn::BcConnection, bcconn::*, bcsub::BcSubscription, discovery::Discovery,
     tcpsource::TcpSource, udpsource::UdpSource,
 };
 

@@ -100,6 +100,24 @@ pub enum Error {
     #[error(display = "Could not parse as IP")]
     AddrParseError(#[error(source)] std::net::AddrParseError),
 
+    /// Raised when a relay connection is not possible
+    /// usually happens if the camera has not contacted reolink yet
+    #[error(display = "Cannot perform relay connection with this camera")]
+    NoDmap,
+
+    /// Raised when a dev connection is not possible
+    /// usually happens if the camera has not contacted reolink yet
+    #[error(display = "Cannot perform lookup with this camera against reolink servers")]
+    NoDev,
+
+    /// Raised when cannot determine local IP address
+    #[error(display = "Local IP address is unknown: {}", _0)]
+    LocalIpError(#[error(source)] std::sync::Arc<local_ip_address::Error>),
+
+    /// Raised when a discovery fails to be accepted by the register
+    #[error(display = "Register refuses to accept us")]
+    RegisterError,
+
     /// Raised when the stream is not enough to complete a message
     #[error(display = "Nom Parsing incomplete: {}", _0)]
     NomIncomplete(usize),
@@ -126,6 +144,12 @@ impl From<std::io::Error> for Error {
 impl From<cookie_factory::GenError> for Error {
     fn from(k: cookie_factory::GenError) -> Self {
         Error::GenError(std::sync::Arc::new(k))
+    }
+}
+
+impl From<local_ip_address::Error> for Error {
+    fn from(k: local_ip_address::Error) -> Self {
+        Error::LocalIpError(std::sync::Arc::new(k))
     }
 }
 

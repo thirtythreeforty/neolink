@@ -149,7 +149,7 @@ fn bc_modern_msg<'a>(
                 msg_id: 1,
                 response_code,
                 ..
-            } if (response_code & 0xff) == 0x02 => EncryptionProtocol::Aes(None),
+            } if (response_code & 0xff) == 0x02 => EncryptionProtocol::BCEncrypt, // This is AES but the first packet with the NONCE is BCEcrypt, since the NONCE in this packet is required to build the AES key
             _ => context.get_encrypted().clone(),
         };
         let processed_payload_buf =

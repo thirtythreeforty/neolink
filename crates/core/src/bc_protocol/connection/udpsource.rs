@@ -3,7 +3,7 @@ use crate::bc::codex::BcCodex;
 use crate::bc::model::*;
 use crate::bcudp::codex::BcUdpCodex;
 use crate::bcudp::model::*;
-use crate::{Error, Result};
+use crate::{Credentials, Error, Result};
 use delegate::delegate;
 use futures::{
     sink::{Sink, SinkExt},
@@ -36,51 +36,62 @@ pub(crate) struct UdpSource {
 
 impl UdpSource {
     #[allow(unused)]
-    pub(crate) async fn new(addr: SocketAddr, client_id: i32, camera_id: i32) -> Result<Self> {
+    pub(crate) async fn new<T: Into<String>, U: Into<String>>(
+        addr: SocketAddr,
+        client_id: i32,
+        camera_id: i32,
+        username: T,
+        password: Option<U>,
+    ) -> Result<Self> {
         let stream = connect().await?;
 
-        Self::new_from_socket(stream, addr, client_id, camera_id).await
+        Self::new_from_socket(stream, addr, client_id, camera_id, username, password).await
     }
-    pub(crate) async fn new_from_discovery(discovery: DiscoveryResult) -> Result<Self> {
+    pub(crate) async fn new_from_discovery<T: Into<String>, U: Into<String>>(
+        discovery: DiscoveryResult,
+        username: T,
+        password: Option<U>,
+    ) -> Result<Self> {
         Self::new_from_socket(
             discovery.socket,
             discovery.addr,
             discovery.client_id,
             discovery.camera_id,
+            username,
+            password,
         )
         .await
     }
 
-    pub(crate) async fn new_from_socket(
+    pub(crate) async fn new_from_socket<T: Into<String>, U: Into<String>>(
         stream: UdpSocket,
         addr: SocketAddr,
         client_id: i32,
         camera_id: i32,
+        username: T,
+        password: Option<U>,
     ) -> Result<Self> {
         let bcudp_source = BcUdpSource::new_from_socket(stream, addr).await?;
         let payload_source = bcudp_source.into_payload_source(client_id, camera_id);
         let async_read = payload_source.into_async_read().compat();
-        let framed = Framed::new(async_read, BcCodex::new());
+        let framed = Framed::new(
+            async_read,
+            BcCodex::new(Credentials::new(username, password)),
+        );
 
         Ok(Self { inner: framed })
     }
 
-    pub(crate) async fn send(&mut self, bc: Bc) -> Result<()> {
-        self.inner.send(bc).await
-    }
-    pub(crate) async fn recv(&mut self) -> Result<Bc> {
-        loop {
-            if let Some(result) = self.inner.next().await {
-                return result;
-            }
-        }
-    }
-    pub(crate) fn get_encrypted(&self) -> &EncryptionProtocol {
-        self.inner.codec().get_encrypted()
-    }
-    pub(crate) fn set_encrypted(&mut self, protocol: EncryptionProtocol) {
-        self.inner.codec_mut().set_encrypted(protocol)
-    }
+    // pub(crate) async fn send(&mut self, bc: Bc) -> Result<()> {
+    //     self.inner.send(bc).await
+    // }
+    // pub(crate) async fn recv(&mut self) -> Result<Bc> {
+    //     loop {
+    //         if let Some(result) = self.inner.next().await {
+    //             return result;
+    //         }
+    //     }
+    // }
 }
 
 impl Stream for UdpSource {
@@ -315,7 +326,7 @@ impl Stream for UdpPayloadSource {
                             BcUdp::Ack(ack @ UdpAck { connection_id, .. }),
                             addr,
                         )))) if connection_id == this.client_id && addr == camera_addr => {
-                            trace!("UDPSource.RecievedPacker: Ack");
+                            trace!("UDPSource.RecievedPacket: Ack");
                             this.handle_ack(ack);
 
                             for (_, resend) in this.sent.iter() {

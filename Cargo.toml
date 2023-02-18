@@ -44,3 +44,4 @@ rumqttc = "0.8.0"
 tokio = { version = "1.0", features = ["rt", "macros", "io-util"] }
 anyhow = "1.0.42"
 async-trait = "0.1.64"
+futures = "0.3.26"

@@ -8,10 +8,13 @@ use async_trait::async_trait;
 use crossbeam::utils::Backoff;
 use log::*;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::thread::{self, JoinHandle};
+use std::sync::Arc;
+use tokio::{
+    sync::Mutex,
+    task::{self, JoinHandle},
+};
 
-use neolink_core::bc_protocol::Stream;
+use neolink_core::bc_protocol::StreamKind as Stream;
 
 use super::{CameraState, Shared};
 
@@ -77,7 +80,7 @@ impl CameraState for Paused {
 
             // Lock and setup output
             {
-                let mut locked_output = output.lock().unwrap();
+                let mut locked_output = output.lock().await;
                 locked_output.set_input_source(InputMode::Paused)?;
             }
 
@@ -89,10 +92,10 @@ impl CameraState for Paused {
             let arc_abort_handle = abort_handle.clone();
             let output_thread = output.clone();
 
-            let handle = thread::spawn(move || {
+            let handle = task::spawn(async move {
                 let backoff = Backoff::new();
                 while arc_abort_handle.is_live() {
-                    let mut locked_output = output_thread.lock().unwrap();
+                    let mut locked_output = output_thread.lock().await;
                     locked_output.write_last_iframe()?;
                     backoff.spin();
                 }
@@ -118,7 +121,7 @@ impl CameraState for Paused {
             for (stream, handle) in self.handles.drain() {
                 info!("{}: Stopping paused stream {:?}", &shared.name, stream);
 
-                match handle.join() {
+                match handle.await {
                     Ok(Err(e)) => return Err(e),
                     Err(_) => return Err(anyhow!("Panicked while streaming {:?}", stream)),
                     Ok(Ok(_)) => {}
@@ -133,13 +136,10 @@ impl CameraState for Paused {
 impl Drop for Paused {
     fn drop(&mut self) {
         self.abort_handle.abort();
-
-        for (stream, handle) in self.handles.drain() {
-            info!("During_drop: Aborting paused stream {:?}", stream);
-            if let Ok(Err(e)) = handle.join() {
-                warn!("During drop: {:?} did not stop cleanly: {:?}", stream, e);
-            } else {
-                warn!("During drop: Panicked while streaming: {:?}", stream);
+        let backoff = Backoff::new();
+        for (_, handle) in self.handles.drain() {
+            while !handle.is_finished() {
+                backoff.spin();
             }
         }
     }
@@ -150,10 +150,10 @@ impl Paused {
         self.handles.iter().all(|(_, h)| !h.is_finished()) && self.abort_handle.is_live()
     }
 
-    pub(crate) fn take_outputs(&mut self) -> Result<HashMap<Stream, GstOutputs>> {
+    pub(crate) async fn take_outputs(&mut self) -> Result<HashMap<Stream, GstOutputs>> {
         self.abort_handle.abort();
         for (stream, handle) in self.handles.drain() {
-            match handle.join() {
+            match handle.await {
                 Ok(Err(e)) => return Err(e),
                 Err(_) => return Err(anyhow!("Panicked while streaming {:?}", stream)),
                 Ok(Ok(_)) => {}
@@ -163,7 +163,7 @@ impl Paused {
         for (stream, arc_mutex_output) in self.outputs.drain() {
             let mutex_output =
                 Arc::try_unwrap(arc_mutex_output).map_err(|_| anyhow!("Failed to unwrap ARC"))?;
-            let output = mutex_output.into_inner()?;
+            let output = mutex_output.into_inner();
             result.insert(stream, output);
         }
         Ok(result)
@@ -177,9 +177,12 @@ impl Paused {
         Ok(())
     }
 
-    pub(crate) fn client_connected(&self) -> bool {
-        self.outputs
-            .iter()
-            .any(|(_, output)| output.lock().unwrap().is_connected())
+    pub(crate) async fn client_connected(&self) -> bool {
+        for (_, output) in self.outputs.iter() {
+            if output.lock().await.is_connected() {
+                return true;
+            }
+        }
+        false
     }
 }

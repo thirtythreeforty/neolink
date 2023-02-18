@@ -51,6 +51,9 @@ pub struct UdpXml {
     /// C2R_CFM xml client to register CFM
     #[yaserde(rename = "C2R_CFM")]
     pub c2r_cfm: Option<C2rCfm>,
+    /// C2D_A xml client to device accept
+    #[yaserde(rename = "C2D_A")]
+    pub c2d_a: Option<C2dA>,
 }
 
 impl UdpXml {
@@ -318,4 +321,22 @@ pub struct C2rCfm {
     pub cid: i32,
     /// The camera connection ID
     pub did: i32,
+}
+
+/// C2D_A xml
+///
+/// Client to device accept.
+/// Sent it reply to a D2C_T
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
+pub struct C2dA {
+    /// The camera SID
+    pub sid: u32,
+    /// Type of connection observed values are `"local"`
+    pub conn: String,
+    /// The client connection ID
+    pub cid: i32,
+    /// The camera connection ID
+    pub did: i32,
+    /// Maximum size in bytes of a transmission
+    pub mtu: u32,
 }

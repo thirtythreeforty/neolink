@@ -16,17 +16,12 @@ pub fn decrypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol
                 .map(|(key, i)| *i ^ key ^ (offset as u8))
                 .collect()
         }
-        EncryptionProtocol::Aes(key) => {
+        EncryptionProtocol::Aes(aeskey) => {
             // AES decryption
-            if let Some(aeskey) = key {
-                let mut decrypted = buf.to_vec();
-                Cfb::<Aes128>::new(aeskey.into(), IV.into()).decrypt(&mut decrypted);
-                decrypted
-            } else {
-                // Not yet ready to decrypt (still in login phase)
-                // Use BCEncrypt
-                decrypt(offset, buf, &EncryptionProtocol::BCEncrypt)
-            }
+
+            let mut decrypted = buf.to_vec();
+            Cfb::<Aes128>::new(aeskey.into(), IV.into()).decrypt(&mut decrypted);
+            decrypted
         }
     }
 }
@@ -41,17 +36,11 @@ pub fn encrypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol
             // Encrypt is the same as decrypt
             decrypt(offset, buf, encryption_protocol)
         }
-        EncryptionProtocol::Aes(key) => {
+        EncryptionProtocol::Aes(aeskey) => {
             // AES encryption
-            if let Some(aeskey) = key {
-                let mut encrypted = buf.to_vec();
-                Cfb::<Aes128>::new(aeskey.into(), IV.into()).encrypt(&mut encrypted);
-                encrypted
-            } else {
-                // Not yet ready to decrypt (still in login phase)
-                // Use BCEncrypt
-                encrypt(offset, buf, &EncryptionProtocol::BCEncrypt)
-            }
+            let mut encrypted = buf.to_vec();
+            Cfb::<Aes128>::new(aeskey.into(), IV.into()).encrypt(&mut encrypted);
+            encrypted
         }
     }
 }

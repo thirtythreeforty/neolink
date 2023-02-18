@@ -1,3 +1,5 @@
+use crate::Credentials;
+
 pub use super::xml::{BcPayloads, BcXml, Extension};
 use std::collections::HashSet;
 
@@ -175,11 +177,12 @@ pub enum EncryptionProtocol {
     BCEncrypt,
     /// Latest cameras/firmwares use Aes with the key derived from
     /// the camera's password and the negotiated NONCE
-    Aes(Option<[u8; 16]>),
+    Aes([u8; 16]),
 }
 
 #[derive(Debug)]
 pub(crate) struct BcContext {
+    pub(crate) credentials: Credentials,
     pub(crate) in_bin_mode: HashSet<u16>,
     pub(crate) encryption_protocol: EncryptionProtocol,
 }
@@ -218,8 +221,9 @@ impl Bc {
 }
 
 impl BcContext {
-    pub(crate) fn new() -> BcContext {
+    pub(crate) fn new(credentials: Credentials) -> BcContext {
         BcContext {
+            credentials,
             in_bin_mode: HashSet::new(),
             encryption_protocol: EncryptionProtocol::Unencrypted,
         }
@@ -228,6 +232,7 @@ impl BcContext {
     #[allow(unused)] // Used in tests
     pub(crate) fn new_with_encryption(encryption_protocol: EncryptionProtocol) -> BcContext {
         BcContext {
+            credentials: Default::default(),
             in_bin_mode: HashSet::new(),
             encryption_protocol,
         }

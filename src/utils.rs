@@ -33,10 +33,19 @@ impl AddressOrUid {
     }
 
     // Convience method to get the BcCamera with the appropiate method
-    pub(crate) async fn connect_camera(&self, channel_id: u8) -> Result<BcCamera, Error> {
+    pub(crate) async fn connect_camera<T: Into<String>, U: Into<String>>(
+        &self,
+        channel_id: u8,
+        username: T,
+        passwd: Option<U>,
+    ) -> Result<BcCamera, Error> {
         match self {
-            AddressOrUid::Address(host) => Ok(BcCamera::new_with_addr(host, channel_id).await?),
-            AddressOrUid::Uid(host) => Ok(BcCamera::new_with_uid(host, channel_id).await?),
+            AddressOrUid::Address(host) => {
+                Ok(BcCamera::new_with_addr(host, channel_id, username, passwd).await?)
+            }
+            AddressOrUid::Uid(host) => {
+                Ok(BcCamera::new_with_uid(host, channel_id, username, passwd).await?)
+            }
         }
     }
 }
@@ -55,7 +64,11 @@ pub(crate) async fn connect_and_login(camera_config: &CameraConfig) -> Result<Bc
     );
 
     let camera = camera_addr
-        .connect_camera(camera_config.channel_id)
+        .connect_camera(
+            camera_config.channel_id,
+            &camera_config.username,
+            camera_config.password.as_ref(),
+        )
         .await
         .with_context(|| {
             format!(
@@ -66,7 +79,7 @@ pub(crate) async fn connect_and_login(camera_config: &CameraConfig) -> Result<Bc
 
     info!("{}: Logging in", camera_config.name);
     camera
-        .login(&camera_config.username, camera_config.password.as_deref())
+        .login()
         .await
         .with_context(|| format!("Failed to login to {}", camera_config.name))?;
 

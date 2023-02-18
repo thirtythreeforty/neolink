@@ -156,11 +156,13 @@ async fn camera_main(
 
     let _ = camera.manage().await;
 
+    info!("Init Stream");
     camera
         .stream()
         .await
         .with_context(|| format!("{}: Could not start stream", config.name))
         .map_err(CameraFailureKind::Retry)?;
+    info!("Inited Stream");
 
     let backoff = Backoff::new();
     let mut motion = if config.pause.on_motion {
@@ -182,9 +184,9 @@ async fn camera_main(
     loop {
         match camera.get_state() {
             StateInfo::Streaming => {
-                let can_pause = camera.can_pause();
+                let can_pause = camera.can_pause().await;
                 if config.pause.on_disconnect {
-                    if let Some(false) = camera.client_connected() {
+                    if let Some(false) = camera.client_connected().await {
                         if can_pause {
                             info!("Pause on disconnect");
                             camera.pause().await.map_err(CameraFailureKind::Retry)?;
@@ -231,7 +233,7 @@ async fn camera_main(
             }
             StateInfo::Paused => {
                 if config.pause.on_disconnect {
-                    if let Some(true) = camera.client_connected() {
+                    if let Some(true) = camera.client_connected().await {
                         info!("Resume on disconnect");
                         camera.stream().await.map_err(CameraFailureKind::Retry)?;
                     }
