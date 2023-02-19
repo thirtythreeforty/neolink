@@ -86,13 +86,17 @@ impl Decoder for BcCodex {
         if let BcBody::ModernMsg(ModernMsg {
             extension:
                 Some(Extension {
-                    binary_data: Some(1),
+                    binary_data: Some(on_off),
                     ..
                 }),
             ..
         }) = bc.body
         {
-            self.context.binary_on(bc.meta.msg_num);
+            if on_off == 0 {
+                self.context.binary_off(bc.meta.msg_num);
+            } else {
+                self.context.binary_on(bc.meta.msg_num);
+            }
         }
 
         Ok(Some(bc))

@@ -3,6 +3,7 @@ use super::xml::{BcPayloads, BcXml};
 use super::xml_crypto;
 use crate::Error;
 use bytes::{Buf, BytesMut};
+use log::*;
 use nom::{
     bytes::streaming::take, combinator::*, error::context as error_context, number::streaming::*,
     sequence::*, Parser,
@@ -111,6 +112,7 @@ fn bc_modern_msg<'a>(
         }
     };
 
+    let mut in_binary = false;
     // Now we'll take the buffer that Nom gave a ref to and parse it.
     let extension = if ext_len > 0 {
         // Apply the XML parse function, but throw away the reference to decrypted in the Ok and
@@ -122,6 +124,14 @@ fn bc_modern_msg<'a>(
                 ErrorKind::MapRes,
             ))
         })?;
+        if let Extension {
+            binary_data: Some(1),
+            ..
+        } = parsed
+        {   
+            // In binary so tell the current context that we need to treat the payload as binary
+            in_binary = true;
+        }
         Some(parsed)
     } else {
         None
@@ -152,12 +162,19 @@ fn bc_modern_msg<'a>(
             } if (response_code & 0xff) == 0x02 => EncryptionProtocol::BCEncrypt, // This is AES but the first packet with the NONCE is BCEcrypt, since the NONCE in this packet is required to build the AES key
             _ => context.get_encrypted().clone(),
         };
+
         let processed_payload_buf =
             xml_crypto::decrypt(header.channel_id as u32, payload_buf, &encryption_protocol);
-        if context.in_bin_mode.contains(&(header.msg_num)) {
+        if context.in_bin_mode.contains(&(header.msg_num)) || in_binary {
             payload = Some(BcPayloads::Binary(payload_buf.to_vec()));
         } else {
             let xml = BcXml::try_parse(processed_payload_buf.as_slice()).map_err(|_| {
+                error!("header.msg_id: {}", header.msg_id);
+                error!(
+                    "processed_payload_buf: {:X?}::{:?}",
+                    processed_payload_buf,
+                    std::str::from_utf8(&processed_payload_buf)
+                );
                 Err::Error(make_error(
                     buf,
                     "Unable to parse Payload XML",

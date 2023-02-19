@@ -4,12 +4,11 @@ use crate::{
     bcmedia::model::*,
 };
 use futures::stream::StreamExt;
-use log::*;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use tokio::sync::mpsc::{channel, error::TryRecvError, Receiver};
+use tokio::sync::mpsc::{channel, Receiver};
 use tokio::task::{self, JoinHandle};
 
 /// The stream names supported by BC
@@ -40,16 +39,11 @@ pub struct StreamData {
 impl StreamData {
     /// Pull data from the camera's buffer
     /// This returns raw BcMedia packets
-    pub fn get_data(&mut self) -> Result<Vec<Result<BcMedia>>> {
-        let mut results: Vec<_> = vec![];
-        loop {
-            match self.rx.try_recv() {
-                Ok(data) => results.push(data),
-                Err(TryRecvError::Empty) => break,
-                Err(e) => return Err(Error::from(e)),
-            }
+    pub async fn get_data(&mut self) -> Result<Result<BcMedia>> {
+        match self.rx.recv().await {
+            Some(data) => Ok(data),
+            None => Err(Error::DroppedConnection),
         }
-        Ok(results)
     }
 }
 
@@ -82,7 +76,6 @@ impl BcCamera {
         stream: StreamKind,
         mut buffer_size: usize,
     ) -> Result<StreamData> {
-        info!("start_video");
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
 
@@ -96,9 +89,7 @@ impl BcCamera {
         let channel_id = self.channel_id;
 
         let handle = task::spawn(async move {
-            info!("sub_video");
             let mut sub_video = connection.subscribe(msg_num).await?;
-            info!("post sub_video");
 
             // On an E1 and swann cameras:
             //  - mainStream always has a value of 0
@@ -156,9 +147,7 @@ impl BcCamera {
                 },
             );
 
-            info!("Sending stream start");
             sub_video.send(start_video).await?;
-            info!("Sent stream start");
 
             let msg = sub_video.recv().await?;
             if let BcMeta {

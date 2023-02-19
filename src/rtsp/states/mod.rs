@@ -88,7 +88,7 @@ impl RtspCamera {
         {
             streams.insert(Stream::Sub);
         }
-        if ["both", "externStream", "externstream"]
+        if ["all", "externStream", "externstream"]
             .iter()
             .any(|&e| e == config.stream)
         {
@@ -256,11 +256,11 @@ impl RtspCamera {
             .with_context(|| "Cannot get motion data")
     }
 
-    pub(crate) fn is_running(&self) -> bool {
-        match &self.state {
-            State::Streaming(state) => state.is_running(),
-            State::Paused(state) => state.is_running(),
-            _ => true,
+    pub(crate) async fn is_running(&mut self) -> Result<()> {
+        match &mut self.state {
+            State::Streaming(state) => state.is_running().await,
+            State::Paused(state) => state.is_running().await,
+            _ => Ok(()),
         }
     }
 

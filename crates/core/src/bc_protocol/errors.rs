@@ -25,21 +25,15 @@ pub enum Error {
 
     /// Raised when a connection is dropped.
     #[error(display = "Dropped connection")]
-    DroppedConnection(#[error(source)] crossbeam_channel::RecvError),
-
-    /// Raised when a connection is dropped during a TryRecv event
-    #[error(display = "Dropped connection")]
-    DroppedConnectionTry(#[error(source)] crossbeam_channel::TryRecvError),
+    DroppedConnection,
 
     /// Raised when a connection is dropped during a tokio mpsc TryRecv event
     #[error(display = "Dropped connection")]
-    TokioDroppedConnectionTry(#[error(source)] tokio::sync::mpsc::error::TryRecvError),
+    DroppedConnectionTry(#[error(source)] tokio::sync::mpsc::error::TryRecvError),
 
     /// Raised when a connection is dropped during a TryRecv event
     #[error(display = "Dropped connection")]
-    TokioBroadcastDroppedConnectionTry(
-        #[error(source)] tokio::sync::broadcast::error::TryRecvError,
-    ),
+    BroadcastDroppedConnectionTry(#[error(source)] tokio::sync::broadcast::error::TryRecvError),
 
     /// Raised when the RX_TIMEOUT is reach
     #[error(display = "Timeout")]
@@ -117,6 +111,14 @@ pub enum Error {
     /// Raised when a discovery fails to be accepted by the register
     #[error(display = "Register refuses to accept us")]
     RegisterError,
+
+    /// Raised when a the relay terminates the connection by sending a R2C_DISC
+    #[error(display = "Relay terminated the connection")]
+    RelayTerminate,
+
+    /// Raised when a the camera terminates the connection by sending a D2C_DISC
+    #[error(display = "Camera terminated the connection")]
+    CameraTerminate,
 
     /// Raised when the stream is not enough to complete a message
     #[error(display = "Nom Parsing incomplete: {}", _0)]

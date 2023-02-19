@@ -7,6 +7,8 @@ use crate::{Error, Result};
 use bytes::BytesMut;
 use tokio_util::codec::{Decoder, Encoder};
 
+use super::xml::UdpXml;
+
 pub(crate) struct BcUdpCodex {}
 
 impl BcUdpCodex {
@@ -33,6 +35,18 @@ impl Decoder for BcUdpCodex {
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>> {
         match { BcUdp::deserialize(src) } {
+            Ok(BcUdp::Discovery(UdpDiscovery {
+                payload: UdpXml {
+                    r2c_disc: Some(_), ..
+                },
+                ..
+            })) => Err(Error::RelayTerminate),
+            Ok(BcUdp::Discovery(UdpDiscovery {
+                payload: UdpXml {
+                    d2c_disc: Some(_), ..
+                },
+                ..
+            })) => Err(Error::CameraTerminate),
             Ok(bc) => Ok(Some(bc)),
             Err(Error::NomIncomplete(_)) => Ok(None),
             Err(e) => Err(e),

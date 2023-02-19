@@ -30,23 +30,33 @@ use tokio::{
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::udp::UdpFramed;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RegisterResult {
+    reg: SocketAddr,
     dmap: Option<SocketAddr>,
     dev: Option<SocketAddr>,
+    client_id: i32,
     sid: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ConnectResult {
     addr: SocketAddr,
+    client_id: i32,
     camera_id: i32,
+    sid: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct UidLookupResults {
     reg: SocketAddr,
     relay: SocketAddr,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ConnectionKind {
+    Local,
+    Relay,
 }
 
 pub(crate) struct Discovery {}
@@ -191,24 +201,33 @@ impl Discoverer {
 
     async fn retry_send_multi<F, T>(
         &self,
-        disc: UdpDiscovery,
+        mut disc: UdpDiscovery,
         dests: &[SocketAddr],
         map: F,
     ) -> Result<T>
     where
         F: Fn(UdpDiscovery, SocketAddr) -> Option<T>,
     {
+        disc.tid = 0; // Must be random to avoid simulatenous subscription errors
         let mut set = FuturesUnordered::new();
         for dest in dests.iter() {
+            info!("Future push: {}", dest);
             set.push(self.retry_send(disc.clone(), *dest, &map));
         }
 
         // Get what ever completes first
         while let Some(result) = set.next().await {
-            if result.is_ok() {
-                return result;
+            match result {
+                Ok(ret) => {
+                    // info!("Future pop OK");
+                    return Ok(ret);
+                }
+                Err(_e) => {
+                    // info!("Future pop Err: {:?}", e);
+                }
             }
         }
+        // info!("set: empty");
         Err(Error::DiscoveryTimeout)
     }
 
@@ -315,7 +334,7 @@ impl Discoverer {
         client_id: i32,
         register_result: &RegisterResult,
     ) -> Result<ConnectResult> {
-        let (addr, local_tid, local_did) = self
+        let (addr, local_tid, local_did, conn_kind) = self
             .handle_incoming(|bc, addr| {
                 trace!("bc: {:?}", bc);
                 match (bc, register_result) {
@@ -334,7 +353,7 @@ impl Discoverer {
                             ..
                         },
                     ) if cid == client_id && &sid == register_sid && &addr == register_dmap => {
-                        Some((addr, tid, did))
+                        Some((addr, tid, did, ConnectionKind::Relay))
                     }
                     (
                         UdpDiscovery {
@@ -351,19 +370,25 @@ impl Discoverer {
                             ..
                         },
                     ) if cid == client_id && &sid == register_sid && &addr == register_dev => {
-                        Some((addr, tid, did))
+                        Some((addr, tid, did, ConnectionKind::Local))
                     }
                     _ => None,
                 }
             })
             .await?;
 
+        let conn = match conn_kind {
+            ConnectionKind::Local => "local",
+            ConnectionKind::Relay => "map",
+        }
+        .to_string();
+
         let msg = UdpDiscovery {
             tid: local_tid,
             payload: UdpXml {
                 c2d_a: Some(C2dA {
                     sid: register_result.sid,
-                    conn: "map".to_string(),
+                    conn,
                     cid: client_id,
                     did: local_did,
                     mtu: MTU,
@@ -389,51 +414,80 @@ impl Discoverer {
         })
         .await?;
 
-        Ok(ConnectResult {
+        let result = ConnectResult {
             addr,
+            client_id,
+            sid: register_result.sid,
             camera_id: local_did,
-        })
+        };
+
+        match conn_kind {
+            ConnectionKind::Local => {
+                self.confirm_map(&result, register_result.reg, result.addr)
+                    .await?;
+            }
+            ConnectionKind::Relay => {
+                self.confirm_relay(&result, register_result.reg).await?;
+            }
+        }
+
+        Ok(result)
     }
 
     async fn client_initiated_connect(
         &self,
-        local_sid: u32,
-        client_id: i32,
-        dev_addr: SocketAddr,
+        register_result: &RegisterResult,
     ) -> Result<ConnectResult> {
         let tid = generate_tid();
 
-        let msg = UdpDiscovery {
-            tid,
-            payload: UdpXml {
-                c2d_t: Some(C2dT {
-                    sid: local_sid,
-                    cid: client_id,
-                    mtu: MTU,
-                    conn: "local".to_string(),
-                }),
-                ..Default::default()
-            },
-        };
+        if let RegisterResult {
+            dev: Some(dev_addr),
+            ..
+        } = &register_result
+        {
+            let msg = UdpDiscovery {
+                tid,
+                payload: UdpXml {
+                    c2d_t: Some(C2dT {
+                        sid: register_result.sid,
+                        cid: register_result.client_id,
+                        mtu: MTU,
+                        conn: "local".to_string(),
+                    }),
+                    ..Default::default()
+                },
+            };
 
-        let (final_addr, local_did) = self
-            .retry_send(msg, dev_addr, |bc, addr| match bc {
-                UdpDiscovery {
-                    tid: _,
-                    payload:
-                        UdpXml {
-                            d2c_cfm: Some(D2cCfm { cid, did, sid, .. }),
-                            ..
-                        },
-                } if cid == client_id && sid == local_sid => Some((addr, did)),
-                _ => None,
-            })
-            .await?;
+            let (final_addr, local_did) = self
+                .retry_send(msg, *dev_addr, |bc, addr| match bc {
+                    UdpDiscovery {
+                        tid: _,
+                        payload:
+                            UdpXml {
+                                d2c_cfm: Some(D2cCfm { cid, did, sid, .. }),
+                                ..
+                            },
+                    } if cid == register_result.client_id && sid == register_result.sid => {
+                        Some((addr, did))
+                    }
+                    _ => None,
+                })
+                .await?;
 
-        Ok(ConnectResult {
-            addr: final_addr,
-            camera_id: local_did,
-        })
+            let result = ConnectResult {
+                addr: final_addr,
+                client_id: register_result.client_id,
+                sid: register_result.sid,
+                camera_id: local_did,
+            };
+
+            self.confirm_map(&result, register_result.reg, *dev_addr)
+                .await?;
+
+            Ok(result)
+        } else {
+            Err(Error::NoDev)
+        }
     }
 
     /// Register our local ip address with the reolink servers
@@ -442,8 +496,7 @@ impl Discoverer {
         &self,
         uid: &str,
         client_id: i32,
-        reg_addr: SocketAddr,
-        relay_addr: SocketAddr,
+        lookup: &UidLookupResults,
     ) -> Result<RegisterResult> {
         let tid = generate_tid();
         let local_addr = SocketAddr::new(local_ip()?, self.local_addr().port());
@@ -461,8 +514,8 @@ impl Discoverer {
                         port: local_port,
                     },
                     relay: IpPort {
-                        ip: relay_addr.ip().to_string(),
-                        port: relay_addr.port(),
+                        ip: lookup.relay.ip().to_string(),
+                        port: lookup.relay.port(),
                     },
                     cid: client_id,
                     family: local_family,
@@ -476,7 +529,7 @@ impl Discoverer {
 
         // Send and await acceptance
         let (sid, dmap, dev) = self
-            .retry_send(msg, reg_addr, |bc, _| match bc {
+            .retry_send(msg, lookup.reg, |bc, _| match bc {
                 UdpDiscovery {
                     tid: _,
                     payload:
@@ -555,7 +608,9 @@ impl Discoverer {
             .await??;
 
         Ok(RegisterResult {
+            reg: lookup.reg,
             sid,
+            client_id,
             dmap: dmap.map(|dmap| {
                 SocketAddr::new(dmap.ip.parse().expect("Could not read ip addr"), dmap.port)
             }),
@@ -567,20 +622,14 @@ impl Discoverer {
 
     /// Confirm connection with relay
     /// This is sent once all data has been found
-    async fn confirm_relay(
-        &self,
-        client_id: i32,
-        device_id: i32,
-        sid: u32,
-        reg_addr: SocketAddr,
-    ) -> Result<()> {
+    async fn confirm_relay(&self, conn_result: &ConnectResult, reg_addr: SocketAddr) -> Result<()> {
         let msg = UdpDiscovery {
             tid: 0,
             payload: UdpXml {
                 c2r_cfm: Some(C2rCfm {
-                    sid,
-                    cid: client_id,
-                    did: device_id,
+                    sid: conn_result.sid,
+                    cid: conn_result.client_id,
+                    did: conn_result.camera_id,
                     rsp: 0,
                     conn: "map".to_string(),
                 }),
@@ -598,9 +647,7 @@ impl Discoverer {
     /// a local then tell the camera to connect to us via map
     async fn confirm_map(
         &self,
-        client_id: i32,
-        device_id: i32,
-        sid: u32,
+        conn_result: &ConnectResult,
         reg_addr: SocketAddr,
         dev_addr: SocketAddr,
     ) -> Result<()> {
@@ -608,9 +655,9 @@ impl Discoverer {
             tid: 0,
             payload: UdpXml {
                 c2r_cfm: Some(C2rCfm {
-                    sid,
-                    cid: client_id,
-                    did: device_id,
+                    sid: conn_result.sid,
+                    cid: conn_result.client_id,
+                    did: conn_result.camera_id,
                     conn: "local".to_string(),
                     rsp: 0,
                 }),
@@ -624,8 +671,8 @@ impl Discoverer {
             tid: 0,
             payload: UdpXml {
                 c2d_t: Some(C2dT {
-                    sid,
-                    cid: client_id,
+                    sid: conn_result.sid,
+                    cid: conn_result.client_id,
                     mtu: MTU,
                     conn: "map".to_string(),
                 }),
@@ -649,7 +696,7 @@ impl Discovery {
         let port = local_addr.port();
 
         let msg = UdpDiscovery {
-            tid: generate_tid(),
+            tid: 0,
             payload: UdpXml {
                 c2d_c: Some(C2dC {
                     uid: uid.to_string(),
@@ -706,24 +753,10 @@ impl Discovery {
         let reg_addr = lookup.reg;
         let relay_addr = lookup.relay;
 
-        let reg_result = discoverer
-            .register_address(uid, client_id, lookup.reg, relay_addr)
-            .await?;
+        let reg_result = discoverer.register_address(uid, client_id, &lookup).await?;
         let dev_addr = reg_result.dev.ok_or(Error::NoDev)?;
 
-        let connect_result = discoverer
-            .client_initiated_connect(reg_result.sid, client_id, dev_addr)
-            .await?;
-
-        discoverer
-            .confirm_map(
-                client_id,
-                connect_result.camera_id,
-                reg_result.sid,
-                reg_addr,
-                dev_addr,
-            )
-            .await?;
+        let connect_result = discoverer.client_initiated_connect(&reg_result).await?;
 
         Ok(DiscoveryResult {
             socket: discoverer.into_socket().await,
@@ -733,10 +766,12 @@ impl Discovery {
         })
     }
 
-    // This is similar to remote, except that a relay will be established.
+    // This is similar to remote, except that a relay (map) will be established.
     //
     // All future connections will go VIA the relink servers, this is for
     // cellular cameras that do not support local connections
+    //
+    // It is possible that this will also establish a local if the camera attempts that
     //
     #[allow(unused)]
     pub(crate) async fn relay(uid: &str) -> Result<DiscoveryResult> {
@@ -751,9 +786,7 @@ impl Discovery {
         let reg_addr = lookup.reg;
         let relay_addr = lookup.relay;
 
-        let reg_result = discoverer
-            .register_address(uid, client_id, lookup.reg, relay_addr)
-            .await?;
+        let reg_result = discoverer.register_address(uid, client_id, &lookup).await?;
         trace!("reg_result: {:?}", reg_result);
 
         let dmap_addr = reg_result.dmap.ok_or(Error::NoDmap)?;
@@ -762,17 +795,6 @@ impl Discovery {
             .device_initiated_connect(client_id, &reg_result)
             .await?;
         trace!("connect_result: {:?}", connect_result);
-
-        discoverer
-            .confirm_relay(
-                client_id,
-                connect_result.camera_id,
-                reg_result.sid,
-                reg_addr,
-            )
-            .await?;
-
-        trace!("confirmed");
 
         Ok(DiscoveryResult {
             socket: discoverer.into_socket().await,

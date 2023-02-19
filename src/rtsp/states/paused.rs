@@ -3,7 +3,7 @@
 // Video data is not pulled from the camera
 // instead dummy data is sent into the gstreamer source
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Error, Result, Context};
 use async_trait::async_trait;
 use crossbeam::utils::Backoff;
 use log::*;
@@ -136,18 +136,21 @@ impl CameraState for Paused {
 impl Drop for Paused {
     fn drop(&mut self) {
         self.abort_handle.abort();
-        let backoff = Backoff::new();
-        for (_, handle) in self.handles.drain() {
-            while !handle.is_finished() {
-                backoff.spin();
-            }
-        }
     }
 }
 
 impl Paused {
-    pub(crate) fn is_running(&self) -> bool {
-        self.handles.iter().all(|(_, h)| !h.is_finished()) && self.abort_handle.is_live()
+    pub(crate) async fn is_running(&mut self) -> Result<()> {
+        if self.handles.iter().all(|(_, h)| !h.is_finished()) && self.abort_handle.is_live() {
+            return Ok(());
+        }
+        if !self.abort_handle.is_live() {
+            return Err(anyhow!("Stream aborted"));
+        }
+        for (s, h) in self.handles.drain() {
+            h.await?.context(format!("On stream: {:?}", s))?;
+        }
+        Ok(())
     }
 
     pub(crate) async fn take_outputs(&mut self) -> Result<HashMap<Stream, GstOutputs>> {

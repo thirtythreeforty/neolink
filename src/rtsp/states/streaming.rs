@@ -2,9 +2,8 @@
 //
 // Data is streamed into a gstreamer source
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use async_trait::async_trait;
-use crossbeam::utils::Backoff;
 use log::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -95,18 +94,17 @@ impl CameraState for Streaming {
 
             let stream_thead = *stream;
             let handle = task::spawn(async move {
-                let backoff = Backoff::new();
-                info!("Pre start_video");
                 let mut stream_data = arc_camera.start_video(stream_thead, 0).await?;
-                info!("Post start_video");
                 while arc_abort_handle.is_live() {
-                    let mut data = stream_data.get_data()?;
+                    info!("Getting Data");
+                    let data = stream_data.get_data().await?;
+                    info!("Got Data");
                     let mut locked_output = output_thread.lock().await;
-                    for datum in data.drain(..) {
-                        locked_output.stream_recv(datum?)?;
-                    }
-                    backoff.spin();
+                    info!("Feed locked");
+                    locked_output.stream_recv(data?)?;
+                    info!("Data fed");
                 }
+                info!("Aboted");
                 Ok(())
             });
 
@@ -142,22 +140,25 @@ impl CameraState for Streaming {
 impl Drop for Streaming {
     fn drop(&mut self) {
         self.abort_handle.abort();
-
-        for (_, handle) in self.handles.drain() {
-            let backoff = crossbeam::utils::Backoff::new();
-            while !handle.is_finished() {
-                backoff.spin();
-            }
-        }
     }
 }
 
 impl Streaming {
-    pub(crate) fn is_running(&self) -> bool {
-        self.handles.iter().all(|(_, h)| !h.is_finished()) && self.abort_handle.is_live()
+    pub(crate) async fn is_running(&mut self) -> Result<()> {
+        if self.handles.iter().all(|(_, h)| !h.is_finished()) && self.abort_handle.is_live() {
+            return Ok(());
+        }
+        if !self.abort_handle.is_live() {
+            return Err(anyhow!("Stream aborted"));
+        }
+        for (s, h) in self.handles.drain() {
+            h.await?.context(format!("On stream: {:?}", s))?;
+        }
+        Ok(())
     }
 
     pub(crate) async fn take_outputs(&mut self) -> Result<HashMap<Stream, GstOutputs>> {
+        info!("Streaming take_outputs");
         self.abort_handle.abort();
         for (stream, handle) in self.handles.drain() {
             match handle.await {

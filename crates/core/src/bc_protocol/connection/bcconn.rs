@@ -9,10 +9,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::Mutex;
 
-use tokio::{
-    sync::RwLock,
-    task::{self, JoinHandle},
-};
+use tokio::{sync::RwLock, task::JoinSet};
 
 type Subscriber = Arc<RwLock<BTreeMap<u16, Sender<Bc>>>>;
 pub(crate) type BcConnSink = Box<dyn Sink<Bc, Error = Error> + Send + Sync + Unpin>;
@@ -26,7 +23,8 @@ pub(crate) type BcConnSource = Box<dyn Stream<Item = Result<Bc>> + Send + Sync +
 pub struct BcConnection {
     sink: Arc<Mutex<BcConnSink>>,
     subscribers: Subscriber,
-    rx_thread: Mutex<Option<JoinHandle<()>>>,
+    #[allow(dead_code)] // Not dead we just need to hold a reference to keep it alive
+    rx_thread: JoinSet<()>,
 }
 
 impl BcConnection {
@@ -35,7 +33,9 @@ impl BcConnection {
 
         let subs = subscribers.clone();
 
-        let rx_thread = task::spawn(async move {
+        let mut rx_thread = JoinSet::new();
+
+        rx_thread.spawn(async move {
             loop {
                 trace!("packet Wait");
                 let packet = source.next().await;
@@ -59,14 +59,8 @@ impl BcConnection {
         Ok(BcConnection {
             sink: Arc::new(Mutex::new(sink)),
             subscribers,
-            rx_thread: Mutex::new(Some(rx_thread)),
+            rx_thread,
         })
-    }
-
-    pub fn stop_polling(&self) {
-        if let Some(t) = self.rx_thread.blocking_lock().take() {
-            t.abort()
-        };
     }
 
     pub(super) async fn send(&self, bc: Bc) -> crate::Result<()> {
@@ -119,14 +113,5 @@ impl BcConnection {
         }
 
         Ok(())
-    }
-}
-
-impl Drop for BcConnection {
-    fn drop(&mut self) {
-        debug!("Shutting down BcConnection...");
-        if let Some(t) = self.rx_thread.get_mut().take() {
-            t.abort()
-        };
     }
 }

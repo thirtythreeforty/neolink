@@ -106,7 +106,7 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
                         break;
                     }
                     Err(CameraFailureKind::Retry(e)) => {
-                        warn!("{}: Retryable error: {:?}", camera_config.name, e);
+                        warn!("{}: Retryable error: {:X?}", camera_config.name, e);
                         backoff.spin();
                     }
                     Ok(()) => {
@@ -225,9 +225,10 @@ async fn camera_main(
                         }
                     }
                 }
-                if !camera.is_running() {
+                if let Err(e) = camera.is_running().await {
                     return Err(CameraFailureKind::Retry(anyhow!(
-                        "Camera has unexpectanely stopped the paused state"
+                        "Camera has unexpectanely stopped the streaming state: {:?}",
+                        e
                     )));
                 }
             }
@@ -250,9 +251,10 @@ async fn camera_main(
                         }
                     }
                 }
-                if !camera.is_running() {
+                if let Err(e) = camera.is_running().await {
                     return Err(CameraFailureKind::Retry(anyhow!(
-                        "Camera has unexpectanely stopped the paused state"
+                        "Camera has unexpectanely stopped the paused state: {:?}",
+                        e
                     )));
                 }
             }

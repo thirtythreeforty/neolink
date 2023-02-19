@@ -33,6 +33,9 @@ pub struct UdpXml {
     /// D2C_DISC xml Disconnect
     #[yaserde(rename = "D2C_DISC")]
     pub d2c_disc: Option<D2cDisc>,
+    /// R2C_DISC xml Disconnect
+    #[yaserde(rename = "R2C_DISC")]
+    pub r2c_disc: Option<R2cDisc>,
     /// C2M_Q xml client to middle man query
     #[yaserde(rename = "C2M_Q")]
     pub c2m_q: Option<C2mQ>,
@@ -155,6 +158,13 @@ pub struct D2cDisc {
     pub cid: i32,
     /// The camera connection ID
     pub did: i32,
+}
+
+/// R2C_DISC xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
+pub struct R2cDisc {
+    /// The sid
+    pub sid: u32,
 }
 
 /// D2C_T xml

@@ -55,13 +55,6 @@ pub struct BcCamera {
     credentials: Credentials,
 }
 
-impl Drop for BcCamera {
-    fn drop(&mut self) {
-        debug!("Dropping camera");
-        self.disconnect();
-    }
-}
-
 impl BcCamera {
     ///
     /// Create a new camera interface with this address and channel ID
@@ -210,9 +203,9 @@ impl BcCamera {
             SocketAddrOrUid::Uid(uid) => {
                 debug!("Trying uid {}", uid);
                 // TODO Make configurable
-                let allow_local = false;
+                let allow_local = true;
                 let allow_remote = false;
-                let allow_relay = true;
+                let allow_relay = false;
 
                 let discovery = {
                     let mut set = tokio::task::JoinSet::new();
@@ -310,15 +303,6 @@ impl BcCamera {
 
     fn get_connection(&self) -> Arc<BcConnection> {
         self.connection.clone()
-    }
-
-    /// This will drop the connection.
-    pub fn disconnect(&mut self) {
-        // Stop polling now. We don't need it for a disconnect
-        //
-        // It will also ensure that when we drop the connection we don't
-        // get an error for read return zero bytes from the polling thread;
-        self.connection.stop_polling();
     }
 
     // Certains commands like logout need the username and password
