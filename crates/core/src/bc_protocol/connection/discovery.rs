@@ -211,7 +211,6 @@ impl Discoverer {
         disc.tid = 0; // Must be random to avoid simulatenous subscription errors
         let mut set = FuturesUnordered::new();
         for dest in dests.iter() {
-            info!("Future push: {}", dest);
             set.push(self.retry_send(disc.clone(), *dest, &map));
         }
 

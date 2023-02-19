@@ -156,13 +156,11 @@ async fn camera_main(
 
     let _ = camera.manage().await;
 
-    info!("Init Stream");
     camera
         .stream()
         .await
         .with_context(|| format!("{}: Could not start stream", config.name))
         .map_err(CameraFailureKind::Retry)?;
-    info!("Inited Stream");
 
     let backoff = Backoff::new();
     let mut motion = if config.pause.on_motion {

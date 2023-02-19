@@ -158,8 +158,8 @@ impl From<local_ip_address::Error> for Error {
 impl<'a> From<nom::Err<NomErrorType<'a>>> for Error {
     fn from(k: nom::Err<NomErrorType<'a>>) -> Self {
         match k {
-            nom::Err::Error(e) => Error::NomError(format!("Nom Error: {:?}", e)),
-            nom::Err::Failure(e) => Error::NomError(format!("Nom Error: {:?}", e)),
+            nom::Err::Error(e) => Error::NomError(format!("Nom Error: {:X?}", e)),
+            nom::Err::Failure(e) => Error::NomError(format!("Nom Error: {:X?}", e)),
             nom::Err::Incomplete(nom::Needed::Size(amount)) => Error::NomIncomplete(amount.get()),
             nom::Err::Incomplete(nom::Needed::Unknown) => Error::NomIncomplete(1),
         }
