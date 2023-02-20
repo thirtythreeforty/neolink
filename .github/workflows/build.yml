@@ -38,7 +38,7 @@ jobs:
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "${GITHUB_ENV}"
           echo "PKG_CONFIG_GSTREAMER_1_0_PREFIX=${PKG_CONFIG_GSTREAMER_1_0_PREFIX}" >> "${GITHUB_ENV}"
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"
-          cat /Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig/glib-2.0.pc
+          brew install glib
       - name: Cache cargo registry
         uses: actions/cache@v3
         with:
@@ -68,7 +68,7 @@ jobs:
   cross:
     name: cross
     runs-on: ubuntu-latest
-    container: "node:current-buster-slim"
+    container: "node:current-bullseye-slim"
     strategy:
       fail-fast: false
       matrix:
