@@ -38,7 +38,7 @@ jobs:
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "${GITHUB_ENV}"
           echo "PKG_CONFIG_GSTREAMER_1_0_PREFIX=${PKG_CONFIG_GSTREAMER_1_0_PREFIX}" >> "${GITHUB_ENV}"
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"
-          brew install glib
+          brew install pkg-config
       - name: Cache cargo registry
         uses: actions/cache@v3
         with:
