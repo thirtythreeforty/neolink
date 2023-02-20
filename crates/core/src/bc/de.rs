@@ -128,7 +128,7 @@ fn bc_modern_msg<'a>(
             binary_data: Some(1),
             ..
         } = parsed
-        {   
+        {
             // In binary so tell the current context that we need to treat the payload as binary
             in_binary = true;
         }

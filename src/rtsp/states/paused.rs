@@ -3,7 +3,7 @@
 // Video data is not pulled from the camera
 // instead dummy data is sent into the gstreamer source
 
-use anyhow::{anyhow, Error, Result, Context};
+use anyhow::{anyhow, Context, Error, Result};
 use async_trait::async_trait;
 use crossbeam::utils::Backoff;
 use log::*;
