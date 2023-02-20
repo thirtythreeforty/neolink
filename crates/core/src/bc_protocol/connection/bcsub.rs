@@ -49,17 +49,20 @@ impl<'a> Stream for BcPayloadStream<'a> {
         cx: &mut Context<'_>,
     ) -> Poll<Option<IoResult<Vec<u8>>>> {
         match Pin::new(&mut self.rx).poll_next(cx) {
-            Poll::Ready(Some(bc)) => match bc {
-                Bc {
-                    body:
-                        BcBody::ModernMsg(ModernMsg {
-                            payload: Some(BcPayloads::Binary(data)),
-                            ..
-                        }),
-                    ..
-                } => Poll::Ready(Some(Ok(data))),
-                _ => Poll::Pending,
-            },
+            Poll::Ready(Some(bc)) => {
+                log::info!("Got Bc Packet");
+                match bc {
+                    Bc {
+                        body:
+                            BcBody::ModernMsg(ModernMsg {
+                                payload: Some(BcPayloads::Binary(data)),
+                                ..
+                            }),
+                        ..
+                    } => Poll::Ready(Some(Ok(data))),
+                    _ => Poll::Pending,
+                }
+            }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }

@@ -80,7 +80,7 @@ pub struct UdpAck {
 pub const MAGIC_HEADER_UDP_DATA: u32 = 0x2a87cf10;
 
 /// Contains the data of a [`crate::bc::model::Bc`] packet
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct UdpData {
     /// The connection ID of the other party
     ///
@@ -101,4 +101,14 @@ pub struct UdpData {
     // 4 Byte payload size
     /// The payload
     pub payload: Vec<u8>,
+}
+
+impl std::fmt::Debug for UdpData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map()
+            .entry(&"connection_id", &self.connection_id)
+            .entry(&"packet_id", &self.connection_id)
+            .entry(&"payload_len", &self.payload.len())
+            .finish()
+    }
 }

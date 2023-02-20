@@ -203,9 +203,9 @@ impl BcCamera {
             SocketAddrOrUid::Uid(uid) => {
                 debug!("Trying uid {}", uid);
                 // TODO Make configurable
-                let allow_local = true;
+                let allow_local = false;
                 let allow_remote = false;
-                let allow_relay = false;
+                let allow_relay = true;
 
                 let discovery = {
                     let mut set = tokio::task::JoinSet::new();

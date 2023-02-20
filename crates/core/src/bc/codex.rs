@@ -7,7 +7,6 @@ use crate::bc::model::*;
 use crate::bc::xml::*;
 use crate::{Credentials, Error, Result};
 use bytes::BytesMut;
-use log::*;
 use tokio_util::codec::{Decoder, Encoder};
 
 pub(crate) struct BcCodex {
@@ -39,9 +38,9 @@ impl Decoder for BcCodex {
     type Item = Bc;
     type Error = Error;
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>> {
-        trace!("Decoding: {:X?}", src);
+        // trace!("Decoding: {:X?}", src);
         let bc = Bc::deserialize(&self.context, src);
-        trace!("As: {:?}", bc);
+        // trace!("As: {:?}", bc);
         let bc = match bc {
             Ok(bc) => bc,
             Err(Error::NomIncomplete(_)) => return Ok(None),

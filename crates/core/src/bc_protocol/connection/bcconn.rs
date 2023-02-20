@@ -37,9 +37,7 @@ impl BcConnection {
 
         rx_thread.spawn(async move {
             loop {
-                trace!("packet Wait");
                 let packet = source.next().await;
-                trace!("packet: {:?}", packet);
                 let bc = match packet {
                     Some(Ok(bc)) => bc,
                     Some(Err(e)) => {

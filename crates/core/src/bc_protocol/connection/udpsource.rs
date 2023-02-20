@@ -159,7 +159,7 @@ impl BcUdpSource {
             recieved: Default::default(),
             state: State::Normal,
             send_buffer: Default::default(),
-            interval: interval(Duration::from_millis(500)),
+            interval: interval(Duration::from_millis(10)), // Offical Client does ack every 10ms
         }
     }
 }
@@ -209,6 +209,9 @@ pub(crate) struct UdpPayloadSource {
     recieved: BTreeMap<u32, Vec<u8>>,
     state: State,
     send_buffer: VecDeque<BcUdp>,
+    /// Offical Client does ack every 10ms if we don't also do this the camera
+    /// seems to think we have a poor connection and will abort
+    /// This `intveral` controls how ofen we do this
     interval: Interval,
 }
 
@@ -265,7 +268,7 @@ impl Stream for UdpPayloadSource {
                     trace!("UDPSource.State: Normal");
                     // Data ready to go
                     if let Some(payload) = this.recieved.remove(&this.packets_want) {
-                        trace!("UDPSource.Data: Ready");
+                        trace!("UDPSource.Data: PreReady: {}", this.packets_want);
                         this.packets_want += 1;
                         return Poll::Ready(Some(Ok(payload)));
                     }
@@ -301,25 +304,13 @@ impl Stream for UdpPayloadSource {
                             && addr == camera_addr
                             && packet_id >= this.packets_want =>
                         {
-                            trace!("UDPSource.RecievedPacker: Data");
                             if packet_id == this.packets_want {
+                                trace!("UDPSource.RecievedPacker: NewData: {}", this.packets_want);
                                 this.packets_want += 1;
                                 return Poll::Ready(Some(Ok(payload)));
                             } else {
+                                trace!("UDPSource.RecievedPacker: OtherData");
                                 this.recieved.insert(packet_id, payload);
-                            }
-                            // Build and queue ack
-                            if this.packets_want == 0 {
-                                // When no packets have been recieved the
-                                // ACK is different specifically unknown_b
-                                // is set to -1 and packet_id is also set to
-                                // -1
-                                // TODO Add this style of ACK
-                                this.state = State::Normal;
-                            } else {
-                                let ack = BcUdp::Ack(this.build_send_ack());
-                                this.send_buffer.push_back(ack);
-                                this.state = State::Flushing;
                             }
                         }
                         Poll::Ready(Some(Ok((
@@ -328,11 +319,8 @@ impl Stream for UdpPayloadSource {
                         )))) if connection_id == this.client_id && addr == camera_addr => {
                             trace!("UDPSource.RecievedPacket: Ack");
                             this.handle_ack(ack);
-
-                            for (_, resend) in this.sent.iter() {
-                                this.send_buffer.push_back(BcUdp::Data(resend.clone()));
-                            }
-                            this.state = State::Flushing;
+                            // Rather then immediatly flush wait for the next call
+                            // this.state = State::Flushing;
                         }
                         Poll::Ready(Some(Err(e))) => {
                             trace!("UDPSource.RecievedPacker: Error");
