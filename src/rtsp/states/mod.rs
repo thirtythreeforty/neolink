@@ -53,12 +53,13 @@ impl RtspCamera {
         rtsp: Arc<RtspServer>,
     ) -> Result<Self, Error> {
         let camera_addr =
-            AddressOrUid::new(&config.camera_addr, &config.camera_uid).with_context(|| {
-                format!(
+            AddressOrUid::new(&config.camera_addr, &config.camera_uid, &config.discovery)
+                .with_context(|| {
+                    format!(
                     "Could not connect to camera {}. Please check UUID or IP:Port in the config",
                     config.name
                 )
-            })?;
+                })?;
 
         info!("{}: Connecting to camera at {}", config.name, camera_addr);
         let camera = camera_addr

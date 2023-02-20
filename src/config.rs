@@ -10,6 +10,7 @@ lazy_static! {
         Regex::new(r"^(mainStream|subStream|externStream|both|all)$").unwrap();
     static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
     static ref RE_PAUSE_MODE: Regex = Regex::new(r"^(black|still|test|none)$").unwrap();
+    static ref RE_DISC_SRC: Regex = Regex::new(r"^([nN]one|[lL]ocal|[rR]emote|[rR]elay)$").unwrap();
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -75,6 +76,14 @@ pub(crate) struct CameraConfig {
     #[validate]
     #[serde(default = "default_pause")]
     pub(crate) pause: PauseConfig,
+
+    #[serde(default = "default_discovery")]
+    #[validate(regex(
+        path = "RE_DISC_SRC",
+        message = "Invalid discovery method",
+        code = "discovery"
+    ))]
+    pub(crate) discovery: String,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -117,6 +126,10 @@ fn validate_mqtt_config(config: &MqttConfig) -> Result<(), ValidationError> {
 
 fn default_mqtt() -> Option<MqttConfig> {
     None
+}
+
+fn default_discovery() -> String {
+    "Relay".to_string()
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]

@@ -115,9 +115,10 @@ impl BcCamera {
         channel_id: u8,
         username: U,
         passwd: Option<V>,
+        discovery_method: DiscoveryMethods,
     ) -> Result<Self> {
         Self::new(
-            SocketAddrOrUid::Uid(uid.to_string()),
+            SocketAddrOrUid::Uid(uid.to_string(), discovery_method),
             channel_id,
             username,
             passwd,
@@ -200,12 +201,15 @@ impl BcCamera {
                     .split();
                 (Box::new(x), Box::new(r))
             }
-            SocketAddrOrUid::Uid(uid) => {
+            SocketAddrOrUid::Uid(uid, method) => {
                 debug!("Trying uid {}", uid);
                 // TODO Make configurable
-                let allow_local = false;
-                let allow_remote = false;
-                let allow_relay = true;
+                let (allow_local, allow_remote, allow_relay) = match method {
+                    DiscoveryMethods::None => (false, false, false),
+                    DiscoveryMethods::Local => (true, false, false),
+                    DiscoveryMethods::Remote => (true, true, false),
+                    DiscoveryMethods::Relay => (true, true, true),
+                };
 
                 let discovery = {
                     let mut set = tokio::task::JoinSet::new();

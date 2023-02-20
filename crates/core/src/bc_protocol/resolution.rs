@@ -6,12 +6,35 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
 };
 
+/// Select permitted discovery methods
+///
+/// This is used for UID lookup, it is unused with
+/// TPC/known ip address cameras
+#[derive(Debug, Copy, Clone)]
+pub enum DiscoveryMethods {
+    /// Forbid all discovery methods. Only TCP connections with known addresses will work
+    None,
+    /// Allow local discovery on the local network using broadcasts
+    /// This method does NOT contact reolink servers
+    Local,
+    /// Allow contact with the reolink servers to learn the ip address but DO NOT
+    /// allow the camera/clinet to communicate through the reolink servers.
+    ///
+    /// **This also enabled `Local` discovery**
+    Remote,
+    /// Allow contact with the reolink servers to learn the ip address and relay the connection
+    /// through those servers.
+    ///
+    /// **This also enabled `Local` and `Remote` discovery**
+    Relay,
+}
+
 /// Used to return either the SocketAddr or the UID
 pub enum SocketAddrOrUid {
     /// When the result is a addr it will be this
     SocketAddr(SocketAddr),
     /// When the result is a UID
-    Uid(String),
+    Uid(String, DiscoveryMethods),
 }
 
 /// An extension of ToSocketAddrs that will also resolve to a camera UID
@@ -50,7 +73,11 @@ impl ToSocketAddrsOrUid for str {
                 debug!("Trying as uid");
                 let re = regex::Regex::new(r"^[0-9A-Za-z]+$").unwrap();
                 if re.is_match(self) {
-                    Ok(vec![SocketAddrOrUid::Uid(self.to_string())].into_iter())
+                    Ok(vec![SocketAddrOrUid::Uid(
+                        self.to_string(),
+                        DiscoveryMethods::Local,
+                    )]
+                    .into_iter())
                 } else {
                     debug!("Regex fails {:?}  => {:?} ", re, self);
                     Err(e)
@@ -73,7 +100,11 @@ impl ToSocketAddrsOrUid for String {
                 debug!("Trying as uid");
                 let re = regex::Regex::new(r"^[0-9A-Za-z]+$").unwrap();
                 if re.is_match(self) {
-                    Ok(vec![SocketAddrOrUid::Uid(self.to_string())].into_iter())
+                    Ok(vec![SocketAddrOrUid::Uid(
+                        self.to_string(),
+                        DiscoveryMethods::Local,
+                    )]
+                    .into_iter())
                 } else {
                     debug!("Regex fails {:?}  => {:?} ", re, self);
                     Err(e)

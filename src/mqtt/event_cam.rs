@@ -143,8 +143,12 @@ impl EventCam {
         rx: Arc<Mutex<Receiver<ToCamera>>>,
         app: Arc<App>,
     ) -> Result<()> {
-        let camera_addr =
-            AddressOrUid::new(&camera_config.camera_addr, &camera_config.camera_uid).unwrap();
+        let camera_addr = AddressOrUid::new(
+            &camera_config.camera_addr,
+            &camera_config.camera_uid,
+            &camera_config.discovery,
+        )
+        .unwrap();
 
         info!(
             "{}: Connecting to camera at {}",
