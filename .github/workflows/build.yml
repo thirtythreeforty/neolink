@@ -326,4 +326,4 @@ jobs:
           body: |
             Neolink Release ${{steps.toml.outputs.version}}
           draft: true
-          prerelease: ${{ contains(github.ref_name,  'rc' }}
+          prerelease: ${{ contains(github.ref_name,  'rc') }}
