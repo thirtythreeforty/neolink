@@ -2,6 +2,9 @@ use std::path::PathBuf;
 use structopt::{clap::AppSettings, StructOpt};
 
 /// A standards-compliant bridge to Reolink IP cameras
+///
+/// Neolink is free software released under the GNU AGPL v3.
+/// You can find its source code at https://github.com/thirtythreeforty/neolink
 #[derive(StructOpt, Debug)]
 #[structopt(
     name = "neolink",
