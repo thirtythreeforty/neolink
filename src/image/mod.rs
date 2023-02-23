@@ -50,13 +50,10 @@ async fn fetch_iframe(camera_config: &CameraConfig) -> Result<(VideoType, Vec<u8
         .context("Failed to start video")?;
 
     loop {
-        log::info!("Awaiting data");
         let data = stream_data.get_data().await??;
-        log::info!("Got data");
         if let BcMedia::Iframe(iframedata) = data {
             return Ok((iframedata.video_type, iframedata.data));
         } else {
-            log::info!("Got non iframe");
         }
     }
 }
