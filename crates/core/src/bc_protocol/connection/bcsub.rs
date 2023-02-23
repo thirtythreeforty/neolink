@@ -60,7 +60,10 @@ impl<'a> Stream for BcPayloadStream<'a> {
                             }),
                         ..
                     } => Poll::Ready(Some(Ok(data))),
-                    _ => Poll::Pending,
+                    _ => {
+                        cx.waker().wake_by_ref(); // Make it wake in next frame for another attempt at rx.poll_next(cx)
+                        Poll::Pending
+                    }
                 }
             }
             Poll::Ready(None) => Poll::Ready(None),
