@@ -216,17 +216,10 @@ impl Discoverer {
 
         // Get what ever completes first
         while let Some(result) = set.next().await {
-            match result {
-                Ok(ret) => {
-                    // info!("Future pop OK");
-                    return Ok(ret);
-                }
-                Err(_e) => {
-                    // info!("Future pop Err: {:?}", e);
-                }
+            if let Ok(ret) = result {
+                return Ok(ret);
             }
         }
-        // info!("set: empty");
         Err(Error::DiscoveryTimeout)
     }
 

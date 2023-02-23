@@ -95,6 +95,7 @@ impl BcConnection {
         let mut remove_it = false;
         match subscribers.read().await.get(&msg_num) {
             Some(occ) => {
+                trace!("occ.full: {}/{}", occ.capacity(), occ.max_capacity());
                 if occ.send(response).await.is_err() {
                     // Exceedingly unlikely, unless you mishandle the subscription object
                     warn!("Subscriber to ID {} dropped their channel", msg_id);

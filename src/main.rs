@@ -16,6 +16,7 @@ use validator::Validate;
 
 mod cmdline;
 mod config;
+mod image;
 mod mqtt;
 mod pir;
 mod reboot;
@@ -75,6 +76,9 @@ async fn main() -> Result<()> {
         }
         Some(Command::Mqtt(opts)) => {
             mqtt::main(opts, config).await?;
+        }
+        Some(Command::Image(opts)) => {
+            image::main(opts, config).await?;
         }
     }
 

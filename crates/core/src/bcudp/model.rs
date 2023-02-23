@@ -107,7 +107,7 @@ impl std::fmt::Debug for UdpData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_map()
             .entry(&"connection_id", &self.connection_id)
-            .entry(&"packet_id", &self.connection_id)
+            .entry(&"packet_id", &self.packet_id)
             .entry(&"payload_len", &self.payload.len())
             .finish()
     }

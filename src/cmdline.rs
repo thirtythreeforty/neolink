@@ -23,4 +23,5 @@ pub enum Command {
     Pir(super::pir::Opt),
     Talk(super::talk::Opt),
     Mqtt(super::mqtt::Opt),
+    Image(super::image::Opt),
 }

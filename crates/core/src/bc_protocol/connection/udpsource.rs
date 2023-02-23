@@ -254,6 +254,28 @@ impl UdpPayloadSource {
             }
         }
     }
+
+    fn maintanence(&mut self, cx: &mut Context<'_>) {
+        // Check for periodic resends
+        if self.interval.poll_tick(cx).is_ready() {
+            trace!("UDPSource.RecievedPacket: Resend");
+            for (_, resend) in self.sent.iter() {
+                self.send_buffer.push_back(BcUdp::Data(resend.clone()));
+            }
+            if self.packets_want == 0 {
+                // When no packets have been recieved the
+                // ACK is different specifically unknown_b
+                // is set to -1 and packet_id is also set to
+                // -1
+                // TODO Add this style of ACK
+            } else {
+                trace!("UDPSource.RecievedPacket: QueueingAck");
+                let ack = BcUdp::Ack(self.build_send_ack());
+                self.send_buffer.push_back(ack);
+            }
+            self.state = State::Flushing;
+        }
+    }
 }
 
 impl Stream for UdpPayloadSource {
@@ -270,27 +292,12 @@ impl Stream for UdpPayloadSource {
                     if let Some(payload) = this.recieved.remove(&this.packets_want) {
                         trace!("UDPSource.Data: PreReady: {}", this.packets_want);
                         this.packets_want += 1;
+                        let ack = BcUdp::Ack(this.build_send_ack());
+                        this.send_buffer.push_back(ack);
                         return Poll::Ready(Some(Ok(payload)));
                     }
-                    // Check for periodic resends
-                    if this.interval.poll_tick(cx).is_ready() {
-                        trace!("UDPSource.RecievedPacker: Resend");
-                        for (_, resend) in this.sent.iter() {
-                            this.send_buffer.push_back(BcUdp::Data(resend.clone()));
-                        }
-                        if this.packets_want == 0 {
-                            // When no packets have been recieved the
-                            // ACK is different specifically unknown_b
-                            // is set to -1 and packet_id is also set to
-                            // -1
-                            // TODO Add this style of ACK
-                        } else {
-                            let ack = BcUdp::Ack(this.build_send_ack());
-                            this.send_buffer.push_back(ack);
-                        }
-                        this.state = State::Flushing;
-                        continue;
-                    }
+                    // Handle resend events
+                    this.maintanence(cx);
                     // Normal behaviors
                     match this.inner.poll_next_unpin(cx) {
                         Poll::Ready(Some(Ok((
@@ -307,6 +314,8 @@ impl Stream for UdpPayloadSource {
                             if packet_id == this.packets_want {
                                 trace!("UDPSource.RecievedPacker: NewData: {}", this.packets_want);
                                 this.packets_want += 1;
+                                let ack = BcUdp::Ack(this.build_send_ack());
+                                this.send_buffer.push_back(ack);
                                 return Poll::Ready(Some(Ok(payload)));
                             } else {
                                 trace!("UDPSource.RecievedPacker: OtherData");

@@ -31,6 +31,7 @@ pub enum StreamKind {
 ///
 /// When this object is dropped the streaming is stopped
 pub struct StreamData {
+    #[allow(dead_code)]
     handle: Option<JoinHandle<Result<()>>>,
     rx: Receiver<Result<BcMedia>>,
     abort_handle: Arc<AtomicBool>,
@@ -50,12 +51,6 @@ impl StreamData {
 impl Drop for StreamData {
     fn drop(&mut self) {
         self.abort_handle.store(true, Ordering::Relaxed);
-        if let Some(h) = self.handle.take() {
-            let backoff = crossbeam::utils::Backoff::new();
-            while !h.is_finished() {
-                backoff.snooze();
-            }
-        }
     }
 }
 
