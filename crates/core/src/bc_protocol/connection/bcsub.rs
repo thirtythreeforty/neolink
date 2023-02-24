@@ -50,7 +50,6 @@ impl<'a> Stream for BcPayloadStream<'a> {
     ) -> Poll<Option<IoResult<Vec<u8>>>> {
         match Pin::new(&mut self.rx).poll_next(cx) {
             Poll::Ready(Some(bc)) => {
-                log::info!("Got Bc Packet");
                 match bc {
                     Bc {
                         body:

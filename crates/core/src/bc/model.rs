@@ -169,7 +169,7 @@ pub(super) struct BcSendInfo {
 /// These are the encyption modes supported by the camera
 ///
 /// The mode is negotiated during login
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum EncryptionProtocol {
     /// Older camera use no encryption
     Unencrypted,
