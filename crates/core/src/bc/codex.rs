@@ -27,7 +27,15 @@ impl Encoder<Bc> for BcCodex {
     fn encode(&mut self, item: Bc, dst: &mut BytesMut) -> Result<()> {
         // let context = self.context.read().unwrap();
         let buf: Vec<u8> = Default::default();
-        let buf = item.serialize(buf, self.context.get_encrypted())?;
+        let enc_protocol: EncryptionProtocol = match self.context.get_encrypted() {
+            EncryptionProtocol::Aes(_) if item.meta.msg_id == 1 => {
+                // During login the encyption protocol cannot go higher than BCEncrypt
+                // even if we support AES. (BUt it can go lower i.e. None)
+                EncryptionProtocol::BCEncrypt
+            }
+            n => *n,
+        };
+        let buf = item.serialize(buf, &enc_protocol)?;
         dst.reserve(buf.len());
         dst.extend_from_slice(buf.as_slice());
         Ok(())
