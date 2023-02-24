@@ -183,7 +183,7 @@ jobs:
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         id: tags
         run: |
-          branch="${GITHUB_REF#refs/heads/}"
+          branch="$(echo "${GITHUB_REF#refs/heads/}" | sed -E 's|[/]|-|g')"
           tags="${REPO_NAME}:${branch}"
           if [ "${branch}" == "master" ]; then
             tags="${tags},${REPO_NAME}:latest"
