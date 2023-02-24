@@ -64,10 +64,9 @@ impl<'a> Stream for BcPayloadStream<'a> {
                         Poll::Pending
                     }
                 }
-                Poll::Pending => {
-                    return Poll::Pending;
-                }
             }
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
