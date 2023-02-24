@@ -25,7 +25,7 @@ use tokio::{
         Mutex, RwLock,
     },
     task::JoinSet,
-    time::{interval, timeout, Duration},
+    time::{interval, Duration},
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::udp::UdpFramed;
@@ -239,22 +239,40 @@ impl Discoverer {
         let mut reply = ReceiverStream::new(self.subscribe(target_tid).await?);
         let msg = BcUdp::Discovery(disc);
 
-        let mut inter = interval(Duration::from_millis(500));
+        let maximum_wait = Duration::from_secs(60);
+        let resend_wait = Duration::from_millis(500);
+        let mut inter = interval(resend_wait);
 
-        for _i in 0..120 {
-            inter.tick().await;
-
-            self.send(msg.clone(), dest).await?;
-
-            if let Ok(Some(Ok((reply, addr)))) =
-                timeout(Duration::from_millis(500), reply.next()).await
-            {
-                if let Some(result) = map(reply, addr) {
-                    return Ok(result);
+        let result = tokio::select! {
+            v = async {
+                // Recv while channel is viable
+                while let Some(msg) = reply.next().await {
+                    if let Ok((reply, addr)) = msg {
+                        if let Some(result) = map(reply, addr) {
+                            return Ok(result);
+                        }
+                    }
                 }
+                Err(Error::DroppedConnection)
+            } => {v},
+            v = async {
+                // Send every inter for ever or until channel is no longer viable
+                loop {
+                    inter.tick().await;
+                    if let Err(e) = self.send(msg.clone(), dest).await {
+                        return e;
+                    }
+                }
+            } => {Err::<T, Error>(v)},
+            _ = {
+                // Sleep then emit Timeout
+                tokio::time::sleep(maximum_wait)
+            } => {
+                Err::<T, Error>(Error::DiscoveryTimeout)
             }
-        }
-        Err(Error::DiscoveryTimeout)
+        };
+
+        result
     }
 
     // This function will contact the p2p relay servers
