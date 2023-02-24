@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use neolink_core::bc_protocol::{BcCamera, StreamKind as Stream};
+use neolink_core::bc_protocol::{BcCamera, MaxEncryption, StreamKind as Stream};
 
 use crate::config::PauseConfig;
 use crate::rtsp::gst::RtspServer;
@@ -25,6 +25,7 @@ pub(crate) struct Shared {
     pub(super) rtsp: Arc<RtspServer>,
     pub(super) permitted_users: HashSet<String>,
     pub(super) pause: PauseConfig,
+    pub(super) max_encryption: MaxEncryption,
 }
 
 impl Shared {

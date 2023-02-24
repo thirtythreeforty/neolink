@@ -11,6 +11,8 @@ lazy_static! {
     static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
     static ref RE_PAUSE_MODE: Regex = Regex::new(r"^(black|still|test|none)$").unwrap();
     static ref RE_DISC_SRC: Regex = Regex::new(r"^([nN]one|[lL]ocal|[rR]emote|[rR]elay)$").unwrap();
+    static ref RE_MAXENC_SRC: Regex =
+        Regex::new(r"^([nN]one|[Aa][Ee][Ss]|[Bb][Cc][Ee][Nn][Cc][Rr][Yy][Pp][Tt])$").unwrap();
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -84,6 +86,14 @@ pub(crate) struct CameraConfig {
         code = "discovery"
     ))]
     pub(crate) discovery: String,
+
+    #[serde(default = "default_maxenc")]
+    #[validate(regex(
+        path = "RE_MAXENC_SRC",
+        message = "Invalid maximum encryption method",
+        code = "max_encryption"
+    ))]
+    pub(crate) max_encryption: String,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -130,6 +140,10 @@ fn default_mqtt() -> Option<MqttConfig> {
 
 fn default_discovery() -> String {
     "Relay".to_string()
+}
+
+fn default_maxenc() -> String {
+    "Aes".to_string()
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]

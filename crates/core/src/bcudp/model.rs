@@ -63,7 +63,9 @@ pub struct UdpAck {
     /// register and then download the same connection id from the register_address
     /// it comes back in an xml that is encoded as i32 (i.e. can be negative string)
     pub connection_id: i32,
-    // Unknown 4 bytes always 0
+    /// Unknown 4 bytes always 0 for normal ack or -1 for signalling no packets received yet
+    /// Tentativly assigned as a kinda group id
+    pub group_id: u32,
     /// The ID of the last data packet [`UdpData`]
     pub packet_id: u32,
     // 2 Bytes Unknown: Observed values `00000000`, `d6010000`, `d7160000` `09e00000`
@@ -74,6 +76,19 @@ pub struct UdpAck {
     ///
     /// This is a truth table of packets after `packet_id` that have not been recieved
     pub payload: Vec<u8>,
+}
+
+impl UdpAck {
+    /// Create an empty ack packet to signifiy no packets recieved yet
+    /// These are a little different in that they also set `group_id`
+    pub fn empty(connection_id: i32) -> Self {
+        Self {
+            connection_id,
+            group_id: 0xffffffff,
+            packet_id: 0xffffffff,
+            payload: vec![],
+        }
+    }
 }
 
 /// Magic for the UDP Data packet

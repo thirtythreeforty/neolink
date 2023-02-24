@@ -25,6 +25,7 @@ mod version;
 pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
+pub use login::MaxEncryption;
 pub use motion::{MotionData, MotionStatus};
 pub use pirstate::PirState;
 pub use ptz::Direction;

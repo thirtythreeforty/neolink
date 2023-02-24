@@ -4,7 +4,7 @@ use log::*;
 
 use super::config::{CameraConfig, Config};
 use anyhow::{anyhow, Context, Error, Result};
-use neolink_core::bc_protocol::{BcCamera, DiscoveryMethods};
+use neolink_core::bc_protocol::{BcCamera, DiscoveryMethods, MaxEncryption};
 use std::fmt::{Display, Error as FmtError, Formatter};
 
 pub(crate) enum AddressOrUid {
@@ -97,9 +97,15 @@ pub(crate) async fn connect_and_login(camera_config: &CameraConfig) -> Result<Bc
             )
         })?;
 
+    let max_encryption = match camera_config.max_encryption.to_lowercase().as_str() {
+        "none" => MaxEncryption::None,
+        "bcencrypt" => MaxEncryption::BcEncrypt,
+        "aes" => MaxEncryption::Aes,
+        _ => MaxEncryption::Aes,
+    };
     info!("{}: Logging in", camera_config.name);
     camera
-        .login()
+        .login_with_maxenc(max_encryption)
         .await
         .with_context(|| format!("Failed to login to {}", camera_config.name))?;
 

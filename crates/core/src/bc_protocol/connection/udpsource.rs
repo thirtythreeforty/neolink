@@ -217,29 +217,33 @@ pub(crate) struct UdpPayloadSource {
 
 impl UdpPayloadSource {
     fn build_send_ack(&self) -> UdpAck {
-        assert!(self.packets_want > 0);
-        let start: u32 = self.packets_want - 1;
-        let missing_ids = if let Some(end) = self.recieved.keys().max() {
-            let mut vec = vec![];
-            // From last contiguous packet to last recieved packet
-            // create a payload of `00` (unreceived) and `01` (received)
-            // that can be used to form the `UdpAck` packet
-            for i in (start + 1)..(end + 1) {
-                if self.recieved.contains_key(&i) {
-                    vec.push(1)
-                } else {
-                    vec.push(0)
+        if self.packets_want > 0 {
+            let start: u32 = self.packets_want - 1;
+            let missing_ids = if let Some(end) = self.recieved.keys().max() {
+                let mut vec = vec![];
+                // From last contiguous packet to last recieved packet
+                // create a payload of `00` (unreceived) and `01` (received)
+                // that can be used to form the `UdpAck` packet
+                for i in (start + 1)..(end + 1) {
+                    if self.recieved.contains_key(&i) {
+                        vec.push(1)
+                    } else {
+                        vec.push(0)
+                    }
                 }
-            }
-            vec
-        } else {
-            vec![]
-        };
+                vec
+            } else {
+                vec![]
+            };
 
-        UdpAck {
-            connection_id: self.camera_id,
-            packet_id: start,
-            payload: missing_ids,
+            UdpAck {
+                connection_id: self.camera_id,
+                packet_id: start,
+                group_id: 0,
+                payload: missing_ids,
+            }
+        } else {
+            UdpAck::empty(self.camera_id)
         }
     }
 
@@ -262,17 +266,10 @@ impl UdpPayloadSource {
             for (_, resend) in self.sent.iter() {
                 self.send_buffer.push_back(BcUdp::Data(resend.clone()));
             }
-            if self.packets_want == 0 {
-                // When no packets have been recieved the
-                // ACK is different specifically unknown_b
-                // is set to -1 and packet_id is also set to
-                // -1
-                // TODO Add this style of ACK
-            } else {
-                trace!("UDPSource.RecievedPacket: QueueingAck");
-                let ack = BcUdp::Ack(self.build_send_ack());
-                self.send_buffer.push_back(ack);
-            }
+
+            let ack = BcUdp::Ack(self.build_send_ack());
+            trace!("UDPSource.RecievedPacket: QueueingAck");
+            self.send_buffer.push_back(ack);
             self.state = State::Flushing;
         }
     }

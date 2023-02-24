@@ -2,11 +2,35 @@ use super::{md5_string, BcCamera, Error, Result, Truncate, ZeroLast};
 use crate::bc::{model::*, xml::*};
 use std::sync::atomic::Ordering;
 
+/// The requested encryption level to request
+/// to the camera
+///
+/// The camera may use a lower one depending on support
+///
+/// Note the reolink camera only encrypt the control messages
+/// the camera feed is always accessible
+#[derive(Debug, Clone, Copy)]
+pub enum MaxEncryption {
+    /// No encryption
+    None,
+    /// BCEncrypt is a simple XOR algortirhm with a fixed key
+    /// used in many older models
+    BcEncrypt,
+    /// AES is used in newer model
+    Aes,
+}
+
 impl BcCamera {
     /// Login to the camera.
     ///
     /// This should be called before most other commands
     pub async fn login(&self) -> Result<DeviceInfo> {
+        self.login_with_maxenc(MaxEncryption::Aes).await
+    }
+    /// Login to the camera.
+    ///
+    /// This should be called before most other commands
+    pub async fn login_with_maxenc(&self, max_encryption: MaxEncryption) -> Result<DeviceInfo> {
         let device_info;
         // This { is here due to the connection and set_credentials both requiring a mutable borrow
         {
@@ -31,13 +55,18 @@ impl BcCamera {
                 .map(|p| md5_string(p, ZeroLast))
                 .unwrap_or_else(|| EMPTY_LEGACY_PASSWORD.to_owned());
 
+            let enc_byte = match max_encryption {
+                MaxEncryption::None => 0xdc00,
+                MaxEncryption::BcEncrypt => 0xdc01,
+                MaxEncryption::Aes => 0xdc02,
+            };
             let legacy_login = Bc {
                 meta: BcMeta {
                     msg_id: MSG_ID_LOGIN,
                     channel_id: self.channel_id,
                     msg_num,
                     stream_type: 0,
-                    response_code: 0xdc02,
+                    response_code: enc_byte,
                     class: 0x6514,
                 },
                 body: BcBody::LegacyMsg(LegacyMsg::LoginMsg {

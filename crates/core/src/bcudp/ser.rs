@@ -50,7 +50,7 @@ fn bcudp_ack<'a, W: 'a + Write>(
         le_u32(MAGIC_HEADER_UDP_ACK),
         le_i32(payload.connection_id),
         le_u32(0),
-        le_u32(0),
+        le_u32(payload.group_id),
         le_u32(payload.packet_id),
         le_u32(0),
         le_u32(binary_payload.len() as u32),

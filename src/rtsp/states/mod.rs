@@ -6,7 +6,7 @@ use log::*;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use neolink_core::bc_protocol::{MotionData, StreamKind as Stream};
+use neolink_core::bc_protocol::{MaxEncryption, MotionData, StreamKind as Stream};
 
 use crate::config::{CameraConfig, UserConfig};
 use crate::rtsp::gst::RtspServer;
@@ -111,6 +111,12 @@ impl RtspCamera {
             None => ["anonymous".to_string()].iter().cloned().collect(),
         };
 
+        let max_encryption = match config.max_encryption.to_lowercase().as_str() {
+            "none" => MaxEncryption::None,
+            "bcencrypt" => MaxEncryption::BcEncrypt,
+            "aes" => MaxEncryption::Aes,
+            _ => MaxEncryption::Aes,
+        };
         let shared = Shared {
             camera: Arc::new(camera),
             addr: camera_addr,
@@ -122,6 +128,7 @@ impl RtspCamera {
             streams,
             rtsp,
             permitted_users,
+            max_encryption,
         };
 
         let mut state: Connected = Default::default();

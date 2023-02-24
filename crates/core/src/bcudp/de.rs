@@ -89,8 +89,10 @@ fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
     let (buf, connection_id) = error_context("ACK: Missing connect ID", le_i32)(buf)?;
     let (buf, _unknown_a) =
         error_context("ACK: Unable to verify UnknowA", verify(le_u32, |&x| x == 0))(buf)?;
-    let (buf, _unknown_b) =
-        error_context("ACK: Unable to verify UnknowB", verify(le_u32, |&x| x == 0))(buf)?;
+    let (buf, group_id) = error_context(
+        "ACK: Unable to verify UnknowB",
+        verify(le_u32, |&x| x == 0 || x == 0xffffffff),
+    )(buf)?;
     let (buf, packet_id) = error_context("Missing packet_id", le_u32)(buf)?; // This is the point at which the camera has contigious
                                                                              // packets to
     let (buf, _unknown) = error_context("ACK: Missing unknown", le_u32)(buf)?;
@@ -109,6 +111,7 @@ fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
     let data = UdpAck {
         connection_id,
         packet_id,
+        group_id,
         payload,
     };
     Ok((buf, data))
