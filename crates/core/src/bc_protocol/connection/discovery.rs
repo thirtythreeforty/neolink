@@ -241,7 +241,7 @@ impl Discoverer {
 
         let mut inter = interval(Duration::from_millis(500));
 
-        for _i in 0..5 {
+        for _i in 0..120 {
             inter.tick().await;
 
             self.send(msg.clone(), dest).await?;
