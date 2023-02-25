@@ -63,11 +63,18 @@ pub enum Error {
     #[error(display = "Cookie GenError")]
     GenError(#[error(source)] std::sync::Arc<cookie_factory::GenError>),
 
-    /// Raised when a connection is subscrbed to more than once
+    /// Raised when a connection is subscrbed to more than once for msg_num
     #[error(display = "Simultaneous subscription, {}", _0)]
     SimultaneousSubscription {
         /// The message number that was subscribed to
         msg_num: u16,
+    },
+
+    /// Raised when a connection is subscrbed to more than once for msg_id
+    #[error(display = "Simultaneous subscription, {}", _0)]
+    SimultaneousSubscriptionId {
+        /// The message number that was subscribed to
+        msg_id: u32,
     },
 
     /// Raised when a new encyrption byte is observed

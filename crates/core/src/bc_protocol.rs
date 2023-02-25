@@ -8,6 +8,7 @@ use Md5Trunc::*;
 
 mod connection;
 mod errors;
+mod keepalive;
 mod ledstate;
 mod login;
 mod logout;
@@ -298,6 +299,7 @@ impl BcCamera {
             logged_in: AtomicBool::new(false),
             credentials: Credentials::new(username, passwd),
         };
+        me.keepalive().await?;
         Ok(me)
     }
 

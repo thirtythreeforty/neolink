@@ -12,7 +12,7 @@ use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt};
 
 pub struct BcSubscription<'a> {
     rx: ReceiverStream<Bc>,
-    msg_num: u16,
+    msg_num: u32,
     conn: &'a BcConnection,
 }
 
@@ -74,7 +74,7 @@ impl<'a> Stream for BcPayloadStream<'a> {
 pub type BcMediaStream<'b> = FramedRead<Compat<IntoAsyncRead<BcPayloadStream<'b>>>, BcMediaCodex>;
 
 impl<'a> BcSubscription<'a> {
-    pub fn new(rx: Receiver<Bc>, msg_num: u16, conn: &'a BcConnection) -> BcSubscription<'a> {
+    pub fn new(rx: Receiver<Bc>, msg_num: u32, conn: &'a BcConnection) -> BcSubscription<'a> {
         BcSubscription {
             rx: ReceiverStream::new(rx),
             msg_num,
@@ -83,14 +83,14 @@ impl<'a> BcSubscription<'a> {
     }
 
     pub async fn send(&self, bc: Bc) -> Result<()> {
-        assert!(bc.meta.msg_num == self.msg_num);
+        assert!(bc.meta.msg_num as u32 == self.msg_num);
         self.conn.send(bc).await?;
         Ok(())
     }
 
     pub async fn recv(&mut self) -> Result<Bc> {
         let bc = self.rx.next().await.ok_or(Error::DroppedSubscriber)?;
-        assert!(bc.meta.msg_num == self.msg_num);
+        assert!(bc.meta.msg_num as u32 == self.msg_num);
         Ok(bc)
     }
 
@@ -110,13 +110,5 @@ impl<'a> BcSubscription<'a> {
             .into_async_read()
             .compat();
         FramedRead::new(async_read, BcMediaCodex::new())
-    }
-}
-
-/// Makes it difficult to avoid unsubscribing when you're finished
-impl<'a> Drop for BcSubscription<'a> {
-    fn drop(&mut self) {
-        // It's fine if we can't unsubscribe as that means we already have
-        let _ = self.conn.unsubscribe(self.msg_num);
     }
 }

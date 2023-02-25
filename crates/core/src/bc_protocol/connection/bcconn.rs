@@ -11,7 +11,15 @@ use tokio::sync::Mutex;
 
 use tokio::{sync::RwLock, task::JoinSet};
 
-type Subscriber = Arc<RwLock<BTreeMap<u16, Sender<Bc>>>>;
+type MsgHandler = Box<dyn Fn(&Bc) -> Option<Bc> + Send + Sync>;
+#[derive(Default)]
+struct Subscriber {
+    /// Subscribers based on their Num
+    num: RwLock<BTreeMap<u16, Sender<Bc>>>,
+    /// Subscribers based on their ID
+    id: RwLock<BTreeMap<u32, MsgHandler>>,
+}
+
 pub(crate) type BcConnSink = Box<dyn Sink<Bc, Error = Error> + Send + Sync + Unpin>;
 pub(crate) type BcConnSource = Box<dyn Stream<Item = Result<Bc>> + Send + Sync + Unpin>;
 
@@ -22,19 +30,20 @@ pub(crate) type BcConnSource = Box<dyn Stream<Item = Result<Bc>> + Send + Sync +
 /// There can be only one subscriber per kind of message at a time.
 pub struct BcConnection {
     sink: Arc<Mutex<BcConnSink>>,
-    subscribers: Subscriber,
+    subscribers: Arc<Subscriber>,
     #[allow(dead_code)] // Not dead we just need to hold a reference to keep it alive
     rx_thread: JoinSet<()>,
 }
 
 impl BcConnection {
     pub async fn new(sink: BcConnSink, mut source: BcConnSource) -> Result<BcConnection> {
-        let subscribers: Subscriber = Default::default();
+        let subscribers: Arc<Subscriber> = Default::default();
+        let sink = Arc::new(Mutex::new(sink));
 
         let subs = subscribers.clone();
 
         let mut rx_thread = JoinSet::new();
-
+        let sink_thread = sink.clone();
         rx_thread.spawn(async move {
             loop {
                 let packet = source.next().await;
@@ -47,7 +56,7 @@ impl BcConnection {
                     None => continue,
                 };
 
-                if let Err(e) = Self::poll(bc, &subs).await {
+                if let Err(e) = Self::poll(bc, &subs, &sink_thread).await {
                     error!("Subscription error: {:?}", e);
                     break;
                 }
@@ -55,7 +64,7 @@ impl BcConnection {
         });
 
         Ok(BcConnection {
-            sink: Arc::new(Mutex::new(sink)),
+            sink,
             subscribers,
             rx_thread,
         })
@@ -70,45 +79,72 @@ impl BcConnection {
 
     pub async fn subscribe(&self, msg_num: u16) -> Result<BcSubscription> {
         let (tx, rx) = channel(100);
-        match self.subscribers.write().await.entry(msg_num) {
-            Entry::Vacant(vac_entry) => vac_entry.insert(tx),
-            Entry::Occupied(_) => return Err(Error::SimultaneousSubscription { msg_num }),
+        match self.subscribers.num.write().await.entry(msg_num) {
+            Entry::Vacant(vac_entry) => {
+                vac_entry.insert(tx);
+            }
+            Entry::Occupied(mut occ_entry) => {
+                if occ_entry.get().is_closed() {
+                    occ_entry.insert(tx);
+                } else {
+                    return Err(Error::SimultaneousSubscription { msg_num });
+                }
+            }
         };
-        Ok(BcSubscription::new(rx, msg_num, self))
+        Ok(BcSubscription::new(rx, msg_num as u32, self))
     }
 
-    pub fn unsubscribe(&self, msg_num: u16) -> Result<()> {
-        let subs = self.subscribers.clone();
-        tokio::task::spawn(async move {
-            subs.write().await.remove(&msg_num);
-        });
-
+    /// Some messages are initiated by the camera. This creates a handler for them
+    /// It requires a closure that will be used to handle the message
+    /// and return either None or Some(Bc) reply
+    pub async fn handle_msg<T>(&self, msg_id: u32, handler: T) -> Result<()>
+    where
+        T: Fn(&Bc) -> Option<Bc> + Send + Sync + 'static,
+    {
+        match self.subscribers.id.write().await.entry(msg_id) {
+            Entry::Vacant(vac_entry) => {
+                vac_entry.insert(Box::new(handler));
+            }
+            Entry::Occupied(_) => {
+                return Err(Error::SimultaneousSubscriptionId { msg_id });
+            }
+        };
         Ok(())
     }
 
-    async fn poll(response: Bc, subscribers: &Subscriber) -> Result<()> {
+    async fn poll(response: Bc, subscribers: &Subscriber, sink: &Mutex<BcConnSink>) -> Result<()> {
         // Don't hold the lock during deserialization so we don't poison the subscribers mutex if
         // something goes wrong
         let msg_num = response.meta.msg_num;
         let msg_id = response.meta.msg_id;
 
-        let mut remove_it = false;
-        match subscribers.read().await.get(&msg_num) {
-            Some(occ) => {
-                trace!("occ.full: {}/{}", occ.capacity(), occ.max_capacity());
-                if occ.send(response).await.is_err() {
-                    // Exceedingly unlikely, unless you mishandle the subscription object
-                    warn!("Subscriber to ID {} dropped their channel", msg_id);
-                    remove_it = true;
+        let mut remove_it_num = false;
+        match (
+            subscribers.id.read().await.get(&msg_id),
+            subscribers.num.read().await.get(&msg_num),
+        ) {
+            (Some(occ), _) => {
+                if let Some(reply) = occ(&response) {
+                    assert!(reply.meta.msg_num == response.meta.msg_num);
+                    sink.lock().await.send(reply).await?;
                 }
             }
-            None => {
-                debug!("Ignoring uninteresting message num {}", msg_id);
+            (None, Some(occ)) => {
+                trace!("occ.full: {}/{}", occ.capacity(), occ.max_capacity());
+                if occ.send(response).await.is_err() {
+                    remove_it_num = true;
+                }
+            }
+            (None, None) => {
+                debug!(
+                    "Ignoring uninteresting message id {} (number: {})",
+                    msg_id, msg_num
+                );
                 trace!("Contents: {:?}", response);
             }
         }
-        if remove_it {
-            subscribers.write().await.remove(&msg_num);
+        if remove_it_num {
+            subscribers.num.write().await.remove(&msg_num);
         }
 
         Ok(())
