@@ -112,6 +112,13 @@ impl BcConnection {
         Ok(())
     }
 
+    /// Stop a message handler created using [`handle_msg`]
+    #[allow(dead_code)] // Currently unused but added for future use
+    pub async fn unhandle_msg(&self, msg_id: u32) -> Result<()> {
+        self.subscribers.id.write().await.remove(&msg_id);
+        Ok(())
+    }
+
     async fn poll(response: Bc, subscribers: &Subscriber, sink: &Mutex<BcConnSink>) -> Result<()> {
         // Don't hold the lock during deserialization so we don't poison the subscribers mutex if
         // something goes wrong
