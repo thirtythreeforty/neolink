@@ -15,7 +15,10 @@ pub(crate) struct LoggedIn {}
 #[async_trait]
 impl CameraState for LoggedIn {
     async fn setup(&mut self, shared: &Shared) -> Result<(), anyhow::Error> {
-        shared.camera.login_with_maxenc(shared.max_encryption).await?;
+        shared
+            .camera
+            .login_with_maxenc(shared.max_encryption)
+            .await?;
         Ok(())
     }
 
