@@ -5,7 +5,10 @@ use gstreamer::{parse_launch, prelude::*, ClockTime, MessageView, Pipeline, Stat
 use gstreamer_app::AppSrc;
 use neolink_core::bcmedia::model::VideoType;
 use tokio::{
-    sync::mpsc::{channel, Sender},
+    sync::{
+        self,
+        mpsc::{channel, Sender},
+    },
     task::{self, JoinSet},
 };
 
@@ -19,6 +22,7 @@ pub(super) struct GstSender {
     sender: Sender<GstControl>,
     #[allow(dead_code)] // It is used for its automatic drop
     set: JoinSet<Result<()>>,
+    finished: sync::oneshot::Receiver<Result<()>>,
 }
 
 impl GstSender {
@@ -34,6 +38,16 @@ impl GstSender {
             .send(GstControl::Eos)
             .await
             .map_err(|e| anyhow!("Failed to send eos: {:?}", e))
+    }
+
+    pub(super) async fn is_finished(&mut self) -> Option<Result<()>> {
+        match self.finished.try_recv() {
+            Ok(res) => Some(res),
+            Err(sync::oneshot::error::TryRecvError::Empty) => None,
+            Err(sync::oneshot::error::TryRecvError::Closed) => {
+                Some(Err(anyhow!("Gstreamer finished channel is closed")))
+            }
+        }
     }
 }
 
@@ -70,14 +84,20 @@ async fn output(pipeline: Pipeline) -> Result<GstSender> {
         Ok(())
     });
 
+    let (tx, finished) = sync::oneshot::channel();
     task::spawn_blocking(move || {
         let res = start_pipeline(pipeline);
-        if let Err(e) = res {
-            log::error!("Failed to start pipeline: {:?}", e);
+        if let Err(e) = &res {
+            log::error!("Failed to run pipeline: {:?}", e);
         }
+        tx.send(res)
     });
 
-    Ok(GstSender { sender, set })
+    Ok(GstSender {
+        sender,
+        set,
+        finished,
+    })
 }
 
 fn start_pipeline(pipeline: Pipeline) -> Result<()> {

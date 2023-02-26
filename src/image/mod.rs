@@ -10,12 +10,13 @@
 /// ```
 ///
 use anyhow::{Context, Result};
+use log::*;
 use neolink_core::{bc_protocol::*, bcmedia::model::*};
 
 mod cmdline;
 mod gst;
 
-use super::config::{CameraConfig, Config};
+use super::config::Config;
 use crate::utils::{connect_and_login, find_camera_by_name};
 pub(crate) use cmdline::Opt;
 
@@ -27,20 +28,7 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         "failed to load config file or find the camera. Check the path and name of the camera.",
     )?;
 
-    let (vid_type, buf) = fetch_iframe(camera_config).await?;
-    let sender = gst::from_input(vid_type, &opt.file_path).await?;
-    sender.send(buf).await?;
-    // So I tried 1 iFrame and it wouldn't finish the convert (just seems to hang waiting for data)
-    // I tried sending the SAME iFrame twice and SOMETIMES it converts (othertimes it just hangs)
-    // Then tried two different iFrames and it always converted. Therefore we do that
-    let (_, buf) = fetch_iframe(camera_config).await?;
-    sender.send(buf).await?;
-    sender.eos().await?;
-
-    Ok(())
-}
-
-async fn fetch_iframe(camera_config: &CameraConfig) -> Result<(VideoType, Vec<u8>)> {
+    // Set up camera to recieve the stream
     let camera = connect_and_login(camera_config)
         .await
         .context("Failed to connect to the camera, check credentials and network")?;
@@ -49,11 +37,39 @@ async fn fetch_iframe(camera_config: &CameraConfig) -> Result<(VideoType, Vec<u8
         .await
         .context("Failed to start video")?;
 
+    // Get one iframe as the start while also getting the getting the video type
+    let buf;
+    let vid_type;
     loop {
-        let data = stream_data.get_data().await??;
-        if let BcMedia::Iframe(iframedata) = data {
-            return Ok((iframedata.video_type, iframedata.data));
-        } else {
+        if let BcMedia::Iframe(frame) = stream_data.get_data().await?? {
+            vid_type = frame.video_type;
+            buf = frame.data;
+            break;
         }
     }
+
+    let mut sender = gst::from_input(vid_type, &opt.file_path).await?;
+    sender.send(buf).await?; // Send first iframe
+
+    // Keep sending both IFrame or PFrame until finished
+    while sender.is_finished().await.is_none() {
+        let buf = match stream_data.get_data().await?? {
+            BcMedia::Iframe(frame) => frame.data,
+            BcMedia::Pframe(frame) => frame.data,
+            _ => {
+                continue;
+            }
+        };
+
+        debug!("Sending frame data to gstreamer");
+        if sender.send(buf).await.is_err() {
+            // Assume that the sender is closed
+            // because the pipeline is finished
+            break;
+        }
+    }
+    debug!("Sending EOS");
+    let _ = sender.eos().await; // Ignore return because if pipeline is finished this will error
+
+    Ok(())
 }
