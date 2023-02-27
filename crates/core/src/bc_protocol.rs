@@ -199,11 +199,12 @@ impl BcCamera {
             SocketAddrOrUid::Uid(uid, method) => {
                 trace!("Trying uid {}", uid);
                 // TODO Make configurable
-                let (allow_local, allow_remote, allow_relay) = match method {
-                    DiscoveryMethods::None => (false, false, false),
-                    DiscoveryMethods::Local => (true, false, false),
-                    DiscoveryMethods::Remote => (true, true, false),
-                    DiscoveryMethods::Relay => (true, true, true),
+                let (allow_local, allow_remote, allow_map, allow_relay) = match method {
+                    DiscoveryMethods::None => (false, false, false, false),
+                    DiscoveryMethods::Local => (true, false, false, false),
+                    DiscoveryMethods::Remote => (true, true, false, false),
+                    DiscoveryMethods::Map => (true, true, true, false),
+                    DiscoveryMethods::Relay => (true, true, true, true),
                 };
 
                 let discovery = {
@@ -234,6 +235,17 @@ impl BcCamera {
                                     uid_remote,
                                     disc.get_addr()
                                 );
+                            }
+                            result
+                        });
+                    }
+                    if allow_map {
+                        let uid_relay = uid.clone();
+                        set.spawn(async move {
+                            trace!("Starting Map");
+                            let result = Discovery::map(&uid_relay).await;
+                            if let Ok(disc) = &result {
+                                info!("Mao success {} at {}", uid_relay, disc.get_addr());
                             }
                             result
                         });

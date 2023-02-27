@@ -283,6 +283,8 @@ pub struct R2cT {
 ///
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct R2cCr {
+    /// Dev camera location (actual local ip)
+    pub dev: IpPort,
     /// Dmap camera location
     pub dmap: IpPort,
     /// The location of the relay

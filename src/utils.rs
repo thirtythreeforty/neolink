@@ -37,6 +37,7 @@ impl AddressOrUid {
                     "none" => DiscoveryMethods::None,
                     "local" => DiscoveryMethods::Local,
                     "remote" => DiscoveryMethods::Remote,
+                    "map" => DiscoveryMethods::Map,
                     "relay" => DiscoveryMethods::Relay,
                     n => {
                         warn!("Unrecognised discovery method: {}. Using Local", n);

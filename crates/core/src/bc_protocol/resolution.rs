@@ -22,10 +22,15 @@ pub enum DiscoveryMethods {
     ///
     /// **This also enabled `Local` discovery**
     Remote,
-    /// Allow contact with the reolink servers to learn the ip address and relay the connection
-    /// through those servers.
+    /// Allow contact with the reolink servers to learn the ip address and map the connection
+    /// from dev to client through those servers.
     ///
     /// **This also enabled `Local` and `Remote` discovery**
+    Map,
+    /// Allow contact with the reolink servers to learn the ip address and relay the connection
+    /// client to dev through those servers.
+    ///
+    /// **This also enabled `Local`, `Map` and `Remote` discovery**
     Relay,
 }
 
