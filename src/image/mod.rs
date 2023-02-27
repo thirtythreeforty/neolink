@@ -1,12 +1,12 @@
 ///
 /// # Neolink Image
 ///
-/// This module can be used to send dump a still image from the camera
+/// This module can be used to dump a still image from the camera
 ///
 ///
 /// # Usage
 /// ```bash
-/// neolink image --config=config.toml --finename=filepath CameraName
+/// neolink image --config=config.toml --file-path=filepath CameraName
 /// ```
 ///
 use anyhow::{Context, Result};
@@ -37,7 +37,7 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         .await
         .context("Failed to start video")?;
 
-    // Get one iframe as the start while also getting the getting the video type
+    // Get one iframe at the start while also getting the the video type
     let buf;
     let vid_type;
     loop {

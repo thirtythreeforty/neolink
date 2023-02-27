@@ -26,6 +26,7 @@ with additional features not yet in upstream master.
 - MQTT
 - Motion Detection
 - Paused Streams (when no rtsp client or no motion detected)
+- Save a still image to disk
 
 **Minor Features**:
 
@@ -166,6 +167,20 @@ in multiple architectures. The latest tag tracks master while each branch gets i
 ```bash
 docker pull quantumentangledandy/neolink
 ```
+
+### Image
+
+You can write an image from the stream to disk using:
+
+
+```bash
+neolink image --config=config.toml --file-path=filepath CameraName
+```
+
+Where filepath is the path to save the image to and CameraName is the name of the camera
+from the config to save the image from.
+
+File is always jpeg and the extension given in filepath will be added or changed to reflect this.
 
 ## License
 
