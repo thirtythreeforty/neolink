@@ -1,4 +1,4 @@
-use crate::{bc, Credentials};
+use crate::bc;
 use futures::stream::StreamExt;
 use log::*;
 use std::net::ToSocketAddrs;
@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use Md5Trunc::*;
 
 mod connection;
+mod credentials;
 mod errors;
 mod keepalive;
 mod ledstate;
@@ -24,6 +25,7 @@ mod time;
 mod version;
 
 pub(crate) use connection::*;
+pub(crate) use credentials::*;
 pub use errors::Error;
 pub use ledstate::LightState;
 pub use login::MaxEncryption;
@@ -35,15 +37,6 @@ use std::sync::Arc;
 pub use stream::{StreamData, StreamKind};
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
-
-impl From<crossbeam_channel::RecvTimeoutError> for Error {
-    fn from(k: crossbeam_channel::RecvTimeoutError) -> Self {
-        match k {
-            crossbeam_channel::RecvTimeoutError::Timeout => Error::Timeout,
-            crossbeam_channel::RecvTimeoutError::Disconnected => Error::TimeoutDisconnected,
-        }
-    }
-}
 
 ///
 /// This is the primary struct of this library when interacting with the camera
@@ -96,7 +89,7 @@ impl BcCamera {
             }
         }
 
-        Err(Error::Timeout)
+        Err(Error::CannotInitCamera)
     }
 
     ///
@@ -166,7 +159,7 @@ impl BcCamera {
             }
         }
 
-        Err(Error::Timeout)
+        Err(Error::CannotInitCamera)
     }
 
     ///

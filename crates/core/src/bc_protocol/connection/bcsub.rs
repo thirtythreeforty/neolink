@@ -1,6 +1,6 @@
 use super::BcConnection;
 use crate::bcmedia::codex::BcMediaCodex;
-use crate::{bc::model::*, Error, Result};
+use crate::{bc::model::*, timeout, Error, Result};
 use futures::stream::{IntoAsyncRead, Stream, StreamExt, TryStreamExt};
 use std::io::{Error as IoError, ErrorKind, Result as IoResult};
 use std::pin::Pin;
@@ -94,7 +94,9 @@ impl<'a> BcSubscription<'a> {
     }
 
     pub async fn recv(&mut self) -> Result<Bc> {
-        let bc = self.rx.next().await.ok_or(Error::DroppedSubscriber)?;
+        let bc = timeout(self.rx.next())
+            .await?
+            .ok_or(Error::DroppedSubscriber)?;
         if let Ok(bc) = &bc {
             assert!(bc.meta.msg_num as u32 == self.msg_num);
         }

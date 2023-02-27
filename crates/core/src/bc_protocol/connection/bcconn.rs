@@ -1,5 +1,5 @@
 use super::BcSubscription;
-use crate::{bc::model::*, Error, Result};
+use crate::{bc::model::*, timeout, Error, Result};
 use futures::sink::{Sink, SinkExt};
 use futures::stream::{Stream, StreamExt};
 use log::*;
@@ -68,7 +68,7 @@ impl BcConnection {
 
     pub(super) async fn send(&self, bc: Bc) -> crate::Result<()> {
         trace!("send Wait: {:?}", bc);
-        self.sink.lock().await.send(bc).await?;
+        timeout(self.sink.lock().await.send(bc)).await??;
         trace!("send Complete");
         Ok(())
     }
@@ -122,8 +122,6 @@ impl BcConnection {
     ) -> Result<()> {
         match response {
             Ok(response) => {
-                // Don't hold the lock during deserialization so we don't poison the subscribers mutex if
-                // something goes wrong
                 let msg_num = response.meta.msg_num;
                 let msg_id = response.meta.msg_id;
 
@@ -139,7 +137,20 @@ impl BcConnection {
                         }
                     }
                     (None, Some(occ)) => {
-                        trace!("occ.full: {}/{}", occ.capacity(), occ.max_capacity());
+                        if occ.capacity() == 0 {
+                            warn!("Reaching limit of channel.");
+                            warn!(
+                                "Remaining: {} of {} message space",
+                                occ.capacity(),
+                                occ.max_capacity()
+                            );
+                        } else {
+                            trace!(
+                                "Remaining: {} of {} message space",
+                                occ.capacity(),
+                                occ.max_capacity()
+                            );
+                        }
                         if occ.send(Ok(response)).await.is_err() {
                             remove_it_num = true;
                         }

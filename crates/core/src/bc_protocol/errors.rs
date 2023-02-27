@@ -35,13 +35,21 @@ pub enum Error {
     #[error(display = "Dropped connection")]
     BroadcastDroppedConnectionTry(#[error(source)] tokio::sync::broadcast::error::TryRecvError),
 
-    /// Raised when the RX_TIMEOUT is reach
+    /// Raised when the TIMEOUT is reach
     #[error(display = "Timeout")]
-    Timeout,
+    Timeout(#[error(source)] std::sync::Arc<tokio::time::error::Elapsed>),
+
+    /// Raised when a timeout fails in a non standard way such as timeout during shutdown
+    #[error(display = "TimeoutError")]
+    TimeoutError(#[error(source)] tokio::time::error::Error),
 
     /// Raised when connection is dropped because the timeout is reach
     #[error(display = "Dropped connection")]
     TimeoutDisconnected,
+
+    /// Raised when a camera cannot be connected to ay any of the given addresses
+    #[error(display = "Cannot contact camera at given address")]
+    CannotInitCamera,
 
     /// Raised when failed to login to the camera
     #[error(display = "Credential error")]
@@ -159,6 +167,12 @@ impl From<cookie_factory::GenError> for Error {
 impl From<local_ip_address::Error> for Error {
     fn from(k: local_ip_address::Error) -> Self {
         Error::LocalIpError(std::sync::Arc::new(k))
+    }
+}
+
+impl From<tokio::time::error::Elapsed> for Error {
+    fn from(k: tokio::time::error::Elapsed) -> Self {
+        Error::Timeout(std::sync::Arc::new(k))
     }
 }
 
