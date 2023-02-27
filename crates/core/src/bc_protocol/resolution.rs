@@ -32,6 +32,9 @@ pub enum DiscoveryMethods {
     ///
     /// **This also enabled `Local`, `Map` and `Remote` discovery**
     Relay,
+    #[doc(hidden)]
+    /// Used for debugging it is set to whatever the dev is currently testing
+    Debug,
 }
 
 /// Used to return either the SocketAddr or the UID

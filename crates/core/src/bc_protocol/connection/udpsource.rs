@@ -159,7 +159,8 @@ impl BcUdpSource {
             recieved: Default::default(),
             state: State::Normal,
             send_buffer: Default::default(),
-            interval: interval(Duration::from_millis(10)), // Offical Client does ack every 10ms
+            ack_interval: interval(Duration::from_millis(10)), // Offical Client does ack every 10ms
+            resend_interval: interval(Duration::from_millis(500)), // Offical Client does resend every 500ms
         }
     }
 }
@@ -211,8 +212,11 @@ pub(crate) struct UdpPayloadSource {
     send_buffer: VecDeque<BcUdp>,
     /// Offical Client does ack every 10ms if we don't also do this the camera
     /// seems to think we have a poor connection and will abort
-    /// This `intveral` controls how ofen we do this
-    interval: Interval,
+    /// This `ack_interval` controls how ofen we do this
+    ack_interval: Interval,
+    /// Offical Client does resend every 500ms
+    /// This `resend_interval` controls how ofen we do this
+    resend_interval: Interval,
 }
 
 impl UdpPayloadSource {
@@ -261,12 +265,13 @@ impl UdpPayloadSource {
 
     fn maintanence(&mut self, cx: &mut Context<'_>) {
         // Check for periodic resends
-        if self.interval.poll_tick(cx).is_ready() {
+        if self.resend_interval.poll_tick(cx).is_ready() {
             trace!("UDPSource.RecievedPacket: Resend");
             for (_, resend) in self.sent.iter() {
                 self.send_buffer.push_back(BcUdp::Data(resend.clone()));
             }
-
+        }
+        if self.ack_interval.poll_tick(cx).is_ready() {
             let ack = BcUdp::Ack(self.build_send_ack());
             trace!("UDPSource.RecievedPacket: QueueingAck");
             self.send_buffer.push_back(ack);

@@ -205,6 +205,7 @@ impl BcCamera {
                     DiscoveryMethods::Remote => (true, true, false, false),
                     DiscoveryMethods::Map => (true, true, true, false),
                     DiscoveryMethods::Relay => (true, true, true, true),
+                    DiscoveryMethods::Debug => (false, true, false, false),
                 };
 
                 let discovery = {

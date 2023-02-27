@@ -11,7 +11,7 @@ lazy_static! {
     static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
     static ref RE_PAUSE_MODE: Regex = Regex::new(r"^(black|still|test|none)$").unwrap();
     static ref RE_DISC_SRC: Regex =
-        Regex::new(r"^([nN]one|[lL]ocal|[rR]emote|[Mm]ap|[rR]elay)$").unwrap();
+        Regex::new(r"^([nN]one|[lL]ocal|[rR]emote|[Mm]ap|[rR]elay|[Dd]ebug)$").unwrap();
     static ref RE_MAXENC_SRC: Regex =
         Regex::new(r"^([nN]one|[Aa][Ee][Ss]|[Bb][Cc][Ee][Nn][Cc][Rr][Yy][Pp][Tt])$").unwrap();
 }
