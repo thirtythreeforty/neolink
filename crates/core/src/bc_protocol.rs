@@ -197,14 +197,14 @@ impl BcCamera {
 
         let (sink, source): (BcConnSink, BcConnSource) = match addr {
             SocketAddrOrUid::SocketAddr(addr) => {
-                debug!("Trying address {}", addr);
+                trace!("Trying address {}", addr);
                 let (x, r) = TcpSource::new(addr, &username, passwd.as_ref())
                     .await?
                     .split();
                 (Box::new(x), Box::new(r))
             }
             SocketAddrOrUid::Uid(uid, method) => {
-                debug!("Trying uid {}", uid);
+                trace!("Trying uid {}", uid);
                 // TODO Make configurable
                 let (allow_local, allow_remote, allow_relay) = match method {
                     DiscoveryMethods::None => (false, false, false),
@@ -218,10 +218,10 @@ impl BcCamera {
                     if allow_local {
                         let uid_local = uid.clone();
                         set.spawn(async move {
-                            debug!("Starting Local discovery");
+                            trace!("Starting Local discovery");
                             let result = Discovery::local(&uid_local).await;
                             if let Ok(disc) = &result {
-                                debug!(
+                                info!(
                                     "Local discovery success {} at {}",
                                     uid_local,
                                     disc.get_addr()
@@ -233,10 +233,10 @@ impl BcCamera {
                     if allow_remote {
                         let uid_remote = uid.clone();
                         set.spawn(async move {
-                            debug!("Starting Remote discovery");
+                            trace!("Starting Remote discovery");
                             let result = Discovery::remote(&uid_remote).await;
                             if let Ok(disc) = &result {
-                                debug!(
+                                info!(
                                     "Remote discovery success {} at {}",
                                     uid_remote,
                                     disc.get_addr()
@@ -248,10 +248,10 @@ impl BcCamera {
                     if allow_relay {
                         let uid_relay = uid.clone();
                         set.spawn(async move {
-                            debug!("Starting Relay");
+                            trace!("Starting Relay");
                             let result = Discovery::relay(&uid_relay).await;
                             if let Ok(disc) = &result {
-                                debug!("Relay success {} at {}", uid_relay, disc.get_addr());
+                                info!("Relay success {} at {}", uid_relay, disc.get_addr());
                             }
                             result
                         });
@@ -291,7 +291,7 @@ impl BcCamera {
 
         let conn = BcConnection::new(sink, source).await?;
 
-        debug!("Success");
+        trace!("Success");
         let me = Self {
             connection: Arc::new(conn),
             message_num: AtomicU16::new(0),
