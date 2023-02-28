@@ -33,6 +33,7 @@ with additional features not yet in upstream master.
 - Improved error messages when your missing gstreamer plugins
 - Protocol more closely follows offical reolink format
   - Possibly can handle more simulatenous connections
+- More ways to connect to the camera. Including Relaying through reolink servers
 
 ## Installation
 
