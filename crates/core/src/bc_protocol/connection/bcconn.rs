@@ -138,17 +138,21 @@ impl BcConnection {
                     }
                     (None, Some(occ)) => {
                         if occ.capacity() == 0 {
-                            warn!("Reaching limit of channel.");
+                            warn!("Reaching limit of channel");
                             warn!(
-                                "Remaining: {} of {} message space",
+                                "Remaining: {} of {} message space for {} (ID: {})",
                                 occ.capacity(),
-                                occ.max_capacity()
+                                occ.max_capacity(),
+                                &msg_num,
+                                &msg_id
                             );
                         } else {
                             trace!(
-                                "Remaining: {} of {} message space",
+                                "Remaining: {} of {} message space for {} (ID: {})",
                                 occ.capacity(),
-                                occ.max_capacity()
+                                occ.max_capacity(),
+                                &msg_num,
+                                &msg_id
                             );
                         }
                         if occ.send(Ok(response)).await.is_err() {

@@ -26,6 +26,7 @@ pub(crate) struct Shared {
     pub(super) permitted_users: HashSet<String>,
     pub(super) pause: PauseConfig,
     pub(super) max_encryption: MaxEncryption,
+    pub(super) strict: bool,
 }
 
 impl Shared {

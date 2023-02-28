@@ -95,6 +95,10 @@ pub(crate) struct CameraConfig {
         code = "max_encryption"
     ))]
     pub(crate) max_encryption: String,
+
+    #[serde(default = "default_strict")]
+    /// If strict then the media stream will error in the event that the media packets are not as expected
+    pub(crate) strict: bool,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -205,6 +209,10 @@ fn default_on_motion() -> bool {
 
 fn default_pause_mode() -> String {
     "none".to_string()
+}
+
+fn default_strict() -> bool {
+    false
 }
 
 fn default_pause() -> PauseConfig {

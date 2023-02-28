@@ -246,7 +246,7 @@ impl BcCamera {
                             trace!("Starting Map");
                             let result = Discovery::map(&uid_relay).await;
                             if let Ok(disc) = &result {
-                                info!("Mao success {} at {}", uid_relay, disc.get_addr());
+                                info!("Map success {} at {}", uid_relay, disc.get_addr());
                             }
                             result
                         });

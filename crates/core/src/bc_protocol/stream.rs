@@ -66,10 +66,13 @@ impl BcCamera {
     /// The buffer_size represents number of compete messages so 1 would be one complete message
     /// which may be a single audio frame or a whole video key frame. If 0 a default of 100 is used
     ///
+    /// A value of scrict=true will mean that the stream will error if the underlying stream is not
+    /// as expected
     pub async fn start_video(
         &self,
         stream: StreamKind,
         mut buffer_size: usize,
+        strict: bool,
     ) -> Result<StreamData> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
@@ -157,7 +160,7 @@ impl BcCamera {
             }
 
             {
-                let mut media_sub = sub_video.bcmedia_stream();
+                let mut media_sub = sub_video.bcmedia_stream(strict);
 
                 while !abort_handle_thread.load(Ordering::Relaxed) {
                     if let Some(bc_media) = media_sub.next().await {

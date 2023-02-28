@@ -48,9 +48,9 @@ impl<'a> Stream for BcPayloadStream<'a> {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<IoResult<Vec<u8>>>> {
-        match Pin::new(&mut self.rx).poll_next(cx) {
-            Poll::Ready(Some(Ok(bc))) => {
-                match bc {
+        loop {
+            match Pin::new(&mut self.rx).poll_next(cx) {
+                Poll::Ready(Some(Ok(bc))) => match bc {
                     Bc {
                         body:
                             BcBody::ModernMsg(ModernMsg {
@@ -58,16 +58,15 @@ impl<'a> Stream for BcPayloadStream<'a> {
                                 ..
                             }),
                         ..
-                    } => Poll::Ready(Some(Ok(data))),
-                    _ => {
-                        cx.waker().wake_by_ref(); // Make it wake in next frame for another attempt at rx.poll_next(cx)
-                        Poll::Pending
-                    }
+                    } => return Poll::Ready(Some(Ok(data))),
+                    _ => continue,
+                },
+                Poll::Ready(Some(Err(e))) => {
+                    return Poll::Ready(Some(Err(IoError::new(ErrorKind::Other, e))))
                 }
+                Poll::Ready(None) => return Poll::Ready(None),
+                Poll::Pending => return Poll::Pending,
             }
-            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(IoError::new(ErrorKind::Other, e)))),
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -114,10 +113,10 @@ impl<'a> BcSubscription<'a> {
     }
 
     #[allow(unused)]
-    pub fn bcmedia_stream(&'_ mut self) -> BcMediaStream<'_> {
+    pub fn bcmedia_stream(&'_ mut self, strict: bool) -> BcMediaStream<'_> {
         let async_read = BcPayloadStream { rx: &mut self.rx }
             .into_async_read()
             .compat();
-        FramedRead::new(async_read, BcMediaCodex::new())
+        FramedRead::new(async_read, BcMediaCodex::new(strict))
     }
 }

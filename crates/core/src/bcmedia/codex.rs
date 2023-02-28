@@ -4,14 +4,19 @@
 //!
 use crate::bcmedia::model::*;
 use crate::{Error, Result};
-use bytes::BytesMut;
+use bytes::{Buf, BytesMut};
+use log::*;
 use tokio_util::codec::{Decoder, Encoder};
 
-pub struct BcMediaCodex {}
+pub struct BcMediaCodex {
+    /// If true we will not search for the start of the next packet
+    /// in the event that the stream appears to be corrupted
+    strict: bool,
+}
 
 impl BcMediaCodex {
-    pub(crate) fn new() -> Self {
-        Self {}
+    pub(crate) fn new(strict: bool) -> Self {
+        Self { strict }
     }
 }
 
@@ -32,10 +37,33 @@ impl Decoder for BcMediaCodex {
     type Error = Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>> {
-        match { BcMedia::deserialize(src) } {
-            Ok(bc) => Ok(Some(bc)),
-            Err(Error::NomIncomplete(_)) => Ok(None),
-            Err(e) => Err(e),
+        let mut amount_skipped: usize = 0;
+        loop {
+            match { BcMedia::deserialize(src) } {
+                Ok(bc) => {
+                    if amount_skipped > 0 {
+                        trace!("Amount skipped to restore stream: {}", amount_skipped);
+                    }
+                    return Ok(Some(bc));
+                }
+                Err(Error::NomIncomplete(_)) => {
+                    if amount_skipped > 0 {
+                        trace!("Amount skipped to restore stream: {}", amount_skipped);
+                    }
+                    return Ok(None);
+                }
+                Err(e) => {
+                    if self.strict {
+                        return Err(e);
+                    } else if src.is_empty() {
+                        return Ok(None);
+                    } else {
+                        src.advance(1);
+                        amount_skipped += 1;
+                        continue;
+                    }
+                }
+            }
         }
     }
 }

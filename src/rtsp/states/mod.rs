@@ -129,6 +129,7 @@ impl RtspCamera {
             rtsp,
             permitted_users,
             max_encryption,
+            strict: config.strict,
         };
 
         let mut state: Connected = Default::default();

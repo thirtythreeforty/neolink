@@ -93,8 +93,11 @@ impl CameraState for Streaming {
             let output_thread = output.clone();
 
             let stream_thead = *stream;
+            let strict_thread = shared.strict;
             let handle = task::spawn(async move {
-                let mut stream_data = arc_camera.start_video(stream_thead, 0).await?;
+                let mut stream_data = arc_camera
+                    .start_video(stream_thead, 0, strict_thread)
+                    .await?;
                 while arc_abort_handle.is_live() {
                     let data = stream_data.get_data().await?;
                     let mut locked_output = output_thread.lock().await;
