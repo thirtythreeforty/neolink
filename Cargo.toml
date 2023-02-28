@@ -10,6 +10,11 @@ members = [
   "crates/*",
 ]
 
+[[bin]]
+name = "decoder"
+test = false
+bench = false
+
 [dependencies]
 neolink_core = { path = "crates/core", version = "0.5.3" }
 aes = "0.6"
@@ -45,3 +50,5 @@ tokio = { version = "1.0", features = ["rt", "macros", "io-util"] }
 anyhow = "1.0.42"
 async-trait = "0.1.64"
 futures = "0.3.26"
+hex-string = "0.1.0"
+requestty = "0.5.0"
