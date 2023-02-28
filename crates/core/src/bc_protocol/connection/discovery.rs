@@ -760,6 +760,7 @@ impl Discoverer {
 }
 
 impl Discovery {
+    // Perform UDP broadcast lookup and connection
     pub(crate) async fn local(uid: &str) -> Result<DiscoveryResult> {
         let discoverer = Discoverer::new().await?;
 
@@ -808,14 +809,14 @@ impl Discovery {
 
     // This will start remote discovery against the reolink p2p servers
     //
-    // It has the following stages
-    // - Contact the p2p register: This will get the register, relay and log server ip addresses
-    // - Register the client ip address to the register (This can probably be used for NAT holepunching if the camera
-    //    tries to connect to us using this data)
-    // - The register will return the camera ip/port and SID
-    // - Connect to the camera using register's provided ip/port and negotiate a cid and did
-    // - Send a message to the reolink log server that we will connect locally
-    // - Send a message to the camera that we could connect remotely
+    // This works by registering our ip and intent to connect with the reolink
+    // servers
+    //
+    // We will then try to connect to the camera local ip address while the camera
+    // will also attempt to connec to ours
+    //
+    // This method is best when broadcasts are not possible but we can contact the camera
+    // directly
     #[allow(unused)]
     pub(crate) async fn remote(uid: &str) -> Result<DiscoveryResult> {
         let mut discoverer = Discoverer::new().await?;
@@ -841,11 +842,14 @@ impl Discovery {
         })
     }
 
-    // This is similar to remote, except that a map will be established.
+    // This is similar to remote, except that it allows the camera to connect to us
+    // over it's dmap (public) ip address that it has registered with reolink servers.
     //
-    // All future connections will go VIA the relink servers, this is for
-    // cellular cameras that do not support local connections
+    // This works by registering our ip address and the desire to connect with the
+    // reolink servers. Data however should go to the camera's public ip address
     //
+    // This method should be used when the camera is behind a NAT or firewall but we are
+    // reachable
     pub(crate) async fn map(uid: &str) -> Result<DiscoveryResult> {
         let discoverer = Discoverer::new().await?;
 
@@ -858,8 +862,7 @@ impl Discovery {
         let reg_result = discoverer.register_address(uid, client_id, &lookup).await?;
         trace!("reg_result: {:?}", reg_result);
 
-        let connect_result = discoverer
-                .device_initiated_map(&reg_result).await?;
+        let connect_result = discoverer.device_initiated_map(&reg_result).await?;
         trace!("connect_result: {:?}", connect_result);
 
         Ok(DiscoveryResult {
@@ -870,10 +873,10 @@ impl Discovery {
         })
     }
 
-    // This is similar to remote, except that a relay will be established.
+    // This will forward all connections via the reolinks servers
     //
-    // All future connections will go VIA the relink servers, this is for
-    // cellular cameras that do not support local connections
+    // This method should work if all else fails but it will require
+    // us to trust reolink with our data once more...
     //
     pub(crate) async fn relay(uid: &str) -> Result<DiscoveryResult> {
         let discoverer = Discoverer::new().await?;
