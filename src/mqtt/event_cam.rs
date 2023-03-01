@@ -322,9 +322,32 @@ impl MessageHandler {
                                     "OK".to_string()
                                 }
                             }
-                            Messages::Battery => {
-                                todo!()
-                            }
+                            Messages::Battery => match self.camera.battery_info().await {
+                                Err(_) => {
+                                    error!("Failed to get battery status");
+                                    "FAIL".to_string()
+                                }
+                                Ok(battery_info) => {
+                                    let bytes_res = yaserde::ser::serialize_with_writer(
+                                        &battery_info,
+                                        vec![],
+                                        &Default::default(),
+                                    );
+                                    match bytes_res {
+                                        Ok(bytes) => match String::from_utf8(bytes) {
+                                            Ok(str) => str,
+                                            Err(_) => {
+                                                error!("Failed to encode battery status");
+                                                "FAIL".to_string()
+                                            }
+                                        },
+                                        Err(_) => {
+                                            error!("Failed to serialise battery status");
+                                            "FAIL".to_string()
+                                        }
+                                    }
+                                }
+                            },
                             Messages::Ptz(direction) => {
                                 let (bc_direction, amount) = match direction {
                                     Direction::Up(amount) => (BcDirection::Up, amount),
