@@ -4,7 +4,6 @@ description = "A standards-compliant bridge to Reolink IP cameras"
 version = "0.5.4"
 authors = ["George Hilliard <thirtythreeforty@gmail.com>", "Andrew King <sheepchaan@gmail.com>"]
 edition = "2018"
-default-run = "neolink"
 
 [workspace]
 members = [
