@@ -76,6 +76,12 @@ pub struct BcXml {
     /// Sent to move the camera
     #[yaserde(rename = "PtzControl")]
     pub ptz_control: Option<PtzControl>,
+    /// Recieved on login/low battery events
+    #[yaserde(rename = "BatteryList")]
+    pub battery_list: Option<BatteryList>,
+    /// Recieved on request for battery info
+    #[yaserde(rename = "BatteryInfo")]
+    pub battery_info: Option<BatteryInfo>,
 }
 
 impl BcXml {
@@ -461,6 +467,47 @@ pub struct PtzControl {
     pub speed: f32,
     /// The direction to transverse. Known directions: "right"
     pub command: String,
+}
+
+/// A list of battery infos. This message is sent from the camera as
+/// an event
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct BatteryList {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Battery info items
+    #[yaserde(rename = "BatteryInfo")]
+    pub battery_info: Vec<BatteryInfo>,
+}
+
+/// The individual battery info
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct BatteryInfo {
+    /// The channel the for the camera usually 0
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// Charge status known values, "chargeComplete", "charging",
+    #[yaserde(rename = "chargeStatus")]
+    pub charge_status: String,
+    /// Status of charging port known values: "solarPanel"
+    #[yaserde(rename = "adapterStatus")]
+    pub adapter_status: String,
+    /// Voltage
+    pub voltage: u32,
+    /// Current
+    pub current: u32,
+    /// Temperture
+    pub temperature: u32,
+    /// % charge from 0-100
+    #[yaserde(rename = "batteryPercent")]
+    pub battery_percent: u32,
+    /// Low power flag. Known values 0, 1 (0=false)
+    #[yaserde(rename = "lowPower")]
+    pub low_power: u32,
+    /// Battery version info: Known values 2
+    #[yaserde(rename = "batteryVersion")]
+    pub battery_version: u32,
 }
 
 /// Convience function to return the xml version used throughout the library

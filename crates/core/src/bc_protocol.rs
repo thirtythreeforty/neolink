@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 
 use Md5Trunc::*;
 
+mod battery;
 mod connection;
 mod credentials;
 mod errors;
@@ -306,6 +307,7 @@ impl BcCamera {
             credentials: Credentials::new(username, passwd),
         };
         me.keepalive().await?;
+        me.monitor_battery().await?;
         Ok(me)
     }
 
