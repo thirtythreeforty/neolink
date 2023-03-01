@@ -487,7 +487,7 @@ pub struct BatteryInfo {
     /// The channel the for the camera usually 0
     #[yaserde(rename = "channelId")]
     pub channel_id: u8,
-    /// Charge status known values, "chargeComplete", "charging",
+    /// Charge status known values, "chargeComplete", "charging", "none",
     #[yaserde(rename = "chargeStatus")]
     pub charge_status: String,
     /// Status of charging port known values: "solarPanel"
@@ -508,6 +508,9 @@ pub struct BatteryInfo {
     /// Battery version info: Known values 2
     #[yaserde(rename = "batteryVersion")]
     pub battery_version: u32,
+}
+
+/// ,
 }
 
 /// Convience function to return the xml version used throughout the library
@@ -678,5 +681,3 @@ fn test_binary_deser() {
             ..
         } => {}
         _ => panic!(),
-    }
-}
