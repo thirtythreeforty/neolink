@@ -34,7 +34,7 @@ impl BcCamera {
                 } = bc
                 {
                     for battery in battery_list.battery_info.iter() {
-                        info!(
+                        println!(
                             "==Battery==\n\
                             Charge: {}%,\n\
                             Temperature: {}°C,\n\
