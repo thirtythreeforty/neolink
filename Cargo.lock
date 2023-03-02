@@ -1272,6 +1272,7 @@ dependencies = [
  "nom",
  "rand",
  "regex",
+ "serde",
  "socket2 0.3.19",
  "time",
  "tokio",

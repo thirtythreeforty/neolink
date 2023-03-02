@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use neolink_core::bc_protocol::PrintFormat;
 use regex::Regex;
 use serde::Deserialize;
 use std::clone::Clone;
@@ -99,6 +100,9 @@ pub(crate) struct CameraConfig {
     #[serde(default = "default_strict")]
     /// If strict then the media stream will error in the event that the media packets are not as expected
     pub(crate) strict: bool,
+
+    #[serde(default = "default_print", alias = "print")]
+    pub(crate) print_format: PrintFormat,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -141,6 +145,10 @@ fn validate_mqtt_config(config: &MqttConfig) -> Result<(), ValidationError> {
 
 fn default_mqtt() -> Option<MqttConfig> {
     None
+}
+
+fn default_print() -> PrintFormat {
+    PrintFormat::None
 }
 
 fn default_discovery() -> String {

@@ -159,6 +159,7 @@ impl EventCam {
                 camera_config.channel_id,
                 &camera_config.username,
                 camera_config.password.as_ref(),
+                camera_config.print_format,
             )
             .await
             .with_context(|| {

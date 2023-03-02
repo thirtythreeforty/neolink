@@ -5,21 +5,20 @@
 //! - BatteryInfo which the client can request on demand
 //!
 
-use super::{BcCamera, Result};
+use super::{BcCamera, PrintFormat, Result};
 use crate::{
     bc::{model::*, xml::BatteryInfo},
     Error,
 };
-use log::*;
 
 impl BcCamera {
     /// Create a handller to respond to battery messages
     /// These messages are sent by the camera on login and maybe
     /// also on low battery events
-    pub async fn monitor_battery(&self) -> Result<()> {
+    pub async fn monitor_battery(&self, format: PrintFormat) -> Result<()> {
         let connection = self.get_connection();
         connection
-            .handle_msg(MSG_ID_BATTERY_INFO_LIST, |bc| {
+            .handle_msg(MSG_ID_BATTERY_INFO_LIST, move |bc| {
                 if let Bc {
                     body:
                         BcBody::ModernMsg(ModernMsg {
@@ -34,24 +33,41 @@ impl BcCamera {
                 } = bc
                 {
                     for battery in battery_list.battery_info.iter() {
-                        println!(
-                            "==Battery==\n\
-                            Charge: {}%,\n\
-                            Temperature: {}°C,\n\
-                            LowPower: {},\n\
-                            Adapter: {},\n\
-                            ChargeStatus: {},\n\
-                            ",
-                            battery.battery_percent,
-                            battery.temperature,
-                            if battery.low_power == 1 {
-                                "true"
-                            } else {
-                                "false"
-                            },
-                            battery.adapter_status,
-                            battery.charge_status,
-                        );
+                        match format {
+                            PrintFormat::None => {}
+                            PrintFormat::Human => {
+                                println!(
+                                    "==Battery==\n\
+                                    Charge: {}%,\n\
+                                    Temperature: {}°C,\n\
+                                    LowPower: {},\n\
+                                    Adapter: {},\n\
+                                    ChargeStatus: {},\n\
+                                    ",
+                                    battery.battery_percent,
+                                    battery.temperature,
+                                    if battery.low_power == 1 {
+                                        "true"
+                                    } else {
+                                        "false"
+                                    },
+                                    battery.adapter_status,
+                                    battery.charge_status,
+                                );
+                            }
+                            PrintFormat::Xml => {
+                                let bat_ser = String::from_utf8(
+                                    yaserde::ser::serialize_with_writer(
+                                        battery,
+                                        vec![],
+                                        &Default::default(),
+                                    )
+                                    .expect("Should Ser the struct"),
+                                )
+                                .expect("Should be UTF8");
+                                println!("{}", bat_ser);
+                            }
+                        }
                     }
                 }
                 None
