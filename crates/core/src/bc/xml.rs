@@ -494,11 +494,11 @@ pub struct BatteryInfo {
     #[yaserde(rename = "adapterStatus")]
     pub adapter_status: String,
     /// Voltage
-    pub voltage: u32,
+    pub voltage: i32,
     /// Current
-    pub current: u32,
+    pub current: i32,
     /// Temperture
-    pub temperature: u32,
+    pub temperature: i32,
     /// % charge from 0-100
     #[yaserde(rename = "batteryPercent")]
     pub battery_percent: u32,
