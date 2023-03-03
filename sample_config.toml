@@ -63,6 +63,18 @@ address = "192.168.1.187:9000"
 #
 # discovery = "relay"
 
+# Certain types of camera emit status messages (such as battery levels)
+#
+# By default we hide these status messages from the user but you can instead requst that
+# they be printed to stdout using print_format
+# 
+# Valid values are:
+# - None
+# - Human
+# - Xml
+#
+# print_format = "None"
+
 
 [[cameras]]
 name = "storage shed"

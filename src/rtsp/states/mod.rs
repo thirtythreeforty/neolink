@@ -67,6 +67,7 @@ impl RtspCamera {
                 config.channel_id,
                 &config.username,
                 config.password.as_ref(),
+                config.print_format,
             )
             .await
             .with_context(|| {

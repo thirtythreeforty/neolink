@@ -1,11 +1,13 @@
 use crate::bc;
 use futures::stream::StreamExt;
 use log::*;
+use serde::{Deserialize, Serialize};
 use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 
 use Md5Trunc::*;
 
+mod battery;
 mod connection;
 mod credentials;
 mod errors;
@@ -50,6 +52,20 @@ pub struct BcCamera {
     credentials: Credentials,
 }
 
+/// Used to choode the print format of various status messages like battery levels
+///
+/// Currently this is just the format of battery levels but if we ever got more status
+/// messages then they will also use this information
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum PrintFormat {
+    /// None, don't print
+    None,
+    /// A human readable output
+    Human,
+    /// Xml formatted
+    Xml,
+}
+
 impl BcCamera {
     ///
     /// Create a new camera interface with this address and channel ID
@@ -69,6 +85,7 @@ impl BcCamera {
         channel_id: u8,
         username: V,
         passwd: Option<W>,
+        aux_info_format: PrintFormat,
     ) -> Result<Self> {
         let username: String = username.into();
         let passwd: Option<String> = passwd.map(|t| t.into());
@@ -82,6 +99,7 @@ impl BcCamera {
                 channel_id,
                 &username,
                 passwd.as_ref(),
+                aux_info_format,
             )
             .await
             {
@@ -111,12 +129,14 @@ impl BcCamera {
         username: U,
         passwd: Option<V>,
         discovery_method: DiscoveryMethods,
+        aux_info_format: PrintFormat,
     ) -> Result<Self> {
         Self::new(
             SocketAddrOrUid::Uid(uid.to_string(), discovery_method),
             channel_id,
             username,
             passwd,
+            aux_info_format,
         )
         .await
     }
@@ -146,6 +166,7 @@ impl BcCamera {
         channel_id: u8,
         username: V,
         passwd: Option<W>,
+        aux_info_format: PrintFormat,
     ) -> Result<Self> {
         let addr_iter = match host.to_socket_addrs_or_uid() {
             Ok(iter) => iter,
@@ -154,7 +175,15 @@ impl BcCamera {
         let username: String = username.into();
         let passwd: Option<String> = passwd.map(|t| t.into());
         for addr_or_uid in addr_iter {
-            if let Ok(cam) = Self::new(addr_or_uid, channel_id, &username, passwd.as_ref()).await {
+            if let Ok(cam) = Self::new(
+                addr_or_uid,
+                channel_id,
+                &username,
+                passwd.as_ref(),
+                aux_info_format,
+            )
+            .await
+            {
                 return Ok(cam);
             }
         }
@@ -184,6 +213,7 @@ impl BcCamera {
         channel_id: u8,
         username: U,
         passwd: Option<V>,
+        aux_info_format: PrintFormat,
     ) -> Result<Self> {
         let username: String = username.into();
         let passwd: Option<String> = passwd.map(|t| t.into());
@@ -306,6 +336,7 @@ impl BcCamera {
             credentials: Credentials::new(username, passwd),
         };
         me.keepalive().await?;
+        me.monitor_battery(aux_info_format).await?;
         Ok(me)
     }
 

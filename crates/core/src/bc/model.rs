@@ -47,6 +47,10 @@ pub const MSG_ID_GET_LED_STATUS: u32 = 208;
 pub const MSG_ID_SET_LED_STATUS: u32 = 209;
 /// UDP Keep alive
 pub const MSG_ID_UDP_KEEP_ALIVE: u32 = 234;
+/// Battery message initiaed by the camera
+pub const MSG_ID_BATTERY_INFO_LIST: u32 = 252;
+/// Battery message initiaed by the client
+pub const MSG_ID_BATTERY_INFO: u32 = 253;
 
 /// An empty password in legacy format
 pub const EMPTY_LEGACY_PASSWORD: &str =

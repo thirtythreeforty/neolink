@@ -4,7 +4,7 @@ use log::*;
 
 use super::config::{CameraConfig, Config};
 use anyhow::{anyhow, Context, Error, Result};
-use neolink_core::bc_protocol::{BcCamera, DiscoveryMethods, MaxEncryption};
+use neolink_core::bc_protocol::{BcCamera, DiscoveryMethods, MaxEncryption, PrintFormat};
 use std::fmt::{Display, Error as FmtError, Formatter};
 
 pub(crate) enum AddressOrUid {
@@ -56,14 +56,24 @@ impl AddressOrUid {
         channel_id: u8,
         username: T,
         passwd: Option<U>,
+        aux_print_format: PrintFormat,
     ) -> Result<BcCamera, Error> {
         match self {
             AddressOrUid::Address(host) => {
-                Ok(BcCamera::new_with_addr(host, channel_id, username, passwd).await?)
+                Ok(
+                    BcCamera::new_with_addr(host, channel_id, username, passwd, aux_print_format)
+                        .await?,
+                )
             }
-            AddressOrUid::Uid(host, method) => {
-                Ok(BcCamera::new_with_uid(host, channel_id, username, passwd, *method).await?)
-            }
+            AddressOrUid::Uid(host, method) => Ok(BcCamera::new_with_uid(
+                host,
+                channel_id,
+                username,
+                passwd,
+                *method,
+                aux_print_format,
+            )
+            .await?),
         }
     }
 }
@@ -90,6 +100,7 @@ pub(crate) async fn connect_and_login(camera_config: &CameraConfig) -> Result<Bc
             camera_config.channel_id,
             &camera_config.username,
             camera_config.password.as_ref(),
+            camera_config.print_format,
         )
         .await
         .with_context(|| {
