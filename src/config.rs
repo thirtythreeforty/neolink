@@ -241,9 +241,6 @@ fn validate_camera_config(camera_config: &CameraConfig) -> Result<(), Validation
         (None, None) => Err(ValidationError::new(
             "Either camera address or uid must be given",
         )),
-        (Some(_), Some(_)) => Err(ValidationError::new(
-            "Must provide either camera address or uid not both",
-        )),
         _ => Ok(()),
     }
 }
