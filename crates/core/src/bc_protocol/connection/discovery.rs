@@ -761,7 +761,10 @@ impl Discoverer {
 
 impl Discovery {
     // Perform UDP broadcast lookup and connection
-    pub(crate) async fn local(uid: &str) -> Result<DiscoveryResult> {
+    pub(crate) async fn local(
+        uid: &str,
+        mut optional_addrs: Option<Vec<SocketAddr>>,
+    ) -> Result<DiscoveryResult> {
         let discoverer = Discoverer::new().await?;
 
         let client_id = generate_cid();
@@ -784,7 +787,10 @@ impl Discovery {
             },
         };
 
-        let dests = get_broadcasts(&[2015, 2018])?;
+        let mut dests = get_broadcasts(&[2015, 2018])?;
+        if let Some(mut optional_addrs) = optional_addrs.take() {
+            dests.append(&mut optional_addrs);
+        }
         let (camera_address, camera_id) = discoverer
             .retry_send_multi(msg, &dests, |bc, addr| match bc {
                 UdpDiscovery {

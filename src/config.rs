@@ -1,5 +1,5 @@
 use lazy_static::lazy_static;
-use neolink_core::bc_protocol::PrintFormat;
+use neolink_core::bc_protocol::{DiscoveryMethods, PrintFormat};
 use regex::Regex;
 use serde::Deserialize;
 use std::clone::Clone;
@@ -11,8 +11,6 @@ lazy_static! {
         Regex::new(r"^(mainStream|subStream|externStream|both|all)$").unwrap();
     static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
     static ref RE_PAUSE_MODE: Regex = Regex::new(r"^(black|still|test|none)$").unwrap();
-    static ref RE_DISC_SRC: Regex =
-        Regex::new(r"^([nN]one|[lL]ocal|[rR]emote|[Mm]ap|[rR]elay|[Dd]ebug)$").unwrap();
     static ref RE_MAXENC_SRC: Regex =
         Regex::new(r"^([nN]one|[Aa][Ee][Ss]|[Bb][Cc][Ee][Nn][Cc][Rr][Yy][Pp][Tt])$").unwrap();
 }
@@ -82,12 +80,7 @@ pub(crate) struct CameraConfig {
     pub(crate) pause: PauseConfig,
 
     #[serde(default = "default_discovery")]
-    #[validate(regex(
-        path = "RE_DISC_SRC",
-        message = "Invalid discovery method",
-        code = "discovery"
-    ))]
-    pub(crate) discovery: String,
+    pub(crate) discovery: DiscoveryMethods,
 
     #[serde(default = "default_maxenc")]
     #[validate(regex(
@@ -151,8 +144,8 @@ fn default_print() -> PrintFormat {
     PrintFormat::None
 }
 
-fn default_discovery() -> String {
-    "Relay".to_string()
+fn default_discovery() -> DiscoveryMethods {
+    DiscoveryMethods::Relay
 }
 
 fn default_maxenc() -> String {

@@ -145,7 +145,48 @@ impl BcCamera {
         aux_info_format: PrintFormat,
     ) -> Result<Self> {
         Self::new(
-            SocketAddrOrUid::Uid(uid.to_string(), discovery_method),
+            SocketAddrOrUid::Uid(uid.to_string(), None, discovery_method),
+            channel_id,
+            username,
+            passwd,
+            aux_info_format,
+        )
+        .await
+    }
+
+    ///
+    /// Create a new camera interface with this uid and channel ID
+    /// while also including IP address information. This will allow
+    /// More ways of connecting to a UID camera without contacting
+    /// reolink
+    ///
+    /// # Parameters
+    ///
+    /// * `uid` - The uid of the camera
+    ///
+    /// * `address` - The address of the camera
+    ///
+    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
+    ///
+    /// # Returns
+    ///
+    /// returns either an error or the camera
+    ///
+    pub async fn new_with_uid_and_addr<U: Into<String>, V: Into<String>, W: ToSocketAddrs>(
+        uid: &str,
+        host: W,
+        channel_id: u8,
+        username: U,
+        passwd: Option<V>,
+        discovery_method: DiscoveryMethods,
+        aux_info_format: PrintFormat,
+    ) -> Result<Self> {
+        Self::new(
+            SocketAddrOrUid::Uid(
+                uid.to_string(),
+                Some(host.to_socket_addrs()?.collect()),
+                discovery_method,
+            ),
             channel_id,
             username,
             passwd,
@@ -239,7 +280,7 @@ impl BcCamera {
                     .split();
                 (Box::new(x), Box::new(r))
             }
-            SocketAddrOrUid::Uid(uid, method) => {
+            SocketAddrOrUid::Uid(uid, optional_addrs, method) => {
                 trace!("Trying uid {}", uid);
                 // TODO Make configurable
                 let (allow_local, allow_remote, allow_map, allow_relay) = match method {
@@ -257,7 +298,7 @@ impl BcCamera {
                         let uid_local = uid.clone();
                         set.spawn(async move {
                             trace!("Starting Local discovery");
-                            let result = Discovery::local(&uid_local).await;
+                            let result = Discovery::local(&uid_local, optional_addrs).await;
                             if let Ok(disc) = &result {
                                 info!(
                                     "Local discovery success {} at {}",

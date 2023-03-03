@@ -10,11 +10,15 @@ use std::fmt::{Display, Error as FmtError, Formatter};
 pub(crate) enum AddressOrUid {
     Address(String),
     Uid(String, DiscoveryMethods),
+    AddressWithUid(String, String, DiscoveryMethods),
 }
 
 impl Display for AddressOrUid {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
+            AddressOrUid::AddressWithUid(addr, uid, _) => {
+                write!(f, "Address: {}, UID: {}", addr, uid)
+            }
             AddressOrUid::Address(host) => write!(f, "Address: {}", host),
             AddressOrUid::Uid(host, _) => write!(f, "UID: {}", host),
         }
@@ -26,27 +30,17 @@ impl AddressOrUid {
     pub(crate) fn new(
         address: &Option<String>,
         uid: &Option<String>,
-        disc_method: &str,
+        method: &DiscoveryMethods,
     ) -> Result<Self, Error> {
         match (address, uid) {
             (None, None) => Err(anyhow!("Neither address or uid given")),
-            (Some(_), Some(_)) => Err(anyhow!("Either address or uid should be given not both")),
+            (Some(host), Some(uid)) => Ok(AddressOrUid::AddressWithUid(
+                host.clone(),
+                uid.clone(),
+                *method,
+            )),
             (Some(host), None) => Ok(AddressOrUid::Address(host.clone())),
-            (None, Some(host)) => {
-                let method = match disc_method.to_lowercase().as_str() {
-                    "none" => DiscoveryMethods::None,
-                    "local" => DiscoveryMethods::Local,
-                    "remote" => DiscoveryMethods::Remote,
-                    "map" => DiscoveryMethods::Map,
-                    "relay" => DiscoveryMethods::Relay,
-                    "debug" => DiscoveryMethods::Debug,
-                    n => {
-                        warn!("Unrecognised discovery method: {}. Using Local", n);
-                        DiscoveryMethods::Local
-                    }
-                };
-                Ok(AddressOrUid::Uid(host.clone(), method))
-            }
+            (None, Some(host)) => Ok(AddressOrUid::Uid(host.clone(), *method)),
         }
     }
 
@@ -59,6 +53,16 @@ impl AddressOrUid {
         aux_print_format: PrintFormat,
     ) -> Result<BcCamera, Error> {
         match self {
+            AddressOrUid::AddressWithUid(addr, uid, method) => Ok(BcCamera::new_with_uid_and_addr(
+                uid,
+                addr,
+                channel_id,
+                username,
+                passwd,
+                *method,
+                aux_print_format,
+            )
+            .await?),
             AddressOrUid::Address(host) => {
                 Ok(
                     BcCamera::new_with_addr(host, channel_id, username, passwd, aux_print_format)
