@@ -34,6 +34,7 @@ with additional features not yet in upstream master.
 - Protocol more closely follows offical reolink format
   - Possibly can handle more simulatenous connections
 - More ways to connect to the camera. Including Relaying through reolink servers
+- Camera battery levels can be displayed in the log
 
 ## Installation
 
@@ -159,6 +160,19 @@ Then start the rtsp server as usual:
 ./neolink rtsp --config=neolink.toml
 ```
 
+### Battery Levels
+
+If you have a battery camera and would like to see the battery messages in the log
+add the following to your config
+
+```toml
+[[cameras]]
+# Usual camera options like uid etc
+print_format = "Human"
+```
+
+You can also print into xml format with `print_format = "Xml"` which can then be passed
+by a script for processing.
 
 ### Docker
 
