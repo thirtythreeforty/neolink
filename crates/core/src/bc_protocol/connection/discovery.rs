@@ -240,7 +240,6 @@ impl Discoverer {
         let mut reply = ReceiverStream::new(self.subscribe(target_tid).await?);
         let msg = BcUdp::Discovery(disc);
 
-        
         let mut inter = interval(*RESEND_WAIT);
 
         let result = tokio::select! {

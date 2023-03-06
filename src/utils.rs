@@ -5,7 +5,7 @@ use log::*;
 use super::config::{CameraConfig, Config};
 use anyhow::{anyhow, Context, Error, Result};
 use neolink_core::bc_protocol::{
-    BcCamera, BcCameraOpt, ConnectionProtocol, DiscoveryMethods, MaxEncryption, Credentials,
+    BcCamera, BcCameraOpt, ConnectionProtocol, Credentials, DiscoveryMethods, MaxEncryption,
 };
 use std::{
     fmt::{Display, Error as FmtError, Formatter},
@@ -92,7 +92,7 @@ impl AddressOrUid {
                 password: camera_config.password.clone(),
             },
         };
-        
+
         trace!("Camera Info: {:?}", options);
 
         Ok(BcCamera::new(options).await?)
