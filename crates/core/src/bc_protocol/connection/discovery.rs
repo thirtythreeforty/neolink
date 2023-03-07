@@ -27,7 +27,7 @@ use tokio::{
         Mutex, RwLock,
     },
     task::JoinSet,
-    time::{interval, Duration},
+    time::{interval, timeout, Duration},
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::udp::UdpFramed;
@@ -770,7 +770,8 @@ impl Discovery {
     pub(crate) async fn check_tcp(addr: SocketAddr, channel_id: u8) -> Result<()> {
         let username = "admin";
         let password = Some("123456");
-        let mut tcp_source = TcpSource::new(addr, username, password).await?;
+        let mut tcp_source =
+            timeout(*MAXIMUM_WAIT, TcpSource::new(addr, username, password)).await??;
 
         let md5_username = md5_string(username, Md5Trunc::ZeroLast);
         let md5_password = password
@@ -794,7 +795,7 @@ impl Discovery {
             })
             .await?;
 
-        let _bc: Bc = tokio::time::timeout(Duration::from_secs(10), tcp_source.next())
+        let _bc: Bc = timeout(*MAXIMUM_WAIT, tcp_source.next())
             .await?
             .ok_or(Error::CannotInitCamera)??; // Successful recv should mean a Bc packet if not then deser will fail
         Ok(())
