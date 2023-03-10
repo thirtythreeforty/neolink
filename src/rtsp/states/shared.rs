@@ -10,7 +10,7 @@ use std::sync::Arc;
 use neolink_core::bc_protocol::{BcCamera, MaxEncryption, StreamKind as Stream};
 
 use crate::config::PauseConfig;
-use crate::rtsp::gst::RtspServer;
+use crate::rtsp::gst::NeoRtspServer;
 use crate::utils::AddressOrUid;
 
 #[allow(dead_code)]
@@ -22,7 +22,7 @@ pub(crate) struct Shared {
     pub(super) username: String,
     pub(super) password: Option<String>,
     pub(super) streams: HashSet<Stream>,
-    pub(super) rtsp: Arc<RtspServer>,
+    pub(super) rtsp: Arc<NeoRtspServer>,
     pub(super) permitted_users: HashSet<String>,
     pub(super) pause: PauseConfig,
     pub(super) max_encryption: MaxEncryption,
@@ -30,28 +30,48 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
-    pub(super) fn get_all_paths(&self) -> Vec<String> {
-        self.streams
-            .iter()
-            .flat_map(|s| self.get_paths(s))
-            .collect()
+    pub(crate) fn get_tag_for_stream(&self, stream: &Stream) -> String {
+        format!("{}::{:?}", self.name, stream)
     }
-
-    pub(super) fn get_paths(&self, stream: &Stream) -> Vec<String> {
-        let mut streams = match stream {
-            Stream::Main => vec![
-                format!("/{}", &self.name),
-                format!("/{}/mainStream", &self.name),
-            ],
-            Stream::Sub => vec![format!("/{}/subStream", &self.name)],
-            Stream::Extern => {
-                vec![format!("/{}/externStream", &self.name)]
-            }
-        };
-        // Later VLC clients seem to only support lower case streams
-        let mut lowercase_streams: Vec<String> = streams.iter().map(|i| i.to_lowercase()).collect();
-        streams.append(&mut lowercase_streams);
-        streams
+    pub(crate) fn get_paths_for_stream(&self, stream: &Stream) -> Vec<String> {
+        vec![
+            // Normal case
+            format!("/{}/{:?}", self.name, stream),
+            format!("/{}/{:?}Stream", self.name, stream),
+            format!("/{}/{:?}stream", self.name, stream),
+            // Lower case name
+            format!("/{}/{:?}", self.name.to_lowercase(), stream),
+            format!("/{}/{:?}Stream", self.name.to_lowercase(), stream),
+            format!("/{}/{:?}stream", self.name.to_lowercase(), stream),
+            // Lower case stream
+            format!("/{}/{}", self.name, format!("{:?}", stream).to_lowercase()),
+            format!(
+                "/{}/{}Stream",
+                self.name,
+                format!("{:?}", stream).to_lowercase()
+            ),
+            format!(
+                "/{}/{}stream",
+                self.name,
+                format!("{:?}", stream).to_lowercase()
+            ),
+            // Lower case both
+            format!(
+                "/{}/{}",
+                self.name.to_lowercase(),
+                format!("{:?}", stream).to_lowercase()
+            ),
+            format!(
+                "/{}/{}Stream",
+                self.name.to_lowercase(),
+                format!("{:?}", stream).to_lowercase()
+            ),
+            format!(
+                "/{}/{}stream",
+                self.name.to_lowercase(),
+                format!("{:?}", stream).to_lowercase()
+            ),
+        ]
     }
 }
 

@@ -16,6 +16,7 @@ use std::collections::VecDeque;
 use std::io::{Error as IoError, ErrorKind, Result as IoResult};
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::{
     net::UdpSocket,
@@ -43,15 +44,18 @@ impl UdpSource {
         username: T,
         password: Option<U>,
     ) -> Result<Self> {
-        let stream = connect().await?;
+        let stream = Arc::new(connect().await?);
 
         Self::new_from_socket(stream, addr, client_id, camera_id, username, password).await
     }
     pub(crate) async fn new_from_discovery<T: Into<String>, U: Into<String>>(
-        discovery: DiscoveryResult,
+        mut discovery: DiscoveryResult,
         username: T,
         password: Option<U>,
     ) -> Result<Self> {
+        // Ensure that the discovery keep alive are all stopped here
+        // We now handle all coms in UdpSource
+        discovery.shutdown().await;
         Self::new_from_socket(
             discovery.socket,
             discovery.addr,
@@ -64,7 +68,7 @@ impl UdpSource {
     }
 
     pub(crate) async fn new_from_socket<T: Into<String>, U: Into<String>>(
-        stream: UdpSocket,
+        stream: Arc<UdpSocket>,
         addr: SocketAddr,
         client_id: i32,
         camera_id: i32,
@@ -124,14 +128,14 @@ impl Sink<Bc> for UdpSource {
 }
 
 pub(crate) struct BcUdpSource {
-    inner: UdpFramed<BcUdpCodex, UdpSocket>,
+    inner: UdpFramed<BcUdpCodex, Arc<UdpSocket>>,
     addr: SocketAddr,
 }
 
 impl BcUdpSource {
     #[allow(unused)]
     pub(crate) async fn new(addr: SocketAddr) -> Result<Self> {
-        let stream = connect().await?;
+        let stream = Arc::new(connect().await?);
 
         Self::new_from_socket(stream, addr).await
     }
@@ -141,7 +145,7 @@ impl BcUdpSource {
         Self::new_from_socket(discovery.socket, discovery.addr).await
     }
 
-    pub(crate) async fn new_from_socket(stream: UdpSocket, addr: SocketAddr) -> Result<Self> {
+    pub(crate) async fn new_from_socket(stream: Arc<UdpSocket>, addr: SocketAddr) -> Result<Self> {
         Ok(Self {
             inner: UdpFramed::new(stream, BcUdpCodex::new()),
             addr,
@@ -509,7 +513,7 @@ impl futures::AsyncWrite for UdpPayloadSource {
     }
 }
 
-/// Helper to create a TcpStream with a connect timeout
+/// Helper to create a UdpStream
 async fn connect() -> Result<UdpSocket> {
     let mut ports: Vec<u16> = (53500..54000).collect();
     let mut rng = thread_rng();

@@ -57,6 +57,12 @@ pub struct UdpXml {
     /// C2D_A xml client to device accept
     #[yaserde(rename = "C2D_A")]
     pub c2d_a: Option<C2dA>,
+    /// C2D_HB xml client to device heartbeat. This is the keep alive
+    #[yaserde(rename = "C2D_HB")]
+    pub c2d_hb: Option<C2dHb>,
+    /// C2D_HB xml client to device heartbeat. This is the keep alive
+    #[yaserde(rename = "C2R_HB")]
+    pub c2r_hb: Option<C2rHb>,
 }
 
 impl UdpXml {
@@ -351,4 +357,30 @@ pub struct C2dA {
     pub did: i32,
     /// Maximum size in bytes of a transmission
     pub mtu: u32,
+}
+
+/// C2D_HB xml
+///
+/// Client to device heart beat.
+/// Seems to act as a keep alive
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
+pub struct C2dHb {
+    /// The client connection ID
+    pub cid: i32,
+    /// The camera connection ID
+    pub did: i32,
+}
+
+/// C2R_HB xml
+///
+/// Client to device heart beat.
+/// Seems to act as a keep alive
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
+pub struct C2rHb {
+    /// The connection ID
+    pub sid: u32,
+    /// The client connection ID
+    pub cid: i32,
+    /// The camera connection ID
+    pub did: i32,
 }

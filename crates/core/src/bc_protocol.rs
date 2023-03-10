@@ -299,12 +299,12 @@ impl BcCamera {
     ///
     /// returns either an error or the camera
     ///
-    pub async fn new(options: BcCameraOpt) -> Result<Self> {
+    pub async fn new(options: &BcCameraOpt) -> Result<Self> {
         let username: String = options.credentials.username.clone();
         let passwd: Option<String> = options.credentials.password.clone();
 
         let (sink, source): (BcConnSink, BcConnSource) = {
-            match BcCamera::find_camera(&options).await? {
+            match BcCamera::find_camera(options).await? {
                 CameraLocation::Tcp(addr) => {
                     let (x, r) = TcpSource::new(addr, &username, passwd.as_ref())
                         .await?

@@ -1,4 +1,5 @@
 #![warn(missing_docs)]
+#![warn(clippy::todo)]
 //!
 //! # Neolink
 //!

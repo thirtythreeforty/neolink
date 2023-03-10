@@ -9,18 +9,16 @@ use std::sync::Arc;
 use neolink_core::bc_protocol::{MaxEncryption, MotionData, StreamKind as Stream};
 
 use crate::config::{CameraConfig, UserConfig};
-use crate::rtsp::gst::RtspServer;
+use crate::rtsp::gst::NeoRtspServer;
 use crate::utils::AddressOrUid;
 
 mod connected;
 mod loggedin;
-mod paused;
 mod shared;
 mod streaming;
 
 pub(crate) use connected::Connected;
 pub(crate) use loggedin::LoggedIn;
-pub(crate) use paused::Paused;
 pub(crate) use shared::{CameraState, Shared};
 pub(crate) use streaming::Streaming;
 
@@ -28,14 +26,12 @@ pub(crate) enum StateInfo {
     Connected,
     LoggedIn,
     Streaming,
-    Paused,
 }
 
 enum State {
     Connected(Connected),
     LoggedIn(LoggedIn),
     Streaming(Streaming),
-    Paused(Paused),
 }
 
 ///
@@ -50,7 +46,7 @@ impl RtspCamera {
     pub(crate) async fn new(
         config: &CameraConfig,
         users: &[UserConfig],
-        rtsp: Arc<RtspServer>,
+        rtsp: Arc<NeoRtspServer>,
     ) -> Result<Self, Error> {
         let camera_addr =
             AddressOrUid::new(&config.camera_addr, &config.camera_uid, &config.discovery)
@@ -91,7 +87,7 @@ impl RtspCamera {
 
         // Used to build the list of strings to pass to gtreamer for the allowed users
         let all_users_hash = || users.iter().map(|u| u.name.clone()).collect();
-        let permitted_users = match &config.permitted_users {
+        let permitted_users: HashSet<String> = match &config.permitted_users {
             // If in the camera config there is the user "anyone", or if none is specified but users
             // are defined at all, then we add all users to the camera's allowed list.
             Some(p) if p.iter().any(|u| u == "anyone") => all_users_hash(),
@@ -110,6 +106,7 @@ impl RtspCamera {
             "aes" => MaxEncryption::Aes,
             _ => MaxEncryption::Aes,
         };
+
         let shared = Shared {
             camera: Arc::new(camera),
             addr: camera_addr,
@@ -125,6 +122,19 @@ impl RtspCamera {
             strict: config.strict,
         };
 
+        // Set up streams on the RTSP camera
+        for stream in shared.streams.iter() {
+            let tag = shared.get_tag_for_stream(stream);
+            shared.rtsp.create_stream(&tag).await?;
+            shared
+                .rtsp
+                .add_permitted_roles(&tag, &shared.permitted_users)
+                .await?;
+            let paths: Vec<String> = shared.get_paths_for_stream(stream);
+            debug!("Adding path {:?} for {}", paths, tag);
+            shared.rtsp.add_path(&tag, &paths).await?;
+        }
+
         let mut state: Connected = Default::default();
         state.setup(&shared).await?;
 
@@ -139,7 +149,6 @@ impl RtspCamera {
             State::Connected(_) => StateInfo::Connected,
             State::LoggedIn(_) => StateInfo::LoggedIn,
             State::Streaming(_) => StateInfo::Streaming,
-            State::Paused(_) => StateInfo::Paused,
         }
     }
     pub(crate) async fn login(&mut self) -> Result<()> {
@@ -160,17 +169,6 @@ impl RtspCamera {
                 self.state = State::LoggedIn(state);
                 info!("{}: Successfully stopped straming", &self.shared.name);
             }
-            State::Paused(ref mut connected) => {
-                info!("{}: Logging in", &self.shared.name);
-                connected.tear_down(&self.shared).await?;
-                let state: LoggedIn = Default::default();
-                // state.setup(&self.shared).await?;
-                self.state = State::LoggedIn(state);
-                info!(
-                    "{}: Successfully stopped paused streaming",
-                    &self.shared.name
-                );
-            }
             State::LoggedIn(_) => {
                 info!("Already logged in");
             }
@@ -186,19 +184,6 @@ impl RtspCamera {
             State::Streaming(_) => {
                 info!("{}: Already streaming", &self.shared.name);
             }
-            State::Paused(ref mut paused) => {
-                info!("{}: Resuming stream", &self.shared.name);
-                let outputs = paused.take_outputs().await?;
-
-                paused.tear_down(&self.shared).await?;
-                let mut state: Streaming = Default::default();
-
-                state.insert_outputs(outputs)?;
-
-                state.setup(&self.shared).await?;
-                self.state = State::Streaming(state);
-                info!("{}: Successfully resumed streaming", &self.shared.name);
-            }
             State::LoggedIn(ref mut _loggedin) => {
                 info!("{}: Starting stream", &self.shared.name);
                 // loggedin.tear_down(&self.shared).await?;
@@ -211,43 +196,8 @@ impl RtspCamera {
         Ok(())
     }
 
-    pub(crate) async fn pause(&mut self) -> Result<()> {
-        match &mut self.state {
-            State::Connected(_) => {
-                return Err(anyhow!("{}: Must login first", &self.shared.name));
-            }
-            State::Streaming(ref mut old_state) => {
-                info!("{}: Pausing stream", &self.shared.name);
-                let outputs = old_state.take_outputs().await?;
-
-                old_state.tear_down(&self.shared).await?;
-                let mut state: Paused = Default::default();
-
-                state.insert_outputs(outputs)?;
-
-                state.setup(&self.shared).await?;
-                self.state = State::Paused(state);
-                info!("{}: Successfully paused streaming", &self.shared.name);
-            }
-            State::Paused(_) => {
-                info!("{}: Already paused", &self.shared.name);
-            }
-            State::LoggedIn(_) => {
-                info!(
-                    "{}: Cannot pause a stream that has not started",
-                    &self.shared.name
-                );
-            }
-        }
-        Ok(())
-    }
-
     pub(crate) async fn client_connected(&self) -> Option<bool> {
-        match &self.state {
-            State::Streaming(state) => Some(state.client_connected().await),
-            State::Paused(state) => Some(state.client_connected().await),
-            _ => None,
-        }
+        todo!()
     }
 
     pub(crate) async fn motion_data(&self) -> Result<MotionData> {
@@ -261,15 +211,7 @@ impl RtspCamera {
     pub(crate) async fn is_running(&mut self) -> Result<()> {
         match &mut self.state {
             State::Streaming(state) => state.is_running().await,
-            State::Paused(state) => state.is_running().await,
             _ => Ok(()),
-        }
-    }
-
-    pub(crate) async fn can_pause(&self) -> bool {
-        match &self.state {
-            State::Streaming(state) => state.can_pause().await,
-            _ => false,
         }
     }
 
