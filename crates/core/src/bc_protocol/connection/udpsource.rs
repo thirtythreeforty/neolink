@@ -226,17 +226,17 @@ pub(crate) struct UdpPayloadSource {
 impl UdpPayloadSource {
     fn build_send_ack(&self) -> UdpAck {
         if self.packets_want > 0 {
-            let mut start: u32 = self.packets_want - 1;
-            while self.recieved.contains_key(&start) {
+            let mut first_missing: u32 = self.packets_want;
+            while self.recieved.contains_key(&first_missing) {
                 // Happens if we have recieved but not consumed yet
-                start += 1;
+                first_missing += 1;
             }
             let missing_ids = if let Some(end) = self.recieved.keys().max() {
                 let mut vec = vec![];
                 // From last contiguous packet to last recieved packet
                 // create a payload of `00` (unreceived) and `01` (received)
                 // that can be used to form the `UdpAck` packet
-                for i in (start + 1)..(end + 1) {
+                for i in (first_missing)..(end + 1) {
                     if self.recieved.contains_key(&i) {
                         vec.push(1)
                     } else {
@@ -250,7 +250,7 @@ impl UdpPayloadSource {
 
             UdpAck {
                 connection_id: self.camera_id,
-                packet_id: start,
+                packet_id: first_missing - 1, // Last we actually have is first_missing - 1
                 group_id: 0,
                 payload: missing_ids,
             }
@@ -306,8 +306,6 @@ impl Stream for UdpPayloadSource {
                     trace!("UdpPayloadSource.Data: PreReady: {}", this.packets_want);
                     this.packets_want += 1;
                     // error!("packets_want: {}", this.packets_want);
-                    let ack = BcUdp::Ack(this.build_send_ack());
-                    this.send_buffer.push_back(ack);
                     return Poll::Ready(Some(Ok(payload)));
                 }
                 // Handle resend events

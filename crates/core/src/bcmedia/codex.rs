@@ -42,13 +42,13 @@ impl Decoder for BcMediaCodex {
             match { BcMedia::deserialize(src) } {
                 Ok(bc) => {
                     if amount_skipped > 0 {
-                        trace!("Amount skipped to restore stream: {}", amount_skipped);
+                        debug!("Amount skipped to restore stream: {}", amount_skipped);
                     }
                     return Ok(Some(bc));
                 }
                 Err(Error::NomIncomplete(_)) => {
                     if amount_skipped > 0 {
-                        trace!("Amount skipped to restore stream: {}", amount_skipped);
+                        debug!("Amount skipped to restore stream: {}", amount_skipped);
                     }
                     return Ok(None);
                 }
@@ -59,7 +59,7 @@ impl Decoder for BcMediaCodex {
                         return Ok(None);
                     } else {
                         if amount_skipped == 0 {
-                            trace!("Error in stream attempting to restore: {:?}", e);
+                            debug!("Error in stream attempting to restore: {:?}", e);
                         }
                         src.advance(1);
                         amount_skipped += 1;

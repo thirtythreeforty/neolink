@@ -54,19 +54,20 @@ impl CameraState for Streaming {
                     .start_video(stream_thead, 0, strict_thread)
                     .await?;
                 while thread_abort_handle.is_live() {
-                    trace!("BcMediaStreamRecv");
+                    debug!("BcMediaStreamRecv");
                     let data = stream_data.get_data().await?;
                     match &data {
-                        Ok(BcMedia::InfoV1(_)) => trace!("  - InfoV1"),
-                        Ok(BcMedia::InfoV2(_)) => trace!("  - InfoV2"),
-                        Ok(BcMedia::Iframe(_)) => trace!("  - Iframe"),
-                        Ok(BcMedia::Pframe(_)) => trace!("  - Pframe"),
-                        Ok(BcMedia::Aac(_)) => trace!("  - Aac"),
-                        Ok(BcMedia::Adpcm(_)) => trace!("  - Adpcm"),
-                        Err(_) => trace!("  - Error"),
+                        Ok(BcMedia::InfoV1(_)) => debug!("  - InfoV1"),
+                        Ok(BcMedia::InfoV2(_)) => debug!("  - InfoV2"),
+                        Ok(BcMedia::Iframe(_)) => debug!("  - Iframe"),
+                        Ok(BcMedia::Pframe(_)) => debug!("  - Pframe"),
+                        Ok(BcMedia::Aac(_)) => debug!("  - Aac"),
+                        Ok(BcMedia::Adpcm(_)) => debug!("  - Adpcm"),
+                        Err(_) => debug!("  - Error"),
                     }
                     sender.send(data?).await?;
                 }
+                debug!("Shutting down streaming thread");
                 Ok(())
             });
 

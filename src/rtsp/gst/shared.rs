@@ -4,7 +4,7 @@ pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use std::convert::{From, Into};
 use std::sync::atomic::AtomicU64;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq, Debug)]
 pub(super) enum VidFormats {
     Unknown = 0,
     H264,
@@ -32,7 +32,7 @@ impl From<u64> for VidFormats {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq, Debug)]
 pub(super) enum AudFormats {
     Unknown = 0,
     Aac,

@@ -6,8 +6,10 @@ use gstreamer::ClockTime;
 use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use neolink_core::bcmedia::model::*;
+use std::collections::HashMap;
+use std::sync::atomic::AtomicU64;
 use std::sync::{atomic::Ordering, Arc};
-use tokio::time::{interval, Duration, MissedTickBehavior};
+// use tokio::time::{interval, Duration, MissedTickBehavior};
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::{shared::*, AnyResult};
@@ -16,13 +18,20 @@ use super::{shared::*, AnyResult};
 pub(super) struct ClientData {
     pub(super) appsrc: AppSrc,
     pub(super) start_time: u64,
+    pub(super) inited: bool,
 }
 
 pub(super) struct NeoMediaSender {
     pub(super) data_source: ReceiverStream<BcMedia>,
-    pub(super) app_source: ReceiverStream<AppSrc>,
+    pub(super) vidsource: ReceiverStream<AppSrc>,
+    pub(super) audsource: ReceiverStream<AppSrc>,
     pub(super) shared: Arc<NeoMediaShared>,
-    pub(super) appsrcs: std::collections::HashSet<ClientData>,
+    // Used to generate the key for the hashmaps
+    pub(super) uid: AtomicU64,
+    // Hashmap so we can alter the data in ClientData while also allowing for remove at any point
+    // If you know a better collections pm me
+    pub(super) vidsrcs: HashMap<u64, ClientData>,
+    pub(super) audsrcs: HashMap<u64, ClientData>,
     pub(super) waiting_for_iframe: bool,
 }
 
@@ -38,15 +47,15 @@ struct ProcessData<'a> {
 
 impl NeoMediaSender {
     pub(super) async fn run(&mut self) -> AnyResult<()> {
-        let mut resend_pause = interval(Duration::from_secs_f32(1.0f32 / 5.0f32));
-        resend_pause.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        // let mut resend_pause = interval(Duration::from_secs_f32(1.0f32 / 5.0f32));
+        // resend_pause.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let mut buffer: Vec<StampedData> = Default::default();
         loop {
             tokio::select! {
                 v = self.data_source.next() => {
                     if let Some(bc_media) = v {
                         if ! self.skip_bcmedia(&bc_media)? {
-                            resend_pause.reset();
+                            // resend_pause.reset();
                             self.inspect_bcmedia(&bc_media)?;
                             match bc_media {
                                 BcMedia::Iframe(frame) => {
@@ -57,7 +66,7 @@ impl NeoMediaSender {
                                             data: frame.data.clone(),
                                         }
                                     );
-                                    self.process_buffer(&ProcessData {
+                                    self.process_vidbuffer(&ProcessData {
                                         live: StampedData{
                                             ms: frame.microseconds as u64,
                                             data: frame.data,
@@ -72,13 +81,19 @@ impl NeoMediaSender {
                                             data: frame.data.clone(),
                                         }
                                     );
-                                    self.process_buffer(&ProcessData {
+                                    self.process_vidbuffer(&ProcessData {
                                         live: StampedData{
                                             ms: frame.microseconds as u64,
                                             data: frame.data,
                                         },
                                         resend: buffer.as_slice()
                                     })?;
+                                }
+                                BcMedia::Aac(aac) => {
+                                    if let Some(last) = buffer.last().as_ref() {
+                                        self.process_audbuffer(aac.data.as_slice(), last.ms)?;
+                                    }
+
                                 }
                                 _ => {}
                             }
@@ -87,36 +102,49 @@ impl NeoMediaSender {
                         break;
                     }
                 }
-                v = self.app_source.next() => {
+                v = self.vidsource.next() => {
                     if let Some(appsrc) = v {
-                        self.appsrcs.insert(ClientData {
+                        self.vidsrcs.insert(self.uid.fetch_add(1, Ordering::Relaxed) , ClientData {
                             appsrc,
-                            start_time: self.shared.microseconds.load(Ordering::Relaxed)
+                            start_time: self.shared.microseconds.load(Ordering::Relaxed),
+                            inited: false,
                         });
                     } else {
                         break;
                     }
                 },
-                _ = resend_pause.tick() => {
-                    if let Some(live) = buffer.last().cloned() {
-                        self.process_buffer(&ProcessData {
-                            live,
-                            resend: buffer.as_slice()
-                        })?;
+                v = self.audsource.next() => {
+                    if let Some(appsrc) = v {
+                        self.audsrcs.insert(self.uid.fetch_add(1, Ordering::Relaxed), ClientData {
+                            appsrc,
+                            start_time: self.shared.microseconds.load(Ordering::Relaxed),
+                            inited: false,
+                        });
+                    } else {
+                        break;
                     }
-                }
+                },
+                // _ = resend_pause.tick() => {
+                //     if let Some(live) = buffer.last().cloned() {
+                //         self.process_vidbuffer(&ProcessData {
+                //             live,
+                //             resend: buffer.as_slice()
+                //         })?;
+                //     }
+                // }
             }
         }
         Ok(())
     }
 
-    fn process_buffer(&mut self, process_data: &ProcessData) -> AnyResult<()> {
-        let frame_ms = process_data.live.ms;
-        self.appsrcs.retain(|data| {
-            let start_time = data.start_time;
-            // If frame_ms < our start time then we just joined the stream
+    fn process_vidbuffer(&mut self, process_data: &ProcessData) -> AnyResult<()> {
+        self.vidsrcs.retain(|_, data| {
+            // If ! inited then we just joined the stream
             // Send all data from the last iframe to catch up
-            if frame_ms < start_time {
+            // This should eliminate visual artifact that arise from recieving a pframe
+            // before an iframe
+            if !data.inited {
+                data.inited = true;
                 for (idx, resend_buffer) in process_data.resend.iter().enumerate() {
                     if Self::send_buffer(&data.appsrc, resend_buffer.data.as_slice(), idx as u64, 0)
                         .is_err()
@@ -132,6 +160,15 @@ impl NeoMediaSender {
                 data.start_time,
             )
             .is_ok() // If ok retain is true
+        });
+
+        Ok(())
+    }
+
+    fn process_audbuffer(&mut self, buf: &[u8], frame_ms: u64) -> AnyResult<()> {
+        self.audsrcs.retain(|_, data| {
+            Self::send_buffer(&data.appsrc, buf, frame_ms, data.start_time).is_ok()
+            // If ok retain is true
         });
 
         Ok(())
@@ -158,11 +195,13 @@ impl NeoMediaSender {
             .map(|_| ())
             .map_err(|_| anyhow!("Could not push buffer to appsrc"))
     }
+
     fn skip_bcmedia(&mut self, bc_media: &BcMedia) -> AnyResult<bool> {
         if self.waiting_for_iframe {
             if let BcMedia::Iframe(_) = bc_media {
                 self.waiting_for_iframe = false;
             } else {
+                log::debug!("Skipping bcmedia");
                 return Ok(true);
             }
         }
@@ -170,6 +209,8 @@ impl NeoMediaSender {
     }
 
     fn inspect_bcmedia(&mut self, bc_media: &BcMedia) -> AnyResult<()> {
+        let old_vid = self.shared.vid_format.load(Ordering::Relaxed);
+        let old_aud = self.shared.aud_format.load(Ordering::Relaxed);
         match bc_media {
             BcMedia::Iframe(frame) => {
                 match frame.video_type {
@@ -216,6 +257,22 @@ impl NeoMediaSender {
                     .store(AudFormats::Adpcm.into(), Ordering::Relaxed);
             }
             _ => {}
+        }
+        let new_vid = self.shared.vid_format.load(Ordering::Relaxed);
+        if old_vid != new_vid {
+            log::debug!(
+                "Video format set to: {:?} from {:?}",
+                VidFormats::from(new_vid),
+                VidFormats::from(old_vid)
+            );
+        }
+        let new_aud = self.shared.aud_format.load(Ordering::Relaxed);
+        if old_aud != new_aud {
+            log::debug!(
+                "Audio format set to: {:?} from {:?}",
+                AudFormats::from(new_aud),
+                AudFormats::from(old_aud)
+            );
         }
         Ok(())
     }

@@ -40,13 +40,19 @@ impl Decoder for BcUdpCodex {
                     r2c_disc: Some(_), ..
                 },
                 ..
-            })) => Err(Error::RelayTerminate),
+            })) => {
+                log::error!("Relay terminate");
+                Err(Error::RelayTerminate)
+            }
             Ok(BcUdp::Discovery(UdpDiscovery {
                 payload: UdpXml {
                     d2c_disc: Some(_), ..
                 },
                 ..
-            })) => Err(Error::CameraTerminate),
+            })) => {
+                log::error!("Camera terminate");
+                Err(Error::CameraTerminate)
+            }
             Ok(bc) => Ok(Some(bc)),
             Err(Error::NomIncomplete(_)) => Ok(None),
             Err(e) => Err(e),

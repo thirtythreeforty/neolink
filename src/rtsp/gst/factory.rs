@@ -100,7 +100,8 @@ unsafe impl Sync for NeoMediaFactory {}
 
 pub(crate) struct NeoMediaFactoryImpl {
     sender: Sender<BcMedia>,
-    appsender: Sender<AppSrc>,
+    vidsender: Sender<AppSrc>,
+    audsender: Sender<AppSrc>,
     shared: Arc<NeoMediaShared>,
     #[allow(dead_code)] // Not dead just need a handle to keep it alive and drop with this obj
     threads: JoinSet<AnyResult<()>>,
@@ -116,23 +117,28 @@ impl Default for NeoMediaFactoryImpl {
     fn default() -> Self {
         warn!("Constructing Factor Impl");
         let (datasender, datarx) = channel(3);
-        let (appsender, rx_appsender) = channel(3);
+        let (vidsender, rx_vidsender) = channel(3);
+        let (audsender, rx_audsender) = channel(3);
         let shared: Arc<NeoMediaShared> = Default::default();
 
         // Prepare thread that sends data into the appsrcs
         let mut threads: JoinSet<AnyResult<()>> = Default::default();
         let mut sender = NeoMediaSender {
             data_source: ReceiverStream::new(datarx),
-            app_source: ReceiverStream::new(rx_appsender),
+            vidsource: ReceiverStream::new(rx_vidsender),
+            audsource: ReceiverStream::new(rx_audsender),
             shared: shared.clone(),
-            appsrcs: Default::default(),
+            uid: Default::default(),
+            vidsrcs: Default::default(),
+            audsrcs: Default::default(),
             waiting_for_iframe: true,
         };
         threads.spawn(async move { sender.run().await });
 
         Self {
             sender: datasender,
-            appsender,
+            vidsender,
+            audsender,
             shared,
             threads,
         }
@@ -195,7 +201,6 @@ impl NeoMediaFactoryImpl {
             bin.remove(&element)?;
         }
 
-        debug!("self.shared owners: {}", Arc::strong_count(&self.shared));
         // Now contruct the actual ones
         match VidFormats::from(self.shared.vid_format.load(Ordering::Relaxed)) {
             VidFormats::H265 => {
@@ -227,7 +232,7 @@ impl NeoMediaFactoryImpl {
                 let source = source
                     .dynamic_cast::<AppSrc>()
                     .map_err(|_| anyhow!("Cannot convert appsrc"))?;
-                self.appsender.blocking_send(source)?;
+                self.vidsender.blocking_send(source)?;
             }
             VidFormats::H264 => {
                 debug!("Building H264 Pipeline");
@@ -258,7 +263,7 @@ impl NeoMediaFactoryImpl {
                 let source = source
                     .dynamic_cast::<AppSrc>()
                     .map_err(|_| anyhow!("Cannot convert appsrc"))?;
-                self.appsender.blocking_send(source)?;
+                self.vidsender.blocking_send(source)?;
             }
             VidFormats::Unknown => {
                 debug!("Building Unknown Pipeline");
@@ -288,6 +293,61 @@ impl NeoMediaFactoryImpl {
                 overlay.link(&encoder)?;
                 encoder.link(&payload)?;
             }
+        }
+
+        match AudFormats::from(self.shared.aud_format.load(Ordering::Relaxed)) {
+            AudFormats::Unknown => {}
+            AudFormats::Aac => {
+                debug!("Building Aac pipeline");
+                let source = make_element("appsrc", "audsrc")?
+                    .dynamic_cast::<AppSrc>()
+                    .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
+                source.set_base_time(ClockTime::from_mseconds(
+                    self.shared.microseconds.load(Ordering::Relaxed),
+                ));
+                source.set_is_live(true);
+                source.set_block(true);
+                source.set_property("emit-signals", &false);
+                source.set_max_bytes(52428800);
+                source.set_do_timestamp(false);
+                source.set_stream_type(AppStreamType::Stream);
+                let source = source
+                    .dynamic_cast::<Element>()
+                    .map_err(|_| anyhow!("Cannot cast back"))?;
+
+                let queue = make_element("queue", "audqueue")?;
+                let parser = make_element("aacparse", "audparser")?;
+                let decoder = make_element("decodebin", "auddecoder")?;
+                let encoder = make_element("audioconvert", "audencoder")?;
+                let payload = make_element("rtpL16pay", "pay1")?;
+
+                bin.add_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
+                Element::link_many(&[&source, &queue, &parser, &decoder])?;
+                Element::link_many(&[&encoder, &payload])?;
+                decoder.connect_pad_added(move |_element, pad| {
+                    debug!("Linking encoder to decoder: {:?}", pad.caps());
+                    let sink_pad = encoder
+                        .static_pad("sink")
+                        .expect("Encoder is missing its pad");
+                    pad.link(&sink_pad)
+                        .expect("Failed to link AAC decoder to encoder");
+                });
+
+                // decoder.link_filtered(
+                //     &encoder,
+                //         & Caps::builder("audio/x-raw")
+                //             .field("format", "S16BE")
+                //             .field("layout", "interleaved")
+                //             // .field("channels", 1)
+                //             .build(),
+                // )?;
+
+                let source = source
+                    .dynamic_cast::<AppSrc>()
+                    .map_err(|_| anyhow!("Cannot convert appsrc"))?;
+                self.audsender.blocking_send(source)?;
+            }
+            AudFormats::Adpcm => {}
         }
 
         bin.dynamic_cast::<Element>()

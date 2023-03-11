@@ -173,6 +173,7 @@ impl BcCamera {
                         break;
                     }
                 }
+                log::error!("Stopping media_sub");
             }
 
             let stop_video = Bc::new_from_xml(
