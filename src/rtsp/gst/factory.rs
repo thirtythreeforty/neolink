@@ -106,8 +106,15 @@ pub(crate) struct NeoMediaFactoryImpl {
     threads: JoinSet<AnyResult<()>>,
 }
 
+impl Drop for NeoMediaFactoryImpl {
+    fn drop(&mut self) {
+        log::info!("Dopping NeoMediaFactoryImpl");
+    }
+}
+
 impl Default for NeoMediaFactoryImpl {
     fn default() -> Self {
+        warn!("Constructing Factor Impl");
         let (datasender, datarx) = channel(3);
         let (appsender, rx_appsender) = channel(3);
         let shared: Arc<NeoMediaShared> = Default::default();
@@ -187,8 +194,10 @@ impl NeoMediaFactoryImpl {
         for element in bin.iterate_elements().into_iter().flatten() {
             bin.remove(&element)?;
         }
+
+        debug!("self.shared owners: {}", Arc::strong_count(&self.shared));
         // Now contruct the actual ones
-        match self.shared.vid_format.load(Ordering::Relaxed) {
+        match VidFormats::from(self.shared.vid_format.load(Ordering::Relaxed)) {
             VidFormats::H265 => {
                 debug!("Building H265 Pipeline");
                 let source = make_element("appsrc", "vidsrc")?

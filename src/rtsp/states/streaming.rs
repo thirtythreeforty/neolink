@@ -8,7 +8,7 @@ use log::*;
 use std::collections::HashMap;
 use tokio::task::{self, JoinHandle};
 
-use neolink_core::bc_protocol::StreamKind as Stream;
+use neolink_core::{bc_protocol::StreamKind as Stream, bcmedia::model::BcMedia};
 
 use super::{CameraState, Shared};
 
@@ -54,7 +54,17 @@ impl CameraState for Streaming {
                     .start_video(stream_thead, 0, strict_thread)
                     .await?;
                 while thread_abort_handle.is_live() {
+                    trace!("BcMediaStreamRecv");
                     let data = stream_data.get_data().await?;
+                    match &data {
+                        Ok(BcMedia::InfoV1(_)) => trace!("  - InfoV1"),
+                        Ok(BcMedia::InfoV2(_)) => trace!("  - InfoV2"),
+                        Ok(BcMedia::Iframe(_)) => trace!("  - Iframe"),
+                        Ok(BcMedia::Pframe(_)) => trace!("  - Pframe"),
+                        Ok(BcMedia::Aac(_)) => trace!("  - Aac"),
+                        Ok(BcMedia::Adpcm(_)) => trace!("  - Adpcm"),
+                        Err(_) => trace!("  - Error"),
+                    }
                     sender.send(data?).await?;
                 }
                 Ok(())

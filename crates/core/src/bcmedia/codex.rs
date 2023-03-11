@@ -58,6 +58,9 @@ impl Decoder for BcMediaCodex {
                     } else if src.is_empty() {
                         return Ok(None);
                     } else {
+                        if amount_skipped == 0 {
+                            trace!("Error in stream attempting to restore: {:?}", e);
+                        }
                         src.advance(1);
                         amount_skipped += 1;
                         continue;
