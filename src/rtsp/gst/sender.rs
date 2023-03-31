@@ -14,24 +14,15 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use super::{shared::*, AnyResult};
 
-#[derive(Hash, PartialEq, Eq)]
-pub(super) struct ClientData {
-    pub(super) appsrc: AppSrc,
-    pub(super) start_time: u64,
-    pub(super) inited: bool,
-}
-
 pub(super) struct NeoMediaSender {
     pub(super) data_source: ReceiverStream<BcMedia>,
-    pub(super) vidsource: ReceiverStream<AppSrc>,
-    pub(super) audsource: ReceiverStream<AppSrc>,
+    pub(super) clientsource: ReceiverStream<ClientPipelineData>,
     pub(super) shared: Arc<NeoMediaShared>,
     // Used to generate the key for the hashmaps
     pub(super) uid: AtomicU64,
     // Hashmap so we can alter the data in ClientData while also allowing for remove at any point
     // If you know a better collections pm me
-    pub(super) vidsrcs: HashMap<u64, ClientData>,
-    pub(super) audsrcs: HashMap<u64, ClientData>,
+    pub(super) clientdata: HashMap<u64, ClientPipelineData>,
     pub(super) waiting_for_iframe: bool,
 }
 
@@ -102,24 +93,9 @@ impl NeoMediaSender {
                         break;
                     }
                 }
-                v = self.vidsource.next() => {
-                    if let Some(appsrc) = v {
-                        self.vidsrcs.insert(self.uid.fetch_add(1, Ordering::Relaxed) , ClientData {
-                            appsrc,
-                            start_time: self.shared.microseconds.load(Ordering::Relaxed),
-                            inited: false,
-                        });
-                    } else {
-                        break;
-                    }
-                },
-                v = self.audsource.next() => {
-                    if let Some(appsrc) = v {
-                        self.audsrcs.insert(self.uid.fetch_add(1, Ordering::Relaxed), ClientData {
-                            appsrc,
-                            start_time: self.shared.microseconds.load(Ordering::Relaxed),
-                            inited: false,
-                        });
+                v = self.clientsource.next() => {
+                    if let Some(clientdata) = v {
+                        self.clientdata.insert(self.uid.fetch_add(1, Ordering::Relaxed) , clientdata);
                     } else {
                         break;
                     }
@@ -138,52 +114,62 @@ impl NeoMediaSender {
     }
 
     fn process_vidbuffer(&mut self, process_data: &ProcessData) -> AnyResult<()> {
-        self.vidsrcs.retain(|_, data| {
-            // If ! inited then we just joined the stream
-            // Send all data from the last iframe to catch up
-            // This should eliminate visual artifact that arise from recieving a pframe
-            // before an iframe
-            if !data.inited {
-                data.inited = true;
-                for (idx, resend_buffer) in process_data.resend.iter().enumerate() {
-                    if Self::send_buffer(&data.appsrc, resend_buffer.data.as_slice(), idx as u64, 0)
-                        .is_err()
-                    {
-                        return false; // If fails then this appsrc is dead
+        self.clientdata.retain(|_, data| {
+            if let Some(vidsrc) = data.vidsrc.as_ref() {
+                // If ! inited then we just joined the stream
+                // Send all data from the last iframe to catch up
+                // This should eliminate visual artifact that arise from recieving a pframe
+                // before an iframe
+                if !data.inited {
+                    data.inited = true;
+                    for (idx, resend_buffer) in process_data.resend.iter().enumerate() {
+                        if Self::send_buffer(vidsrc, resend_buffer.data.as_slice(), idx as u64, 0)
+                            .is_err()
+                        {
+                            return false; // If fails then this appsrc is dead
+                        }
                     }
                 }
+                Self::send_buffer(
+                    vidsrc,
+                    process_data.live.data.as_slice(),
+                    process_data.live.ms,
+                    data.start_time,
+                )
+                .is_ok() // If ok retain is true
+            } else {
+                // Audio only
+                true
             }
-            Self::send_buffer(
-                &data.appsrc,
-                process_data.live.data.as_slice(),
-                process_data.live.ms,
-                data.start_time,
-            )
-            .is_ok() // If ok retain is true
         });
 
         Ok(())
     }
 
     fn process_audbuffer(&mut self, buf: &[u8], frame_ms: u64) -> AnyResult<()> {
-        self.audsrcs.retain(|_, data| {
-            Self::send_buffer(&data.appsrc, buf, frame_ms, data.start_time).is_ok()
-            // If ok retain is true
+        self.clientdata.retain(|_, data| {
+            if let Some(audsrc) = data.vidsrc.as_ref() {
+                Self::send_buffer(audsrc, buf, frame_ms, data.start_time).is_ok()
+                // If ok retain is true
+            } else {
+                // video only
+                true
+            }
         });
 
         Ok(())
     }
 
     fn send_buffer(appsrc: &AppSrc, buf: &[u8], frame_ms: u64, start_time: u64) -> AnyResult<()> {
+        let micros = if frame_ms > start_time {
+            frame_ms - start_time
+        } else {
+            start_time
+        };
+
         let mut gst_buf = gstreamer::Buffer::with_size(buf.len()).unwrap();
         {
             let gst_buf_mut = gst_buf.get_mut().unwrap();
-
-            let micros = if frame_ms > start_time {
-                frame_ms - start_time
-            } else {
-                start_time
-            };
 
             let time = ClockTime::from_useconds(micros);
             gst_buf_mut.set_pts(time);

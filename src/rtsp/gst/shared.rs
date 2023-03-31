@@ -1,5 +1,6 @@
 //! Data shared between the various
 //! components that manage a media stream
+use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use std::convert::{From, Into};
 use std::sync::atomic::AtomicU64;
@@ -74,4 +75,12 @@ impl Default for NeoMediaShared {
             microseconds: AtomicU64::new(0),
         }
     }
+}
+
+#[derive(Default, Debug)]
+pub(super) struct ClientPipelineData {
+    pub(super) vidsrc: Option<AppSrc>,
+    pub(super) audsrc: Option<AppSrc>,
+    pub(super) start_time: u64,
+    pub(super) inited: bool,
 }

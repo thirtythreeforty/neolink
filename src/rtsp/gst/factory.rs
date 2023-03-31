@@ -100,8 +100,7 @@ unsafe impl Sync for NeoMediaFactory {}
 
 pub(crate) struct NeoMediaFactoryImpl {
     sender: Sender<BcMedia>,
-    vidsender: Sender<AppSrc>,
-    audsender: Sender<AppSrc>,
+    clientsender: Sender<ClientPipelineData>,
     shared: Arc<NeoMediaShared>,
     #[allow(dead_code)] // Not dead just need a handle to keep it alive and drop with this obj
     threads: JoinSet<AnyResult<()>>,
@@ -117,28 +116,24 @@ impl Default for NeoMediaFactoryImpl {
     fn default() -> Self {
         warn!("Constructing Factor Impl");
         let (datasender, datarx) = channel(3);
-        let (vidsender, rx_vidsender) = channel(3);
-        let (audsender, rx_audsender) = channel(3);
+        let (clientsender, rx_clientsender) = channel(3);
         let shared: Arc<NeoMediaShared> = Default::default();
 
         // Prepare thread that sends data into the appsrcs
         let mut threads: JoinSet<AnyResult<()>> = Default::default();
         let mut sender = NeoMediaSender {
             data_source: ReceiverStream::new(datarx),
-            vidsource: ReceiverStream::new(rx_vidsender),
-            audsource: ReceiverStream::new(rx_audsender),
+            clientsource: ReceiverStream::new(rx_clientsender),
             shared: shared.clone(),
             uid: Default::default(),
-            vidsrcs: Default::default(),
-            audsrcs: Default::default(),
+            clientdata: Default::default(),
             waiting_for_iframe: true,
         };
         threads.spawn(async move { sender.run().await });
 
         Self {
             sender: datasender,
-            vidsender,
-            audsender,
+            clientsender,
             shared,
             threads,
         }
@@ -201,6 +196,8 @@ impl NeoMediaFactoryImpl {
             bin.remove(&element)?;
         }
 
+        let mut client_data: ClientPipelineData = Default::default();
+
         // Now contruct the actual ones
         match VidFormats::from(self.shared.vid_format.load(Ordering::Relaxed)) {
             VidFormats::H265 => {
@@ -232,7 +229,7 @@ impl NeoMediaFactoryImpl {
                 let source = source
                     .dynamic_cast::<AppSrc>()
                     .map_err(|_| anyhow!("Cannot convert appsrc"))?;
-                self.vidsender.blocking_send(source)?;
+                client_data.vidsrc.replace(source);
             }
             VidFormats::H264 => {
                 debug!("Building H264 Pipeline");
@@ -263,7 +260,7 @@ impl NeoMediaFactoryImpl {
                 let source = source
                     .dynamic_cast::<AppSrc>()
                     .map_err(|_| anyhow!("Cannot convert appsrc"))?;
-                self.vidsender.blocking_send(source)?;
+                client_data.vidsrc.replace(source);
             }
             VidFormats::Unknown => {
                 debug!("Building Unknown Pipeline");
@@ -274,7 +271,7 @@ impl NeoMediaFactoryImpl {
                 overlay.set_property("text", "Stream not Ready");
                 overlay.set_property_from_str("valignment", "top");
                 overlay.set_property_from_str("halignment", "left");
-                overlay.set_property("font-desc", "Sans, 32");
+                overlay.set_property("font-desc", "Sans, 16");
                 let encoder = make_element("jpegenc", "encoder")?;
                 let payload = make_element("rtpjpegpay", "pay0")?;
 
@@ -345,10 +342,12 @@ impl NeoMediaFactoryImpl {
                 let source = source
                     .dynamic_cast::<AppSrc>()
                     .map_err(|_| anyhow!("Cannot convert appsrc"))?;
-                self.audsender.blocking_send(source)?;
+                client_data.audsrc.replace(source);
             }
             AudFormats::Adpcm => {}
         }
+
+        self.clientsender.blocking_send(client_data)?;
 
         bin.dynamic_cast::<Element>()
             .map_err(|_| anyhow!("Cannot cast back"))

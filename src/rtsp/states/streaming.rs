@@ -2,28 +2,25 @@
 //
 // Data is streamed into a gstreamer source
 
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
+use futures::future::FutureExt;
 use log::*;
-use std::collections::HashMap;
-use tokio::task::{self, JoinHandle};
+use tokio::task::JoinSet;
+use tokio::time::{timeout, Duration};
 
 use neolink_core::{bc_protocol::StreamKind as Stream, bcmedia::model::BcMedia};
 
 use super::{CameraState, Shared};
 
-use crate::rtsp::abort::AbortHandle;
-
 #[derive(Default)]
 pub(crate) struct Streaming {
-    handles: HashMap<Stream, JoinHandle<Result<(), Error>>>,
-    abort_handle: AbortHandle,
+    set: JoinSet<Result<()>>,
 }
 
 #[async_trait]
 impl CameraState for Streaming {
     async fn setup(&mut self, shared: &Shared) -> Result<(), Error> {
-        self.abort_handle.reset();
         // Create new gst outputs
         //
         // Otherwise use those already present
@@ -31,7 +28,7 @@ impl CameraState for Streaming {
             let tag = shared.get_tag_for_stream(stream);
             let sender = shared
                 .rtsp
-                .get_sender(tag)
+                .get_sender(&tag)
                 .await
                 .ok_or_else(|| anyhow!("Stream has not been created"))?;
 
@@ -46,70 +43,69 @@ impl CameraState for Streaming {
             );
 
             let thread_camera = shared.camera.clone();
-            let thread_abort_handle = self.abort_handle.clone();
             let stream_thead = *stream;
             let strict_thread = shared.strict;
-            let handle = task::spawn(async move {
+            let tag_thread = tag.clone();
+            let handle = self.set.spawn(async move {
                 let mut stream_data = thread_camera
                     .start_video(stream_thead, 0, strict_thread)
                     .await?;
-                while thread_abort_handle.is_live() {
-                    debug!("BcMediaStreamRecv");
-                    let data = stream_data.get_data().await?;
+                loop {
+                    debug!("{}: BcMediaStreamRecv", &tag_thread);
+                    let data = timeout(Duration::from_secs(15), stream_data.get_data()).await??;
                     match &data {
-                        Ok(BcMedia::InfoV1(_)) => debug!("  - InfoV1"),
-                        Ok(BcMedia::InfoV2(_)) => debug!("  - InfoV2"),
-                        Ok(BcMedia::Iframe(_)) => debug!("  - Iframe"),
-                        Ok(BcMedia::Pframe(_)) => debug!("  - Pframe"),
-                        Ok(BcMedia::Aac(_)) => debug!("  - Aac"),
-                        Ok(BcMedia::Adpcm(_)) => debug!("  - Adpcm"),
+                        Ok(BcMedia::InfoV1(_)) => debug!("{}:  - InfoV1", &tag_thread),
+                        Ok(BcMedia::InfoV2(_)) => debug!("{}:  - InfoV2", &tag_thread),
+                        Ok(BcMedia::Iframe(_)) => debug!("{}:  - Iframe", &tag_thread),
+                        Ok(BcMedia::Pframe(_)) => debug!("{}:  - Pframe", &tag_thread),
+                        Ok(BcMedia::Aac(_)) => debug!("{}:  - Aac", &tag_thread),
+                        Ok(BcMedia::Adpcm(_)) => debug!("{}:  - Adpcm", &tag_thread),
                         Err(_) => debug!("  - Error"),
                     }
                     sender.send(data?).await?;
                 }
-                debug!("Shutting down streaming thread");
-                Ok(())
             });
-
-            self.handles.entry(*stream).or_insert_with(|| handle);
         }
 
         Ok(())
     }
 
     async fn tear_down(&mut self, _shared: &Shared) -> Result<(), Error> {
-        self.abort_handle.abort();
-
-        if !self.handles.is_empty() {
-            for (stream, handle) in self.handles.drain() {
-                match handle.await {
-                    Ok(Err(e)) => return Err(e),
-                    Err(_) => return Err(anyhow!("Panicked while streaming {:?}", stream)),
-                    Ok(Ok(_)) => {}
-                }
-            }
-        }
-
+        self.set.shutdown().await;
         Ok(())
     }
 }
 
 impl Drop for Streaming {
     fn drop(&mut self) {
-        self.abort_handle.abort();
+        self.set.abort_all();
     }
 }
 
 impl Streaming {
     pub(crate) async fn is_running(&mut self) -> Result<()> {
-        if self.handles.iter().all(|(_, h)| !h.is_finished()) && self.abort_handle.is_live() {
-            return Ok(());
+        if self.set.is_empty() {
+            return Err(anyhow!("Streaming has no active tasks"));
         }
-        if !self.abort_handle.is_live() {
-            return Err(anyhow!("Stream aborted"));
-        }
-        for (s, h) in self.handles.drain() {
-            h.await?.context(format!("On stream: {:?}", s))?;
+        if let Some(res) = self.set.join_next().now_or_never() {
+            match res {
+                None => {
+                    return Err(anyhow!("Streaming has no active tasks"));
+                }
+                Some(Ok(Ok(()))) => {
+                    unreachable!();
+                }
+                Some(Ok(Err(e))) => {
+                    // Error in tasks
+                    self.set.abort_all();
+                    return Err(e);
+                }
+                Some(Err(e)) => {
+                    // Panic in tasks
+                    self.set.abort_all();
+                    return Err(anyhow!("Panic in streaming task: {:?}", e));
+                }
+            }
         }
         Ok(())
     }

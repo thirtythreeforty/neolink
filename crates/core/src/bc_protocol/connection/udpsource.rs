@@ -163,7 +163,7 @@ impl BcUdpSource {
             recieved: Default::default(),
             state: State::Normal,
             send_buffer: Default::default(),
-            ack_interval: interval(Duration::from_millis(100)), // Offical Client does ack every 10ms
+            ack_interval: interval(Duration::from_millis(10)), // Offical Client does ack every 10ms
             resend_interval: interval(Duration::from_millis(500)), // Offical Client does resend every 500ms
         }
     }
