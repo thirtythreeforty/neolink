@@ -336,7 +336,54 @@ pub struct RfAlarmCfg {
     /// reduce False alarm boolean
     pub reduceFalseAlarm: u8,
     /// XML time block for all week days
-    pub timeBlockList: String,
+    #[yaserde(rename = "timeBlockList")]
+    pub time_block_list: TimeBlockList,
+    /// The alarm handle to attach to this Rf
+    #[yaserde(rename = "alarmHandle")]
+    pub alarm_handle: AlarmHandle,
+}
+
+/// TimeBlockList XML
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[yaserde(rename = "timeBlockList")]
+pub struct TimeBlockList {
+    /// List of time block entries which disable/enable the PIR at a time
+    #[yaserde(rename = "timeBlock")]
+    pub time_block: Vec<TimeBlock>,
+}
+
+/// TimeBlock XML Used to set the time to enable/disable PIR dectection
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[yaserde(rename = "timeBlock")]
+pub struct TimeBlock {
+    /// Whether to enable or disable for this time block
+    pub enable: u8,
+    /// The day of the week for this block
+    pub weekDay: String,
+    /// Time to start this block
+    #[yaserde(rename = "beginHour")]
+    pub begin_hour: u8,
+    /// Time to end this block
+    #[yaserde(rename = "endHour")]
+    pub end_hour: u8,
+}
+
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+/// AlarmHandle Xml
+pub struct AlarmHandle {
+    /// Items in the alarm handle
+    pub item: Vec<AlarmHandleItem>,
+}
+
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+/// An item in the alarm handle
+#[yaserde(rename = "item")]
+pub struct AlarmHandleItem {
+    /// The channel ID
+    pub channel: u8,
+    /// The handle type: Known values, comma seperated list of snap,rec,push
+    #[yaserde(rename = "handleType")]
+    pub handle_type: String,
 }
 
 /// TalkConfig xml
