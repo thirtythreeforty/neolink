@@ -130,10 +130,12 @@ Control messages:
 Status Messages:
 `/status offline` Sent when the neolink goes offline this is a LastWill message
 `/status disconnected` Sent when the camera goes offline
-`/status/battery` Sent in reply to a `/query/battery` send an XML encoded version of the battery status
+`/status/battery` Sent in reply to a `/query/battery` an XML encoded version of the battery status
+`/status/pir` Sent in reply to a `/query/pir` an XML encoded version of the pir status
 
 Query Messages:
 `/query/battery` Request that the camera reports its battery level
+`/query/pir` Request that the camera reports its pir status
 
 ### Pause
 
