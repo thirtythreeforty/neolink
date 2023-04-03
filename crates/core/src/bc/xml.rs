@@ -238,6 +238,9 @@ pub struct Extension {
     /// The channel ID. This is usually `0` unless using an NVR
     #[yaserde(rename = "channelId")]
     pub channel_id: Option<u8>,
+    /// The rfID used in the PIR
+    #[yaserde(rename = "rfId")]
+    pub rf_id: Option<u8>,
 }
 
 impl Default for Extension {
@@ -248,6 +251,7 @@ impl Default for Extension {
             user_name: None,
             token: None,
             channel_id: None,
+            rf_id: None,
         }
     }
 }

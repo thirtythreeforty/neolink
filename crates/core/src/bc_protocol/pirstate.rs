@@ -18,7 +18,7 @@ impl BcCamera {
             },
             body: BcBody::ModernMsg(ModernMsg {
                 extension: Some(Extension {
-                    channel_id: Some(self.channel_id),
+                    rf_id: Some(self.channel_id),
                     ..Default::default()
                 }),
                 payload: None,
@@ -66,7 +66,7 @@ impl BcCamera {
             },
             body: BcBody::ModernMsg(ModernMsg {
                 extension: Some(Extension {
-                    channel_id: Some(self.channel_id),
+                    rf_id: Some(self.channel_id),
                     ..Default::default()
                 }),
                 payload: Some(BcPayloads::BcXml(BcXml {
