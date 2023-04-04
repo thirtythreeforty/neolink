@@ -30,6 +30,7 @@ use validator::Validate;
 mod cmdline;
 mod config;
 mod pir;
+mod readpir;
 mod reboot;
 mod rtsp;
 mod statusled;
@@ -39,7 +40,7 @@ mod utils;
 use cmdline::{Command, Opt};
 use config::Config;
 
-fn main() -> Result<()> {
+fn main() -> Option<u8> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     info!(
@@ -81,10 +82,13 @@ fn main() -> Result<()> {
         Some(Command::Pir(opts)) => {
             pir::main(opts, config)?;
         }
+        Some(Command::ReadPir(opts)) => {
+            return Some(readpir::main(opts, config)?);
+        }
         Some(Command::Talk(opts)) => {
             talk::main(opts, config)?;
         }
     }
 
-    Ok(())
+    None
 }

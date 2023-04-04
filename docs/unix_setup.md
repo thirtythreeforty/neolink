@@ -9,7 +9,7 @@ correct names yourselves.
 
 The general steps we will follow in this guide are as follows:
 
-1. Install dependancies
+1. Install dependencies
 
 2. Download neolink
 
