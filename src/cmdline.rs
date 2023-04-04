@@ -24,5 +24,6 @@ pub enum Command {
     StatusLight(super::statusled::Opt),
     Reboot(super::reboot::Opt),
     Pir(super::pir::Opt),
+    ReadPir(super::readpir::Opt),
     Talk(super::talk::Opt),
 }

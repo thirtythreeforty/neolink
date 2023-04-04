@@ -9,7 +9,7 @@ correct names yourselves.
 
 The general steps we will follow in this guide are as follows:
 
-1. Install dependancies
+1. Install dependencies
 
 2. Download neolink
 
@@ -211,7 +211,7 @@ If the mainStream fails but the subStream succeeds you may need to add
 
 ## Common Errors
 
-- Missing dependancies
+- Missing dependencies
 
   If when start neolink you get a message such as:
 
