@@ -4,6 +4,7 @@ use crate::bc::model::*;
 impl BcCamera {
     /// Reboot the camera
     pub async fn reboot(&self) -> Result<()> {
+        self.has_ability_rw("reboot").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let mut sub = connection.subscribe(msg_num).await?;

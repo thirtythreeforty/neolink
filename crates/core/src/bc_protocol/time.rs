@@ -11,6 +11,7 @@ impl BcCamera {
     /// returns either an error or an option with the offsetted date time
     ///
     pub async fn get_time(&self) -> Result<Option<OffsetDateTime>> {
+        self.has_ability_ro("general").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let mut sub_get_general = connection.subscribe(msg_num).await?;
@@ -95,6 +96,7 @@ impl BcCamera {
     /// returns Ok(()) or error
     ///
     pub async fn set_time(&self, timestamp: OffsetDateTime) -> Result<()> {
+        self.has_ability_rw("general").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let mut sub_set_general = connection.subscribe(msg_num).await?;

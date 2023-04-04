@@ -14,6 +14,7 @@ impl BcCamera {
     /// It is also sent when the request for talk config returns status code 422
     ///
     pub async fn talk_stop(&self) -> Result<()> {
+        self.has_ability_rw("talk").await?;
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
@@ -58,6 +59,7 @@ impl BcCamera {
     /// Requests the [`TalkAbility`] xml
     ///
     pub async fn talk_ability(&self) -> Result<TalkAbility> {
+        self.has_ability_ro("talk").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let mut sub_get = connection.subscribe(msg_num).await?;
@@ -117,6 +119,7 @@ impl BcCamera {
     ///
     ///
     pub async fn talk(&self, adpcm: &[u8], talk_config: TalkConfig) -> Result<()> {
+        self.has_ability_rw("talk").await?;
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
@@ -258,6 +261,7 @@ impl BcCamera {
     ///
     ///
     pub async fn talk_stream(&self, rx: Receiver<Vec<u8>>, talk_config: TalkConfig) -> Result<()> {
+        self.has_ability_rw("talk").await?;
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();

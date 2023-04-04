@@ -3,10 +3,15 @@ use futures::stream::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::net::ToSocketAddrs;
-use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicBool, AtomicU16, Ordering},
+};
+use tokio::sync::RwLock;
 
 use Md5Trunc::*;
 
+mod abilityinfo;
 mod battery;
 mod connection;
 mod credentials;
@@ -40,6 +45,13 @@ pub use stream::{StreamData, StreamKind};
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Clone, Copy)]
+enum ReadKind {
+    ReadOnly,
+    ReadWrite,
+    None,
+}
+
 ///
 /// This is the primary struct of this library when interacting with the camera
 ///
@@ -50,6 +62,7 @@ pub struct BcCamera {
     message_num: AtomicU16,
     // Certain commands such as logout require the username/pass in plain text.... why....???
     credentials: Credentials,
+    abilities: RwLock<HashMap<String, ReadKind>>,
 }
 
 /// Used to choode the print format of various status messages like battery levels
@@ -334,9 +347,12 @@ impl BcCamera {
             channel_id,
             logged_in: AtomicBool::new(false),
             credentials: Credentials::new(username, passwd),
+            abilities: Default::default(),
         };
         me.keepalive().await?;
-        me.monitor_battery(aux_info_format).await?;
+        if let Err(e) = me.monitor_battery(aux_info_format).await {
+            warn!("Could not monitor battery: {:?}", e);
+        }
         Ok(me)
     }
 
@@ -354,6 +370,42 @@ impl BcCamera {
     // This will only work after login
     fn get_credentials(&self) -> &Credentials {
         &self.credentials
+    }
+
+    async fn has_ability<T: Into<String>>(&self, name: T) -> ReadKind {
+        let abilities = self.abilities.read().await;
+        if let Some(kind) = abilities.get(&name.into()).copied() {
+            kind
+        } else {
+            ReadKind::None
+        }
+    }
+    async fn has_ability_ro<T: Into<String>>(&self, name: T) -> Result<()> {
+        let s: String = name.into();
+        match self.has_ability(&s).await {
+            ReadKind::ReadWrite | ReadKind::ReadOnly => Ok(()),
+            ReadKind::None => Err(Error::MissingAbility {
+                name: s.clone(),
+                requested: "read".to_string(),
+                actual: "none".to_string(),
+            }),
+        }
+    }
+    async fn has_ability_rw<T: Into<String>>(&self, name: T) -> Result<()> {
+        let s: String = name.into();
+        match self.has_ability(&s).await {
+            ReadKind::ReadWrite => Ok(()),
+            ReadKind::ReadOnly => Err(Error::MissingAbility {
+                name: s.clone(),
+                requested: "write".to_string(),
+                actual: "read".to_string(),
+            }),
+            ReadKind::None => Err(Error::MissingAbility {
+                name: s.clone(),
+                requested: "write".to_string(),
+                actual: "none".to_string(),
+            }),
+        }
     }
 }
 

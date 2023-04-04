@@ -82,6 +82,9 @@ pub struct BcXml {
     /// Recieved on request for battery info
     #[yaserde(rename = "BatteryInfo")]
     pub battery_info: Option<BatteryInfo>,
+    /// Recieved on request for a users persmissions/capabilitoes
+    #[yaserde(rename = "AbilityInfo")]
+    pub ability_info: Option<AbilityInfo>,
 }
 
 impl BcXml {
@@ -559,6 +562,56 @@ pub struct BatteryInfo {
     /// Battery version info: Known values 2
     #[yaserde(rename = "batteryVersion")]
     pub battery_version: u32,
+}
+
+/// The ability battery info
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AbilityInfo {
+    /// Username with this ability
+    #[yaserde(rename = "userName")]
+    pub username: String,
+    /// System permissions
+    pub system: Option<AbilityInfoToken>,
+    /// Network permissions
+    pub network: Option<AbilityInfoToken>,
+    /// Alarm permissions
+    pub alarm: Option<AbilityInfoToken>,
+    /// Image permissions
+    pub image: Option<AbilityInfoToken>,
+    /// Video permissions
+    pub video: Option<AbilityInfoToken>,
+    /// Secutiry permissions
+    pub security: Option<AbilityInfoToken>,
+    /// Replay permissions
+    pub replay: Option<AbilityInfoToken>,
+    /// PTZ permissions
+    #[yaserde(rename = "PTZ")]
+    pub ptz: Option<AbilityInfoToken>,
+    /// IO permissions
+    #[yaserde(rename = "IO")]
+    pub io: Option<AbilityInfoToken>,
+    /// Streaming permissions
+    pub streaming: Option<AbilityInfoToken>,
+}
+
+/// Ability info for system token
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AbilityInfoToken {
+    /// Submodule for this ability info token
+    #[yaserde(rename = "subModule")]
+    pub sub_module: Vec<AbilityInfoSubModule>,
+}
+
+/// Token submodule infomation
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[yaserde(rename = "subModule")]
+pub struct AbilityInfoSubModule {
+    /// The channel the for the camera usually 0
+    #[yaserde(rename = "channelId")]
+    pub channel_id: Option<u8>,
+    /// The comma seperated list of permissions like this: `general_rw, norm_rw, version_ro`
+    #[yaserde(rename = "abilityValue")]
+    pub ability_value: String,
 }
 
 /// Convience function to return the xml version used throughout the library
