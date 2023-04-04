@@ -20,12 +20,16 @@
 //!
 //! Neolink source code is available online at <https://github.com/thirtythreeforty/neolink>
 //!
+use std::fs;
+
 use anyhow::{Context, Result};
 use env_logger::Env;
 use log::*;
-use std::fs;
 use structopt::StructOpt;
 use validator::Validate;
+
+use cmdline::{Command, Opt};
+use config::Config;
 
 mod cmdline;
 mod config;
@@ -37,10 +41,7 @@ mod statusled;
 mod talk;
 mod utils;
 
-use cmdline::{Command, Opt};
-use config::Config;
-
-fn main() -> Option<u8> {
+fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     info!(
@@ -83,12 +84,12 @@ fn main() -> Option<u8> {
             pir::main(opts, config)?;
         }
         Some(Command::ReadPir(opts)) => {
-            return Some(readpir::main(opts, config)?);
+            readpir::main(opts, config)?;
         }
         Some(Command::Talk(opts)) => {
             talk::main(opts, config)?;
         }
     }
 
-    None
+    Ok(())
 }

@@ -9,7 +9,7 @@
 /// ```bash
 /// # To turn the pir sensor on
 /// neolink readpir --config=config.toml CameraName
-/// # return true or false
+/// # return 1 if enabled or 0 if disabled
 ///
 use anyhow::{Context, Result};
 
@@ -22,9 +22,10 @@ pub(crate) use cmdline::Opt;
 /// Entry point for the pir subcommand
 ///
 /// Opt is the command line options
-pub(crate) fn main(opt: Opt, config: Config) -> Result<u8> {
+pub(crate) fn main(opt: Opt, config: Config) -> Result<()> {
     let mut camera = find_and_connect(&config, &opt.camera)?;
     let result = camera.get_pirstate()
         .context("Error retrieving camera pir state")?;
-    Ok(result.enable)
+    println!("{}", result.enable);
+    Ok(())
 }
