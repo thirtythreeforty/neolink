@@ -211,7 +211,7 @@ If the mainStream fails but the subStream succeeds you may need to add
 
 ## Common Errors
 
-- Missing dependancies
+- Missing dependencies
 
   If when start neolink you get a message such as:
 
