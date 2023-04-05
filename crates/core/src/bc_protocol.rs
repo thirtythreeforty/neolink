@@ -167,19 +167,9 @@ impl BcCamera {
         {
             let mut sockets = vec![];
             match options.port {
-                None => {
+                None | Some(2015) | Some(2018) => {
                     for addr in options.addrs.iter() {
                         sockets.push(SocketAddr::new(*addr, 2018));
-                        sockets.push(SocketAddr::new(*addr, 2015));
-                    }
-                }
-                Some(2015) => {
-                    for addr in options.addrs.iter() {
-                        sockets.push(SocketAddr::new(*addr, 2018));
-                    }
-                }
-                Some(2018) => {
-                    for addr in options.addrs.iter() {
                         sockets.push(SocketAddr::new(*addr, 2015));
                     }
                 }
@@ -342,7 +332,7 @@ impl BcCamera {
         let me = Self {
             connection: Arc::new(conn),
             message_num: AtomicU16::new(0),
-            channel_id: options.channel_id,
+            channel_id: options.channel_idchannel_id,
             logged_in: AtomicBool::new(false),
             credentials: Credentials::new(username, passwd),
             abilities: Default::default(),
@@ -405,6 +395,10 @@ impl BcCamera {
             }),
         }
     }
+
+    }
+
+    }
 }
 
 /// The Baichuan library has a very peculiar behavior where it always zeros the last byte.  I
@@ -436,6 +430,4 @@ fn test_md5_string() {
     );
     assert_eq!(
         md5_string("admin", ZeroLast),
-        "21232F297A57A5A743894A0E4A801FC\0"
-    );
-}
+        "21232F297A57A5A74389
