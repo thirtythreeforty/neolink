@@ -1,35 +1,53 @@
 use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
+use tokio::time::{interval, Duration};
 
 impl BcCamera {
     /// Get the [RfAlarmCfg] xml which contains the PIR status of the camera
     pub async fn get_pirstate(&self) -> Result<RfAlarmCfg> {
         self.has_ability_ro("rfAlarm").await?;
         let connection = self.get_connection();
-        let msg_num = self.new_message_num();
-        let mut sub_get = connection.subscribe(msg_num).await?;
-        let get = Bc {
-            meta: BcMeta {
-                msg_id: MSG_ID_GET_PIR_ALARM,
-                channel_id: self.channel_id,
-                msg_num,
-                response_code: 0,
-                stream_type: 0,
-                class: 0x6414,
-            },
-            body: BcBody::ModernMsg(ModernMsg {
-                extension: Some(Extension {
-                    rf_id: Some(self.channel_id),
-                    ..Default::default()
+        let msg;
+        let mut reties: usize = 0;
+        let mut retry_interval = interval(Duration::from_millis(500));
+        loop {
+            retry_interval.tick().await;
+            let msg_num = self.new_message_num();
+            let mut sub_get = connection.subscribe(msg_num).await?;
+            let get = Bc {
+                meta: BcMeta {
+                    msg_id: MSG_ID_GET_PIR_ALARM,
+                    channel_id: self.channel_id,
+                    msg_num,
+                    response_code: 0,
+                    stream_type: 0,
+                    class: 0x6414,
+                },
+                body: BcBody::ModernMsg(ModernMsg {
+                    extension: Some(Extension {
+                        rf_id: Some(self.channel_id),
+                        ..Default::default()
+                    }),
+                    payload: None,
                 }),
-                payload: None,
-            }),
-        };
+            };
 
-        sub_get.send(get).await?;
-        let msg = sub_get.recv().await?;
-        if msg.meta.response_code != 200 {
-            return Err(Error::CameraServiceUnavaliable);
+            sub_get.send(get).await?;
+            let intermediant_msg = sub_get.recv().await?;
+            if intermediant_msg.meta.response_code == 400 {
+                // Retryable
+                if reties < 5 {
+                    reties += 1;
+                    continue;
+                } else {
+                    return Err(Error::CameraServiceUnavaliable);
+                }
+            } else if intermediant_msg.meta.response_code != 200 {
+                return Err(Error::CameraServiceUnavaliable);
+            } else {
+                msg = intermediant_msg;
+                break;
+            }
         }
 
         if let BcBody::ModernMsg(ModernMsg {
