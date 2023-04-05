@@ -115,7 +115,6 @@ pub enum ConnectionProtocol {
     Udp,
 }
 
-
 enum CameraLocation {
     Tcp(SocketAddr),
     Udp(DiscoveryResult),
