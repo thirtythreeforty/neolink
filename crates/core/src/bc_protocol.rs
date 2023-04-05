@@ -104,9 +104,10 @@ pub enum PrintFormat {
 }
 
 /// Type of connection to try
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ConnectionProtocol {
     /// TCP and UDP
+    #[default]
     TcpUdp,
     /// TCP only
     Tcp,
@@ -114,11 +115,6 @@ pub enum ConnectionProtocol {
     Udp,
 }
 
-impl Default for ConnectionProtocol {
-    fn default() -> Self {
-        ConnectionProtocol::TcpUdp
-    }
-}
 
 enum CameraLocation {
     Tcp(SocketAddr),
@@ -348,7 +344,7 @@ impl BcCamera {
             abilities: Default::default(),
         };
         me.keepalive().await?;
-        if let Err(e) = me.monitor_battery(aux_info_format).await {
+        if let Err(e) = me.monitor_battery(options.aux_printing).await {
             warn!("Could not monitor battery: {:?}", e);
         }
         Ok(me)
