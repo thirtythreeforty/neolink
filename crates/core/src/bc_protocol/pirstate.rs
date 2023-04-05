@@ -7,7 +7,6 @@ impl BcCamera {
     pub async fn get_pirstate(&self) -> Result<RfAlarmCfg> {
         self.has_ability_ro("rfAlarm").await?;
         let connection = self.get_connection();
-        let msg;
         let mut reties: usize = 0;
         let mut retry_interval = interval(Duration::from_millis(500));
         loop {
@@ -33,8 +32,8 @@ impl BcCamera {
             };
 
             sub_get.send(get).await?;
-            let intermediant_msg = sub_get.recv().await?;
-            if intermediant_msg.meta.response_code == 400 {
+            let msg = sub_get.recv().await?;
+            if msg.meta.response_code == 400 {
                 // Retryable
                 if reties < 5 {
                     reties += 1;
@@ -42,29 +41,27 @@ impl BcCamera {
                 } else {
                     return Err(Error::CameraServiceUnavaliable);
                 }
-            } else if intermediant_msg.meta.response_code != 200 {
+            } else if msg.meta.response_code != 200 {
                 return Err(Error::CameraServiceUnavaliable);
             } else {
-                msg = intermediant_msg;
-                break;
-            }
-        }
-
-        if let BcBody::ModernMsg(ModernMsg {
-            payload:
-                Some(BcPayloads::BcXml(BcXml {
-                    rf_alarm_cfg: Some(pirstate),
+                // Valid message with response_code == 200
+                if let BcBody::ModernMsg(ModernMsg {
+                    payload:
+                        Some(BcPayloads::BcXml(BcXml {
+                            rf_alarm_cfg: Some(pirstate),
+                            ..
+                        })),
                     ..
-                })),
-            ..
-        }) = msg.body
-        {
-            Ok(pirstate)
-        } else {
-            Err(Error::UnintelligibleReply {
-                reply: std::sync::Arc::new(Box::new(msg)),
-                why: "Expected PirSate xml but it was not recieved",
-            })
+                }) = msg.body
+                {
+                    return Ok(pirstate);
+                } else {
+                    return Err(Error::UnintelligibleReply {
+                        reply: std::sync::Arc::new(Box::new(msg)),
+                        why: "Expected PirSate xml but it was not recieved",
+                    });
+                }
+            }
         }
     }
 
