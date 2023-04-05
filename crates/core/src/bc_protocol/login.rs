@@ -164,7 +164,7 @@ impl BcCamera {
                 }
             }
         }
-            
+
         // Populate the list of abilities this user has with the camera
         self.polulate_abilities().await?;
         Ok(device_info)
