@@ -27,14 +27,12 @@ pub const MSG_ID_MOTION_REQUEST: u32 = 31;
 pub const MSG_ID_MOTION: u32 = 33;
 /// Version messages have this ID
 pub const MSG_ID_VERSION: u32 = 80;
-/// Getting PIR status messages have this ID
-pub const MSG_ID_GET_PIR_ALARM: u32 = 212;
-/// Setting PIR status messages have this ID
-pub const MSG_ID_START_PIR_ALARM: u32 = 213;
 /// Ping messages have this ID
 pub const MSG_ID_PING: u32 = 93;
 /// General system info messages have this ID
 pub const MSG_ID_GET_GENERAL: u32 = 104;
+/// Used to get the abilities of a user
+pub const MSG_ID_ABILITY_INFO: u32 = 151;
 /// Setting general system info (clock mostly) messages have this ID
 pub const MSG_ID_SET_GENERAL: u32 = 105;
 /// Will send the talk config for talk back data to follow this msg
@@ -45,6 +43,10 @@ pub const MSG_ID_TALK: u32 = 202;
 pub const MSG_ID_GET_LED_STATUS: u32 = 208;
 /// Setting the LED status is done with this ID
 pub const MSG_ID_SET_LED_STATUS: u32 = 209;
+/// Getting PIR status messages have this ID
+pub const MSG_ID_GET_PIR_ALARM: u32 = 212;
+/// Setting PIR status messages have this ID
+pub const MSG_ID_START_PIR_ALARM: u32 = 213;
 /// UDP Keep alive
 pub const MSG_ID_UDP_KEEP_ALIVE: u32 = 234;
 /// Battery message initiaed by the camera

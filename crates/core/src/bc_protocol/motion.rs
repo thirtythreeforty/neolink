@@ -86,6 +86,7 @@ impl BcCamera {
     /// This message tells the camera to send the motion events to us
     /// Which are the recieved on msgid 33
     async fn start_motion_query(&self) -> Result<u16> {
+        self.has_ability_rw("motion").await?;
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();

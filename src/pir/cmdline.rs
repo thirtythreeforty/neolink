@@ -19,5 +19,5 @@ pub struct Opt {
     pub camera: String,
     /// Whether to turn the PIR ON or OFF
     #[structopt(parse(try_from_str = onoff_parse), name = "on|off")]
-    pub on: bool,
+    pub on: Option<bool>,
 }

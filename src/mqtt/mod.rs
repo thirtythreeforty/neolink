@@ -11,6 +11,7 @@ use log::*;
 /// Control messages:
 ///
 /// - `/control/led [on|off]` Turns status LED on/off
+/// - `/control/pir [on|off]` Turns PIR on/off
 /// - `/control/ir [on|off|auto]` Turn IR lights on/off or automatically via light detection
 /// - `/control/reboot` Reboot the camera
 /// - `/control/ptz` [up|down|left|right|in|out] (amount) Control the PTZ movements, amount defaults to 32.0
@@ -20,10 +21,12 @@ use log::*;
 /// `/status offline` Sent when the neolink goes offline this is a LastWill message
 /// `/status disconnected` Sent when the camera goes offline
 /// `/status/battery` Sent in reply to a `/query/battery`
+/// `/status/pir` Sent in reply to a `/query/pir`
 ///
 /// Query Messages:
 ///
-/// `/query/battery` Request that the camera reports its battery level (Not Yet Implemented)
+/// `/query/battery` Request that the camera reports its battery level
+/// `/query/pir` Request that the camera reports its pir status
 ///
 ///
 /// # Usage
@@ -193,7 +196,7 @@ async fn listen_on_camera(
                         message: "on",
                     } => {
                         if event_cam.send_message(Messages::IRLedOn).await.is_err() {
-                            error!("Failed to set camera status light off");
+                            error!("Failed to set camera status light on");
                         }
                     }
                     MqttReplyRef {
@@ -256,6 +259,22 @@ async fn listen_on_camera(
                         }
                     }
                     MqttReplyRef {
+                        topic: "control/pir",
+                        message: "on",
+                    } => {
+                        if event_cam.send_message(Messages::PIROn).await.is_err() {
+                            error!("Failed to set pir on");
+                        }
+                    }
+                    MqttReplyRef {
+                        topic: "control/pir",
+                        message: "off",
+                    } => {
+                        if event_cam.send_message(Messages::PIROff).await.is_err() {
+                            error!("Failed to set pir off");
+                        }
+                    }
+                    MqttReplyRef {
                         topic: "query/battery",
                         ..
                     } => match event_cam.send_message_with_reply(Messages::Battery).await {
@@ -264,7 +283,17 @@ async fn listen_on_camera(
                                 error!("Failed to send battery status reply");
                             }
                         }
-                        Err(_) => error!("Failed to set camera status light off"),
+                        Err(_) => error!("Failed to get battery status"),
+                    },
+                    MqttReplyRef {
+                        topic: "query/pir", ..
+                    } => match event_cam.send_message_with_reply(Messages::PIRQuery).await {
+                        Ok(reply) => {
+                            if mqtt.send_message("status/pir", &reply, false).is_err() {
+                                error!("Failed to send pir status reply");
+                            }
+                        }
+                        Err(_) => error!("Failed to get pir status"),
                     },
                     _ => {}
                 }

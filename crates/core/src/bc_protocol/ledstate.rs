@@ -4,6 +4,7 @@ use crate::bc::{model::*, xml::*};
 impl BcCamera {
     /// Get the [LedState] xml which contains the LED status of the camera
     pub async fn get_ledstate(&self) -> Result<LedState> {
+        self.has_ability_ro("ledState").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let mut sub_get = connection.subscribe(msg_num).await?;
@@ -51,6 +52,7 @@ impl BcCamera {
 
     /// Set the led lights using the [LedState] xml
     pub async fn set_ledstate(&self, mut led_state: LedState) -> Result<()> {
+        self.has_ability_rw("ledState").await?;
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();

@@ -20,6 +20,7 @@ pub enum Direction {
 impl BcCamera {
     /// Send a PTZ message to the camera
     pub async fn send_ptz(&self, direction: Direction, amount: f32) -> Result<()> {
+        self.has_ability_rw("control").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let mut sub_set = connection.subscribe(msg_num).await?;

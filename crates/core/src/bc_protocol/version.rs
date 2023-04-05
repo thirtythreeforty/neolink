@@ -4,6 +4,7 @@ use crate::bc::{model::*, xml::*};
 impl BcCamera {
     /// Request the [VersionInfo] xml
     pub async fn version(&self) -> Result<VersionInfo> {
+        self.has_ability_ro("version").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let mut sub_version = connection.subscribe(msg_num).await?;

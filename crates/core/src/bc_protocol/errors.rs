@@ -143,6 +143,22 @@ pub enum Error {
     #[error(display = "Nom Parsing error: {}", _0)]
     NomError(String),
 
+    /// Raised when a camera/user lacks an ability
+    #[error(
+        display = "Missing ability: {} with {} permission has only {}",
+        name,
+        requested,
+        actual
+    )]
+    MissingAbility {
+        /// Name of the ability
+        name: String,
+        /// Requested permission (read/write)
+        requested: String,
+        /// Actual permission (read/write/none)
+        actual: String,
+    },
+
     /// A generic catch all error
     #[error(display = "Other error: {}", _0)]
     Other(&'static str),

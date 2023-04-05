@@ -166,6 +166,7 @@ local message_types = {
   [210]="<PTOP>",
   [211]="<PTOP> (write)",
   [212]="<rfAlarmCfg>",
+  [213]="<rfAlarmCfg> (write)",
   [216]="<EmailTask> (write)",
   [217]="<EmailTask>",
   [218]="<PushTask> (write)",
@@ -179,6 +180,8 @@ local message_types = {
   [272]="<findAlarmVideo>",
   [273]="<alarmVideoInfo>",
   [274]="<findAlarmVideo>",
+  [319]="<timelapseCfg>",
+  [342]="<AiDetectCfg>",
 }
 
 local message_classes = {

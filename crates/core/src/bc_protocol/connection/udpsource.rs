@@ -253,12 +253,15 @@ impl UdpPayloadSource {
 
     fn handle_ack(&mut self, ack: UdpAck) {
         let start = ack.packet_id;
-        self.sent.retain(|&k, _| k > start);
+        // -1 is the special case of no messages recieved
+        if start != 0xFFFFFFFF {
+            self.sent.retain(|&k, _| k > start);
 
-        for (idx, &value) in ack.payload.iter().enumerate() {
-            let packet_id = (start + 1) + idx as u32;
-            if value > 0 {
-                self.sent.remove(&packet_id);
+            for (idx, &value) in ack.payload.iter().enumerate() {
+                let packet_id = (start + 1) + idx as u32;
+                if value > 0 {
+                    self.sent.remove(&packet_id);
+                }
             }
         }
     }
@@ -508,7 +511,7 @@ impl futures::AsyncWrite for UdpPayloadSource {
 
 /// Helper to create a TcpStream with a connect timeout
 async fn connect() -> Result<UdpSocket> {
-    let mut ports: Vec<u16> = (53500..54000).into_iter().collect();
+    let mut ports: Vec<u16> = (53500..54000).collect();
     let mut rng = thread_rng();
     ports.shuffle(&mut rng);
 
