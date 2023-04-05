@@ -2,11 +2,13 @@
 
 use std::convert::TryInto;
 
-/// Used for caching the credentials
+/// Used for caching and supplying the credentials
 #[derive(Clone)]
-pub(crate) struct Credentials {
-    pub(crate) username: String,
-    pub(crate) password: Option<String>,
+pub struct Credentials {
+    /// The username to login to the camera with
+    pub username: String,
+    /// The password to use for login. Some camera allow this to be ommited
+    pub password: Option<String>,
 }
 
 impl Default for Credentials {

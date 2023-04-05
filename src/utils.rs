@@ -4,17 +4,27 @@ use log::*;
 
 use super::config::{CameraConfig, Config};
 use anyhow::{anyhow, Context, Error, Result};
-use neolink_core::bc_protocol::{BcCamera, DiscoveryMethods, MaxEncryption, PrintFormat};
-use std::fmt::{Display, Error as FmtError, Formatter};
+use neolink_core::bc_protocol::{
+    BcCamera, BcCameraOpt, ConnectionProtocol, Credentials, DiscoveryMethods, MaxEncryption,
+};
+use std::{
+    fmt::{Display, Error as FmtError, Formatter},
+    net::{IpAddr, ToSocketAddrs},
+    str::FromStr,
+};
 
 pub(crate) enum AddressOrUid {
     Address(String),
     Uid(String, DiscoveryMethods),
+    AddressWithUid(String, String, DiscoveryMethods),
 }
 
 impl Display for AddressOrUid {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
+            AddressOrUid::AddressWithUid(addr, uid, _) => {
+                write!(f, "Address: {}, UID: {}", addr, uid)
+            }
             AddressOrUid::Address(host) => write!(f, "Address: {}", host),
             AddressOrUid::Uid(host, _) => write!(f, "UID: {}", host),
         }
@@ -26,55 +36,66 @@ impl AddressOrUid {
     pub(crate) fn new(
         address: &Option<String>,
         uid: &Option<String>,
-        disc_method: &str,
+        method: &DiscoveryMethods,
     ) -> Result<Self, Error> {
         match (address, uid) {
             (None, None) => Err(anyhow!("Neither address or uid given")),
-            (Some(_), Some(_)) => Err(anyhow!("Either address or uid should be given not both")),
+            (Some(host), Some(uid)) => Ok(AddressOrUid::AddressWithUid(
+                host.clone(),
+                uid.clone(),
+                *method,
+            )),
             (Some(host), None) => Ok(AddressOrUid::Address(host.clone())),
-            (None, Some(host)) => {
-                let method = match disc_method.to_lowercase().as_str() {
-                    "none" => DiscoveryMethods::None,
-                    "local" => DiscoveryMethods::Local,
-                    "remote" => DiscoveryMethods::Remote,
-                    "map" => DiscoveryMethods::Map,
-                    "relay" => DiscoveryMethods::Relay,
-                    "debug" => DiscoveryMethods::Debug,
-                    n => {
-                        warn!("Unrecognised discovery method: {}. Using Local", n);
-                        DiscoveryMethods::Local
-                    }
-                };
-                Ok(AddressOrUid::Uid(host.clone(), method))
-            }
+            (None, Some(host)) => Ok(AddressOrUid::Uid(host.clone(), *method)),
         }
     }
 
     // Convience method to get the BcCamera with the appropiate method
-    pub(crate) async fn connect_camera<T: Into<String>, U: Into<String>>(
+    // from a camera_config
+    pub(crate) async fn connect_camera(
         &self,
-        channel_id: u8,
-        username: T,
-        passwd: Option<U>,
-        aux_print_format: PrintFormat,
+        camera_config: &CameraConfig,
     ) -> Result<BcCamera, Error> {
-        match self {
-            AddressOrUid::Address(host) => {
-                Ok(
-                    BcCamera::new_with_addr(host, channel_id, username, passwd, aux_print_format)
-                        .await?,
-                )
+        let (port, addrs) = {
+            if let Some(addr_str) = camera_config.camera_addr.as_ref() {
+                match addr_str.to_socket_addrs() {
+                    Ok(addr_iter) => {
+                        let mut port = None;
+                        let mut ipaddrs = vec![];
+                        for addr in addr_iter {
+                            port = Some(addr.port());
+                            ipaddrs.push(addr.ip());
+                        }
+                        Ok((port, ipaddrs))
+                    }
+                    Err(_) => match IpAddr::from_str(addr_str) {
+                        Ok(ip) => Ok((None, vec![ip])),
+                        Err(_) => Err(anyhow!("Could not parse address in config")),
+                    },
+                }
+            } else {
+                Ok((None, vec![]))
             }
-            AddressOrUid::Uid(host, method) => Ok(BcCamera::new_with_uid(
-                host,
-                channel_id,
-                username,
-                passwd,
-                *method,
-                aux_print_format,
-            )
-            .await?),
-        }
+        }?;
+
+        let options = BcCameraOpt {
+            name: camera_config.name.clone(),
+            channel_id: camera_config.channel_id,
+            addrs,
+            port,
+            uid: camera_config.camera_uid.clone(),
+            protocol: ConnectionProtocol::TcpUdp,
+            discovery: camera_config.discovery,
+            aux_printing: camera_config.print_format,
+            credentials: Credentials {
+                username: camera_config.username.clone(),
+                password: camera_config.password.clone(),
+            },
+        };
+
+        trace!("Camera Info: {:?}", options);
+
+        Ok(BcCamera::new(options).await?)
     }
 }
 
@@ -96,12 +117,7 @@ pub(crate) async fn connect_and_login(camera_config: &CameraConfig) -> Result<Bc
     );
 
     let camera = camera_addr
-        .connect_camera(
-            camera_config.channel_id,
-            &camera_config.username,
-            camera_config.password.as_ref(),
-            camera_config.print_format,
-        )
+        .connect_camera(camera_config)
         .await
         .with_context(|| {
             format!(

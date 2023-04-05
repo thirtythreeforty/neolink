@@ -3,6 +3,8 @@
 //! Given a UID find the associated IP
 //!
 use super::DiscoveryResult;
+use crate::bc::model::*;
+use crate::bc_protocol::{md5_string, Md5Trunc, TcpSource};
 use crate::bcudp::codex::BcUdpCodex;
 use crate::bcudp::model::*;
 use crate::bcudp::xml::*;
@@ -25,7 +27,7 @@ use tokio::{
         Mutex, RwLock,
     },
     task::JoinSet,
-    time::{interval, Duration},
+    time::{interval, timeout, Duration},
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::udp::UdpFramed;
@@ -70,6 +72,10 @@ lazy_static! {
         "p2p14.reolink.com",
         "p2p15.reolink.com",
     ];
+    /// Maximum wait for a reply
+    static ref MAXIMUM_WAIT: Duration = Duration::from_secs(5);
+    /// How long to wait before resending
+    static ref RESEND_WAIT: Duration = Duration::from_millis(500);
 }
 
 type Subscriber = Arc<RwLock<BTreeMap<u32, Sender<Result<(UdpDiscovery, SocketAddr)>>>>>;
@@ -234,9 +240,7 @@ impl Discoverer {
         let mut reply = ReceiverStream::new(self.subscribe(target_tid).await?);
         let msg = BcUdp::Discovery(disc);
 
-        let maximum_wait = Duration::from_secs(60);
-        let resend_wait = Duration::from_millis(500);
-        let mut inter = interval(resend_wait);
+        let mut inter = interval(*RESEND_WAIT);
 
         let result = tokio::select! {
             v = async {
@@ -261,7 +265,7 @@ impl Discoverer {
             } => {Err::<T, Error>(v)},
             _ = {
                 // Sleep then emit Timeout
-                tokio::time::sleep(maximum_wait)
+                tokio::time::sleep(*MAXIMUM_WAIT)
             } => {
                 Err::<T, Error>(Error::DiscoveryTimeout)
             }
@@ -760,8 +764,48 @@ impl Discoverer {
 }
 
 impl Discovery {
+    // Check if TCP is possible
+    //
+    // To do this we send a dummy login  and see if it replies with any BC packet
+    pub(crate) async fn check_tcp(addr: SocketAddr, channel_id: u8) -> Result<()> {
+        let username = "admin";
+        let password = Some("123456");
+        let mut tcp_source =
+            timeout(*MAXIMUM_WAIT, TcpSource::new(addr, username, password)).await??;
+
+        let md5_username = md5_string(username, Md5Trunc::ZeroLast);
+        let md5_password = password
+            .map(|p| md5_string(p, Md5Trunc::ZeroLast))
+            .unwrap_or_else(|| EMPTY_LEGACY_PASSWORD.to_owned());
+
+        tcp_source
+            .send(Bc {
+                meta: BcMeta {
+                    msg_id: MSG_ID_LOGIN,
+                    channel_id,
+                    msg_num: 0,
+                    stream_type: 0,
+                    response_code: 0x00,
+                    class: 0x6514,
+                },
+                body: BcBody::LegacyMsg(LegacyMsg::LoginMsg {
+                    username: md5_username,
+                    password: md5_password,
+                }),
+            })
+            .await?;
+
+        let _bc: Bc = timeout(*MAXIMUM_WAIT, tcp_source.next())
+            .await?
+            .ok_or(Error::CannotInitCamera)??; // Successful recv should mean a Bc packet if not then deser will fail
+        Ok(())
+    }
+
     // Perform UDP broadcast lookup and connection
-    pub(crate) async fn local(uid: &str) -> Result<DiscoveryResult> {
+    pub(crate) async fn local(
+        uid: &str,
+        mut optional_addrs: Option<Vec<SocketAddr>>,
+    ) -> Result<DiscoveryResult> {
         let discoverer = Discoverer::new().await?;
 
         let client_id = generate_cid();
@@ -784,7 +828,11 @@ impl Discovery {
             },
         };
 
-        let dests = get_broadcasts(&[2015, 2018])?;
+        let mut dests = get_broadcasts(&[2015, 2018])?;
+        if let Some(mut optional_addrs) = optional_addrs.take() {
+            trace!("Also sending to {:?}", optional_addrs);
+            dests.append(&mut optional_addrs);
+        }
         let (camera_address, camera_id) = discoverer
             .retry_send_multi(msg, &dests, |bc, addr| match bc {
                 UdpDiscovery {

@@ -1,6 +1,7 @@
 //! This is a helper module to resolve either to a UID or a SockerAddr
 
 use log::*;
+use serde::{Deserialize, Serialize};
 use std::{
     io::Error,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
@@ -10,29 +11,35 @@ use std::{
 ///
 /// This is used for UID lookup, it is unused with
 /// TPC/known ip address cameras
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum DiscoveryMethods {
     /// Forbid all discovery methods. Only TCP connections with known addresses will work
+    #[serde(alias = "none")]
     None,
     /// Allow local discovery on the local network using broadcasts
     /// This method does NOT contact reolink servers
+    #[serde(alias = "local")]
     Local,
     /// Allow contact with the reolink servers to learn the ip address but DO NOT
     /// allow the camera/clinet to communicate through the reolink servers.
     ///
     /// **This also enabled `Local` discovery**
+    #[serde(alias = "remote")]
     Remote,
     /// Allow contact with the reolink servers to learn the ip address and map the connection
     /// from dev to client through those servers.
     ///
     /// **This also enabled `Local` and `Remote` discovery**
+    #[serde(alias = "map")]
     Map,
     /// Allow contact with the reolink servers to learn the ip address and relay the connection
     /// client to dev through those servers.
     ///
     /// **This also enabled `Local`, `Map` and `Remote` discovery**
+    #[serde(alias = "relay")]
     Relay,
     #[doc(hidden)]
+    #[serde(alias = "debug")]
     /// Used for debugging it is set to whatever the dev is currently testing
     Debug,
 }
@@ -42,7 +49,7 @@ pub enum SocketAddrOrUid {
     /// When the result is a addr it will be this
     SocketAddr(SocketAddr),
     /// When the result is a UID
-    Uid(String, DiscoveryMethods),
+    Uid(String, Option<Vec<SocketAddr>>, DiscoveryMethods),
 }
 
 /// An extension of ToSocketAddrs that will also resolve to a camera UID
@@ -83,6 +90,7 @@ impl ToSocketAddrsOrUid for str {
                 if re.is_match(self) {
                     Ok(vec![SocketAddrOrUid::Uid(
                         self.to_string(),
+                        None,
                         DiscoveryMethods::Local,
                     )]
                     .into_iter())
@@ -110,6 +118,7 @@ impl ToSocketAddrsOrUid for String {
                 if re.is_match(self) {
                     Ok(vec![SocketAddrOrUid::Uid(
                         self.to_string(),
+                        None,
                         DiscoveryMethods::Local,
                     )]
                     .into_iter())

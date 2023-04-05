@@ -81,6 +81,7 @@ name = "Camera02"
 username = "admin"
 password = "password"
 uid = "BCDEF0123456789A"
+address = "192.168.1.10"
 ```
 
 Create a text file with called `neolink.toml` in the same folder as the neolink binary. With your config options.
@@ -92,6 +93,40 @@ using the terminal in the same folder the neolink binary is in.
 ./neolink rtsp --config=neolink.toml
 ```
 
+
+### Discovery
+
+To connect to a camera using a UID we need to find the IP address of the camera with that UID
+
+The IP is discovered with four methods
+
+1. Local discovery: Here we send a broadcast on all visible networks asking the local
+   network if there is a camera with this UID. This only works if the network supports broadcasts
+   
+   If you know the ip address you can put it into the  `address` field of the config and attempt a
+   direct connection without broadcasts. This requires a route from neolink to the camera.
+
+2. Remote discovery: Here a ask the reolink servers what the IP address is. This requires that
+   we contact reolink and provide some basic information like the UID. Once we have this information
+   we connect directly to the local IP address. This requires a route from neolink to the camera and
+   for the camera to be able to contact the reolink IPs.
+
+3. Map discovery: In this case we register our IP address with reolink and ask the camera to connect to us.
+   Once the camera either polls/recives a connect request from the reolink servers the camera will then
+   initiate a connect to neolink. This requires that our IP and the reolink IPs are reacable from the camera.
+
+4. Relay: In this case we request that reolink relay our connection. Neolink nor the camera need to be able to 
+   direcly contact each other. But both neolink and the camera need to be able to contact reolink.
+   
+This can be controlled with the config
+
+```toml
+discovery = "local"
+```
+
+In the `[[cameras]]` section of the toml.
+
+Possible values are `local`, `remote`, `map`, `relay` later values implictly enable prior methods.
 
 ### MQTT
 
@@ -125,7 +160,8 @@ Control messages:
 - `/control/led [on|off]` Turns status LED on/off
 - `/control/ir [on|off|auto]` Turn IR lights on/off or automatically via light detection
 - `/control/reboot` Reboot the camera
-- `/control/ptz` [up|down|left|right|in|out] (amount) Control the PTZ movements, amount defaults to 32.0
+- `/control/ptz [up|down|left|right|in|out]` (amount) Control the PTZ movements, amount defaults to 32.0
+- `/control/pir [on|off]`
 
 Status Messages:
 `/status offline` Sent when the neolink goes offline this is a LastWill message

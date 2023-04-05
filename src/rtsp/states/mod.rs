@@ -62,20 +62,12 @@ impl RtspCamera {
                 })?;
 
         info!("{}: Connecting to camera at {}", config.name, camera_addr);
-        let camera = camera_addr
-            .connect_camera(
-                config.channel_id,
-                &config.username,
-                config.password.as_ref(),
-                config.print_format,
+        let camera = camera_addr.connect_camera(config).await.with_context(|| {
+            format!(
+                "Failed to connect to camera {} at {} on channel {}",
+                config.name, camera_addr, config.channel_id
             )
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to connect to camera {} at {} on channel {}",
-                    config.name, camera_addr, config.channel_id
-                )
-            })?;
+        })?;
 
         let mut streams: HashSet<Stream> = Default::default();
         if ["all", "both", "mainStream", "mainstream"]

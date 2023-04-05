@@ -7,6 +7,7 @@ jobs:
     name: native
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-22.04, windows-2022, macos-12]
     steps:

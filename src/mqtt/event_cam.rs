@@ -158,12 +158,7 @@ impl EventCam {
             camera_config.name, camera_addr
         );
         let camera = camera_addr
-            .connect_camera(
-                camera_config.channel_id,
-                &camera_config.username,
-                camera_config.password.as_ref(),
-                camera_config.print_format,
-            )
+            .connect_camera(camera_config)
             .await
             .with_context(|| {
                 format!(

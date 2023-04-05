@@ -2,7 +2,7 @@ use crate::bc;
 use futures::stream::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::net::ToSocketAddrs;
+use std::net::{IpAddr, SocketAddr};
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, AtomicU16, Ordering},
@@ -32,7 +32,7 @@ mod time;
 mod version;
 
 pub(crate) use connection::*;
-pub(crate) use credentials::*;
+pub use credentials::*;
 pub use errors::Error;
 pub use ledstate::LightState;
 pub use login::MaxEncryption;
@@ -65,7 +65,31 @@ pub struct BcCamera {
     abilities: RwLock<HashMap<String, ReadKind>>,
 }
 
-/// Used to choode the print format of various status messages like battery levels
+/// Options used to construct a camera
+#[derive(Debug)]
+pub struct BcCameraOpt {
+    /// Name, mostly used for message logs
+    pub name: String,
+    /// Channel the camera is on 0 unless using a NVR
+    pub channel_id: u8,
+    /// IPs of the camera
+    pub addrs: Vec<IpAddr>,
+    /// The UID of the camera
+    pub uid: Option<String>,
+    /// Port to try optional. When not given all known BC ports will be tried
+    /// When given all known bc port AND the given port will be tried
+    pub port: Option<u16>,
+    /// Protocol decides if UDP/TCP are used for the camera
+    pub protocol: ConnectionProtocol,
+    /// Discovery method to allow
+    pub discovery: DiscoveryMethods,
+    /// Printing format for auxilaary data such as battery levels
+    pub aux_printing: PrintFormat,
+    /// Credentials for login
+    pub credentials: Credentials,
+}
+
+/// Used to choose the print format of various status messages like battery levels
 ///
 /// Currently this is just the format of battery levels but if we ever got more status
 /// messages then they will also use this information
@@ -79,262 +103,221 @@ pub enum PrintFormat {
     Xml,
 }
 
+/// Type of connection to try
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum ConnectionProtocol {
+    /// TCP and UDP
+    #[default]
+    TcpUdp,
+    /// TCP only
+    Tcp,
+    /// Udp only
+    Udp,
+}
+
+enum CameraLocation {
+    Tcp(SocketAddr),
+    Udp(DiscoveryResult),
+}
+
 impl BcCamera {
-    ///
-    /// Create a new camera interface with this address and channel ID
-    ///
-    /// # Parameters
-    ///
-    /// * `host` - The address of the camera either ip address or hostname string
-    ///
-    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
-    ///
-    /// # Returns
-    ///
-    /// returns either an error or the camera
-    ///
-    pub async fn new_with_addr<U: ToSocketAddrs, V: Into<String>, W: Into<String>>(
-        host: U,
-        channel_id: u8,
-        username: V,
-        passwd: Option<W>,
-        aux_info_format: PrintFormat,
-    ) -> Result<Self> {
-        let username: String = username.into();
-        let passwd: Option<String> = passwd.map(|t| t.into());
-        let addr_iter = match host.to_socket_addrs() {
-            Ok(iter) => iter,
-            Err(_) => return Err(Error::AddrResolutionError),
-        };
-        for addr in addr_iter {
-            if let Ok(cam) = Self::new(
-                SocketAddrOrUid::SocketAddr(addr),
-                channel_id,
-                &username,
-                passwd.as_ref(),
-                aux_info_format,
-            )
-            .await
-            {
-                return Ok(cam);
+    /// Try to connect to the camera via appropaite methods and return
+    /// the location that should be used
+    async fn find_camera(options: &BcCameraOpt) -> Result<CameraLocation> {
+        let mut tcp_set = tokio::task::JoinSet::new();
+        let mut local_set = tokio::task::JoinSet::new();
+        let mut remote_set = tokio::task::JoinSet::new();
+        let mut map_set = tokio::task::JoinSet::new();
+        let mut relay_set = tokio::task::JoinSet::new();
+
+        if let ConnectionProtocol::Tcp | ConnectionProtocol::TcpUdp = options.protocol {
+            let mut sockets = vec![];
+            match options.port {
+                Some(9000) | None => {
+                    for addr in options.addrs.iter() {
+                        sockets.push(SocketAddr::new(*addr, 9000));
+                    }
+                }
+                Some(n) => {
+                    for addr in options.addrs.iter() {
+                        sockets.push(SocketAddr::new(*addr, n));
+                        sockets.push(SocketAddr::new(*addr, 9000));
+                    }
+                }
+            }
+            for socket in sockets.drain(..) {
+                let channel_id: u8 = options.channel_id;
+                let name: String = options.name.clone();
+                tcp_set.spawn(async move {
+                    Discovery::check_tcp(socket, channel_id).await.map(|_| {
+                        info!("{}: TCP Discovery success at {:?}", name, &socket);
+                        socket
+                    })
+                });
             }
         }
 
+        if let (Some(uid), ConnectionProtocol::Udp | ConnectionProtocol::TcpUdp) =
+            (options.uid.as_ref(), options.protocol)
+        {
+            let mut sockets = vec![];
+            match options.port {
+                None | Some(2015) | Some(2018) => {
+                    for addr in options.addrs.iter() {
+                        sockets.push(SocketAddr::new(*addr, 2018));
+                        sockets.push(SocketAddr::new(*addr, 2015));
+                    }
+                }
+                Some(n) => {
+                    for addr in options.addrs.iter() {
+                        sockets.push(SocketAddr::new(*addr, n));
+                        sockets.push(SocketAddr::new(*addr, 2015));
+                        sockets.push(SocketAddr::new(*addr, 2018));
+                    }
+                }
+            }
+            let (allow_local, allow_remote, allow_map, allow_relay) = match options.discovery {
+                DiscoveryMethods::None => (false, false, false, false),
+                DiscoveryMethods::Local => (true, false, false, false),
+                DiscoveryMethods::Remote => (true, true, false, false),
+                DiscoveryMethods::Map => (true, true, true, false),
+                DiscoveryMethods::Relay => (true, true, true, true),
+                DiscoveryMethods::Debug => (false, false, false, true),
+            };
+
+            if allow_local {
+                let uid_local = uid.clone();
+                let name: String = options.name.clone();
+                local_set.spawn(async move {
+                    trace!("{}: Starting Local discovery", name);
+                    let result = Discovery::local(&uid_local, Some(sockets)).await;
+                    if let Ok(disc) = &result {
+                        info!(
+                            "{}: Local discovery success {} at {}",
+                            name,
+                            uid_local,
+                            disc.get_addr()
+                        );
+                    }
+                    result
+                });
+            }
+            if allow_remote {
+                let uid_remote = uid.clone();
+                let name: String = options.name.clone();
+                remote_set.spawn(async move {
+                    trace!("Starting Remote discovery");
+                    let result = Discovery::remote(&uid_remote).await;
+                    if let Ok(disc) = &result {
+                        info!(
+                            "{}: Remote discovery success {} at {}",
+                            name,
+                            uid_remote,
+                            disc.get_addr()
+                        );
+                    }
+                    result
+                });
+            }
+            if allow_map {
+                let uid_map = uid.clone();
+                let name: String = options.name.clone();
+                map_set.spawn(async move {
+                    trace!("Starting Map");
+                    let result = Discovery::map(&uid_map).await;
+                    if let Ok(disc) = &result {
+                        info!("{}: Map success {} at {}", name, uid_map, disc.get_addr());
+                    }
+                    result
+                });
+            }
+            if allow_relay {
+                let uid_relay = uid.clone();
+                let name: String = options.name.clone();
+                relay_set.spawn(async move {
+                    trace!("Starting Relay");
+                    let result = Discovery::relay(&uid_relay).await;
+                    if let Ok(disc) = &result {
+                        info!(
+                            "{}: Relay success {} at {}",
+                            name,
+                            uid_relay,
+                            disc.get_addr()
+                        );
+                    }
+                    result
+                });
+            }
+        }
+
+        // Wait for all TCP to finish
+        while let Some(result) = tcp_set.join_next().await {
+            if let Ok(Ok(addr)) = result {
+                return Ok(CameraLocation::Tcp(addr));
+            }
+        }
+        // Tcp failed see if Local faired any better
+        // Wait for all local to finish
+        while let Some(result) = local_set.join_next().await {
+            if let Ok(Ok(discovery)) = result {
+                return Ok(CameraLocation::Udp(discovery));
+            }
+        }
+        // Local failed see if Remote faired any better
+        // Wait for all remote to finish
+        while let Some(result) = remote_set.join_next().await {
+            if let Ok(Ok(discovery)) = result {
+                return Ok(CameraLocation::Udp(discovery));
+            }
+        }
+        // Remote failed see if Map faired any better
+        // Wait for all Map to finish
+        while let Some(result) = map_set.join_next().await {
+            if let Ok(Ok(discovery)) = result {
+                return Ok(CameraLocation::Udp(discovery));
+            }
+        }
+        // Map failed see if Relay faired any better
+        // Wait for all Relay to finish
+        while let Some(result) = relay_set.join_next().await {
+            if let Ok(Ok(discovery)) = result {
+                return Ok(CameraLocation::Udp(discovery));
+            }
+        }
+        // Nothing works
         Err(Error::CannotInitCamera)
     }
 
     ///
-    /// Create a new camera interface with this uid and channel ID
+    /// Create a new camera interface
     ///
     /// # Parameters
     ///
-    /// * `uid` - The uid of the camera
-    ///
-    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
+    /// * `options` - Camera information see [`BcCameraOpt]
     ///
     /// # Returns
     ///
     /// returns either an error or the camera
     ///
-    pub async fn new_with_uid<U: Into<String>, V: Into<String>>(
-        uid: &str,
-        channel_id: u8,
-        username: U,
-        passwd: Option<V>,
-        discovery_method: DiscoveryMethods,
-        aux_info_format: PrintFormat,
-    ) -> Result<Self> {
-        Self::new(
-            SocketAddrOrUid::Uid(uid.to_string(), discovery_method),
-            channel_id,
-            username,
-            passwd,
-            aux_info_format,
-        )
-        .await
-    }
+    pub async fn new(options: BcCameraOpt) -> Result<Self> {
+        let username: String = options.credentials.username.clone();
+        let passwd: Option<String> = options.credentials.password.clone();
 
-    ///
-    /// Create a new camera interface with this address/uid and channel ID
-    ///
-    /// This method will first perform hostname resolution on the address
-    /// then fallback to uid if that resolution fails.
-    ///
-    /// Be aware that it is possible (although unlikely) that there is
-    /// a dns entry with the same address as the uid. If uncertain use
-    /// one of the other methods.
-    ///
-    /// # Parameters
-    ///
-    /// * `host` - The address of the camera either ip address, hostname string, or uid
-    ///
-    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
-    ///
-    /// # Returns
-    ///
-    /// returns either an error or the camera
-    ///
-    pub async fn new_with_addr_or_uid<U: ToSocketAddrsOrUid, V: Into<String>, W: Into<String>>(
-        host: U,
-        channel_id: u8,
-        username: V,
-        passwd: Option<W>,
-        aux_info_format: PrintFormat,
-    ) -> Result<Self> {
-        let addr_iter = match host.to_socket_addrs_or_uid() {
-            Ok(iter) => iter,
-            Err(_) => return Err(Error::AddrResolutionError),
-        };
-        let username: String = username.into();
-        let passwd: Option<String> = passwd.map(|t| t.into());
-        for addr_or_uid in addr_iter {
-            if let Ok(cam) = Self::new(
-                addr_or_uid,
-                channel_id,
-                &username,
-                passwd.as_ref(),
-                aux_info_format,
-            )
-            .await
-            {
-                return Ok(cam);
-            }
-        }
-
-        Err(Error::CannotInitCamera)
-    }
-
-    ///
-    /// Create a new camera interface with this address/uid and channel ID
-    ///
-    /// # Parameters
-    ///
-    /// * `addr` - An enum of [`SocketAddrOrUid`] that contains the address
-    ///
-    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
-    ///
-    /// * `username` - The username to login with
-    ///
-    /// * `passed` - The password to login with required for AES encrypted camera
-    ///
-    /// # Returns
-    ///
-    /// returns either an error or the camera
-    ///
-    pub async fn new<U: Into<String>, V: Into<String>>(
-        addr: SocketAddrOrUid,
-        channel_id: u8,
-        username: U,
-        passwd: Option<V>,
-        aux_info_format: PrintFormat,
-    ) -> Result<Self> {
-        let username: String = username.into();
-        let passwd: Option<String> = passwd.map(|t| t.into());
-
-        let (sink, source): (BcConnSink, BcConnSource) = match addr {
-            SocketAddrOrUid::SocketAddr(addr) => {
-                trace!("Trying address {}", addr);
-                let (x, r) = TcpSource::new(addr, &username, passwd.as_ref())
-                    .await?
-                    .split();
-                (Box::new(x), Box::new(r))
-            }
-            SocketAddrOrUid::Uid(uid, method) => {
-                trace!("Trying uid {}", uid);
-                // TODO Make configurable
-                let (allow_local, allow_remote, allow_map, allow_relay) = match method {
-                    DiscoveryMethods::None => (false, false, false, false),
-                    DiscoveryMethods::Local => (true, false, false, false),
-                    DiscoveryMethods::Remote => (true, true, false, false),
-                    DiscoveryMethods::Map => (true, true, true, false),
-                    DiscoveryMethods::Relay => (true, true, true, true),
-                    DiscoveryMethods::Debug => (false, false, false, true),
-                };
-
-                let discovery = {
-                    let mut set = tokio::task::JoinSet::new();
-                    if allow_local {
-                        let uid_local = uid.clone();
-                        set.spawn(async move {
-                            trace!("Starting Local discovery");
-                            let result = Discovery::local(&uid_local).await;
-                            if let Ok(disc) = &result {
-                                info!(
-                                    "Local discovery success {} at {}",
-                                    uid_local,
-                                    disc.get_addr()
-                                );
-                            }
-                            result
-                        });
-                    }
-                    if allow_remote {
-                        let uid_remote = uid.clone();
-                        set.spawn(async move {
-                            trace!("Starting Remote discovery");
-                            let result = Discovery::remote(&uid_remote).await;
-                            if let Ok(disc) = &result {
-                                info!(
-                                    "Remote discovery success {} at {}",
-                                    uid_remote,
-                                    disc.get_addr()
-                                );
-                            }
-                            result
-                        });
-                    }
-                    if allow_map {
-                        let uid_relay = uid.clone();
-                        set.spawn(async move {
-                            trace!("Starting Map");
-                            let result = Discovery::map(&uid_relay).await;
-                            if let Ok(disc) = &result {
-                                info!("Map success {} at {}", uid_relay, disc.get_addr());
-                            }
-                            result
-                        });
-                    }
-                    if allow_relay {
-                        let uid_relay = uid.clone();
-                        set.spawn(async move {
-                            trace!("Starting Relay");
-                            let result = Discovery::relay(&uid_relay).await;
-                            if let Ok(disc) = &result {
-                                info!("Relay success {} at {}", uid_relay, disc.get_addr());
-                            }
-                            result
-                        });
-                    }
-
-                    let last_result;
-                    loop {
-                        match set.join_next().await {
-                            Some(Ok(Ok(disc))) => {
-                                last_result = Ok(disc);
-                                break;
-                            }
-                            Some(Ok(Err(e))) => {
-                                debug!("Discovery Error: {:?}", e);
-                            }
-                            Some(Err(join_error)) => {
-                                last_result = Err(Error::OtherString(format!(
-                                    "Panic while joining Discovery threads: {:?}",
-                                    join_error
-                                )));
-                                break;
-                            }
-                            None => {
-                                last_result = Err(Error::DiscoveryTimeout);
-                                break;
-                            }
-                        }
-                    }
-                    last_result
-                }?;
-                let (x, r) = UdpSource::new_from_discovery(discovery, &username, passwd.as_ref())
-                    .await?
-                    .split();
-                (Box::new(x), Box::new(r))
+        let (sink, source): (BcConnSink, BcConnSource) = {
+            match BcCamera::find_camera(&options).await? {
+                CameraLocation::Tcp(addr) => {
+                    let (x, r) = TcpSource::new(addr, &username, passwd.as_ref())
+                        .await?
+                        .split();
+                    (Box::new(x), Box::new(r))
+                }
+                CameraLocation::Udp(discovery) => {
+                    let (x, r) =
+                        UdpSource::new_from_discovery(discovery, &username, passwd.as_ref())
+                            .await?
+                            .split();
+                    (Box::new(x), Box::new(r))
+                }
             }
         };
 
@@ -344,13 +327,13 @@ impl BcCamera {
         let me = Self {
             connection: Arc::new(conn),
             message_num: AtomicU16::new(0),
-            channel_id,
+            channel_id: options.channel_id,
             logged_in: AtomicBool::new(false),
             credentials: Credentials::new(username, passwd),
             abilities: Default::default(),
         };
         me.keepalive().await?;
-        if let Err(e) = me.monitor_battery(aux_info_format).await {
+        if let Err(e) = me.monitor_battery(options.aux_printing).await {
             warn!("Could not monitor battery: {:?}", e);
         }
         Ok(me)
