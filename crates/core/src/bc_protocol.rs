@@ -163,19 +163,9 @@ impl BcCamera {
         {
             let mut sockets = vec![];
             match options.port {
-                None => {
+                None | Some(2015) | Some(2018) => {
                     for addr in options.addrs.iter() {
                         sockets.push(SocketAddr::new(*addr, 2018));
-                        sockets.push(SocketAddr::new(*addr, 2015));
-                    }
-                }
-                Some(2015) => {
-                    for addr in options.addrs.iter() {
-                        sockets.push(SocketAddr::new(*addr, 2018));
-                    }
-                }
-                Some(2018) => {
-                    for addr in options.addrs.iter() {
                         sockets.push(SocketAddr::new(*addr, 2015));
                     }
                 }
