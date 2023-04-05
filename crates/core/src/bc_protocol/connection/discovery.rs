@@ -938,7 +938,7 @@ fn generate_cid() -> i32 {
 }
 
 async fn connect() -> Result<UdpSocket> {
-    let mut ports: Vec<u16> = (53500..54000).into_iter().collect();
+    let mut ports: Vec<u16> = (53500..54000).collect();
     {
         let mut rng = thread_rng();
         ports.shuffle(&mut rng);
