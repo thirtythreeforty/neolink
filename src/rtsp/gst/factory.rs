@@ -199,7 +199,7 @@ impl NeoMediaFactoryImpl {
         let mut client_data: ClientPipelineData = Default::default();
 
         // Now contruct the actual ones
-        match VidFormats::from(self.shared.vid_format.load(Ordering::Relaxed)) {
+        match *self.shared.vid_format.blocking_read() {
             VidFormats::H265 => {
                 debug!("Building H265 Pipeline");
                 let source = make_element("appsrc", "vidsrc")?
@@ -210,7 +210,7 @@ impl NeoMediaFactoryImpl {
                 ));
                 source.set_is_live(true);
                 source.set_block(true);
-                source.set_property("emit-signals", &false);
+                source.set_property("emit-signals", false);
                 source.set_max_bytes(52428800);
                 source.set_do_timestamp(false);
                 source.set_stream_type(AppStreamType::Stream);
@@ -241,7 +241,7 @@ impl NeoMediaFactoryImpl {
                 ));
                 source.set_is_live(true);
                 source.set_block(true);
-                source.set_property("emit-signals", &false);
+                source.set_property("emit-signals", false);
                 source.set_max_bytes(52428800);
                 source.set_do_timestamp(false);
                 source.set_stream_type(AppStreamType::Stream);
@@ -292,7 +292,7 @@ impl NeoMediaFactoryImpl {
             }
         }
 
-        match AudFormats::from(self.shared.aud_format.load(Ordering::Relaxed)) {
+        match *self.shared.aud_format.blocking_read() {
             AudFormats::Unknown => {}
             AudFormats::Aac => {
                 debug!("Building Aac pipeline");
@@ -304,7 +304,7 @@ impl NeoMediaFactoryImpl {
                 ));
                 source.set_is_live(true);
                 source.set_block(true);
-                source.set_property("emit-signals", &false);
+                source.set_property("emit-signals", false);
                 source.set_max_bytes(52428800);
                 source.set_do_timestamp(false);
                 source.set_stream_type(AppStreamType::Stream);
@@ -330,21 +330,65 @@ impl NeoMediaFactoryImpl {
                         .expect("Failed to link AAC decoder to encoder");
                 });
 
-                // decoder.link_filtered(
-                //     &encoder,
-                //         & Caps::builder("audio/x-raw")
-                //             .field("format", "S16BE")
-                //             .field("layout", "interleaved")
-                //             // .field("channels", 1)
-                //             .build(),
-                // )?;
+                let source = source
+                    .dynamic_cast::<AppSrc>()
+                    .map_err(|_| anyhow!("Cannot convert appsrc"))?;
+                client_data.audsrc.replace(source);
+            }
+            AudFormats::Adpcm(block_size) => {
+                // Original command line
+                // caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000
+                // ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024
+                // ! adpcmdec
+                // ! audioconvert
+                // ! rtpL16pay name=pay1
+
+                let source = make_element("appsrc", "audsrc")?
+                    .dynamic_cast::<AppSrc>()
+                    .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
+                source.set_base_time(ClockTime::from_mseconds(
+                    self.shared.microseconds.load(Ordering::Relaxed),
+                ));
+                source.set_is_live(true);
+                source.set_block(true);
+                source.set_property("emit-signals", false);
+                source.set_max_bytes(52428800);
+                source.set_do_timestamp(false);
+                source.set_stream_type(AppStreamType::Stream);
+                source.set_caps(Some(
+                    &Caps::builder("audio/x-adpcm")
+                        .field("layout", "div")
+                        .field("block_align", block_size as i32)
+                        .field("channels", 1i32)
+                        .field("rate", 8000i32)
+                        .build(),
+                ));
+                let source = source
+                    .dynamic_cast::<Element>()
+                    .map_err(|_| anyhow!("Cannot cast back"))?;
+
+                let queue = make_element("queue", "audqueue")?;
+                let decoder = make_element("decodebin", "auddecoder")?;
+                let encoder = make_element("audioconvert", "audencoder")?;
+                let payload = make_element("rtpL16pay", "pay1")?;
+
+                bin.add_many(&[&source, &queue, &decoder, &encoder, &payload])?;
+                Element::link_many(&[&source, &queue, &decoder])?;
+                Element::link_many(&[&encoder, &payload])?;
+                decoder.connect_pad_added(move |_element, pad| {
+                    debug!("Linking encoder to decoder: {:?}", pad.caps());
+                    let sink_pad = encoder
+                        .static_pad("sink")
+                        .expect("Encoder is missing its pad");
+                    pad.link(&sink_pad)
+                        .expect("Failed to link ADPCM decoder to encoder");
+                });
 
                 let source = source
                     .dynamic_cast::<AppSrc>()
                     .map_err(|_| anyhow!("Cannot convert appsrc"))?;
                 client_data.audsrc.replace(source);
             }
-            AudFormats::Adpcm => {}
         }
 
         self.clientsender.blocking_send(client_data)?;

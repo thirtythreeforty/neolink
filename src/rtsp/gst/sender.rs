@@ -47,7 +47,7 @@ impl NeoMediaSender {
                     if let Some(bc_media) = v {
                         if ! self.skip_bcmedia(&bc_media)? {
                             // resend_pause.reset();
-                            self.inspect_bcmedia(&bc_media)?;
+                            self.inspect_bcmedia(&bc_media).await?;
                             match bc_media {
                                 BcMedia::Iframe(frame) => {
                                     buffer.clear();
@@ -194,21 +194,17 @@ impl NeoMediaSender {
         Ok(false)
     }
 
-    fn inspect_bcmedia(&mut self, bc_media: &BcMedia) -> AnyResult<()> {
-        let old_vid = self.shared.vid_format.load(Ordering::Relaxed);
-        let old_aud = self.shared.aud_format.load(Ordering::Relaxed);
+    async fn inspect_bcmedia(&mut self, bc_media: &BcMedia) -> AnyResult<()> {
+        let old_vid = *self.shared.vid_format.read().await;
+        let old_aud = *self.shared.aud_format.read().await;
         match bc_media {
             BcMedia::Iframe(frame) => {
                 match frame.video_type {
                     VideoType::H264 => {
-                        self.shared
-                            .vid_format
-                            .store(VidFormats::H264.into(), Ordering::Relaxed);
+                        (*self.shared.vid_format.write().await) = VidFormats::H264;
                     }
                     VideoType::H265 => {
-                        self.shared
-                            .vid_format
-                            .store(VidFormats::H265.into(), Ordering::Relaxed);
+                        (*self.shared.vid_format.write().await) = VidFormats::H265;
                     }
                 }
                 self.shared
@@ -218,14 +214,10 @@ impl NeoMediaSender {
             BcMedia::Pframe(frame) => {
                 match frame.video_type {
                     VideoType::H264 => {
-                        self.shared
-                            .vid_format
-                            .store(VidFormats::H264.into(), Ordering::Relaxed);
+                        (*self.shared.vid_format.write().await) = VidFormats::H264;
                     }
                     VideoType::H265 => {
-                        self.shared
-                            .vid_format
-                            .store(VidFormats::H265.into(), Ordering::Relaxed);
+                        (*self.shared.vid_format.write().await) = VidFormats::H265;
                     }
                 }
                 self.shared
@@ -233,32 +225,20 @@ impl NeoMediaSender {
                     .store(frame.microseconds as u64, Ordering::Relaxed);
             }
             BcMedia::Aac(_aac) => {
-                self.shared
-                    .aud_format
-                    .store(AudFormats::Aac.into(), Ordering::Relaxed);
+                (*self.shared.aud_format.write().await) = AudFormats::Aac;
             }
-            BcMedia::Adpcm(_) => {
-                self.shared
-                    .aud_format
-                    .store(AudFormats::Adpcm.into(), Ordering::Relaxed);
+            BcMedia::Adpcm(adpcm) => {
+                (*self.shared.aud_format.write().await) = AudFormats::Adpcm(adpcm.data.len() as u16)
             }
             _ => {}
         }
-        let new_vid = self.shared.vid_format.load(Ordering::Relaxed);
-        if old_vid != new_vid {
-            log::debug!(
-                "Video format set to: {:?} from {:?}",
-                VidFormats::from(new_vid),
-                VidFormats::from(old_vid)
-            );
+        let new_vid = *self.shared.vid_format.read().await;
+        if new_vid != old_vid {
+            log::debug!("Video format set to: {:?} from {:?}", new_vid, old_vid);
         }
-        let new_aud = self.shared.aud_format.load(Ordering::Relaxed);
+        let new_aud = *self.shared.aud_format.read().await;
         if old_aud != new_aud {
-            log::debug!(
-                "Audio format set to: {:?} from {:?}",
-                AudFormats::from(new_aud),
-                AudFormats::from(old_aud)
-            );
+            log::debug!("Audio format set to: {:?} from {:?}", new_aud, old_aud);
         }
         Ok(())
     }

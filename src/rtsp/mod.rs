@@ -58,12 +58,10 @@ use log::*;
 use std::sync::Arc;
 use std::time::Duration;
 
-mod abort;
 mod cmdline;
 mod gst;
 mod states;
 
-use abort::AbortHandle;
 use states::{RtspCamera, StateInfo};
 
 use super::config::{CameraConfig, Config, UserConfig};
@@ -86,19 +84,17 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
         )
     }
     let mut set = tokio::task::JoinSet::new();
-    let abort = AbortHandle::new();
 
     let arc_user_config = Arc::new(config.users);
     for camera_config in config.cameras.drain(..) {
         // Spawn each camera controller in it's own thread
         let user_config = arc_user_config.clone();
         let arc_rtsp = rtsp.clone();
-        let abort_handle = abort.clone();
 
         set.spawn(async move {
             let backoff = Backoff::new();
 
-            while abort_handle.is_live() {
+            loop {
                 let failure =
                     camera_main(&camera_config, user_config.as_slice(), arc_rtsp.clone()).await;
                 match failure {

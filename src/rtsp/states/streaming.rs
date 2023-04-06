@@ -46,7 +46,7 @@ impl CameraState for Streaming {
             let stream_thead = *stream;
             let strict_thread = shared.strict;
             let tag_thread = tag.clone();
-            let handle = self.set.spawn(async move {
+            self.set.spawn(async move {
                 let mut stream_data = thread_camera
                     .start_video(stream_thead, 0, strict_thread)
                     .await?;
