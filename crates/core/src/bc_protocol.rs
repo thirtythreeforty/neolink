@@ -390,6 +390,13 @@ impl BcCamera {
             }),
         }
     }
+    
+    /// Wait for all thread to finish
+    ///
+    /// If an error is returned in any thread it will return the first error
+    pub async fn join(&self) -> Result<()> {
+        self.connection.join().await
+    }
 }
 
 /// The Baichuan library has a very peculiar behavior where it always zeros the last byte.  I

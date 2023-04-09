@@ -3,30 +3,32 @@
 // Data is streamed into a gstreamer source
 
 use anyhow::{anyhow, Error, Result};
-use async_trait::async_trait;
-use futures::future::FutureExt;
 use log::*;
-use tokio::task::JoinSet;
 use tokio::time::{timeout, Duration};
+use tokio::{sync::RwLock, task::JoinSet};
 
-use neolink_core::{bc_protocol::StreamKind as Stream, bcmedia::model::BcMedia};
+use neolink_core::{
+    bc_protocol::{BcCamera, StreamKind as Stream},
+    bcmedia::model::BcMedia,
+};
 
-use super::{CameraState, Shared};
+use super::{camera::Camera, LoggedIn};
 
-#[derive(Default)]
 pub(crate) struct Streaming {
-    set: JoinSet<Result<()>>,
+    pub(crate) camera: BcCamera,
+    set: RwLock<JoinSet<Result<()>>>,
 }
 
-#[async_trait]
-impl CameraState for Streaming {
-    async fn setup(&mut self, shared: &Shared) -> Result<(), Error> {
+impl Camera<Streaming> {
+    pub(crate) async fn from_login(loggedin: Camera<LoggedIn>) -> Result<Camera<Streaming>, Error> {
         // Create new gst outputs
         //
         // Otherwise use those already present
-        for stream in shared.streams.iter() {
-            let tag = shared.get_tag_for_stream(stream);
-            let sender = shared
+        let mut set: JoinSet<Result<()>> = Default::default();
+        for stream in loggedin.shared.streams.iter() {
+            let tag = loggedin.shared.get_tag_for_stream(stream);
+            let sender = loggedin
+                .shared
                 .rtsp
                 .get_sender(&tag)
                 .await
@@ -39,17 +41,18 @@ impl CameraState for Streaming {
             };
             info!(
                 "{}: Starting video stream {}",
-                &shared.name, stream_display_name
+                &loggedin.shared.config.name, stream_display_name
             );
 
-            let thread_camera = shared.camera.clone();
             let stream_thead = *stream;
-            let strict_thread = shared.strict;
+            let strict_thread = loggedin.shared.config.strict;
             let tag_thread = tag.clone();
-            self.set.spawn(async move {
-                let mut stream_data = thread_camera
-                    .start_video(stream_thead, 0, strict_thread)
-                    .await?;
+            let mut stream_data = loggedin
+                .state
+                .camera
+                .start_video(stream_thead, 0, strict_thread)
+                .await?;
+            set.spawn(async move {
                 loop {
                     debug!("{}: BcMediaStreamRecv", &tag_thread);
                     let data = timeout(Duration::from_secs(15), stream_data.get_data()).await??;
@@ -67,46 +70,44 @@ impl CameraState for Streaming {
             });
         }
 
-        Ok(())
+        Ok(Camera {
+            shared: loggedin.shared,
+            state: Streaming {
+                camera: loggedin.state.camera,
+                set: RwLock::new(set),
+            },
+        })
     }
 
-    async fn tear_down(&mut self, _shared: &Shared) -> Result<(), Error> {
-        self.set.shutdown().await;
-        Ok(())
+    pub(crate) async fn stop(self) -> Result<Camera<LoggedIn>> {
+        self.state.set.into_inner().abort_all();
+        Ok(Camera {
+            shared: self.shared,
+            state: LoggedIn {
+                camera: self.state.camera,
+            },
+        })
     }
-}
 
-impl Drop for Streaming {
-    fn drop(&mut self) {
-        self.set.abort_all();
-    }
-}
-
-impl Streaming {
-    pub(crate) async fn is_running(&mut self) -> Result<()> {
-        if self.set.is_empty() {
-            return Err(anyhow!("Streaming has no active tasks"));
-        }
-        if let Some(res) = self.set.join_next().now_or_never() {
+    pub(crate) async fn join(&self) -> Result<()> {
+        let mut locked_threads = self.state.set.write().await;
+        while let Some(res) = locked_threads.join_next().await {
             match res {
-                None => {
-                    return Err(anyhow!("Streaming has no active tasks"));
+                Err(e) => {
+                    locked_threads.abort_all();
+                    return Err(e.into());
                 }
-                Some(Ok(Ok(()))) => {
-                    unreachable!();
-                }
-                Some(Ok(Err(e))) => {
-                    // Error in tasks
-                    self.set.abort_all();
+                Ok(Err(e)) => {
+                    locked_threads.abort_all();
                     return Err(e);
                 }
-                Some(Err(e)) => {
-                    // Panic in tasks
-                    self.set.abort_all();
-                    return Err(anyhow!("Panic in streaming task: {:?}", e));
-                }
+                Ok(Ok(())) => {}
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn get_camera(&self) -> &BcCamera {
+        &self.state.camera
     }
 }

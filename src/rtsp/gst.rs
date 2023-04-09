@@ -9,6 +9,5 @@ mod shared;
 use factory::*;
 
 pub(crate) use self::server::NeoRtspServer;
-pub(crate) use gstreamer_rtsp_server::gio::TlsAuthenticationMode;
 
 type AnyResult<T> = std::result::Result<T, anyhow::Error>;

@@ -32,7 +32,7 @@ pub struct BcConnection {
     sink: Arc<Mutex<BcConnSink>>,
     subscribers: Arc<Subscriber>,
     #[allow(dead_code)] // Not dead we just need to hold a reference to keep it alive
-    rx_thread: JoinSet<()>,
+    rx_thread: RwLock<JoinSet<Result<()>>>,
 }
 
 impl BcConnection {
@@ -52,17 +52,14 @@ impl BcConnection {
                     None => continue,
                 };
 
-                if let Err(e) = Self::poll(bc, &subs, &sink_thread).await {
-                    error!("Subscription error: {:?}", e);
-                    break;
-                }
+                Self::poll(bc, &subs, &sink_thread).await?
             }
         });
 
         Ok(BcConnection {
             sink,
             subscribers,
-            rx_thread,
+            rx_thread: RwLock::new(rx_thread),
         })
     }
 
@@ -181,6 +178,24 @@ impl BcConnection {
             }
         }
 
+        Ok(())
+    }
+
+    pub(crate) async fn join(&self) -> Result<()> {
+        let mut locked_threads = self.rx_thread.write().await;
+        while let Some(res) = locked_threads.join_next().await {
+            match res {
+                Err(e) => {
+                    locked_threads.abort_all();
+                    return Err(e.into());
+                }
+                Ok(Err(e)) => {
+                    locked_threads.abort_all();
+                    return Err(e);
+                }
+                Ok(Ok(())) => {}
+            }
+        }
         Ok(())
     }
 }

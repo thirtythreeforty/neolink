@@ -4,6 +4,8 @@
 //! expect issues
 
 use super::{factory::*, AnyResult};
+use crate::config::*;
+
 use anyhow::{anyhow, Context};
 use gstreamer::glib::object_subclass;
 use gstreamer::glib::subclass::types::ObjectSubclass;
@@ -43,17 +45,6 @@ impl NeoRtspServer {
 
     pub(crate) async fn get_sender<T: Into<String>>(&self, tag: T) -> Option<Sender<BcMedia>> {
         self.imp().get_sender(tag).await
-    }
-
-    pub(crate) fn set_credentials(&self, credentials: &[(&str, &str)]) -> AnyResult<()> {
-        self.imp().set_credentials(credentials)
-    }
-    pub(crate) fn set_tls(
-        &self,
-        cert_file: &str,
-        client_auth: TlsAuthenticationMode,
-    ) -> AnyResult<()> {
-        self.imp().set_tls(cert_file, client_auth)
     }
 
     pub(crate) async fn create_stream<U: Into<String>>(&self, tag: U) -> AnyResult<()> {
@@ -100,6 +91,14 @@ impl NeoRtspServer {
         // Run the Glib main loop.
         #[allow(clippy::unit_arg)]
         tokio::task::spawn_blocking(move || Ok(main_loop.run())).await?
+    }
+    
+    pub(crate) fn set_up_tls(&self, config: &Config) {
+        self.imp().set_up_tls(config)
+    }
+    
+    pub(crate) fn set_up_users(&self, users: &[UserConfig]) {
+        self.imp().set_up_users(users)
     }
 }
 
@@ -268,5 +267,28 @@ impl NeoRtspServerImpl {
 
         self.obj().set_auth(Some(&auth));
         Ok(())
+    }
+
+    pub(crate) fn set_up_tls(&self, config: &Config) {
+        let tls_client_auth = match &config.tls_client_auth as &str {
+            "request" => TlsAuthenticationMode::Requested,
+            "require" => TlsAuthenticationMode::Required,
+            "none" => TlsAuthenticationMode::None,
+            _ => unreachable!(),
+        };
+        if let Some(cert_path) = &config.certificate {
+            self.set_tls(cert_path, tls_client_auth)
+                .expect("Failed to set up TLS");
+        }
+    }
+
+    pub(crate) fn set_up_users(&self, users: &[UserConfig]) {
+        // Setting up users
+        let credentials: Vec<_> = users
+            .iter()
+            .map(|user| (&*user.name, &*user.pass))
+            .collect();
+        self.set_credentials(&credentials)
+            .expect("Failed to set up users");
     }
 }
