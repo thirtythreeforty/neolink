@@ -88,9 +88,10 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
     }
 
     let mut set = tokio::task::JoinSet::new();
-    for camera in cameras.drain(..) {
+    for mut camera in cameras.drain(..) {
         // Spawn each camera controller in it's own thread
         set.spawn(async move {
+            let shared = camera.shared.clone();
             let name = camera.get_name();
             loop {
                 let failure = camera_main(camera).await;
@@ -101,7 +102,10 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
                     }
                     Err(CameraFailureKind::Retry(e)) => {
                         warn!("{}: Retryable error: {:X?}", name, e);
-                        todo!(); // Do backoff
+                        camera = Camera {
+                            shared: shared.clone(),
+                            state: Disconnected {},
+                        };
                     }
                     Ok(()) => {
                         info!("{}: Shutting down", name);
@@ -121,7 +125,7 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
     let bind_port = config.bind_port;
     set.spawn(async move { rtsp.run(&bind_addr, bind_port).await });
 
-    if let Some(joined) = set.join_next().await {
+    while let Some(joined) = set.join_next().await {
         joined??
     }
 

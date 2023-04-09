@@ -41,7 +41,7 @@ impl Decoder for BcUdpCodex {
                 },
                 ..
             })) => {
-                log::error!("Relay terminate");
+                // log::error!("Relay terminate");
                 Err(Error::RelayTerminate)
             }
             Ok(BcUdp::Discovery(UdpDiscovery {
@@ -50,7 +50,7 @@ impl Decoder for BcUdpCodex {
                 },
                 ..
             })) => {
-                log::error!("Camera terminate");
+                // log::error!("Camera terminate");
                 Err(Error::CameraTerminate)
             }
             Ok(bc) => Ok(Some(bc)),

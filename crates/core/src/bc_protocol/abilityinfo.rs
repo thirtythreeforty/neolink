@@ -1,5 +1,6 @@
 use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
+use log::*;
 
 impl BcCamera {
     /// Get the ability info xml for the current user
@@ -53,6 +54,11 @@ impl BcCamera {
     /// Populate ability list of the camera
     pub async fn polulate_abilities(&self) -> Result<()> {
         let info = self.get_abilityinfo().await?;
+        let info_res = yaserde::ser::serialize_with_writer(&info, vec![], &Default::default());
+        if let Ok(Ok(info_str)) = info_res.map(String::from_utf8) {
+            debug!("Abilities: {}", info_str);
+        }
+
         let mut abilities: Vec<String> = vec![];
 
         let mut tokens: Vec<Option<&AbilityInfoToken>> = vec![
@@ -67,6 +73,7 @@ impl BcCamera {
             info.io.as_ref(),
             info.streaming.as_ref(),
         ];
+
         for token in tokens.drain(..).flatten() {
             for sub_module in token.sub_module.iter() {
                 abilities.extend(

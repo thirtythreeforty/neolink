@@ -5,7 +5,7 @@
 use super::{camera::Camera, disconnected::Disconnected, loggedin::LoggedIn};
 use anyhow::Result;
 
-use neolink_core::bc_protocol::BcCamera;
+use neolink_core::bc_protocol::{BcCamera, MaxEncryption};
 
 pub(crate) struct Connected {
     pub(crate) camera: BcCamera,
@@ -20,6 +20,14 @@ impl Camera<Connected> {
     }
 
     pub(crate) async fn login(self) -> Result<Camera<LoggedIn>> {
+        let max_encryption = match self.shared.config.max_encryption.to_lowercase().as_str() {
+            "none" => MaxEncryption::None,
+            "bcencrypt" => MaxEncryption::BcEncrypt,
+            "aes" => MaxEncryption::Aes,
+            _ => MaxEncryption::Aes,
+        };
+
+        self.state.camera.login_with_maxenc(max_encryption).await?;
         Ok(Camera {
             shared: self.shared,
             state: LoggedIn {
