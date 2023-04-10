@@ -13,14 +13,17 @@ use gstreamer_rtsp_server::{
     gio::{TlsAuthenticationMode, TlsCertificate},
     prelude::*,
     subclass::prelude::*,
-    RTSPAuth, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
+    RTSPAuth, RTSPClient, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
 use neolink_core::bcmedia::model::*;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     fs,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
 };
 use tokio::{
     sync::{mpsc::Sender, RwLock},
@@ -109,6 +112,47 @@ impl NeoRtspServer {
     pub(crate) fn set_up_users(&self, users: &[UserConfig]) {
         self.imp().set_up_users(users)
     }
+
+    #[allow(dead_code)]
+    /// This will return the total number of active clients
+    pub(crate) fn num_clients(&self) -> usize {
+        self.client_filter(None).len()
+    }
+
+    /// This will get the number of users for any of the given paths
+    ///
+    /// This function is not quite what we want as it only count when the media is active
+    /// we want something that returns >0 when we want to build a media
+    #[allow(dead_code)]
+    pub(crate) fn num_path_users(&self, paths: &[&str]) -> usize {
+        self.session_pool().map_or(0usize, |pool| {
+            pool.filter(None).iter().fold(0usize, |acc, session| {
+                acc + session
+                    .filter(None)
+                    .iter()
+                    .fold(0usize, |acc_b, media_session| {
+                        acc_b
+                            + if paths.iter().any(|path| {
+                                media_session.matches(path).unwrap_or(0) == path.len() as i32
+                            }) {
+                                1usize
+                            } else {
+                                0usize
+                            }
+                    })
+            })
+        })
+    }
+
+    /// Get the number of clients wanting data for a tag
+    pub(crate) async fn get_number_of_clients<T: Into<String>>(&self, tag: T) -> Option<usize> {
+        self.imp().get_number_of_clients(tag).await
+    }
+
+    /// Returns true once the pause buffer is ready
+    pub(crate) async fn buffer_ready<T: Into<String>>(&self, tag: T) -> Option<bool> {
+        self.imp().buffer_ready(tag).await
+    }
 }
 
 unsafe impl Send for NeoRtspServer {}
@@ -157,6 +201,23 @@ impl NeoRtspServerImpl {
             .await
             .get(&key)
             .map(|k| k.factory.get_sender())
+    }
+    pub(crate) async fn buffer_ready<T: Into<String>>(&self, tag: T) -> Option<bool> {
+        let key = tag.into();
+        self.medias
+            .read()
+            .await
+            .get(&key)
+            .map(|k| k.factory.buffer_ready())
+    }
+
+    pub(crate) async fn get_number_of_clients<T: Into<String>>(&self, tag: T) -> Option<usize> {
+        let key = tag.into();
+        self.medias
+            .read()
+            .await
+            .get(&key)
+            .map(|k| k.factory.number_of_clients())
     }
 
     #[allow(dead_code)]

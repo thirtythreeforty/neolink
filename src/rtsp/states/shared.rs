@@ -3,7 +3,6 @@
 //!
 //!
 use anyhow::{Context, Error, Result};
-use async_trait::async_trait;
 use log::*;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -97,6 +96,12 @@ impl Shared {
         Ok(())
     }
 
+    pub(crate) fn get_tags(&self) -> Vec<String> {
+        self.streams
+            .iter()
+            .map(|k| self.get_tag_for_stream(k))
+            .collect()
+    }
     pub(crate) fn get_tag_for_stream(&self, stream: &Stream) -> String {
         format!("{}::{:?}", self.config.name, stream)
     }
@@ -156,11 +161,4 @@ impl Shared {
         }
         streams
     }
-}
-
-#[async_trait]
-pub(crate) trait CameraState: Default {
-    async fn setup(&mut self, shared: &Shared) -> Result<(), Error>;
-
-    async fn tear_down(&mut self, shared: &Shared) -> Result<(), Error>;
 }

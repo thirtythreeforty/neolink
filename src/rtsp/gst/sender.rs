@@ -7,10 +7,11 @@ use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use neolink_core::bcmedia::model::*;
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU64;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 // use tokio::time::{interval, Duration, MissedTickBehavior};
-use log::*;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::{shared::*, AnyResult};
@@ -41,8 +42,17 @@ impl NeoMediaSender {
     pub(super) async fn run(&mut self) -> AnyResult<()> {
         // let mut resend_pause = interval(Duration::from_secs_f32(1.0f32 / 5.0f32));
         // resend_pause.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        let mut buffer: Vec<StampedData> = Default::default();
+        let mut buffer_a: Vec<StampedData> = Default::default();
+        let mut buffer_b: Vec<StampedData> = Default::default();
+        let buffer_read = &mut buffer_a;
+        let buffer_write = &mut buffer_b;
         loop {
+            self.shared
+                .number_of_clients
+                .store(self.clientdata.len(), Ordering::Relaxed);
+            self.shared
+                .buffer_ready
+                .store(!buffer_read.is_empty(), Ordering::Relaxed);
             tokio::select! {
                 v = self.data_source.next() => {
                     // debug!("data_source recieved");
@@ -53,8 +63,9 @@ impl NeoMediaSender {
                             self.inspect_bcmedia(&bc_media).await?;
                             match bc_media {
                                 BcMedia::Iframe(frame) => {
-                                    buffer.clear();
-                                    buffer.push(
+                                    std::mem::swap(buffer_read, buffer_write);
+                                    buffer_write.clear();
+                                    buffer_write.push(
                                         StampedData {
                                             ms: frame.microseconds as u64,
                                             data: frame.data.clone(),
@@ -65,11 +76,11 @@ impl NeoMediaSender {
                                             ms: frame.microseconds as u64,
                                             data: frame.data,
                                         },
-                                        resend: buffer.as_slice()
+                                        resend: buffer_read.as_slice()
                                     })?;
                                 }
                                 BcMedia::Pframe(frame) => {
-                                    buffer.push(
+                                    buffer_write.push(
                                         StampedData {
                                             ms: frame.microseconds as u64,
                                             data: frame.data.clone(),
@@ -80,11 +91,11 @@ impl NeoMediaSender {
                                             ms: frame.microseconds as u64,
                                             data: frame.data,
                                         },
-                                        resend: buffer.as_slice()
+                                        resend: buffer_read.as_slice()
                                     })?;
                                 }
                                 BcMedia::Aac(aac) => {
-                                    if let Some(last) = buffer.last().as_ref() {
+                                    if let Some(last) = buffer_write.last().as_ref() {
                                         self.process_audbuffer(aac.data.as_slice(), last.ms)?;
                                     }
 

@@ -54,6 +54,8 @@
 //
 use anyhow::{anyhow, Context, Result};
 use log::*;
+use tokio_stream::StreamExt;
+use futures::stream::FuturesUnordered;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -169,27 +171,66 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         .await
         .with_context(|| format!("{}: Could not start stream", name))
         .map_err(CameraFailureKind::Retry)?;
+    
+    let tags = streaming.shared.get_tags();
+    let rtsp_thread = streaming.get_rtsp();
+        
+    let mut waiter = tokio::time::interval(Duration::from_micros(500));
+    loop {
+        waiter.tick().await;
+        if tags.iter().map(|tag| rtsp_thread.buffer_ready(tag)).collect::<FuturesUnordered<_>>().all(|f| f.unwrap_or(false)).await {
+            break;
+        }
+    }
 
-    tokio::time::sleep(Duration::from_secs(2)).await; // Wait for a few seconds of video before we allow pausing
-
+    // tokio::task::spawn(async move {
+    //     let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
+    //     loop {
+    //         inter.tick().await;
+    //         log::info!(
+    //             "Users: {:?}, {}",
+    //             rtsp_thread.get_number_of_clients("Cammy01::Main").await,
+    //             rtsp_thread.num_path_users(&["/Cammy01/mainStream"])
+    //         );
+    //     }
+    // });
+    
+    
     loop {
         // Wait for error or reason to pause
         tokio::select! {
             v = async {
                 // Wait for error
                 streaming.join().await
-            } => v,
+            } => {
+                info!("Join Pause");
+                v
+            },
             v = async {
                 // Wait for motion stop
                 let mut motion = streaming.get_camera().listen_on_motion().await?;
                 motion.await_stop(Duration::from_secs_f64(streaming.get_config().pause.motion_timeout)).await
             }, if streaming.get_config().pause.on_motion => {
+                info!("Motion Pause");
                 v.map_err(|e| anyhow!("Error while processing motion messages: {:?}", e))
             },
             v = async {
                 // Wait for client to disconnect
-                todo!()
-            }, if streaming.get_config().pause.on_disconnect => v,
+                let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
+                
+                info!("Await Client Pause");
+                loop {
+                    inter.tick().await;
+                    let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;
+                    // info!("Num clients: {}", total_clients);
+                    if total_clients == 0 {
+                        return Ok(())
+                    }
+                }
+            }, if streaming.get_config().pause.on_disconnect => {
+                info!("Client Pause");
+                v
+            },
         }.with_context(|| format!("{}: Error while streaming", name))
         .map_err(CameraFailureKind::Retry)?;
 
@@ -205,15 +246,28 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
                 let mut motion = paused.get_camera().listen_on_motion().await?;
                 motion.await_start(Duration::ZERO).await
             }, if paused.get_config().pause.on_motion => {
+                info!("Motion Resume");
                 v.map_err(|e| anyhow!("Error while processing motion messages: {:?}", e))
             },
             v = async {
                 // Wait for client to connect
-                todo!()
-            }, if paused.get_config().pause.on_disconnect => v,
+                let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
+                    
+                loop {
+                    inter.tick().await;
+                    let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;
+                    if total_clients > 0 {
+                        return Ok(())
+                    }
+                }
+            }, if paused.get_config().pause.on_disconnect => {
+                info!("Client Resume");
+                v
+            },
             else => {
                 // No pause. This means that the stream stopped for some reason
                 // but not because of an error
+                info!("Generic Resume");
                 Ok(())
             }
         }

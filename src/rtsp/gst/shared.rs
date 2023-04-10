@@ -2,7 +2,7 @@
 //! components that manage a media stream
 use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, AtomicUsize, AtomicBool};
 use tokio::sync::RwLock;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -23,6 +23,8 @@ pub(super) struct NeoMediaShared {
     pub(super) vid_format: RwLock<VidFormats>,
     pub(super) aud_format: RwLock<AudFormats>,
     pub(super) microseconds: AtomicU64,
+    pub(super) number_of_clients: AtomicUsize,
+    pub(super) buffer_ready: AtomicBool,
 }
 
 impl Default for NeoMediaShared {
@@ -31,6 +33,8 @@ impl Default for NeoMediaShared {
             vid_format: RwLock::new(VidFormats::Unknown),
             aud_format: RwLock::new(AudFormats::Unknown),
             microseconds: AtomicU64::new(0),
+            number_of_clients: AtomicUsize::new(0),
+            buffer_ready: AtomicBool::new(false),
         }
     }
 }

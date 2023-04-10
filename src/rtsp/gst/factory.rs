@@ -93,6 +93,16 @@ impl NeoMediaFactory {
             ));
         }
     }
+
+    /// This works by counting the number of acive client datas
+    pub(crate) fn number_of_clients(&self) -> usize {
+        self.imp().number_of_clients()
+    }
+
+    /// This returns true once an iframe + pframe set has been found
+    pub(crate) fn buffer_ready(&self) -> bool {
+        self.imp().buffer_ready()
+    }
 }
 
 unsafe impl Send for NeoMediaFactory {}
@@ -187,6 +197,13 @@ fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
 }
 
 impl NeoMediaFactoryImpl {
+    pub(crate) fn buffer_ready(&self) -> bool {
+        self.shared.buffer_ready.load(Ordering::Relaxed)
+    }
+    pub(crate) fn number_of_clients(&self) -> usize {
+        self.shared.number_of_clients.load(Ordering::Relaxed)
+    }
+
     fn build_pipeline(&self, media: Element) -> AnyResult<Element> {
         // debug!("Building PIPELINE");
         let bin = media

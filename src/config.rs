@@ -157,7 +157,7 @@ pub(crate) struct PauseConfig {
     #[serde(default = "default_on_motion")]
     pub(crate) on_motion: bool,
 
-    #[serde(default = "default_on_disconnect")]
+    #[serde(default = "default_on_disconnect", alias = "on_client")]
     pub(crate) on_disconnect: bool,
 
     #[serde(default = "default_motion_timeout", alias = "timeout")]
