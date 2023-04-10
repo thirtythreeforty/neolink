@@ -7,9 +7,7 @@ use super::{factory::*, AnyResult};
 use crate::config::*;
 
 use anyhow::{anyhow, Context};
-use gstreamer::glib::object_subclass;
-use gstreamer::glib::subclass::types::ObjectSubclass;
-use gstreamer::glib::{self, Object};
+use gstreamer::glib::{self, object_subclass, subclass::types::ObjectSubclass, MainLoop, Object};
 use gstreamer_rtsp::RTSPAuthMethod;
 use gstreamer_rtsp_server::{
     gio::{TlsAuthenticationMode, TlsCertificate},
@@ -22,8 +20,12 @@ use neolink_core::bcmedia::model::*;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     fs,
+    sync::Arc,
 };
-use tokio::sync::{mpsc::Sender, RwLock};
+use tokio::{
+    sync::{mpsc::Sender, RwLock},
+    task::JoinHandle,
+};
 
 glib::wrapper! {
     /// The wrapped RTSPServer
@@ -81,22 +83,29 @@ impl NeoRtspServer {
         self.imp().add_permitted_roles(tag, permitted_users).await
     }
 
-    pub(crate) async fn run(&self, bind_addr: &str, bind_port: u16) -> AnyResult<()> {
+    pub(crate) async fn run(
+        &self,
+        bind_addr: &str,
+        bind_port: u16,
+    ) -> AnyResult<(JoinHandle<AnyResult<()>>, Arc<MainLoop>)> {
         let server = self;
         server.set_address(bind_addr);
         server.set_service(&format!("{}", bind_port));
         // Attach server to default Glib context
         let _ = server.attach(None);
-        let main_loop = glib::MainLoop::new(None, false);
+        let main_loop = Arc::new(MainLoop::new(None, false));
         // Run the Glib main loop.
+        let main_loop_thread = main_loop.clone();
         #[allow(clippy::unit_arg)]
-        tokio::task::spawn_blocking(move || Ok(main_loop.run())).await?
+        let handle = tokio::task::spawn_blocking(move || Ok(main_loop_thread.run()));
+
+        Ok((handle, main_loop))
     }
-    
+
     pub(crate) fn set_up_tls(&self, config: &Config) {
         self.imp().set_up_tls(config)
     }
-    
+
     pub(crate) fn set_up_users(&self, users: &[UserConfig]) {
         self.imp().set_up_users(users)
     }

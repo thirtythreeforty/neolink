@@ -188,6 +188,7 @@ fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
 
 impl NeoMediaFactoryImpl {
     fn build_pipeline(&self, media: Element) -> AnyResult<Element> {
+        // debug!("Building PIPELINE");
         let bin = media
             .dynamic_cast::<Bin>()
             .map_err(|_| anyhow!("Media source's element should be a bin"))?;
@@ -197,6 +198,7 @@ impl NeoMediaFactoryImpl {
         }
 
         let mut client_data: ClientPipelineData = Default::default();
+        client_data.start_time = self.shared.microseconds.load(Ordering::Relaxed);
 
         // Now contruct the actual ones
         match *self.shared.vid_format.blocking_read() {
@@ -336,6 +338,7 @@ impl NeoMediaFactoryImpl {
                 client_data.audsrc.replace(source);
             }
             AudFormats::Adpcm(block_size) => {
+                debug!("Building Adpcm pipeline");
                 // Original command line
                 // caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000
                 // ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024
@@ -392,7 +395,7 @@ impl NeoMediaFactoryImpl {
         }
 
         self.clientsender.blocking_send(client_data)?;
-
+        // debug!("Pipeline built");
         bin.dynamic_cast::<Element>()
             .map_err(|_| anyhow!("Cannot cast back"))
     }

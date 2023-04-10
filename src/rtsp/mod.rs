@@ -123,9 +123,19 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
 
     let bind_addr = config.bind_addr.clone();
     let bind_port = config.bind_port;
-    set.spawn(async move { rtsp.run(&bind_addr, bind_port).await });
+    let (handle, main_loop) = rtsp.run(&bind_addr, bind_port).await?;
+    set.spawn(async move { handle.await? });
 
     while let Some(joined) = set.join_next().await {
+        match &joined {
+            Err(_) | Ok(Err(_)) => {
+                // Panicked or error in task
+                main_loop.quit();
+            }
+            Ok(Ok(_)) => {
+                // All good
+            }
+        }
         joined??
     }
 

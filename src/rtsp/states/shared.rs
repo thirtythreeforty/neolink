@@ -4,11 +4,11 @@
 //!
 use anyhow::{Context, Error, Result};
 use async_trait::async_trait;
+use log::*;
 use std::collections::HashSet;
 use std::sync::Arc;
-use log::*;
 
-use neolink_core::bc_protocol::{StreamKind as Stream};
+use neolink_core::bc_protocol::StreamKind as Stream;
 
 use crate::config::{CameraConfig, UserConfig};
 use crate::rtsp::gst::NeoRtspServer;
@@ -81,7 +81,7 @@ impl Shared {
         me.setup_streams().await?;
         Ok(me)
     }
-    
+
     // Set up streams on the RTSP camera
     pub(crate) async fn setup_streams(&self) -> Result<()> {
         for stream in self.streams.iter() {
@@ -101,7 +101,7 @@ impl Shared {
         format!("{}::{:?}", self.config.name, stream)
     }
     pub(crate) fn get_paths_for_stream(&self, stream: &Stream) -> Vec<String> {
-        vec![
+        let mut streams = vec![
             // Normal case
             format!("/{}/{:?}", self.config.name, stream),
             format!("/{}/{:?}Stream", self.config.name, stream),
@@ -142,7 +142,19 @@ impl Shared {
                 self.config.name.to_lowercase(),
                 format!("{:?}", stream).to_lowercase()
             ),
-        ]
+        ];
+
+        if (self.streams.contains(&Stream::Main) && matches!(stream, Stream::Main))
+            || (!self.streams.contains(&Stream::Main) && matches!(stream, Stream::Sub))
+            || (!self.streams.contains(&Stream::Main)
+                && !self.streams.contains(&Stream::Sub)
+                && matches!(stream, Stream::Extern))
+        {
+            // If main stream add that
+            streams.push(format!("/{}", self.config.name));
+            streams.push(format!("/{}", self.config.name.to_lowercase()));
+        }
+        streams
     }
 }
 

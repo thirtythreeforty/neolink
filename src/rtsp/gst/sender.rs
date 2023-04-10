@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::{atomic::Ordering, Arc};
 // use tokio::time::{interval, Duration, MissedTickBehavior};
+use log::*;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::{shared::*, AnyResult};
@@ -44,8 +45,10 @@ impl NeoMediaSender {
         loop {
             tokio::select! {
                 v = self.data_source.next() => {
+                    // debug!("data_source recieved");
                     if let Some(bc_media) = v {
                         if ! self.skip_bcmedia(&bc_media)? {
+                            // debug!("Not skipped");
                             // resend_pause.reset();
                             self.inspect_bcmedia(&bc_media).await?;
                             match bc_media {
@@ -148,7 +151,7 @@ impl NeoMediaSender {
 
     fn process_audbuffer(&mut self, buf: &[u8], frame_ms: u64) -> AnyResult<()> {
         self.clientdata.retain(|_, data| {
-            if let Some(audsrc) = data.vidsrc.as_ref() {
+            if let Some(audsrc) = data.audsrc.as_ref() {
                 Self::send_buffer(audsrc, buf, frame_ms, data.start_time).is_ok()
                 // If ok retain is true
             } else {
@@ -173,9 +176,14 @@ impl NeoMediaSender {
 
             let time = ClockTime::from_useconds(micros);
             gst_buf_mut.set_pts(time);
+            // debug!(
+            //     "PTS set to: {:?} ({}-{}={:?})",
+            //     time, frame_ms, start_time, micros
+            // );
             let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
             gst_buf_data.copy_from_slice(buf);
         }
+        // debug!("Buffer pushed");
         appsrc
             .push_buffer(gst_buf.copy())
             .map(|_| ())
@@ -210,6 +218,10 @@ impl NeoMediaSender {
                 self.shared
                     .microseconds
                     .store(frame.microseconds as u64, Ordering::Relaxed);
+                // log::debug!(
+                //     "Time set to {}",
+                //     self.shared.microseconds.load(Ordering::Relaxed)
+                // );
             }
             BcMedia::Pframe(frame) => {
                 match frame.video_type {
@@ -223,6 +235,10 @@ impl NeoMediaSender {
                 self.shared
                     .microseconds
                     .store(frame.microseconds as u64, Ordering::Relaxed);
+                // log::debug!(
+                //     "Time set to {}",
+                //     self.shared.microseconds.load(Ordering::Relaxed)
+                // );
             }
             BcMedia::Aac(_aac) => {
                 (*self.shared.aud_format.write().await) = AudFormats::Aac;

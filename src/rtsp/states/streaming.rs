@@ -46,7 +46,7 @@ impl Camera<Streaming> {
 
             let stream_thead = *stream;
             let strict_thread = loggedin.shared.config.strict;
-            let tag_thread = tag.clone();
+            // let tag_thread = tag.clone();
             let mut stream_data = loggedin
                 .state
                 .camera
@@ -54,17 +54,17 @@ impl Camera<Streaming> {
                 .await?;
             set.spawn(async move {
                 loop {
-                    debug!("{}: BcMediaStreamRecv", &tag_thread);
+                    // debug!("{}: BcMediaStreamRecv", &tag_thread);
                     let data = timeout(Duration::from_secs(15), stream_data.get_data()).await??;
-                    match &data {
-                        Ok(BcMedia::InfoV1(_)) => debug!("{}:  - InfoV1", &tag_thread),
-                        Ok(BcMedia::InfoV2(_)) => debug!("{}:  - InfoV2", &tag_thread),
-                        Ok(BcMedia::Iframe(_)) => debug!("{}:  - Iframe", &tag_thread),
-                        Ok(BcMedia::Pframe(_)) => debug!("{}:  - Pframe", &tag_thread),
-                        Ok(BcMedia::Aac(_)) => debug!("{}:  - Aac", &tag_thread),
-                        Ok(BcMedia::Adpcm(_)) => debug!("{}:  - Adpcm", &tag_thread),
-                        Err(_) => debug!("  - Error"),
-                    }
+                    // match &data {
+                    //     Ok(BcMedia::InfoV1(_)) => debug!("{}:  - InfoV1", &tag_thread),
+                    //     Ok(BcMedia::InfoV2(_)) => debug!("{}:  - InfoV2", &tag_thread),
+                    //     Ok(BcMedia::Iframe(_)) => debug!("{}:  - Iframe", &tag_thread),
+                    //     Ok(BcMedia::Pframe(_)) => debug!("{}:  - Pframe", &tag_thread),
+                    //     Ok(BcMedia::Aac(_)) => debug!("{}:  - Aac", &tag_thread),
+                    //     Ok(BcMedia::Adpcm(_)) => debug!("{}:  - Adpcm", &tag_thread),
+                    //     Err(_) => debug!("  - Error"),
+                    // }
                     sender.send(data?).await?;
                 }
             });
