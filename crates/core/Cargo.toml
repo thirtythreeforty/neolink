@@ -4,6 +4,7 @@ description = "Core services and structure for Reolink IP cameras"
 version = "0.5.6"
 authors = ["George Hilliard <thirtythreeforty@gmail.com>", "Andrew King <sheepchaan@gmail.com>"]
 edition = "2018"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
 aes = "0.6"

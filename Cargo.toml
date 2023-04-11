@@ -4,39 +4,34 @@ description = "A standards-compliant bridge to Reolink IP cameras"
 version = "0.5.6"
 authors = ["George Hilliard <thirtythreeforty@gmail.com>", "Andrew King <sheepchaan@gmail.com>"]
 edition = "2018"
-default-run = "neolink"
+license = "AGPL-3.0-or-later"
 
 [workspace]
 members = [
   "crates/*",
 ]
 
-[[bin]]
-name = "decoder"
-test = false
-bench = false
-
 [dependencies]
-neolink_core = { path = "crates/core", version = "0.5.6" }
+anyhow = "1.0.42"
+byte-slice-cast = "1.2.2"
 crossbeam-channel = "0.5.1"
 env_logger = "*"
+futures = "0.3.26"
 gstreamer = "0.19.0"
 gstreamer-app = "0.19.0"
 gstreamer-rtsp = "0.19.0"
-gstreamer-rtsp-server = { version = "0.19.0", features = ["v1_16"]}
+gstreamer-rtsp-server = { version = "0.19.0", features = ["v1_16"] }
 lazy_static = "1.4"
 log = { version = "0.4" }
+neolink_core = { path = "crates/core", version = "0.5.6" }
 regex = "1"
+rumqttc = "0.8.0"
 serde = { version = "1.0", features = ["derive"] }
 structopt = "0.3"
 time = "0.2"
+tokio = { version = "1.0", features = ["rt", "macros", "io-util"] }
+tokio-stream = "0.1.12"
 toml = "0.5"
-yaserde = "0.3.16"
 validator = "0.10"
 validator_derive = "0.10"
-byte-slice-cast = "1.0.0"
-rumqttc = "0.8.0"
-tokio = { version = "1.0", features = ["rt", "macros", "io-util"] }
-anyhow = "1.0.42"
-futures = "0.3.26"
-tokio-stream = "0.1.12"
+yaserde = "0.3.16"
