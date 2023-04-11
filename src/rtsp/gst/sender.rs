@@ -33,10 +33,6 @@ struct StampedData {
     ms: u64,
     data: Vec<u8>,
 }
-struct ProcessData<'a> {
-    live: StampedData,
-    resend: &'a [StampedData],
-}
 
 impl NeoMediaSender {
     pub(super) async fn run(&mut self) -> AnyResult<()> {
@@ -46,6 +42,11 @@ impl NeoMediaSender {
         let mut buffer_b: Vec<StampedData> = Default::default();
         let buffer_read = &mut buffer_a;
         let buffer_write = &mut buffer_b;
+
+        let mut audbuffer_a: Vec<StampedData> = Default::default();
+        let mut audbuffer_b: Vec<StampedData> = Default::default();
+        let audbuffer_read = &mut audbuffer_a;
+        let audbuffer_write = &mut audbuffer_b;
         loop {
             self.shared
                 .number_of_clients
@@ -63,40 +64,35 @@ impl NeoMediaSender {
                             self.inspect_bcmedia(&bc_media).await?;
                             match bc_media {
                                 BcMedia::Iframe(frame) => {
-                                    std::mem::swap(buffer_read, buffer_write);
-                                    buffer_write.clear();
-                                    buffer_write.push(
-                                        StampedData {
-                                            ms: frame.microseconds as u64,
-                                            data: frame.data.clone(),
-                                        }
-                                    );
-                                    self.process_vidbuffer(&ProcessData {
-                                        live: StampedData{
+                                    if buffer_write.len() > 100 {
+                                        std::mem::swap(buffer_read, buffer_write);
+                                        buffer_write.clear();
+                                        std::mem::swap(audbuffer_read, audbuffer_write);
+                                        audbuffer_write.clear();
+                                    }
+                                    let new_data = StampedData {
                                             ms: frame.microseconds as u64,
                                             data: frame.data,
-                                        },
-                                        resend: buffer_read.as_slice()
-                                    })?;
+                                    };
+                                    self.process_vidbuffer(&new_data)?;
+                                    buffer_write.push(new_data);
                                 }
                                 BcMedia::Pframe(frame) => {
-                                    buffer_write.push(
-                                        StampedData {
-                                            ms: frame.microseconds as u64,
-                                            data: frame.data.clone(),
-                                        }
-                                    );
-                                    self.process_vidbuffer(&ProcessData {
-                                        live: StampedData{
+                                    let new_data = StampedData {
                                             ms: frame.microseconds as u64,
                                             data: frame.data,
-                                        },
-                                        resend: buffer_read.as_slice()
-                                    })?;
+                                    };
+                                    self.process_vidbuffer(&new_data)?;
+                                    buffer_write.push(new_data);
                                 }
                                 BcMedia::Aac(aac) => {
                                     if let Some(last) = buffer_write.last().as_ref() {
-                                        self.process_audbuffer(aac.data.as_slice(), last.ms)?;
+                                        let new_data = StampedData {
+                                            ms: last.ms,
+                                            data: aac.data,
+                                        };
+                                        self.process_audbuffer(&new_data)?;
+                                        audbuffer_write.push(new_data);
                                     }
 
                                 }
@@ -108,7 +104,45 @@ impl NeoMediaSender {
                     }
                 }
                 v = self.clientsource.next() => {
-                    if let Some(clientdata) = v {
+                    if let Some(mut clientdata) = v {
+                        // Resend the video and audio buffers
+                        if !clientdata.inited {
+                            clientdata.inited = true;
+                            let mut vid_resend = buffer_read.iter().chain(buffer_write.iter()).enumerate();
+                            let mut aud_resend = audbuffer_read.iter().chain(audbuffer_write.iter()).enumerate();
+                            loop {
+                                let next_vid = vid_resend.next();
+                                if let Some((idx, next_vid)) = next_vid.as_ref() {
+                                    if let Some(src) = clientdata.vidsrc.as_ref() {
+                                        if Self::send_buffer(
+                                            src,
+                                            next_vid.data.as_slice(),
+                                            *idx as u64,
+                                            0,
+                                        ).is_err() {
+                                            break;
+                                        };
+                                    }
+                                }
+                                let next_aud = aud_resend.next();
+                                if let Some((idx, next_aud)) = next_aud.as_ref() {
+                                    if let Some(src) = clientdata.audsrc.as_ref() {
+                                        if Self::send_buffer(
+                                            src,
+                                            next_aud.data.as_slice(),
+                                            *idx as u64,
+                                            0,
+                                        ).is_err() {
+                                            break;
+                                        };
+                                    }
+                                }
+                                if next_vid.is_none() && next_aud.is_none() {
+                                    break;
+                                }
+                            }
+                        }
+                        // Save the client for future sends
                         self.clientdata.insert(self.uid.fetch_add(1, Ordering::Relaxed) , clientdata);
                     } else {
                         break;
@@ -127,30 +161,17 @@ impl NeoMediaSender {
         Ok(())
     }
 
-    fn process_vidbuffer(&mut self, process_data: &ProcessData) -> AnyResult<()> {
+    fn process_vidbuffer(&mut self, stamped_data: &StampedData) -> AnyResult<()> {
         self.clientdata.retain(|_, data| {
             if let Some(vidsrc) = data.vidsrc.as_ref() {
-                // If ! inited then we just joined the stream
-                // Send all data from the last iframe to catch up
-                // This should eliminate visual artifact that arise from recieving a pframe
-                // before an iframe
-                if !data.inited {
-                    data.inited = true;
-                    for (idx, resend_buffer) in process_data.resend.iter().enumerate() {
-                        if Self::send_buffer(vidsrc, resend_buffer.data.as_slice(), idx as u64, 0)
-                            .is_err()
-                        {
-                            return false; // If fails then this appsrc is dead
-                        }
-                    }
-                }
                 Self::send_buffer(
                     vidsrc,
-                    process_data.live.data.as_slice(),
-                    process_data.live.ms,
+                    stamped_data.data.as_slice(),
+                    stamped_data.ms,
                     data.start_time,
                 )
-                .is_ok() // If ok retain is true
+                .is_ok()
+            // If ok retain is true
             } else {
                 // Audio only
                 true
@@ -160,10 +181,16 @@ impl NeoMediaSender {
         Ok(())
     }
 
-    fn process_audbuffer(&mut self, buf: &[u8], frame_ms: u64) -> AnyResult<()> {
+    fn process_audbuffer(&mut self, stamped_data: &StampedData) -> AnyResult<()> {
         self.clientdata.retain(|_, data| {
             if let Some(audsrc) = data.audsrc.as_ref() {
-                Self::send_buffer(audsrc, buf, frame_ms, data.start_time).is_ok()
+                Self::send_buffer(
+                    audsrc,
+                    stamped_data.data.as_slice(),
+                    stamped_data.ms,
+                    data.start_time,
+                )
+                .is_ok()
                 // If ok retain is true
             } else {
                 // video only

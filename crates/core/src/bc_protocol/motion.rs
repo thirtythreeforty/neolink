@@ -2,7 +2,7 @@ use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{channel, error::TryRecvError, Receiver};
-use tokio::task::{self, JoinHandle};
+use tokio::task::JoinSet;
 
 /// Motion Status that the callback can send
 #[derive(Clone, Copy, Debug)]
@@ -19,8 +19,8 @@ pub enum MotionStatus {
 ///
 /// When this object is dropped the motion events are stopped
 pub struct MotionData {
-    handle: Option<JoinHandle<Result<()>>>,
-    rx: Receiver<MotionStatus>,
+    handle: JoinSet<Result<()>>,
+    rx: Receiver<Result<MotionStatus>>,
     last_update: MotionStatus,
 }
 
@@ -58,7 +58,7 @@ impl MotionData {
         let mut results: Vec<MotionStatus> = vec![];
         loop {
             match self.rx.try_recv() {
-                Ok(motion) => results.push(motion),
+                Ok(motion) => results.push(motion?),
                 Err(TryRecvError::Empty) => break,
                 Err(e) => return Err(Error::from(e)),
             }
@@ -77,6 +77,7 @@ impl MotionData {
         if let Some(last) = motions.last() {
             Ok(*last)
         } else if let Some(moition) = self.rx.recv().await {
+            let moition = moition?;
             self.last_update = moition;
             Ok(moition)
         } else {
@@ -97,8 +98,9 @@ impl MotionData {
                     return Ok(());
                 } else {
                     // Schedule a sleep or wait for motion to start
+                    let remaining_sleep = duration - (Instant::now() - time);
                     let result = tokio::select! {
-                        _ = tokio::time::sleep(duration - (Instant::now() - time)) => {None},
+                        _ = tokio::time::sleep(remaining_sleep) => {None},
                         v = async {
                             loop {
                                 match self.next_motion().await {
@@ -157,18 +159,6 @@ impl MotionData {
     }
 }
 
-impl Drop for MotionData {
-    fn drop(&mut self) {
-        if let Some(h) = self.handle.take() {
-            let backoff = crossbeam::utils::Backoff::new();
-            h.abort();
-            while !h.is_finished() {
-                backoff.snooze();
-            }
-        }
-    }
-}
-
 impl BcCamera {
     /// This message tells the camera to send the motion events to us
     /// Which are the recieved on msgid 33
@@ -220,8 +210,9 @@ impl BcCamera {
         // when whenever motion is detected.
         let (tx, rx) = channel(20);
 
+        let mut set = JoinSet::new();
         let channel_id = self.channel_id;
-        let handle = task::spawn(async move {
+        set.spawn(async move {
             let mut sub = connection.subscribe(msg_num).await?;
 
             loop {
@@ -256,7 +247,7 @@ impl BcCamera {
                     }
                     // On connection drop we stop
                     Err(e) => Err(e),
-                }?;
+                };
 
                 if tx.send(status).await.is_err() {
                     // Motion reciever has been dropped
@@ -267,9 +258,15 @@ impl BcCamera {
         });
 
         Ok(MotionData {
-            handle: Some(handle),
+            handle: set,
             rx,
             last_update: MotionStatus::NoChange(Instant::now()),
         })
+    }
+}
+
+impl Drop for MotionData {
+    fn drop(&mut self) {
+        self.handle.abort_all();
     }
 }

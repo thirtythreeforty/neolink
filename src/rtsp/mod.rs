@@ -182,6 +182,9 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
             break;
         }
     }
+    if streaming.get_config().pause.on_motion || streaming.get_config().pause.on_disconnect {
+        log::info!("Pause buffer prepared");
+    }
 
     // tokio::task::spawn(async move {
     //     let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));

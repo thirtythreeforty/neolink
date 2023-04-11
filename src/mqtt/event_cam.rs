@@ -87,7 +87,7 @@ impl EventCam {
                 .await
                 .context("Failed to send message from camera")
         } else {
-            Err(anyhow!("Failed to send camera data over crossbeam"))
+            Err(anyhow!("Failed to send camera data over channel"))
         }
     }
 

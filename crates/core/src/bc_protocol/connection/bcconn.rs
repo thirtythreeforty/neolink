@@ -1,5 +1,5 @@
 use super::BcSubscription;
-use crate::{bc::model::*, timeout, Error, Result};
+use crate::{bc::model::*, Error, Result};
 use futures::sink::{Sink, SinkExt};
 use futures::stream::{Stream, StreamExt};
 use log::*;
@@ -64,9 +64,7 @@ impl BcConnection {
     }
 
     pub(super) async fn send(&self, bc: Bc) -> crate::Result<()> {
-        trace!("send Wait: {:?}", bc);
-        timeout(self.sink.lock().await.send(bc)).await??;
-        trace!("send Complete");
+        self.sink.lock().await.send(bc).await?;
         Ok(())
     }
 
