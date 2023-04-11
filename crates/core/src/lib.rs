@@ -1,3 +1,4 @@
+#![warn(unused_crate_dependencies)]
 #![warn(missing_docs)]
 //! # Neolink-Core
 //!
