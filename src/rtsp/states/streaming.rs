@@ -7,10 +7,7 @@ use log::*;
 use tokio::time::{timeout, Duration};
 use tokio::{sync::RwLock, task::JoinSet};
 
-use neolink_core::{
-    bc_protocol::{BcCamera, StreamKind as Stream},
-    bcmedia::model::BcMedia,
-};
+use neolink_core::bc_protocol::{BcCamera, StreamKind as Stream};
 
 use super::{camera::Camera, LoggedIn};
 

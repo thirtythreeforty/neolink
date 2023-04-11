@@ -8,6 +8,4 @@ mod loggedin;
 mod shared;
 mod streaming;
 
-pub(crate) use self::{
-    camera::*, disconnected::*, loggedin::*, shared::*,
-};
+pub(crate) use self::{camera::*, disconnected::*, loggedin::*, shared::*};

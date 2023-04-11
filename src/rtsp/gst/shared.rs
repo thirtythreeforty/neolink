@@ -2,7 +2,7 @@
 //! components that manage a media stream
 use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
-use std::sync::atomic::{AtomicU64, AtomicUsize, AtomicBool};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
 use tokio::sync::RwLock;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

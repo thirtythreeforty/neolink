@@ -805,14 +805,14 @@ impl Discoverer {
                 _ => None,
             })
             .await?;
-        
+
         let result = ConnectResult {
             addr: final_addr,
             client_id: register_result.client_id,
             sid: register_result.sid,
             camera_id: local_did,
         };
-        
+
         // Confirm relay to register
         let msg = UdpDiscovery {
             tid: 0,

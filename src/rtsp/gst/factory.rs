@@ -214,8 +214,10 @@ impl NeoMediaFactoryImpl {
             bin.remove(&element)?;
         }
 
-        let mut client_data: ClientPipelineData = Default::default();
-        client_data.start_time = self.shared.microseconds.load(Ordering::Relaxed);
+        let mut client_data = ClientPipelineData {
+            start_time: self.shared.microseconds.load(Ordering::Relaxed),
+            ..Default::default()
+        };
 
         // Now contruct the actual ones
         match *self.shared.vid_format.blocking_read() {

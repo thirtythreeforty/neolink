@@ -18,7 +18,7 @@ impl<T> Camera<T> {
     pub(crate) fn get_config(&self) -> &CameraConfig {
         &self.shared.config
     }
-    
+
     pub(crate) fn get_rtsp(&self) -> Arc<super::super::gst::NeoRtspServer> {
         self.shared.rtsp.clone()
     }

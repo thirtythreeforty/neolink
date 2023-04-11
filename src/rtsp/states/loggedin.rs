@@ -15,6 +15,7 @@ pub(crate) struct LoggedIn {
 }
 
 impl Camera<LoggedIn> {
+    #[allow(dead_code)]
     pub(crate) async fn logout(self) -> Result<Camera<Connected>> {
         self.state.camera.logout().await?;
         Ok(Camera {

@@ -12,6 +12,7 @@ pub(crate) struct Connected {
 }
 
 impl Camera<Connected> {
+    #[allow(dead_code)]
     pub(crate) async fn disconnect(self) -> Result<Camera<Disconnected>> {
         Ok(Camera {
             shared: self.shared,

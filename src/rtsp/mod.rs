@@ -53,11 +53,11 @@
 //   - `"none"`: Resends the last iframe the camera. This does not reencode at all.  **Most use cases should use this one as it has the least effort on the cpu and gives what you would expect**
 //
 use anyhow::{anyhow, Context, Result};
-use log::*;
-use tokio_stream::StreamExt;
 use futures::stream::FuturesUnordered;
+use log::*;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio_stream::StreamExt;
 
 mod cmdline;
 mod gst;
@@ -171,14 +171,20 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         .await
         .with_context(|| format!("{}: Could not start stream", name))
         .map_err(CameraFailureKind::Retry)?;
-    
+
     let tags = streaming.shared.get_tags();
     let rtsp_thread = streaming.get_rtsp();
-        
+
     let mut waiter = tokio::time::interval(Duration::from_micros(500));
     loop {
         waiter.tick().await;
-        if tags.iter().map(|tag| rtsp_thread.buffer_ready(tag)).collect::<FuturesUnordered<_>>().all(|f| f.unwrap_or(false)).await {
+        if tags
+            .iter()
+            .map(|tag| rtsp_thread.buffer_ready(tag))
+            .collect::<FuturesUnordered<_>>()
+            .all(|f| f.unwrap_or(false))
+            .await
+        {
             break;
         }
     }
@@ -197,8 +203,7 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
     //         );
     //     }
     // });
-    
-    
+
     loop {
         // Wait for error or reason to pause
         tokio::select! {
@@ -220,7 +225,7 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
             v = async {
                 // Wait for client to disconnect
                 let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
-                
+
                 info!("Await Client Pause");
                 loop {
                     inter.tick().await;
@@ -255,7 +260,7 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
             v = async {
                 // Wait for client to connect
                 let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
-                    
+
                 loop {
                     inter.tick().await;
                     let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;

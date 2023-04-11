@@ -2,7 +2,7 @@
 //! Shared data between all states
 //!
 //!
-use anyhow::{Context, Error, Result};
+use anyhow::{Context, Result};
 use log::*;
 use std::collections::HashSet;
 use std::sync::Arc;

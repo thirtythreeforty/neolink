@@ -13,17 +13,14 @@ use gstreamer_rtsp_server::{
     gio::{TlsAuthenticationMode, TlsCertificate},
     prelude::*,
     subclass::prelude::*,
-    RTSPAuth, RTSPClient, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
+    RTSPAuth, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
 use neolink_core::bcmedia::model::*;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     fs,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
+    sync::Arc,
 };
 use tokio::{
     sync::{mpsc::Sender, RwLock},
