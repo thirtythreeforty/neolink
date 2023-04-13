@@ -67,7 +67,7 @@ address = "192.168.1.187:9000"
 #
 # By default we hide these status messages from the user but you can instead requst that
 # they be printed to stdout using print_format
-# 
+#
 # Valid values are:
 # - None
 # - Human

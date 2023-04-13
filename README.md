@@ -51,6 +51,7 @@ sudo apt install \
   libgstrtspserver-1.0-0 \
   libgstreamer1.0-0 \
   libgstreamer-plugins-bad1.0-0 \
+  gstreamer1.0-plugins-base \
   gstreamer1.0-plugins-good \
   gstreamer1.0-plugins-bad
 ```
@@ -102,7 +103,7 @@ The IP is discovered with four methods
 
 1. Local discovery: Here we send a broadcast on all visible networks asking the local
    network if there is a camera with this UID. This only works if the network supports broadcasts
-   
+
    If you know the ip address you can put it into the  `address` field of the config and attempt a
    direct connection without broadcasts. This requires a route from neolink to the camera.
 
@@ -115,9 +116,9 @@ The IP is discovered with four methods
    Once the camera either polls/recives a connect request from the reolink servers the camera will then
    initiate a connect to neolink. This requires that our IP and the reolink IPs are reacable from the camera.
 
-4. Relay: In this case we request that reolink relay our connection. Neolink nor the camera need to be able to 
+4. Relay: In this case we request that reolink relay our connection. Neolink nor the camera need to be able to
    direcly contact each other. But both neolink and the camera need to be able to contact reolink.
-   
+
 This can be controlled with the config
 
 ```toml
@@ -188,7 +189,6 @@ uid = "ABCDEF0123456789"
   [cameras.pause]
   on_motion = true # Should pause when no motion
   on_client = true # Should pause when no rtsp client
-  mode = "none"  # What to do when paused values are: none, black, still, test
   timeout = 2.1 # How long to wait after motion stops before pausing
 ```
 

@@ -1,0 +1,14 @@
+repos:
+-   repo: https://github.com/doublify/pre-commit-rust
+    rev: eeee35a
+    hooks:
+    -   id: fmt
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0  # Use the ref you want to point at
+    hooks:
+    -   id: trailing-whitespace
+    -   id: check-case-conflict
+    -   id: check-merge-conflict
+    -   id: check-toml
+    -   id: mixed-line-ending
+
