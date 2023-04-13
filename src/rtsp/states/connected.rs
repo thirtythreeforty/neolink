@@ -2,19 +2,38 @@
 //
 // This state has formed the TCP/UDP tunnel
 // but has not logged in
-use super::{CameraState, Shared};
-use anyhow::{Error, Result};
-use async_trait::async_trait;
+use super::{camera::Camera, disconnected::Disconnected, loggedin::LoggedIn};
+use anyhow::Result;
 
-#[derive(Default)]
-pub(crate) struct Connected {}
+use neolink_core::bc_protocol::{BcCamera, MaxEncryption};
 
-#[async_trait]
-impl CameraState for Connected {
-    async fn setup(&mut self, _shared: &Shared) -> Result<(), Error> {
-        Ok(())
+pub(crate) struct Connected {
+    pub(crate) camera: BcCamera,
+}
+
+impl Camera<Connected> {
+    #[allow(dead_code)]
+    pub(crate) async fn disconnect(self) -> Result<Camera<Disconnected>> {
+        Ok(Camera {
+            shared: self.shared,
+            state: Disconnected {},
+        })
     }
-    async fn tear_down(&mut self, _shared: &Shared) -> Result<(), Error> {
-        Ok(())
+
+    pub(crate) async fn login(self) -> Result<Camera<LoggedIn>> {
+        let max_encryption = match self.shared.config.max_encryption.to_lowercase().as_str() {
+            "none" => MaxEncryption::None,
+            "bcencrypt" => MaxEncryption::BcEncrypt,
+            "aes" => MaxEncryption::Aes,
+            _ => MaxEncryption::Aes,
+        };
+
+        self.state.camera.login_with_maxenc(max_encryption).await?;
+        Ok(Camera {
+            shared: self.shared,
+            state: LoggedIn {
+                camera: self.state.camera,
+            },
+        })
     }
 }

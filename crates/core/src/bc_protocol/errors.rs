@@ -159,6 +159,10 @@ pub enum Error {
         actual: String,
     },
 
+    /// Raised when a thread panics
+    #[error(display = "Thread panicked")]
+    JoinError(#[error(source)] std::sync::Arc<tokio::task::JoinError>),
+
     /// A generic catch all error
     #[error(display = "Other error: {}", _0)]
     Other(&'static str),
@@ -183,6 +187,12 @@ impl From<cookie_factory::GenError> for Error {
 impl From<local_ip_address::Error> for Error {
     fn from(k: local_ip_address::Error) -> Self {
         Error::LocalIpError(std::sync::Arc::new(k))
+    }
+}
+
+impl From<tokio::task::JoinError> for Error {
+    fn from(k: tokio::task::JoinError) -> Self {
+        Error::JoinError(std::sync::Arc::new(k))
     }
 }
 

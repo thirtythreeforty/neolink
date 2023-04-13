@@ -2,7 +2,7 @@ use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{channel, error::TryRecvError, Receiver};
-use tokio::task::{self, JoinHandle};
+use tokio::task::JoinSet;
 
 /// Motion Status that the callback can send
 #[derive(Clone, Copy, Debug)]
@@ -19,8 +19,8 @@ pub enum MotionStatus {
 ///
 /// When this object is dropped the motion events are stopped
 pub struct MotionData {
-    handle: Option<JoinHandle<Result<()>>>,
-    rx: Receiver<MotionStatus>,
+    handle: JoinSet<Result<()>>,
+    rx: Receiver<Result<MotionStatus>>,
     last_update: MotionStatus,
 }
 
@@ -45,7 +45,7 @@ impl MotionData {
     pub fn motion_detected_within(&mut self, duration: Duration) -> Result<Option<bool>> {
         self.consume_motion_events()?;
         Ok(match &self.last_update {
-            MotionStatus::Start(time) => Some((Instant::now() - *time) < duration),
+            MotionStatus::Start(_) => Some(true),
             MotionStatus::Stop(time) => Some((Instant::now() - *time) < duration),
             MotionStatus::NoChange(_) => None,
         })
@@ -58,7 +58,7 @@ impl MotionData {
         let mut results: Vec<MotionStatus> = vec![];
         loop {
             match self.rx.try_recv() {
-                Ok(motion) => results.push(motion),
+                Ok(motion) => results.push(motion?),
                 Err(TryRecvError::Empty) => break,
                 Err(e) => return Err(Error::from(e)),
             }
@@ -68,16 +68,93 @@ impl MotionData {
         }
         Ok(results)
     }
-}
 
-impl Drop for MotionData {
-    fn drop(&mut self) {
-        if let Some(h) = self.handle.take() {
-            let backoff = crossbeam::utils::Backoff::new();
-            h.abort();
-            while !h.is_finished() {
-                backoff.snooze();
+    /// Await a new motion event
+    ///
+    ///
+    pub async fn next_motion(&mut self) -> Result<MotionStatus> {
+        let motions = self.consume_motion_events()?;
+        if let Some(last) = motions.last() {
+            Ok(*last)
+        } else if let Some(moition) = self.rx.recv().await {
+            let moition = moition?;
+            self.last_update = moition;
+            Ok(moition)
+        } else {
+            Err(Error::Other("Motion dropped"))
+        }
+    }
+
+    /// Wait for the motion to stop
+    ///
+    /// It must be stopped for at least the given duration
+    pub async fn await_stop(&mut self, duration: Duration) -> Result<()> {
+        let motions = self.consume_motion_events()?;
+        let mut last_motion = motions.last().copied();
+        loop {
+            if let Some(MotionStatus::Stop(time)) = last_motion {
+                // In stop state
+                if duration.is_zero() || (Instant::now() - time) > duration {
+                    return Ok(());
+                } else {
+                    // Schedule a sleep or wait for motion to start
+                    let remaining_sleep = duration - (Instant::now() - time);
+                    let result = tokio::select! {
+                        _ = tokio::time::sleep(remaining_sleep) => {None},
+                        v = async {
+                            loop {
+                                match self.next_motion().await {
+                                    n @ Ok(MotionStatus::Start(_)) => {return n;},
+                                    n @ Err(_) => {return n;},
+                                    _ => {continue;}
+                                }
+                            }
+                        } => {Some(v)}
+                    };
+                    if let Some(v) = result {
+                        v?;
+                    } else {
+                        return Ok(());
+                    }
+                }
             }
+            last_motion = Some(self.next_motion().await?);
+        }
+    }
+
+    /// Wait for the motion to start
+    ///
+    /// The motion must have a minimum duration as given
+    pub async fn await_start(&mut self, duration: Duration) -> Result<()> {
+        let motions = self.consume_motion_events()?;
+        let mut last_motion = motions.last().copied();
+        loop {
+            if let Some(MotionStatus::Start(time)) = last_motion {
+                // In start state
+                if duration.is_zero() || (Instant::now() - time) > duration {
+                    return Ok(());
+                } else {
+                    // Schedule a sleep or wait for motion to stop
+                    let result = tokio::select! {
+                        _ = tokio::time::sleep(duration - (Instant::now() - time)) => {None},
+                        v = async {
+                            loop {
+                                match self.next_motion().await {
+                                    n @ Ok(MotionStatus::Stop(_)) => {return n;},
+                                    n @ Err(_) => {return n;},
+                                    _ => {continue;}
+                                }
+                            }
+                        } => {Some(v)}
+                    };
+                    if let Some(v) = result {
+                        v?;
+                    } else {
+                        return Ok(());
+                    }
+                }
+            }
+            last_motion = Some(self.next_motion().await?);
         }
     }
 }
@@ -133,8 +210,9 @@ impl BcCamera {
         // when whenever motion is detected.
         let (tx, rx) = channel(20);
 
+        let mut set = JoinSet::new();
         let channel_id = self.channel_id;
-        let handle = task::spawn(async move {
+        set.spawn(async move {
             let mut sub = connection.subscribe(msg_num).await?;
 
             loop {
@@ -169,7 +247,7 @@ impl BcCamera {
                     }
                     // On connection drop we stop
                     Err(e) => Err(e),
-                }?;
+                };
 
                 if tx.send(status).await.is_err() {
                     // Motion reciever has been dropped
@@ -180,9 +258,15 @@ impl BcCamera {
         });
 
         Ok(MotionData {
-            handle: Some(handle),
+            handle: set,
             rx,
             last_update: MotionStatus::NoChange(Instant::now()),
         })
+    }
+}
+
+impl Drop for MotionData {
+    fn drop(&mut self) {
+        self.handle.abort_all();
     }
 }

@@ -95,7 +95,7 @@ impl AddressOrUid {
 
         trace!("Camera Info: {:?}", options);
 
-        Ok(BcCamera::new(options).await?)
+        Ok(BcCamera::new(&options).await?)
     }
 }
 

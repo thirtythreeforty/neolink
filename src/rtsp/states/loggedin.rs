@@ -5,25 +5,89 @@
 //
 // It can be used to alter settings etc
 
-use super::{CameraState, Shared};
+use super::{camera::Camera, connected::Connected, streaming::Streaming};
 use anyhow::Result;
-use async_trait::async_trait;
+use log::*;
+use neolink_core::bc_protocol::BcCamera;
 
-#[derive(Default)]
-pub(crate) struct LoggedIn {}
+pub(crate) struct LoggedIn {
+    pub(crate) camera: BcCamera,
+}
 
-#[async_trait]
-impl CameraState for LoggedIn {
-    async fn setup(&mut self, shared: &Shared) -> Result<(), anyhow::Error> {
-        shared
-            .camera
-            .login_with_maxenc(shared.max_encryption)
-            .await?;
+impl Camera<LoggedIn> {
+    #[allow(dead_code)]
+    pub(crate) async fn logout(self) -> Result<Camera<Connected>> {
+        self.state.camera.logout().await?;
+        Ok(Camera {
+            shared: self.shared,
+            state: Connected {
+                camera: self.state.camera,
+            },
+        })
+    }
+
+    pub(crate) async fn stream(self) -> Result<Camera<Streaming>> {
+        Camera::<Streaming>::from_login(self).await
+    }
+
+    pub(crate) async fn manage(&self) -> Result<()> {
+        let cam_time = self.state.camera.get_time().await?;
+        if let Some(time) = cam_time {
+            info!(
+                "{}: Camera time is already set: {}",
+                self.shared.config.name, time
+            );
+        } else {
+            use time::OffsetDateTime;
+            // We'd like now_local() but it's deprecated - try to get the local time, but if no
+            // time zone, fall back to UTC.
+            let new_time =
+                OffsetDateTime::try_now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
+
+            warn!(
+                "{}: Camera has no time set, setting to {}",
+                self.shared.config.name, new_time
+            );
+            match self.state.camera.set_time(new_time).await {
+                Ok(_) => {
+                    let cam_time = self.state.camera.get_time().await?;
+                    if let Some(time) = cam_time {
+                        info!(
+                            "{}: Camera time is now set: {}",
+                            self.shared.config.name, time
+                        );
+                    }
+                }
+                Err(e) => {
+                    error!(
+                        "{}: Camera did not accept new time (is {} an admin?): Error: {:?}",
+                        self.shared.config.name, self.shared.config.username, e
+                    );
+                }
+            }
+        }
+
+        use neolink_core::bc::xml::VersionInfo;
+        if let Ok(VersionInfo {
+            firmwareVersion: firmware_version,
+            ..
+        }) = self.state.camera.version().await
+        {
+            info!(
+                "{}: Camera reports firmware version {}",
+                self.shared.config.name, firmware_version
+            );
+        } else {
+            info!(
+                "{}: Could not fetch version information",
+                self.shared.config.name
+            );
+        }
+
         Ok(())
     }
 
-    async fn tear_down(&mut self, shared: &Shared) -> Result<(), anyhow::Error> {
-        shared.camera.logout().await?;
-        Ok(())
+    pub(crate) fn get_camera(&self) -> &BcCamera {
+        &self.state.camera
     }
 }

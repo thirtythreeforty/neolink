@@ -1,6 +1,6 @@
 use super::BcConnection;
 use crate::bcmedia::codex::BcMediaCodex;
-use crate::{bc::model::*, timeout, Error, Result};
+use crate::{bc::model::*, Error, Result};
 use futures::stream::{IntoAsyncRead, Stream, StreamExt, TryStreamExt};
 use std::io::{Error as IoError, ErrorKind, Result as IoResult};
 use std::pin::Pin;
@@ -48,26 +48,28 @@ impl<'a> Stream for BcPayloadStream<'a> {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<IoResult<Vec<u8>>>> {
-        loop {
-            match Pin::new(&mut self.rx).poll_next(cx) {
-                Poll::Ready(Some(Ok(bc))) => match bc {
-                    Bc {
-                        body:
-                            BcBody::ModernMsg(ModernMsg {
-                                payload: Some(BcPayloads::Binary(data)),
-                                ..
-                            }),
+        match Pin::new(&mut self.rx).poll_next(cx) {
+            Poll::Ready(Some(Ok(Bc {
+                body:
+                    BcBody::ModernMsg(ModernMsg {
+                        payload: Some(BcPayloads::Binary(data)),
                         ..
-                    } => return Poll::Ready(Some(Ok(data))),
-                    _ => continue,
-                },
-                Poll::Ready(Some(Err(e))) => {
-                    return Poll::Ready(Some(Err(IoError::new(ErrorKind::Other, e))))
-                }
-                Poll::Ready(None) => return Poll::Ready(None),
-                Poll::Pending => return Poll::Pending,
+                    }),
+                ..
+            }))) => {
+                return Poll::Ready(Some(Ok(data)));
             }
+            Poll::Ready(Some(Ok(_bc))) => {
+                // trace!("Got other BC in payload stream");
+            }
+            Poll::Ready(Some(Err(e))) => {
+                return Poll::Ready(Some(Err(IoError::new(ErrorKind::Other, e))))
+            }
+            Poll::Ready(None) => return Poll::Ready(None),
+            Poll::Pending => return Poll::Pending,
         }
+        cx.waker().wake_by_ref();
+        Poll::Pending
     }
 }
 
@@ -93,9 +95,7 @@ impl<'a> BcSubscription<'a> {
     }
 
     pub async fn recv(&mut self) -> Result<Bc> {
-        let bc = timeout(self.rx.next())
-            .await?
-            .ok_or(Error::DroppedSubscriber)?;
+        let bc = self.rx.next().await.ok_or(Error::DroppedSubscriber)?;
         if let Ok(bc) = &bc {
             assert!(bc.meta.msg_num as u32 == self.msg_num);
         }

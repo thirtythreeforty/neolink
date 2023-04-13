@@ -261,7 +261,7 @@ jobs:
         id: toml
         run: |
           NEOLINK_VERSION="$(toml get Cargo.toml  package.version | sed 's|"||g')"
-          echo "version=${NEOLINK_VERSION}"  >> $GITHUB_OUTPUT 
+          echo "version=${NEOLINK_VERSION}"  >> $GITHUB_OUTPUT
       - name: Download Windows
         uses: actions/download-artifact@v3
         with:

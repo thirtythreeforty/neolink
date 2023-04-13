@@ -82,7 +82,7 @@ type Subscriber = Arc<RwLock<BTreeMap<u32, Sender<Result<(UdpDiscovery, SocketAd
 type ArcFramedSocket = UdpFramed<BcUdpCodex, Arc<UdpSocket>>;
 pub(crate) struct Discoverer {
     socket: Arc<UdpSocket>,
-    handle: JoinSet<()>,
+    handle: RwLock<JoinSet<()>>,
     writer: Mutex<SplitSink<ArcFramedSocket, (BcUdp, SocketAddr)>>,
     subsribers: Subscriber,
     local_addr: SocketAddr,
@@ -140,18 +140,17 @@ impl Discoverer {
 
         Ok(Discoverer {
             socket,
-            handle: set,
+            handle: RwLock::new(set),
             writer: Mutex::new(writer),
             subsribers,
             local_addr,
         })
     }
 
-    async fn into_socket(mut self) -> UdpSocket {
+    async fn into_socket(self) -> (Arc<UdpSocket>, JoinSet<()>) {
         let socket = self.socket.clone();
-        self.handle.shutdown().await;
-        drop(self);
-        Arc::try_unwrap(socket).expect("Should not be shared at this point")
+        let handle = self.handle.into_inner();
+        (socket, handle)
     }
 
     async fn subscribe(&self, tid: u32) -> Result<Receiver<Result<(UdpDiscovery, SocketAddr)>>> {
@@ -290,6 +289,55 @@ impl Discoverer {
         }
 
         Ok(())
+    }
+
+    async fn client_initiated_direct(
+        &self,
+        uid: &str,
+        client_id: i32,
+        addr: SocketAddr,
+    ) -> Result<ConnectResult> {
+        let tid = generate_tid();
+
+        let port = self.local_addr().port();
+        let msg = UdpDiscovery {
+            tid,
+            payload: UdpXml {
+                c2d_c: Some(C2dC {
+                    uid: uid.to_string(),
+                    cli: ClientList { port: port as u32 },
+                    cid: client_id,
+                    mtu: MTU,
+                    debug: false,
+                    os: "MAC".to_string(),
+                }),
+                ..Default::default()
+            },
+        };
+
+        let (camera_address, camera_id) = self
+            .retry_send(msg, addr, |bc, addr| match bc {
+                UdpDiscovery {
+                    tid: _,
+                    payload:
+                        UdpXml {
+                            d2c_c_r: Some(D2cCr { did, cid, .. }),
+                            ..
+                        },
+                } if cid == client_id => Some((addr, did)),
+                _ => None,
+            })
+            .await?;
+
+        let result = ConnectResult {
+            addr: camera_address,
+            client_id,
+            camera_id,
+            sid: 0,
+        };
+        self.keep_alive_device(tid, &result).await;
+
+        Ok(result)
     }
 
     /// This function will contact the p2p relay servers
@@ -529,6 +577,8 @@ impl Discoverer {
 
         self.send_and_forget(msg, register_result.reg).await?;
 
+        self.keep_alive_device(local_tid, &result).await;
+
         Ok(result)
     }
 
@@ -641,6 +691,8 @@ impl Discoverer {
 
         self.send_and_forget(msg, register_result.reg).await?;
 
+        self.keep_alive_device(local_tid, &result).await;
+
         Ok(result)
     }
 
@@ -704,6 +756,8 @@ impl Discoverer {
 
         self.send_and_forget(msg, register_result.reg).await?;
 
+        self.keep_alive_device(tid, &result).await;
+
         Ok(result)
     }
 
@@ -759,7 +813,82 @@ impl Discoverer {
             camera_id: local_did,
         };
 
+        // Confirm relay to register
+        let msg = UdpDiscovery {
+            tid: 0,
+            payload: UdpXml {
+                c2r_cfm: Some(C2rCfm {
+                    sid: result.sid,
+                    cid: result.client_id,
+                    did: result.camera_id,
+                    conn: "relay".to_string(),
+                    rsp: 0,
+                }),
+                ..Default::default()
+            },
+        };
+
+        self.send_and_forget(msg, register_result.reg).await?;
+
+        self.keep_alive_device(tid, &result).await;
+        // self.keep_alive_relay(tid, &result).await;
+
         Ok(result)
+    }
+
+    async fn keep_alive_device(&self, tid: u32, connect_result: &ConnectResult) {
+        let client_id = connect_result.client_id;
+        let camera_id = connect_result.camera_id;
+        let addr = connect_result.addr;
+        let mut sender = ArcFramedSocket::new(self.socket.clone(), BcUdpCodex::new());
+        let mut interval = interval(Duration::from_secs(1));
+        self.handle.write().await.spawn(async move {
+            loop {
+                interval.tick().await;
+                let msg = BcUdp::Discovery(UdpDiscovery {
+                    tid,
+                    payload: UdpXml {
+                        c2d_hb: Some(C2dHb {
+                            cid: client_id,
+                            did: camera_id,
+                        }),
+                        ..Default::default()
+                    },
+                });
+                if sender.send((msg, addr)).await.is_err() {
+                    return;
+                }
+            }
+        });
+    }
+
+    #[allow(dead_code)] // Haven't seen this in the wild yet it is just speculation
+    async fn keep_alive_relay(&self, tid: u32, connect_result: &ConnectResult) {
+        let client_id = connect_result.client_id;
+        let camera_id = connect_result.camera_id;
+        let sid = connect_result.sid;
+        let addr = connect_result.addr;
+        let mut sender = ArcFramedSocket::new(self.socket.clone(), BcUdpCodex::new());
+        let mut interval = interval(Duration::from_secs(1));
+        self.handle.write().await.spawn(async move {
+            loop {
+                interval.tick().await;
+                let msg = BcUdp::Discovery(UdpDiscovery {
+                    tid,
+                    payload: UdpXml {
+                        c2r_hb: Some(C2rHb {
+                            sid,
+                            cid: client_id,
+                            did: camera_id,
+                        }),
+                        ..Default::default()
+                    },
+                });
+                if sender.send((msg, addr)).await.is_err() {
+                    return;
+                }
+            }
+        });
     }
 }
 
@@ -809,49 +938,46 @@ impl Discovery {
         let discoverer = Discoverer::new().await?;
 
         let client_id = generate_cid();
-
-        let local_addr = discoverer.local_addr();
-        let port = local_addr.port();
-
-        let msg = UdpDiscovery {
-            tid: 0,
-            payload: UdpXml {
-                c2d_c: Some(C2dC {
-                    uid: uid.to_string(),
-                    cli: ClientList { port: port as u32 },
-                    cid: client_id,
-                    mtu: MTU,
-                    debug: false,
-                    os: "MAC".to_string(),
-                }),
-                ..Default::default()
-            },
-        };
-
         let mut dests = get_broadcasts(&[2015, 2018])?;
         if let Some(mut optional_addrs) = optional_addrs.take() {
             trace!("Also sending to {:?}", optional_addrs);
             dests.append(&mut optional_addrs);
         }
-        let (camera_address, camera_id) = discoverer
-            .retry_send_multi(msg, &dests, |bc, addr| match bc {
-                UdpDiscovery {
-                    tid: _,
-                    payload:
-                        UdpXml {
-                            d2c_c_r: Some(D2cCr { did, cid, .. }),
-                            ..
-                        },
-                } if cid == client_id => Some((addr, did)),
-                _ => None,
+        let discoverer_ref = &discoverer;
+        let mut futures = FuturesUnordered::new();
+        for addr in dests.iter().copied() {
+            futures.push(async move {
+                discoverer_ref
+                    .client_initiated_direct(uid, client_id, addr)
+                    .await
             })
-            .await?;
+        }
 
+        let connect_result;
+        loop {
+            match futures.next().await {
+                Some(Ok(good_result)) => {
+                    connect_result = good_result;
+                    break;
+                }
+                Some(Err(_)) => {
+                    continue;
+                }
+                None => {
+                    return Err(Error::DiscoveryTimeout);
+                }
+            }
+        }
+        drop(futures);
+        // drop(discoverer_ref);
+
+        let (socket, keep_alive_tasks) = discoverer.into_socket().await;
         Ok(DiscoveryResult {
-            socket: discoverer.into_socket().await,
-            addr: camera_address,
-            camera_id,
-            client_id,
+            socket,
+            keep_alive_tasks,
+            addr: connect_result.addr,
+            camera_id: connect_result.camera_id,
+            client_id: connect_result.client_id,
         })
     }
 
@@ -882,8 +1008,10 @@ impl Discovery {
             v = discoverer.device_initiated_dev(&reg_result) => {v},
         }?;
 
+        let (socket, keep_alive_tasks) = discoverer.into_socket().await;
         Ok(DiscoveryResult {
-            socket: discoverer.into_socket().await,
+            socket,
+            keep_alive_tasks,
             addr: connect_result.addr,
             client_id,
             camera_id: connect_result.camera_id,
@@ -913,8 +1041,10 @@ impl Discovery {
         let connect_result = discoverer.device_initiated_map(&reg_result).await?;
         trace!("connect_result: {:?}", connect_result);
 
+        let (socket, keep_alive_tasks) = discoverer.into_socket().await;
         Ok(DiscoveryResult {
-            socket: discoverer.into_socket().await,
+            socket,
+            keep_alive_tasks,
             addr: connect_result.addr,
             client_id,
             camera_id: connect_result.camera_id,
@@ -941,8 +1071,10 @@ impl Discovery {
         let connect_result = discoverer.client_initiated_relay(&reg_result).await?;
         trace!("connect_result: {:?}", connect_result);
 
+        let (socket, keep_alive_tasks) = discoverer.into_socket().await;
         Ok(DiscoveryResult {
-            socket: discoverer.into_socket().await,
+            socket,
+            keep_alive_tasks,
             addr: connect_result.addr,
             client_id,
             camera_id: connect_result.camera_id,

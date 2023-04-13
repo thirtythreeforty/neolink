@@ -1,3 +1,6 @@
+#![warn(unused_crate_dependencies)]
+#![warn(missing_docs)]
+#![warn(clippy::todo)]
 //! Use to decode AES packet data
 use hex_string::HexString;
 use requestty::Question;
