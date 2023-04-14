@@ -1,0 +1,127 @@
+name: DockerHub
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  native:
+    name: native
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check token is set
+        id: vars
+        shell: bash
+        run: |
+            unset HAS_SECRET
+            if [ -n $SECRET ]; then HAS_SECRET='true' ; fi
+            echo "HAS_SECRET_TOKEN=${HAS_SECRET}" >> $GITHUB_OUTPUT
+        env:
+          SECRET: "${{ secrets.DOCKER_TOKEN }}"
+      - name: Convert username to lower case for docker
+        id: string_user
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: ASzc/change-string-case-action@v5
+        with:
+          string: ${{ github.repository_owner }}
+      - name: Convert repo to lower case for docker
+        id: string_repo
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        uses: ASzc/change-string-case-action@v5
+        with:
+          string: ${{ github.event.repository.name }}
+      - name: Run Clean Script
+        shell: bash
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        run: |
+          #!/bin/bash
+
+          #Script will delete all images in all repositories of your docker hub account which are older than x days
+
+          set -e
+
+
+          # set username and password
+          UNAME="${OWNER}"
+          TOKEN="${TOKEN}"
+          DAYS="${DAYS}"
+          REPO_NAME="${REPO_NAME}"
+
+          # get list of namespaces accessible by user (not in use right now)
+          #NAMESPACES=$(curl -s -H "Authorization: JWT ${TOKEN}" https://hub.docker.com/v2/repositories/namespaces/ | jq -r '.namespaces|.[]')
+
+          #echo $TOKEN
+          echo
+          # get list of repos for that user account
+          echo "List of Repositories in ${UNAME} Docker Hub account"
+          REPO_LIST="$(curl -s -H "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${UNAME}/?page_size=10000" | jq -r '.results|.[]|.name')"
+          echo "$REPO_LIST"
+          echo
+          # build a list of all images & tags
+          for i in ${REPO_LIST}
+          do
+            # get tags for repo
+            IMAGE_TAGS="$(curl -s -H "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${UNAME}/${i}/tags/?page_size=10000" | jq -r '.results|.[]|.name')"
+
+            # build a list of images from tags
+            for j in ${IMAGE_TAGS}
+            do
+              # add each tag to list
+              FULL_IMAGE_LIST="${FULL_IMAGE_LIST} ${UNAME}/${i}:${j}"
+
+            done
+          done
+
+          # output list of all docker images
+          echo
+          echo "List of all docker images in ${UNAME} Docker Hub account"
+          for i in ${FULL_IMAGE_LIST}
+          do
+            echo "${i}"
+          done
+
+          echo
+          echo "Identifying and deleting images which are older than ${DAYS} days in ${UNAME} docker hub account"
+          # Note!!! Please un-comment below line if you wanna perform operation on all repositories of your Docker Hub account
+          #for i in ${REPO_LIST}
+
+          repos=(
+            "${REPO_NAME}"
+          )
+
+          for i in "${repos[@]}"; do
+            # get tags for repo
+            echo
+            echo "Looping Through $i repository in ${UNAME} account"
+            IMAGE_TAGS="$(curl -s -H "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${UNAME}/${i}/tags/?page_size=10000" | jq -r '.results|.[]|.name')"
+
+            # build a list of images from tags
+            for j in ${IMAGE_TAGS}
+            do
+                echo
+                # add last_updated_time
+              updated_time="$(curl -s -H "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${UNAME}/${i}/tags/${j}/?page_size=10000" | jq -r '.last_updated')"
+              echo "$updated_time"
+              datetime=$updated_time
+              timeago="${DAYS} days ago"
+
+              dtSec=$(date --date "$datetime" +'%s')
+              taSec=$(date --date "$timeago" +'%s')
+
+              echo "INFO: dtSec=$dtSec, taSec=$taSec"
+
+                    if [ "$dtSec" -lt "$taSec" ]
+                    then
+                        echo "This image ${UNAME}/${i}:${j} is older than ${DAYS} days, deleting this  image"
+                        ## Please uncomment below line to delete docker hub images of docker hub repositories
+                        curl -s  -X DELETE  -H "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${UNAME}/${i}/tags/${j}/"
+                    else
+                        echo "This image ${UNAME}/${i}:${j} is within ${DAYS} days time range, keep this image"
+                    fi
+            done
+          done
+
+          echo "Script execution ends"
+        env:
+          DAYS: "100"
+          REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
+          OWNER: ${{ steps.string_user.outputs.lowercase }}
+          TOKEN: ${{ secrets.DOCKER_TOKEN }}
