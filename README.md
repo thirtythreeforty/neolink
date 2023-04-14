@@ -58,6 +58,7 @@ sudo apt install \
   libgstrtspserver-1.0-0 \
   libgstreamer1.0-0 \
   libgstreamer-plugins-bad1.0-0 \
+  gstreamer1.0-x \
   gstreamer1.0-plugins-base \
   gstreamer1.0-plugins-good \
   gstreamer1.0-plugins-bad
@@ -223,8 +224,8 @@ Then start the rtsp server as usual:
 
 ### Battery Levels
 
-If you have a battery camera and would like to see the battery messages in the
-log add the following to your config
+If you have a battery camera and would like to see the battery messages in th
+log  add the following to your config
 
 ```toml
 [[cameras]]
@@ -232,13 +233,14 @@ log add the following to your config
 print_format = "Human"
 ```
 
-You can also print into xml format with `print_format = "Xml"` which can then be
+You can also print into xml format with `print_format = "Xml"` which can then b
 passed by a script for processing.
 
 ### Docker
 
 [Docker](https://hub.docker.com/r/quantumentangledandy/neolink) builds are also
 provided in multiple architectures. The latest tag tracks master while each
+
 branch gets it's own tag.
 
 ```bash
@@ -253,10 +255,11 @@ You can write an image from the stream to disk using:
 neolink image --config=config.toml --file-path=filepath CameraName
 ```
 
-Where filepath is the path to save the image to and CameraName is the name of
+Where filepath is the path to save the image to and CameraName is the name o
 the camera from the config to save the image from.
 
 File is always jpeg and the extension given in filepath will be added or changed
+
 to reflect this.
 
 ## License
