@@ -10,6 +10,22 @@ pub enum Error {
     #[error(display = "IO Error: {:?}", _0)]
     Io(#[error(source)] std::sync::Arc<std::io::Error>),
 
+    /// Raised when fails to parse time from the camera
+    #[error(display = "Error in time coversion: {:?}", _0)]
+    TimeRange(#[error(source)] time::error::ComponentRange),
+
+    /// Raised when fails to parse time from the camera
+    #[error(display = "Error in time parsing")]
+    TimeParse,
+
+    /// Raised when fails to parse time from the camera
+    #[error(display = "Error in try from NonZeroInt")]
+    TryFromInt(#[error(source)] std::num::TryFromIntError),
+
+    /// /// Raised when fails to parse time from the camera
+    #[error(display = "Error in time conversion")]
+    TimeTryFrom(#[error(source)] time::error::TryFromParsed),
+
     /// Raised when a Bc reply was not understood
     #[error(display = "Communication error")]
     UnintelligibleReply {

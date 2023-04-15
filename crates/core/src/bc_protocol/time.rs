@@ -1,6 +1,9 @@
 use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
-use time::{date, Date, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
+use std::convert::{TryFrom, TryInto};
+use time::{
+    macros::date, parsing::Parsed, Date, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset,
+};
 
 impl BcCamera {
     ///
@@ -115,9 +118,9 @@ impl BcCamera {
                     //osd_format: Some("MDY".to_string()),
                     time_format: Some(0),
                     // Reolink uses positive seconds to indicate a negative UTC offset:
-                    time_zone: Some(-timestamp.offset().as_seconds()),
+                    time_zone: Some(-timestamp.offset().whole_seconds()),
                     year: Some(timestamp.year()),
-                    month: Some(timestamp.month()),
+                    month: Some(timestamp.month().into()),
                     day: Some(timestamp.day()),
                     hour: Some(timestamp.hour()),
                     minute: Some(timestamp.minute()),
@@ -153,14 +156,26 @@ fn try_build_timestamp(
     hour: u8,
     minute: u8,
     second: u8,
-) -> std::result::Result<OffsetDateTime, time::ComponentRangeError> {
-    let date = Date::try_from_ymd(year, month, day)?;
-    let time = Time::try_from_hms(hour, minute, second)?;
-    let offset = if timezone > 0 {
-        UtcOffset::west_seconds(timezone as u32)
-    } else {
-        UtcOffset::east_seconds(-timezone as u32)
-    };
+) -> std::result::Result<OffsetDateTime, crate::Error> {
+    let date = Date::try_from(
+        Parsed::new()
+            .with_year(year)
+            .ok_or(Error::TimeParse)?
+            .with_month(month.try_into()?)
+            .ok_or(Error::TimeParse)?
+            .with_day(day.try_into()?)
+            .ok_or(Error::TimeParse)?,
+    )?;
+    let time = Time::try_from(
+        Parsed::new()
+            .with_hour_24(hour)
+            .ok_or(Error::TimeParse)?
+            .with_minute(minute)
+            .ok_or(Error::TimeParse)?
+            .with_second(second)
+            .ok_or(Error::TimeParse)?,
+    )?;
+    let offset = UtcOffset::from_whole_seconds(timezone)?;
 
     Ok(PrimitiveDateTime::new(date, time).assume_offset(offset))
 }

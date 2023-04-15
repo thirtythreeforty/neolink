@@ -41,7 +41,7 @@ impl Default for NeoRtspServer {
 impl NeoRtspServer {
     pub(crate) fn new() -> AnyResult<Self> {
         gstreamer::init().context("Gstreamer failed to initialise")?;
-        let factory = Object::new::<NeoRtspServer>(&[]);
+        let factory = Object::new::<NeoRtspServer>();
         Ok(factory)
     }
 
@@ -259,7 +259,8 @@ impl NeoRtspServerImpl {
                 .expect("The server should have mountpoints");
             for path in paths {
                 media.paths.insert(path.clone());
-                mounts.add_factory(path, &media.factory);
+                // We can clone here because GObjects are referernce counted
+                mounts.add_factory(path, media.factory.clone());
                 // debug!("Adding path: {}", path);
             }
             Ok(())
@@ -302,13 +303,13 @@ impl NeoRtspServerImpl {
         let auth = self.obj().auth().unwrap_or_else(RTSPAuth::new);
         auth.set_supported_methods(RTSPAuthMethod::Basic);
 
-        let mut un_authtoken = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"anonymous")]);
+        let mut un_authtoken = RTSPToken::new(&[(RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"anonymous")]);
         auth.set_default_token(Some(&mut un_authtoken));
 
         for credential in credentials {
             let (user, pass) = credential;
             trace!("Setting credentials for user {}", user);
-            let token = RTSPToken::new(&[(*RTSP_TOKEN_MEDIA_FACTORY_ROLE, user)]);
+            let token = RTSPToken::new(&[(RTSP_TOKEN_MEDIA_FACTORY_ROLE, user)]);
             let basic = RTSPAuth::make_basic(user, pass);
             auth.add_basic(basic.as_str(), &token);
         }

@@ -166,15 +166,14 @@ fn create_pipeline(
     // provide the format we request.
     // This can be set after linking the two objects, because format negotiation between
     // both elements will happen during pre-rolling of the pipeline.
-    appsink.set_caps(Some(&Caps::new_simple(
-        "audio/x-adpcm",
-        &[
-            ("layout", &"dvi"),
-            ("block_align", &(block_align as i32)),
-            ("channels", &(1i32)),
-            ("rate", &(sample_rate as i32)),
-        ],
-    )));
+    appsink.set_caps(Some(
+        &Caps::builder("audio/x-adpcm")
+            .field("layout", "dvi")
+            .field("block_align", block_align as i32)
+            .field("channels", 1i32)
+            .field("rate", sample_rate as i32)
+            .build(),
+    ));
 
     Ok(pipeline)
 }

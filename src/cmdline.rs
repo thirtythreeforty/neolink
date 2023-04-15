@@ -1,24 +1,21 @@
+use clap::Parser;
 use std::path::PathBuf;
-use structopt::{clap::AppSettings, StructOpt};
+use std::str::FromStr;
 
 /// A standards-compliant bridge to Reolink IP cameras
 ///
 /// Neolink is free software released under the GNU AGPL v3.
 /// You can find its source code at https://github.com/thirtythreeforty/neolink
-#[derive(StructOpt, Debug)]
-#[structopt(
-    name = "neolink",
-    setting(AppSettings::ArgRequiredElseHelp),
-    setting(AppSettings::UnifiedHelpMessage)
-)]
+#[derive(Parser, Debug)]
+#[command(name = "neolink", arg_required_else_help = true)]
 pub struct Opt {
-    #[structopt(short, long, global(true), parse(from_os_str))]
+    #[arg(short, long, global = true, value_parser = PathBuf::from_str)]
     pub config: Option<PathBuf>,
     #[structopt(subcommand)]
     pub cmd: Option<Command>,
 }
 
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub enum Command {
     Rtsp(super::rtsp::Opt),
     StatusLight(super::statusled::Opt),

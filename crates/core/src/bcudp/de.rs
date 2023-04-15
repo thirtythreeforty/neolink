@@ -2,10 +2,11 @@ use super::{crc::calc_crc, model::*, xml::*, xml_crypto::decrypt};
 use crate::Error;
 use bytes::{Buf, BytesMut};
 use nom::{
+    bytes::streaming::take,
     combinator::*,
     error::{context as error_context, ContextError, ErrorKind, ParseError},
     number::streaming::*,
-    take, Err,
+    Err,
 };
 
 type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), nom::Err<E>>;
@@ -67,7 +68,7 @@ fn udp_disc(buf: &[u8]) -> IResult<&[u8], UdpDiscovery> {
     )(buf)?;
     let (buf, tid) = error_context("DISC: Missing TID", le_u32)(buf)?;
     let (buf, checksum) = error_context("DISC: Missing checksum", le_u32)(buf)?;
-    let (buf, enc_data_slice) = take!(buf, payload_size)?;
+    let (buf, enc_data_slice) = take(payload_size)(buf)?;
 
     let actual_checksum = calc_crc(enc_data_slice);
     assert_eq!(checksum, actual_checksum);
@@ -98,11 +99,11 @@ fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
     let (buf, _unknown) = error_context("ACK: Missing unknown", le_u32)(buf)?;
     let (buf, payload_size) = error_context("ACK: Missing payload_size", le_u32)(buf)?;
     let (buf, payload) = if payload_size > 0 {
-        let (buf, t_payload) = take!(buf, payload_size)?; // It is a binary payload of
-                                                          // `00 01 01 01 01 00 01`
-                                                          // This is a truth map of missing packets
-                                                          // since last contigious packet_id up
-                                                          // to the last packet we sent and it recieved
+        let (buf, t_payload) = take(payload_size)(buf)?; // It is a binary payload of
+                                                         // `00 01 01 01 01 00 01`
+                                                         // This is a truth map of missing packets
+                                                         // since last contigious packet_id up
+                                                         // to the last packet we sent and it recieved
         (buf, t_payload.to_vec())
     } else {
         (buf, vec![])
@@ -123,7 +124,7 @@ fn udp_data(buf: &[u8]) -> IResult<&[u8], UdpData> {
         error_context("DATA: Unable to verify UnownA", verify(le_u32, |&x| x == 0))(buf)?;
     let (buf, packet_id) = error_context("DATA: Missing packet_id", le_u32)(buf)?;
     let (buf, payload_size) = error_context("DATA: Missing payload_size", le_u32)(buf)?;
-    let (buf, payload) = take!(buf, payload_size)?;
+    let (buf, payload) = take(payload_size)(buf)?;
 
     let data = UdpData {
         connection_id,

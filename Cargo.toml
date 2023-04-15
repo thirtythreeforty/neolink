@@ -12,26 +12,26 @@ members = [
 ]
 
 [dependencies]
-anyhow = "1.0.42"
+anyhow = "1.0.70"
 byte-slice-cast = "1.2.2"
-crossbeam-channel = "0.5.1"
+clap = { version = "4.2.2", features = ["derive"] }
+crossbeam-channel = "0.5.8"
 env_logger = "*"
-futures = "0.3.26"
-gstreamer = "0.19.0"
-gstreamer-app = "0.19.0"
-gstreamer-rtsp = "0.19.0"
-gstreamer-rtsp-server = { version = "0.19.0", features = ["v1_16"] }
-lazy_static = "1.4"
-log = { version = "0.4" }
+futures = "0.3.28"
+gstreamer = "0.20.3"
+gstreamer-app = "0.20.0"
+gstreamer-rtsp = "0.20.0"
+gstreamer-rtsp-server = { version = "0.20.3", features = ["v1_16"] }
+lazy_static = "1.4.0"
+log = { version = "0.4.17" }
 neolink_core = { path = "crates/core", version = "0.5.6" }
-regex = "1"
-rumqttc = "0.8.0"
-serde = { version = "1.0", features = ["derive"] }
-structopt = "0.3"
-time = "0.2"
-tokio = { version = "1.0", features = ["rt", "macros", "io-util"] }
+regex = "1.7.3"
+rumqttc = "0.20.0"
+serde = { version = "1.0.160", features = ["derive"] }
+time = "0.3.20"
+tokio = { version = "1.27.0", features = ["rt", "macros", "io-util"] }
 tokio-stream = "0.1.12"
-toml = "0.5"
-validator = "0.10"
-validator_derive = "0.10"
-yaserde = "0.3.16"
+toml = "0.7.3"
+validator = "0.16.0"
+validator_derive = "0.16.0"
+yaserde = "0.8.0"

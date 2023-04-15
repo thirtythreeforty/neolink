@@ -1,5 +1,6 @@
+use clap::Parser;
 use std::path::PathBuf;
-use structopt::StructOpt;
+use std::str::FromStr;
 
 /// The talk command will send audio for the camera to say
 ///
@@ -7,19 +8,19 @@ use structopt::StructOpt;
 /// This should be ok with most common formats.
 ///
 /// `gst-launch` can be used to prepare this data
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct Opt {
     /// The name of the camera to talk through. Must be a name in the config
     pub camera: String,
     /// The path to the audio file.
-    #[structopt(short, long, parse(from_os_str), conflicts_with = "microphone")]
+    #[arg(short, long, value_parser = PathBuf::from_str, conflicts_with = "microphone")]
     pub file_path: Option<PathBuf>,
     /// Use the microphone as the source. Defaults to autoaudiosrc - Which microphone depends
     /// on [gstreamer](https://gstreamer.freedesktop.org/documentation/autodetect/autoaudiosrc.html?gi-language=c#autoaudiosrc-page)
-    #[structopt(short, long, conflicts_with = "file_path")]
+    #[arg(short, long, conflicts_with = "file_path")]
     pub microphone: bool,
     /// Use a specific microphone like "alsasrc device=hw:1"
-    #[structopt(
+    #[arg(
         short,
         long,
         default_value = "autoaudiosrc",
@@ -27,6 +28,6 @@ pub struct Opt {
     )]
     pub input_src: String,
     /// Use to change the volume of the input
-    #[structopt(short, long, default_value = "1.0")]
+    #[arg(short, long, default_value = "1.0")]
     pub volume: f32,
 }

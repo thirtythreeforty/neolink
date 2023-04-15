@@ -8,6 +8,7 @@ use rumqttc::{
     MqttOptions, Publish, QoS, TlsConfiguration, Transport,
 };
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 pub(crate) struct Mqtt {
     app: Arc<App>,
@@ -80,7 +81,7 @@ impl Mqtt {
             mqttoptions.set_credentials(username, password);
         }
 
-        mqttoptions.set_keep_alive(5);
+        mqttoptions.set_keep_alive(Duration::from_secs(5));
 
         // On unclean disconnect send this
         mqttoptions.set_last_will(LastWill::new(
