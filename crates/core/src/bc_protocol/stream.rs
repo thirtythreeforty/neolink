@@ -31,7 +31,6 @@ pub enum StreamKind {
 ///
 /// When this object is dropped the streaming is stopped
 pub struct StreamData {
-    #[allow(dead_code)]
     handle: Option<JoinHandle<Result<()>>>,
     rx: Receiver<Result<BcMedia>>,
     abort_handle: Arc<AtomicBool>,
@@ -41,9 +40,22 @@ impl StreamData {
     /// Pull data from the camera's buffer
     /// This returns raw BcMedia packets
     pub async fn get_data(&mut self) -> Result<Result<BcMedia>> {
+        if let Some(handle) = self.handle.as_mut() {
+            if handle.is_finished() {
+                self.abort_handle.store(true, Ordering::Relaxed);
+                handle.await??;
+                return Err(Error::DroppedConnection);
+            }
+        } else {
+            self.abort_handle.store(true, Ordering::Relaxed);
+            return Err(Error::DroppedConnection);
+        }
         match self.rx.recv().await {
             Some(data) => Ok(data),
-            None => Err(Error::DroppedConnection),
+            None => {
+                self.abort_handle.store(true, Ordering::Relaxed);
+                Err(Error::DroppedConnection)
+            }
         }
     }
 }
