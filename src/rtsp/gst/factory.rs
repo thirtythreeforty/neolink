@@ -44,7 +44,7 @@ impl Default for NeoMediaFactory {
 
 impl NeoMediaFactory {
     pub(crate) fn new() -> Self {
-        let factory = Object::new::<NeoMediaFactory>(&[]);
+        let factory = Object::new::<NeoMediaFactory>();
         factory.set_shared(false);
         // factory.set_do_retransmission(false); // Can't use as the method is missing on the 32bit docker gst dll
         factory.set_launch("videotestsrc pattern=\"snow\" ! video/x-raw,width=896,height=512,framerate=25/1 ! textoverlay name=\"inittextoverlay\" text=\"Stream not Ready\" valignment=top halignment=left font-desc=\"Sans, 32\" ! jpegenc ! rtpjpegpay name=pay0");
@@ -59,13 +59,12 @@ impl NeoMediaFactory {
 
     pub(crate) fn add_permitted_roles<T: AsRef<str>>(&self, permitted_roles: &HashSet<T>) {
         for permitted_role in permitted_roles {
-            self.add_role_from_structure(&Structure::new(
-                permitted_role.as_ref(),
-                &[
-                    (*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true),
-                    (*RTSP_PERM_MEDIA_FACTORY_CONSTRUCT, &true),
-                ],
-            ));
+            self.add_role_from_structure(
+                &Structure::builder(permitted_role.as_ref())
+                    .field(RTSP_PERM_MEDIA_FACTORY_ACCESS, true)
+                    .field(RTSP_PERM_MEDIA_FACTORY_CONSTRUCT, true)
+                    .build(),
+            );
         }
         // During auth, first it binds anonymously. At this point it checks
         // RTSP_PERM_MEDIA_FACTORY_ACCESS to see if anyone can connect
@@ -87,10 +86,11 @@ impl NeoMediaFactory {
             .collect::<HashSet<&str>>()
             .contains(&"anonymous")
         {
-            self.add_role_from_structure(&Structure::new(
-                "anonymous",
-                &[(*RTSP_PERM_MEDIA_FACTORY_ACCESS, &true)],
-            ));
+            self.add_role_from_structure(
+                &Structure::builder("anonymous")
+                    .field(RTSP_PERM_MEDIA_FACTORY_ACCESS, true)
+                    .build(),
+            );
         }
     }
 

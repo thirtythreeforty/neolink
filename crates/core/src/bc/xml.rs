@@ -3,7 +3,7 @@
 
 use std::io::{Read, Write};
 // YaSerde is currently naming the traits and the derive macros identically
-use yaserde::{ser::Config, YaDeserialize, YaSerialize};
+use yaserde::ser::Config;
 use yaserde_derive::{YaDeserialize, YaSerialize};
 
 #[cfg(test)]

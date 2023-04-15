@@ -2,7 +2,7 @@ use super::model::BcMediaIframe;
 use super::model::*;
 use crate::Error;
 use bytes::{Buf, BytesMut};
-use nom::{combinator::*, error::context, number::streaming::*, take};
+use nom::{bytes::streaming::take, combinator::*, error::context, number::streaming::*};
 
 type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), nom::Err<E>>;
 
@@ -182,18 +182,18 @@ fn bcmedia_iframe(buf: &[u8]) -> IResult<&[u8], BcMediaIframe> {
     };
     let (buf, _unknown_remained) = if additional_header_size > 4 {
         let remainder = additional_header_size - 4;
-        let (buf, unknown_remained) = take!(buf, remainder)?;
+        let (buf, unknown_remained) = take(remainder)(buf)?;
         (buf, Some(unknown_remained))
     } else {
         (buf, None)
     };
 
-    let (buf, data_slice) = take!(buf, payload_size)?;
+    let (buf, data_slice) = take(payload_size)(buf)?;
     let pad_size = match payload_size % PAD_SIZE {
         0 => 0,
         n => PAD_SIZE - n,
     };
-    let (buf, _padding) = take!(buf, pad_size)?;
+    let (buf, _padding) = take(pad_size)(buf)?;
     assert_eq!(payload_size as usize, data_slice.len());
 
     let video_type = match video_type_str {
@@ -223,13 +223,13 @@ fn bcmedia_pframe(buf: &[u8]) -> IResult<&[u8], BcMediaPframe> {
     let (buf, additional_header_size) = le_u32(buf)?;
     let (buf, microseconds) = le_u32(buf)?;
     let (buf, _unknown_b) = le_u32(buf)?;
-    let (buf, _additional_header) = take!(buf, additional_header_size)?;
-    let (buf, data_slice) = take!(buf, payload_size)?;
+    let (buf, _additional_header) = take(additional_header_size)(buf)?;
+    let (buf, data_slice) = take(payload_size)(buf)?;
     let pad_size = match payload_size % PAD_SIZE {
         0 => 0,
         n => PAD_SIZE - n,
     };
-    let (buf, _padding) = take!(buf, pad_size)?;
+    let (buf, _padding) = take(pad_size)(buf)?;
     assert_eq!(payload_size as usize, data_slice.len());
 
     let video_type = match video_type_str {
@@ -252,12 +252,12 @@ fn bcmedia_pframe(buf: &[u8]) -> IResult<&[u8], BcMediaPframe> {
 fn bcmedia_aac(buf: &[u8]) -> IResult<&[u8], BcMediaAac> {
     let (buf, payload_size) = le_u16(buf)?;
     let (buf, _payload_size_b) = le_u16(buf)?;
-    let (buf, data_slice) = take!(buf, payload_size)?;
+    let (buf, data_slice) = take(payload_size)(buf)?;
     let pad_size = match payload_size as u32 % PAD_SIZE {
         0 => 0,
         n => PAD_SIZE - n,
     };
-    let (buf, _padding) = take!(buf, pad_size)?;
+    let (buf, _padding) = take(pad_size)(buf)?;
 
     Ok((
         buf,
@@ -281,12 +281,12 @@ fn bcmedia_adpcm(buf: &[u8]) -> IResult<&[u8], BcMediaAdpcm> {
     // On other cameras is half the block size without the header
     let (buf, _half_block_size) = le_u16(buf)?;
     let block_size = payload_size - SUB_HEADER_SIZE;
-    let (buf, data_slice) = take!(buf, block_size)?;
+    let (buf, data_slice) = take(block_size)(buf)?;
     let pad_size = match payload_size as u32 % PAD_SIZE {
         0 => 0,
         n => PAD_SIZE - n,
     };
-    let (buf, _padding) = take!(buf, pad_size)?;
+    let (buf, _padding) = take(pad_size)(buf)?;
 
     Ok((
         buf,

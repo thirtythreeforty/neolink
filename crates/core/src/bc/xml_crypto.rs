@@ -1,7 +1,12 @@
 use super::model::EncryptionProtocol;
-use aes::Aes128;
-use cfb_mode::cipher::{NewStreamCipher, StreamCipher};
-use cfb_mode::Cfb;
+use aes::{
+    cipher::{AsyncStreamCipher, KeyIvInit},
+    Aes128,
+};
+use cfb_mode::{Decryptor, Encryptor};
+
+type Aes128CfbEnc = Encryptor<Aes128>;
+type Aes128CfbDec = Decryptor<Aes128>;
 
 const XML_KEY: [u8; 8] = [0x1F, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, 0x78, 0xFF];
 const IV: &[u8] = b"0123456789abcdef";
@@ -20,7 +25,7 @@ pub fn decrypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol
             // AES decryption
 
             let mut decrypted = buf.to_vec();
-            Cfb::<Aes128>::new(aeskey.into(), IV.into()).decrypt(&mut decrypted);
+            Aes128CfbDec::new(aeskey.into(), IV.into()).decrypt(&mut decrypted);
             decrypted
         }
     }
@@ -39,7 +44,7 @@ pub fn encrypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol
         EncryptionProtocol::Aes(aeskey) => {
             // AES encryption
             let mut encrypted = buf.to_vec();
-            Cfb::<Aes128>::new(aeskey.into(), IV.into()).encrypt(&mut encrypted);
+            Aes128CfbEnc::new(aeskey.into(), IV.into()).encrypt(&mut encrypted);
             encrypted
         }
     }

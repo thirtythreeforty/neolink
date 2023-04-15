@@ -23,10 +23,10 @@
 //! Neolink source code is available online at <https://github.com/thirtythreeforty/neolink>
 //!
 use anyhow::{Context, Result};
+use clap::Parser;
 use env_logger::Env;
 use log::*;
 use std::fs;
-use structopt::StructOpt;
 use validator::Validate;
 
 mod cmdline;
@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
         env!("NEOLINK_PROFILE")
     );
 
-    let opt = Opt::from_args();
+    let opt = Opt::parse();
 
     let conf_path = opt.config.context("Must supply --config file")?;
     let config: Config = toml::from_str(
