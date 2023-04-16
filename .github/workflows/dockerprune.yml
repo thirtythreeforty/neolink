@@ -36,7 +36,7 @@ jobs:
 
           #Script will delete all images in all repositories of your docker hub account which are older than x days
 
-          set -e
+          set -e -x
 
 
           # set username and password
