@@ -52,8 +52,9 @@ impl Camera<Streaming> {
                 .await?;
             set.spawn(async move {
                 loop {
-                    debug!("{}: BcMediaStreamRecv", &tag_thread);
+                    debug!("Straming: Get");
                     let data = timeout(Duration::from_secs(15), stream_data.get_data()).await??;
+                    debug!("Straming: Got");
                     match &data {
                         Ok(BcMedia::InfoV1(_)) => debug!("{}:  - InfoV1", &tag_thread),
                         Ok(BcMedia::InfoV2(_)) => debug!("{}:  - InfoV2", &tag_thread),
@@ -63,7 +64,9 @@ impl Camera<Streaming> {
                         Ok(BcMedia::Adpcm(_)) => debug!("{}:  - Adpcm", &tag_thread),
                         Err(_) => debug!("  - Error"),
                     }
+                    debug!("Straming: Send");
                     sender.send(data?).await?;
+                    debug!("Straming: Sent");
                 }
             });
         }

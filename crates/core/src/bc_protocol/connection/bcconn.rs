@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::Mutex;
+use tokio::task::yield_now;
 
 use tokio::{sync::RwLock, task::JoinSet};
 
@@ -46,12 +47,12 @@ impl BcConnection {
         let sink_thread = sink.clone();
         rx_thread.spawn(async move {
             loop {
+                yield_now().await; // Give other tasks a chance to run before pulling next packet
                 let packet = source.next().await;
                 let bc = match packet {
                     Some(res) => res,
                     None => continue,
                 };
-
                 Self::poll(bc, &subs, &sink_thread).await?
             }
         });

@@ -230,7 +230,7 @@ impl NeoMediaFactoryImpl {
                     self.shared.microseconds.load(Ordering::Relaxed),
                 ));
                 source.set_is_live(true);
-                source.set_block(true);
+                source.set_block(false);
                 source.set_property("emit-signals", false);
                 source.set_max_bytes(52428800);
                 source.set_do_timestamp(false);
@@ -242,6 +242,7 @@ impl NeoMediaFactoryImpl {
                     .dynamic_cast::<Element>()
                     .map_err(|_| anyhow!("Cannot cast back"))?;
                 let queue = make_element("queue", "source_queue")?;
+                queue.set_property_from_str("leaky", "downstream");
                 let parser = make_element("h265parse", "parser")?;
                 let payload = make_element("rtph265pay", "pay0")?;
                 bin.add_many(&[&source, &queue, &parser, &payload])?;
@@ -261,7 +262,7 @@ impl NeoMediaFactoryImpl {
                     self.shared.microseconds.load(Ordering::Relaxed),
                 ));
                 source.set_is_live(true);
-                source.set_block(true);
+                source.set_block(false);
                 source.set_property("emit-signals", false);
                 source.set_max_bytes(52428800);
                 source.set_do_timestamp(false);
@@ -273,6 +274,8 @@ impl NeoMediaFactoryImpl {
                     .dynamic_cast::<Element>()
                     .map_err(|_| anyhow!("Cannot cast back"))?;
                 let queue = make_element("queue", "source_queue")?;
+                queue.set_property_from_str("leaky", "downstream");
+
                 let parser = make_element("h264parse", "parser")?;
                 let payload = make_element("rtph264pay", "pay0")?;
                 bin.add_many(&[&source, &queue, &parser, &payload])?;
@@ -288,6 +291,7 @@ impl NeoMediaFactoryImpl {
                 let source = make_element("videotestsrc", "vidsrc")?;
                 source.set_property_from_str("pattern", "snow");
                 let queue = make_element("queue", "queue0")?;
+                queue.set_property_from_str("leaky", "downstream");
                 let overlay = make_element("textoverlay", "overlay")?;
                 overlay.set_property("text", "Stream not Ready");
                 overlay.set_property_from_str("valignment", "top");
@@ -324,7 +328,7 @@ impl NeoMediaFactoryImpl {
                     self.shared.microseconds.load(Ordering::Relaxed),
                 ));
                 source.set_is_live(true);
-                source.set_block(true);
+                source.set_block(false);
                 source.set_property("emit-signals", false);
                 source.set_max_bytes(52428800);
                 source.set_do_timestamp(false);
@@ -334,6 +338,7 @@ impl NeoMediaFactoryImpl {
                     .map_err(|_| anyhow!("Cannot cast back"))?;
 
                 let queue = make_element("queue", "audqueue")?;
+                queue.set_property_from_str("leaky", "downstream");
                 let parser = make_element("aacparse", "audparser")?;
                 let decoder = make_element("decodebin", "auddecoder")?;
                 let encoder = make_element("audioconvert", "audencoder")?;
@@ -372,7 +377,7 @@ impl NeoMediaFactoryImpl {
                     self.shared.microseconds.load(Ordering::Relaxed),
                 ));
                 source.set_is_live(true);
-                source.set_block(true);
+                source.set_block(false);
                 source.set_property("emit-signals", false);
                 source.set_max_bytes(52428800);
                 source.set_do_timestamp(false);
@@ -390,6 +395,7 @@ impl NeoMediaFactoryImpl {
                     .map_err(|_| anyhow!("Cannot cast back"))?;
 
                 let queue = make_element("queue", "audqueue")?;
+                queue.set_property_from_str("leaky", "downstream");
                 let decoder = make_element("decodebin", "auddecoder")?;
                 let encoder = make_element("audioconvert", "audencoder")?;
                 let payload = make_element("rtpL16pay", "pay1")?;

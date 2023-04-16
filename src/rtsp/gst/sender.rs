@@ -5,8 +5,9 @@ use futures::stream::StreamExt;
 use gstreamer::ClockTime;
 use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
+use log::*;
 use neolink_core::bcmedia::model::*;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
@@ -54,8 +55,10 @@ impl NeoMediaSender {
             self.shared
                 .buffer_ready
                 .store(!buffer_read.is_empty(), Ordering::Relaxed);
+            debug!("Sender: Get");
             tokio::select! {
                 v = self.data_source.next() => {
+                    debug!("Sender: Got Data");
                     // debug!("data_source recieved");
                     if let Some(bc_media) = v {
                         if ! self.skip_bcmedia(&bc_media)? {
@@ -74,7 +77,7 @@ impl NeoMediaSender {
                                             ms: frame.microseconds as u64,
                                             data: frame.data,
                                     };
-                                    self.process_vidbuffer(&new_data)?;
+                                    self.process_vidbuffer(&new_data).await?;
                                     buffer_write.push(new_data);
                                 }
                                 BcMedia::Pframe(frame) => {
@@ -82,7 +85,7 @@ impl NeoMediaSender {
                                             ms: frame.microseconds as u64,
                                             data: frame.data,
                                     };
-                                    self.process_vidbuffer(&new_data)?;
+                                    self.process_vidbuffer(&new_data).await?;
                                     buffer_write.push(new_data);
                                 }
                                 BcMedia::Aac(aac) => {
@@ -91,7 +94,18 @@ impl NeoMediaSender {
                                             ms: last.ms,
                                             data: aac.data,
                                         };
-                                        self.process_audbuffer(&new_data)?;
+                                        self.process_audbuffer(&new_data).await?;
+                                        audbuffer_write.push(new_data);
+                                    }
+
+                                }
+                                BcMedia::Adpcm(adpcm) => {
+                                    if let Some(last) = buffer_write.last().as_ref() {
+                                        let new_data = StampedData {
+                                            ms: last.ms,
+                                            data: adpcm.data,
+                                        };
+                                        self.process_audbuffer(&new_data).await?;
                                         audbuffer_write.push(new_data);
                                     }
 
@@ -104,6 +118,7 @@ impl NeoMediaSender {
                     }
                 }
                 v = self.clientsource.next() => {
+                    debug!("Sender: Got Client");
                     if let Some(mut clientdata) = v {
                         // Resend the video and audio buffers
                         if !clientdata.inited {
@@ -119,7 +134,7 @@ impl NeoMediaSender {
                                             next_vid.data.as_slice(),
                                             *idx as u64,
                                             0,
-                                        ).is_err() {
+                                        ).await.is_err() {
                                             break;
                                         };
                                     }
@@ -132,7 +147,7 @@ impl NeoMediaSender {
                                             next_aud.data.as_slice(),
                                             *idx as u64,
                                             0,
-                                        ).is_err() {
+                                        ).await.is_err() {
                                             break;
                                         };
                                     }
@@ -161,47 +176,77 @@ impl NeoMediaSender {
         Ok(())
     }
 
-    fn process_vidbuffer(&mut self, stamped_data: &StampedData) -> AnyResult<()> {
-        self.clientdata.retain(|_, data| {
-            if let Some(vidsrc) = data.vidsrc.as_ref() {
-                Self::send_buffer(
-                    vidsrc,
-                    stamped_data.data.as_slice(),
-                    stamped_data.ms,
-                    data.start_time,
-                )
-                .is_ok()
-            // If ok retain is true
-            } else {
-                // Audio only
-                true
+    async fn process_vidbuffer(&mut self, stamped_data: &StampedData) -> AnyResult<()> {
+        for key in self
+            .clientdata
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+            .drain(..)
+        {
+            match self.clientdata.entry(key) {
+                Entry::Occupied(data) => {
+                    if let Some(vidsrc) = data.get().vidsrc.as_ref() {
+                        if Self::send_buffer(
+                            vidsrc,
+                            stamped_data.data.as_slice(),
+                            stamped_data.ms,
+                            data.get().start_time,
+                        )
+                        .await
+                        .is_err()
+                        {
+                            data.remove();
+                        }
+                    } else {
+                        data.remove();
+                    }
+                }
+                Entry::Vacant(_) => {}
             }
-        });
+        }
+        Ok(())
+    }
+
+    async fn process_audbuffer(&mut self, stamped_data: &StampedData) -> AnyResult<()> {
+        for key in self
+            .clientdata
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+            .drain(..)
+        {
+            match self.clientdata.entry(key) {
+                Entry::Occupied(data) => {
+                    if let Some(audsrc) = data.get().audsrc.as_ref() {
+                        if Self::send_buffer(
+                            audsrc,
+                            stamped_data.data.as_slice(),
+                            stamped_data.ms,
+                            data.get().start_time,
+                        )
+                        .await
+                        .is_err()
+                        {
+                            data.remove();
+                        }
+                    } else {
+                        data.remove();
+                    }
+                }
+                Entry::Vacant(_) => {}
+            }
+        }
 
         Ok(())
     }
 
-    fn process_audbuffer(&mut self, stamped_data: &StampedData) -> AnyResult<()> {
-        self.clientdata.retain(|_, data| {
-            if let Some(audsrc) = data.audsrc.as_ref() {
-                Self::send_buffer(
-                    audsrc,
-                    stamped_data.data.as_slice(),
-                    stamped_data.ms,
-                    data.start_time,
-                )
-                .is_ok()
-                // If ok retain is true
-            } else {
-                // video only
-                true
-            }
-        });
-
-        Ok(())
-    }
-
-    fn send_buffer(appsrc: &AppSrc, buf: &[u8], frame_ms: u64, start_time: u64) -> AnyResult<()> {
+    async fn send_buffer(
+        appsrc: &AppSrc,
+        buf: &[u8],
+        frame_ms: u64,
+        start_time: u64,
+    ) -> AnyResult<()> {
         let micros = if frame_ms > start_time {
             frame_ms - start_time
         } else {
@@ -222,10 +267,14 @@ impl NeoMediaSender {
             gst_buf_data.copy_from_slice(buf);
         }
         // debug!("Buffer pushed");
-        appsrc
-            .push_buffer(gst_buf.copy())
-            .map(|_| ())
-            .map_err(|_| anyhow!("Could not push buffer to appsrc"))
+        let thread_appsrc = appsrc.clone(); // GObjects are refcounted
+        tokio::task::spawn_blocking(move || {
+            thread_appsrc
+                .push_buffer(gst_buf.copy())
+                .map(|_| ())
+                .map_err(|_| anyhow!("Could not push buffer to appsrc"))
+        })
+        .await?
     }
 
     fn skip_bcmedia(&mut self, bc_media: &BcMedia) -> AnyResult<bool> {

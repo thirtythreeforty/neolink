@@ -199,9 +199,10 @@ impl Sink<(BcUdp, SocketAddr)> for BcUdpSource {
 }
 
 enum State {
-    Normal,
-    Flushing,
-    Closed,
+    Normal,   // Normal recieve
+    Flushing, // Used to send ack packets and things in the buffer
+    Closed,   // Used to shutdown
+    YieldNow, // Used to ensure we rest between polling packets so as to not starve the runtime
 }
 
 pub(crate) struct UdpPayloadSource {
@@ -297,6 +298,7 @@ impl Stream for UdpPayloadSource {
         let mut this = self.get_mut();
         match this.state {
             State::Normal => {
+                this.state = State::YieldNow;
                 // Data ready to go
                 if let Some(payload) = this.recieved.remove(&this.packets_want) {
                     this.packets_want += 1;
@@ -384,6 +386,9 @@ impl Stream for UdpPayloadSource {
             State::Closed => {
                 return Poll::Ready(Some(Err(IoError::from(ErrorKind::ConnectionAborted))));
             }
+            State::YieldNow => {
+                this.state = State::Normal;
+            }
         }
         cx.waker().wake_by_ref();
         Poll::Pending
@@ -399,7 +404,7 @@ impl Sink<Vec<u8>> for UdpPayloadSource {
     ) -> Poll<std::result::Result<(), Self::Error>> {
         let this = self.get_mut();
         match this.state {
-            State::Normal => this
+            State::Normal | State::YieldNow => this
                 .inner
                 .poll_ready_unpin(cx)
                 .map_err(|e| IoError::new(ErrorKind::Other, e)),
@@ -476,6 +481,7 @@ impl Sink<Vec<u8>> for UdpPayloadSource {
         cx.waker().wake_by_ref();
         Poll::Pending
     }
+
     fn poll_close(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
