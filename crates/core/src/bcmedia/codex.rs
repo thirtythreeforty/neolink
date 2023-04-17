@@ -4,7 +4,7 @@
 //!
 use crate::bcmedia::model::*;
 use crate::{Error, Result};
-use bytes::{Buf, BytesMut};
+use bytes::BytesMut;
 use log::*;
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -71,8 +71,9 @@ impl Decoder for BcMediaCodex {
                             debug!("Error in stream attempting to restore");
                             trace!("   Stream Error: {:?}", e);
                         }
-                        src.advance(1);
-                        amount_skipped += 1;
+                        // Drop the whole packet and wait for a packet that starts with magic
+                        amount_skipped += src.len();
+                        src.clear();
                         continue;
                     }
                 }

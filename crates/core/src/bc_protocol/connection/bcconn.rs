@@ -7,8 +7,8 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Sender};
-use tokio::sync::Mutex;
 use tokio::task::yield_now;
+use tokio_stream::wrappers::ReceiverStream;
 
 use tokio::{sync::RwLock, task::JoinSet};
 
@@ -30,21 +30,19 @@ pub(crate) type BcConnSource = Box<dyn Stream<Item = Result<Bc>> + Send + Sync +
 ///
 /// There can be only one subscriber per kind of message at a time.
 pub struct BcConnection {
-    sink: Arc<Mutex<BcConnSink>>,
+    sink: Sender<Result<Bc>>,
     subscribers: Arc<Subscriber>,
     #[allow(dead_code)] // Not dead we just need to hold a reference to keep it alive
     rx_thread: RwLock<JoinSet<Result<()>>>,
 }
 
 impl BcConnection {
-    pub async fn new(sink: BcConnSink, mut source: BcConnSource) -> Result<BcConnection> {
+    pub async fn new(mut sink: BcConnSink, mut source: BcConnSource) -> Result<BcConnection> {
         let subscribers: Arc<Subscriber> = Default::default();
-        let sink = Arc::new(Mutex::new(sink));
-
         let subs = subscribers.clone();
-
+        let (sinker, sinker_rx) = channel::<Result<Bc>>(100);
         let mut rx_thread = JoinSet::new();
-        let sink_thread = sink.clone();
+        let sink_thread = sinker.clone();
         rx_thread.spawn(async move {
             loop {
                 yield_now().await; // Give other tasks a chance to run before pulling next packet
@@ -57,15 +55,17 @@ impl BcConnection {
             }
         });
 
+        rx_thread.spawn(async move { sink.send_all(&mut ReceiverStream::new(sinker_rx)).await });
+
         Ok(BcConnection {
-            sink,
+            sink: sinker,
             subscribers,
             rx_thread: RwLock::new(rx_thread),
         })
     }
 
     pub(super) async fn send(&self, bc: Bc) -> crate::Result<()> {
-        self.sink.lock().await.send(bc).await?;
+        self.sink.send(Ok(bc)).await?;
         Ok(())
     }
 
@@ -114,7 +114,7 @@ impl BcConnection {
     async fn poll(
         response: Result<Bc>,
         subscribers: &Subscriber,
-        sink: &Mutex<BcConnSink>,
+        sink: &Sender<Result<Bc>>,
     ) -> Result<()> {
         match response {
             Ok(response) => {
@@ -129,7 +129,7 @@ impl BcConnection {
                     (Some(occ), _) => {
                         if let Some(reply) = occ(&response) {
                             assert!(reply.meta.msg_num == response.meta.msg_num);
-                            sink.lock().await.send(reply).await?;
+                            sink.send(Ok(reply)).await?;
                         }
                     }
                     (None, Some(occ)) => {

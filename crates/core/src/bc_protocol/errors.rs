@@ -39,6 +39,10 @@ pub enum Error {
     #[error(display = "Camera responded with Service Unavaliable")]
     CameraServiceUnavaliable,
 
+    /// Raised when the camera responds with a status code over than OK during login
+    #[error(display = "Camera responded with Err during login")]
+    CameraLoginFail,
+
     /// Raised when a connection is dropped.
     #[error(display = "Dropped connection")]
     DroppedConnection,
@@ -50,6 +54,10 @@ pub enum Error {
     /// Raised when a connection is dropped during a TryRecv event
     #[error(display = "Dropped connection")]
     BroadcastDroppedConnectionTry(#[error(source)] tokio::sync::broadcast::error::TryRecvError),
+
+    /// Raised when a connection is dropped during a TryRecv event
+    #[error(display = "Send Error")]
+    TokioBcSendError,
 
     /// Raised when the TIMEOUT is reach
     #[error(display = "Timeout")]
@@ -191,6 +199,12 @@ pub enum Error {
 impl From<std::io::Error> for Error {
     fn from(k: std::io::Error) -> Self {
         Error::Io(std::sync::Arc::new(k))
+    }
+}
+
+impl<T> From<tokio::sync::mpsc::error::SendError<T>> for Error {
+    fn from(_: tokio::sync::mpsc::error::SendError<T>) -> Self {
+        Error::TokioBcSendError
     }
 }
 

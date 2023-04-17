@@ -2,7 +2,7 @@
 //! gstreamer media stream
 use anyhow::anyhow;
 use futures::stream::StreamExt;
-use gstreamer::ClockTime;
+use gstreamer::{prelude::*, ClockTime};
 use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use log::*;
@@ -55,16 +55,16 @@ impl NeoMediaSender {
             self.shared
                 .buffer_ready
                 .store(!buffer_read.is_empty(), Ordering::Relaxed);
-            debug!("Sender: Get");
+            // debug!("Sender: Get");
             tokio::select! {
                 v = self.data_source.next() => {
-                    debug!("Sender: Got Data");
+                    // debug!("Sender: Got Data");
                     // debug!("data_source recieved");
                     if let Some(bc_media) = v {
-                        if ! self.skip_bcmedia(&bc_media)? {
+                        if ! self.skip_bcmedia(&bc_media) {
                             // debug!("Not skipped");
                             // resend_pause.reset();
-                            self.inspect_bcmedia(&bc_media).await?;
+                            self.inspect_bcmedia(&bc_media).await;
                             match bc_media {
                                 BcMedia::Iframe(frame) => {
                                     if buffer_write.len() > 100 {
@@ -77,7 +77,7 @@ impl NeoMediaSender {
                                             ms: frame.microseconds as u64,
                                             data: frame.data,
                                     };
-                                    self.process_vidbuffer(&new_data).await?;
+                                    self.process_vidbuffer(&new_data).await;
                                     buffer_write.push(new_data);
                                 }
                                 BcMedia::Pframe(frame) => {
@@ -85,7 +85,7 @@ impl NeoMediaSender {
                                             ms: frame.microseconds as u64,
                                             data: frame.data,
                                     };
-                                    self.process_vidbuffer(&new_data).await?;
+                                    self.process_vidbuffer(&new_data).await;
                                     buffer_write.push(new_data);
                                 }
                                 BcMedia::Aac(aac) => {
@@ -94,7 +94,7 @@ impl NeoMediaSender {
                                             ms: last.ms,
                                             data: aac.data,
                                         };
-                                        self.process_audbuffer(&new_data).await?;
+                                        self.process_audbuffer(&new_data).await;
                                         audbuffer_write.push(new_data);
                                     }
 
@@ -105,7 +105,7 @@ impl NeoMediaSender {
                                             ms: last.ms,
                                             data: adpcm.data,
                                         };
-                                        self.process_audbuffer(&new_data).await?;
+                                        self.process_audbuffer(&new_data).await;
                                         audbuffer_write.push(new_data);
                                     }
 
@@ -118,7 +118,7 @@ impl NeoMediaSender {
                     }
                 }
                 v = self.clientsource.next() => {
-                    debug!("Sender: Got Client");
+                    // debug!("Sender: Got Client");
                     if let Some(mut clientdata) = v {
                         // Resend the video and audio buffers
                         if !clientdata.inited {
@@ -176,7 +176,7 @@ impl NeoMediaSender {
         Ok(())
     }
 
-    async fn process_vidbuffer(&mut self, stamped_data: &StampedData) -> AnyResult<()> {
+    async fn process_vidbuffer(&mut self, stamped_data: &StampedData) {
         for key in self
             .clientdata
             .keys()
@@ -187,16 +187,35 @@ impl NeoMediaSender {
             match self.clientdata.entry(key) {
                 Entry::Occupied(data) => {
                     if let Some(vidsrc) = data.get().vidsrc.as_ref() {
-                        if Self::send_buffer(
-                            vidsrc,
-                            stamped_data.data.as_slice(),
-                            stamped_data.ms,
-                            data.get().start_time,
-                        )
-                        .await
-                        .is_err()
-                        {
-                            data.remove();
+                        if !data.get().enough_data.load(Ordering::Relaxed) {
+                            let ms = stamped_data.ms;
+                            let st = data.get().start_time;
+                            let micros = ms - st;
+                            if let Some(clock) = data.get().clock.as_ref() {
+                                if let Some(time) = clock.time() {
+                                    let buffer_time = ClockTime::from_useconds(micros);
+                                    log::debug!(
+                                        "Buffer time: {:?}. Clock time: {:?}",
+                                        buffer_time,
+                                        time
+                                    );
+                                }
+                            }
+                            debug!(
+                                "Pushed Video Buffer: ms: {}, st: {}, delta: {}",
+                                ms, st, micros
+                            );
+                            if Self::send_buffer(
+                                vidsrc,
+                                stamped_data.data.as_slice(),
+                                stamped_data.ms,
+                                data.get().start_time,
+                            )
+                            .await
+                            .is_err()
+                            {
+                                data.remove();
+                            }
                         }
                     } else {
                         data.remove();
@@ -205,10 +224,9 @@ impl NeoMediaSender {
                 Entry::Vacant(_) => {}
             }
         }
-        Ok(())
     }
 
-    async fn process_audbuffer(&mut self, stamped_data: &StampedData) -> AnyResult<()> {
+    async fn process_audbuffer(&mut self, stamped_data: &StampedData) {
         for key in self
             .clientdata
             .keys()
@@ -219,16 +237,19 @@ impl NeoMediaSender {
             match self.clientdata.entry(key) {
                 Entry::Occupied(data) => {
                     if let Some(audsrc) = data.get().audsrc.as_ref() {
-                        if Self::send_buffer(
-                            audsrc,
-                            stamped_data.data.as_slice(),
-                            stamped_data.ms,
-                            data.get().start_time,
-                        )
-                        .await
-                        .is_err()
-                        {
-                            data.remove();
+                        if !data.get().enough_data.load(Ordering::Relaxed) {
+                            debug!("Pushed Audio Buffer");
+                            if Self::send_buffer(
+                                audsrc,
+                                stamped_data.data.as_slice(),
+                                stamped_data.ms,
+                                data.get().start_time,
+                            )
+                            .await
+                            .is_err()
+                            {
+                                data.remove();
+                            }
                         }
                     } else {
                         data.remove();
@@ -237,8 +258,6 @@ impl NeoMediaSender {
                 Entry::Vacant(_) => {}
             }
         }
-
-        Ok(())
     }
 
     async fn send_buffer(
@@ -268,28 +287,38 @@ impl NeoMediaSender {
         }
         // debug!("Buffer pushed");
         let thread_appsrc = appsrc.clone(); // GObjects are refcounted
-        tokio::task::spawn_blocking(move || {
+        let res = tokio::task::spawn_blocking(move || {
             thread_appsrc
                 .push_buffer(gst_buf.copy())
                 .map(|_| ())
                 .map_err(|_| anyhow!("Could not push buffer to appsrc"))
         })
-        .await?
+        .await;
+        match &res {
+            Err(e) => {
+                error!("Failed to send buffer: {:?}", e);
+            }
+            Ok(Err(e)) => {
+                error!("Failed to send buffer: {:?}", e);
+            }
+            Ok(Ok(_)) => {}
+        };
+        res?
     }
 
-    fn skip_bcmedia(&mut self, bc_media: &BcMedia) -> AnyResult<bool> {
+    fn skip_bcmedia(&mut self, bc_media: &BcMedia) -> bool {
         if self.waiting_for_iframe {
             if let BcMedia::Iframe(_) = bc_media {
                 self.waiting_for_iframe = false;
             } else {
                 log::debug!("Skipping bcmedia");
-                return Ok(true);
+                return true;
             }
         }
-        Ok(false)
+        false
     }
 
-    async fn inspect_bcmedia(&mut self, bc_media: &BcMedia) -> AnyResult<()> {
+    async fn inspect_bcmedia(&mut self, bc_media: &BcMedia) {
         let old_vid = *self.shared.vid_format.read().await;
         let old_aud = *self.shared.aud_format.read().await;
         match bc_media {
@@ -343,6 +372,5 @@ impl NeoMediaSender {
         if old_aud != new_aud {
             log::debug!("Audio format set to: {:?} from {:?}", new_aud, old_aud);
         }
-        Ok(())
     }
 }

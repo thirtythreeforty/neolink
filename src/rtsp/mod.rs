@@ -162,7 +162,13 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         .login()
         .await
         .with_context(|| format!("{}: Could not login to camera", name))
-        .map_err(CameraFailureKind::Fatal)?;
+        .map_err(|e| {
+            let e_inner = e.downcast_ref::<neolink_core::Error>().unwrap();
+            match e_inner {
+                neolink_core::Error::CameraLoginFail => CameraFailureKind::Fatal(e),
+                _ => CameraFailureKind::Retry(e),
+            }
+        })?;
 
     let _ = loggedin.manage().await;
 

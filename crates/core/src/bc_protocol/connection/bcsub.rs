@@ -48,6 +48,7 @@ impl<'a> Stream for BcPayloadStream<'a> {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<IoResult<Vec<u8>>>> {
+        // log::debug!("PayloadStream: Poll");
         match Pin::new(&mut self.rx).poll_next(cx) {
             Poll::Ready(Some(Ok(Bc {
                 body:
@@ -57,17 +58,27 @@ impl<'a> Stream for BcPayloadStream<'a> {
                     }),
                 ..
             }))) => {
+                // log::debug!("PayloadStream: Data");
                 return Poll::Ready(Some(Ok(data)));
             }
             Poll::Ready(Some(Ok(_bc))) => {
                 // trace!("Got other BC in payload stream");
+                // log::debug!("PayloadStream: Other Data!");
             }
             Poll::Ready(Some(Err(e))) => {
-                return Poll::Ready(Some(Err(IoError::new(ErrorKind::Other, e))))
+                // log::debug!("PayloadStream: Err");
+                return Poll::Ready(Some(Err(IoError::new(ErrorKind::Other, e))));
             }
-            Poll::Ready(None) => return Poll::Ready(None),
-            Poll::Pending => return Poll::Pending,
+            Poll::Ready(None) => {
+                // log::debug!("PayloadStream: None");
+                return Poll::Ready(None);
+            }
+            Poll::Pending => {
+                // log::debug!("PayloadStream: Pend");
+                return Poll::Pending;
+            }
         }
+        // log::debug!("PayloadStream: Default Pend and Wake");
         cx.waker().wake_by_ref();
         Poll::Pending
     }

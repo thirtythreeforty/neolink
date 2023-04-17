@@ -11,7 +11,7 @@ use crate::bcudp::xml::*;
 use crate::{Error, Result};
 use futures::{
     sink::SinkExt,
-    stream::{FuturesUnordered, SplitSink, StreamExt},
+    stream::{FuturesUnordered, StreamExt},
 };
 use lazy_static::lazy_static;
 use local_ip_address::local_ip;
@@ -24,7 +24,7 @@ use tokio::{
     net::UdpSocket,
     sync::{
         mpsc::{channel, Receiver, Sender},
-        Mutex, RwLock,
+        RwLock,
     },
     task::JoinSet,
     time::{interval, timeout, Duration},
@@ -83,7 +83,7 @@ type ArcFramedSocket = UdpFramed<BcUdpCodex, Arc<UdpSocket>>;
 pub(crate) struct Discoverer {
     socket: Arc<UdpSocket>,
     handle: RwLock<JoinSet<()>>,
-    writer: Mutex<SplitSink<ArcFramedSocket, (BcUdp, SocketAddr)>>,
+    writer: Sender<Result<(BcUdp, SocketAddr)>>,
     subsribers: Subscriber,
     local_addr: SocketAddr,
 }
@@ -94,7 +94,7 @@ impl Discoverer {
         let local_addr = socket.local_addr()?;
         let inner: ArcFramedSocket = UdpFramed::new(socket.clone(), BcUdpCodex::new());
 
-        let (writer, mut reader) = inner.split();
+        let (mut writer, mut reader) = inner.split();
         let mut set = JoinSet::new();
         let subsribers: Subscriber = Default::default();
 
@@ -138,10 +138,15 @@ impl Discoverer {
             }
         });
 
+        let (sinker, sinker_rx) = channel(100);
+        set.spawn(async move {
+            let _ = writer.send_all(&mut ReceiverStream::new(sinker_rx)).await;
+        });
+
         Ok(Discoverer {
             socket,
             handle: RwLock::new(set),
-            writer: Mutex::new(writer),
+            writer: sinker,
             subsribers,
             local_addr,
         })
@@ -192,7 +197,10 @@ impl Discoverer {
     }
 
     async fn send(&self, disc: BcUdp, addr: SocketAddr) -> Result<()> {
-        self.writer.lock().await.send((disc, addr)).await
+        self.writer
+            .send(Ok((disc, addr)))
+            .await
+            .map_err(Error::from)
     }
 
     fn local_addr(&self) -> &SocketAddr {

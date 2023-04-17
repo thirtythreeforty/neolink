@@ -256,6 +256,7 @@ impl BcCamera {
                 return Ok(CameraLocation::Tcp(addr));
             }
         }
+        debug!("TCP fail");
         // Tcp failed see if Local faired any better
         // Wait for all local to finish
         while let Some(result) = local_set.join_next().await {
@@ -263,6 +264,7 @@ impl BcCamera {
                 return Ok(CameraLocation::Udp(discovery));
             }
         }
+        debug!("Local fail");
         // Local failed see if Remote faired any better
         // Wait for all remote to finish
         while let Some(result) = remote_set.join_next().await {
@@ -270,6 +272,7 @@ impl BcCamera {
                 return Ok(CameraLocation::Udp(discovery));
             }
         }
+        debug!("Remote fail");
         // Remote failed see if Map faired any better
         // Wait for all Map to finish
         while let Some(result) = map_set.join_next().await {
@@ -277,6 +280,7 @@ impl BcCamera {
                 return Ok(CameraLocation::Udp(discovery));
             }
         }
+        debug!("Map fail");
         // Map failed see if Relay faired any better
         // Wait for all Relay to finish
         while let Some(result) = relay_set.join_next().await {
@@ -284,6 +288,7 @@ impl BcCamera {
                 return Ok(CameraLocation::Udp(discovery));
             }
         }
+        debug!("Relay (All) fail");
         // Nothing works
         Err(Error::CannotInitCamera)
     }

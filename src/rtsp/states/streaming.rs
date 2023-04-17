@@ -52,21 +52,21 @@ impl Camera<Streaming> {
                 .await?;
             set.spawn(async move {
                 loop {
-                    debug!("Straming: Get");
+                    // debug!("Straming: Get");
                     let data = timeout(Duration::from_secs(15), stream_data.get_data()).await??;
-                    debug!("Straming: Got");
+                    // debug!("Straming: Got");
                     match &data {
-                        Ok(BcMedia::InfoV1(_)) => debug!("{}:  - InfoV1", &tag_thread),
-                        Ok(BcMedia::InfoV2(_)) => debug!("{}:  - InfoV2", &tag_thread),
-                        Ok(BcMedia::Iframe(_)) => debug!("{}:  - Iframe", &tag_thread),
-                        Ok(BcMedia::Pframe(_)) => debug!("{}:  - Pframe", &tag_thread),
-                        Ok(BcMedia::Aac(_)) => debug!("{}:  - Aac", &tag_thread),
-                        Ok(BcMedia::Adpcm(_)) => debug!("{}:  - Adpcm", &tag_thread),
-                        Err(_) => debug!("  - Error"),
+                        Ok(BcMedia::InfoV1(_)) => trace!("{}:  - InfoV1", &tag_thread),
+                        Ok(BcMedia::InfoV2(_)) => trace!("{}:  - InfoV2", &tag_thread),
+                        Ok(BcMedia::Iframe(_)) => trace!("{}:  - Iframe", &tag_thread),
+                        Ok(BcMedia::Pframe(_)) => trace!("{}:  - Pframe", &tag_thread),
+                        Ok(BcMedia::Aac(_)) => trace!("{}:  - Aac", &tag_thread),
+                        Ok(BcMedia::Adpcm(_)) => trace!("{}:  - Adpcm", &tag_thread),
+                        Err(_) => trace!("  - Error"),
                     }
-                    debug!("Straming: Send");
+                    // debug!("Straming: Send");
                     sender.send(data?).await?;
-                    debug!("Straming: Sent");
+                    // debug!("Straming: Sent");
                 }
             });
         }
