@@ -95,6 +95,7 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
         set.spawn(async move {
             let shared = camera.shared.clone();
             let name = camera.get_name();
+            let mut backoff = Duration::from_micros(125);
             loop {
                 let failure = camera_main(camera).await;
                 match failure {
@@ -104,6 +105,10 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
                     }
                     Err(CameraFailureKind::Retry(e)) => {
                         warn!("{}: Retryable error: {:X?}", name, e);
+                        tokio::time::sleep(backoff).await;
+                        if backoff < Duration::from_secs(5) {
+                            backoff *= 2;
+                        }
                         camera = Camera {
                             shared: shared.clone(),
                             state: Disconnected {},
