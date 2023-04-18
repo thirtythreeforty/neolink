@@ -188,7 +188,7 @@ jobs:
           tags=""
           if [[ "${GITHUB_REF}" =~ ^'refs/tags/'(.*) ]]; then
             gittag="$(echo "${BASH_REMATCH[1]}" | sed -E 's|[/]|-|g')"
-            tags=""${REPO_NAME}:${gittag}"
+            tags="${REPO_NAME}:${gittag}"
           elif [[ "${GITHUB_REF}" =~ ^'refs/heads/'(.*) ]]; then
             branch="$(echo "${BASH_REMATCH[1]}" | sed -E 's|[/]|-|g')"
             tags="${REPO_NAME}:${branch}"
@@ -196,7 +196,7 @@ jobs:
               tags="${tags},${REPO_NAME}:latest"
             fi
           fi
-          echo "TAGS=${tags}"  >> $GITHUB_OUTPUT
+          echo "TAGS=${tags}"  >> "${GITHUB_OUTPUT}"
         env:
           REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
       - name: Install latest rust
