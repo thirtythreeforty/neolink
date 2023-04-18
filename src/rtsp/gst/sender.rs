@@ -296,10 +296,10 @@ impl NeoMediaSender {
         .await;
         match &res {
             Err(e) => {
-                error!("Failed to send buffer: {:?}", e);
+                debug!("Failed to send buffer: {:?}", e);
             }
             Ok(Err(e)) => {
-                error!("Failed to send buffer: {:?}", e);
+                debug!("Failed to send buffer: {:?}", e);
             }
             Ok(Ok(_)) => {}
         };

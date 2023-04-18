@@ -124,7 +124,7 @@ impl Drop for NeoMediaFactoryImpl {
 
 impl Default for NeoMediaFactoryImpl {
     fn default() -> Self {
-        warn!("Constructing Factor Impl");
+        debug!("Constructing Factor Impl");
         let (datasender, datarx) = channel(3);
         let (clientsender, rx_clientsender) = channel(3);
         let shared: Arc<NeoMediaShared> = Default::default();
@@ -140,9 +140,18 @@ impl Default for NeoMediaFactoryImpl {
             waiting_for_iframe: true,
         };
         threads.spawn(async move {
-            let res = sender.run().await;
-            error!("Factory Run thread stopped: {:?}", res);
-            res
+            loop {
+                match sender.run().await {
+                    Err(e) => {
+                        warn!("Media send thead failed... restarting. Cause: {:?}", e);
+                    }
+                    Ok(()) => {
+                        break;
+                    }
+                }
+                sender.waiting_for_iframe = true;
+            }
+            Ok(())
         });
 
         Self {
