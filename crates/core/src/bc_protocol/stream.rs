@@ -31,7 +31,6 @@ pub enum StreamKind {
 ///
 /// When this object is dropped the streaming is stopped
 pub struct StreamData {
-    #[allow(dead_code)]
     handle: Option<JoinHandle<Result<()>>>,
     rx: Receiver<Result<BcMedia>>,
     abort_handle: Arc<AtomicBool>,
@@ -41,9 +40,27 @@ impl StreamData {
     /// Pull data from the camera's buffer
     /// This returns raw BcMedia packets
     pub async fn get_data(&mut self) -> Result<Result<BcMedia>> {
+        if let Some(handle) = self.handle.as_mut() {
+            if handle.is_finished() {
+                self.abort_handle.store(true, Ordering::Relaxed);
+                handle.await??;
+                return Err(Error::DroppedConnection);
+            }
+        } else {
+            self.abort_handle.store(true, Ordering::Relaxed);
+            return Err(Error::DroppedConnection);
+        }
+        // debug!("StreamData: Get");
         match self.rx.recv().await {
-            Some(data) => Ok(data),
-            None => Err(Error::DroppedConnection),
+            Some(data) => {
+                // debug!("StreamData: Got");
+                Ok(data)
+            }
+            None => {
+                // debug!("StreamData: Drop");
+                self.abort_handle.store(true, Ordering::Relaxed);
+                Err(Error::DroppedConnection)
+            }
         }
     }
 }
@@ -164,17 +181,23 @@ impl BcCamera {
                 let mut media_sub = sub_video.bcmedia_stream(strict);
 
                 while !abort_handle_thread.load(Ordering::Relaxed) {
+                    // debug!("Stream: Get");
                     if let Some(bc_media) = media_sub.next().await {
+                        // debug!("Stream: Got");
                         // We now have a complete interesting packet. Send it to on the callback
+                        // debug!("Stream: Send");
                         if tx.send(bc_media).await.is_err() {
+                            // debug!("Stream: Dropped");
                             break; // Connection dropped
                         }
+                        // debug!("Stream: Sent");
                     } else {
                         break;
                     }
                 }
             }
 
+            // debug!("Stream: Stopping");
             let stop_video = Bc::new_from_xml(
                 BcMeta {
                     msg_id: MSG_ID_VIDEO_STOP,
@@ -194,8 +217,9 @@ impl BcCamera {
                     ..Default::default()
                 },
             );
-
+            // debug!("Stream: Send Stop");
             sub_video.send(stop_video).await?;
+            // debug!("Stream: Sent Stop");
 
             Ok(())
         });

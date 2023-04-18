@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{crate_authors, crate_version, Parser};
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -7,7 +7,7 @@ use std::str::FromStr;
 /// Neolink is free software released under the GNU AGPL v3.
 /// You can find its source code at https://github.com/thirtythreeforty/neolink
 #[derive(Parser, Debug)]
-#[command(name = "neolink", arg_required_else_help = true)]
+#[command(name = "neolink", arg_required_else_help = true, version = crate_version!(), author = crate_authors!("\n"))]
 pub struct Opt {
     #[arg(short, long, global = true, value_parser = PathBuf::from_str)]
     pub config: Option<PathBuf>,

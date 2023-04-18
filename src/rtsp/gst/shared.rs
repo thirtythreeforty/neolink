@@ -1,8 +1,10 @@
 //! Data shared between the various
 //! components that manage a media stream
+use gstreamer::Clock;
 use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -45,4 +47,6 @@ pub(super) struct ClientPipelineData {
     pub(super) audsrc: Option<AppSrc>,
     pub(super) start_time: u64,
     pub(super) inited: bool,
+    pub(super) clock: Option<Clock>,
+    pub(super) enough_data: Arc<AtomicBool>,
 }

@@ -199,9 +199,10 @@ impl Sink<(BcUdp, SocketAddr)> for BcUdpSource {
 }
 
 enum State {
-    Normal,
-    Flushing,
-    Closed,
+    Normal,   // Normal recieve
+    Flushing, // Used to send ack packets and things in the buffer
+    Closed,   // Used to shutdown
+    YieldNow, // Used to ensure we rest between polling packets so as to not starve the runtime
 }
 
 pub(crate) struct UdpPayloadSource {
@@ -277,14 +278,12 @@ impl UdpPayloadSource {
     fn maintanence(&mut self, cx: &mut Context<'_>) {
         // Check for periodic resends
         if self.resend_interval.poll_tick(cx).is_ready() {
-            trace!("UDPSource.RecievedPacket: Resend");
             for (_, resend) in self.sent.iter() {
                 self.send_buffer.push_back(BcUdp::Data(resend.clone()));
             }
         }
         if self.ack_interval.poll_tick(cx).is_ready() {
             let ack = BcUdp::Ack(self.build_send_ack());
-            trace!("UDPSource.RecievedPacket: QueueingAck");
             self.send_buffer.push_back(ack);
             self.state = State::Flushing;
         }
@@ -295,15 +294,13 @@ impl Stream for UdpPayloadSource {
     type Item = IoResult<Vec<u8>>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        trace!("UdpPayloadSource.poll_next");
         let camera_addr = self.inner.addr;
         let mut this = self.get_mut();
         match this.state {
             State::Normal => {
-                trace!("UdpPayloadSource.State: Normal");
+                this.state = State::YieldNow;
                 // Data ready to go
                 if let Some(payload) = this.recieved.remove(&this.packets_want) {
-                    trace!("UdpPayloadSource.Data: PreReady: {}", this.packets_want);
                     this.packets_want += 1;
                     // error!("packets_want: {}", this.packets_want);
                     return Poll::Ready(Some(Ok(payload)));
@@ -324,20 +321,12 @@ impl Stream for UdpPayloadSource {
                         && packet_id >= this.packets_want =>
                     {
                         if packet_id == this.packets_want {
-                            trace!(
-                                "UdpPayloadSource.RecievedPacker: NewData: {}",
-                                this.packets_want
-                            );
                             this.packets_want += 1;
                             // error!("packets_want: {}", this.packets_want);
                             let ack = BcUdp::Ack(this.build_send_ack());
                             this.send_buffer.push_back(ack);
                             return Poll::Ready(Some(Ok(payload)));
                         } else {
-                            trace!(
-                                "UdpPayloadSource.RecievedPacker: Future Data: {}",
-                                packet_id
-                            );
                             this.recieved.insert(packet_id, payload);
                         }
                     }
@@ -358,17 +347,14 @@ impl Stream for UdpPayloadSource {
                         BcUdp::Ack(ack @ UdpAck { connection_id, .. }),
                         addr,
                     )))) if connection_id == this.client_id && addr == camera_addr => {
-                        trace!("UdpPayloadSource.RecievedPacket: Ack: {:?}", ack);
                         this.handle_ack(ack);
                         // Rather then immediatly flush wait for the next call
                         // this.state = State::Flushing;
                     }
                     Poll::Ready(Some(Err(e))) => {
-                        trace!("UdpPayloadSource.RecievedPacker: Error");
                         return Poll::Ready(Some(Err(IoError::new(ErrorKind::Other, e))));
                     }
                     Poll::Ready(None) => {
-                        trace!("UdpPayloadSource.RecievedPacker: Empty");
                         return Poll::Ready(None);
                     }
                     Poll::Pending => {
@@ -386,23 +372,22 @@ impl Stream for UdpPayloadSource {
                       // }
                 }
             }
-            State::Flushing => {
-                trace!("UdpPayloadSource.State: Flushing");
-                match this.poll_flush_unpin(cx) {
-                    Poll::Ready(Ok(())) => {
-                        this.state = State::Normal;
-                    }
-                    Poll::Ready(Err(e)) => {
-                        return Poll::Ready(Some(Err(e)));
-                    }
-                    Poll::Pending => {
-                        return Poll::Pending;
-                    }
+            State::Flushing => match this.poll_flush_unpin(cx) {
+                Poll::Ready(Ok(())) => {
+                    this.state = State::Normal;
                 }
-            }
+                Poll::Ready(Err(e)) => {
+                    return Poll::Ready(Some(Err(e)));
+                }
+                Poll::Pending => {
+                    return Poll::Pending;
+                }
+            },
             State::Closed => {
-                trace!("UdpPayloadSource.State: Closed");
                 return Poll::Ready(Some(Err(IoError::from(ErrorKind::ConnectionAborted))));
+            }
+            State::YieldNow => {
+                this.state = State::Normal;
             }
         }
         cx.waker().wake_by_ref();
@@ -419,7 +404,7 @@ impl Sink<Vec<u8>> for UdpPayloadSource {
     ) -> Poll<std::result::Result<(), Self::Error>> {
         let this = self.get_mut();
         match this.state {
-            State::Normal => this
+            State::Normal | State::YieldNow => this
                 .inner
                 .poll_ready_unpin(cx)
                 .map_err(|e| IoError::new(ErrorKind::Other, e)),
@@ -496,6 +481,7 @@ impl Sink<Vec<u8>> for UdpPayloadSource {
         cx.waker().wake_by_ref();
         Poll::Pending
     }
+
     fn poll_close(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,

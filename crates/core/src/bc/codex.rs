@@ -7,6 +7,7 @@ use crate::bc::model::*;
 use crate::bc::xml::*;
 use crate::{Credentials, Error, Result};
 use bytes::BytesMut;
+use std::io;
 use tokio_util::codec::{Decoder, Encoder};
 
 pub(crate) struct BcCodex {
@@ -45,6 +46,24 @@ impl Encoder<Bc> for BcCodex {
 impl Decoder for BcCodex {
     type Item = Bc;
     type Error = Error;
+
+    fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>> {
+        match self.decode(buf)? {
+            Some(frame) => Ok(Some(frame)),
+            None => {
+                if buf.is_empty() {
+                    Ok(None)
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("bytes remaining on BC stream: {:X?}", buf),
+                    )
+                    .into())
+                }
+            }
+        }
+    }
+
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>> {
         // trace!("Decoding: {:X?}", src);
         let bc = Bc::deserialize(&self.context, src);

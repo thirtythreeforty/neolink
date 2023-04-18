@@ -4,7 +4,7 @@
 //!
 use crate::bcmedia::model::*;
 use crate::{Error, Result};
-use bytes::{Buf, BytesMut};
+use bytes::BytesMut;
 use log::*;
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -36,6 +36,15 @@ impl Decoder for BcMediaCodex {
     type Item = BcMedia;
     type Error = Error;
 
+    /// Since frames can cross EOF boundaries we overload this so it dosen't error if
+    /// there are bytes left on the stream
+    fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>> {
+        match self.decode(buf)? {
+            Some(frame) => Ok(Some(frame)),
+            None => Ok(None),
+        }
+    }
+
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>> {
         let mut amount_skipped: usize = 0;
         loop {
@@ -62,8 +71,9 @@ impl Decoder for BcMediaCodex {
                             debug!("Error in stream attempting to restore");
                             trace!("   Stream Error: {:?}", e);
                         }
-                        src.advance(1);
-                        amount_skipped += 1;
+                        // Drop the whole packet and wait for a packet that starts with magic
+                        amount_skipped += src.len();
+                        src.clear();
                         continue;
                     }
                 }

@@ -14,7 +14,7 @@ members = [
 [dependencies]
 anyhow = "1.0.70"
 byte-slice-cast = "1.2.2"
-clap = { version = "4.2.2", features = ["derive"] }
+clap = { version = "4.2.2", features = ["derive", "cargo"] }
 crossbeam-channel = "0.5.8"
 env_logger = "*"
 futures = "0.3.28"
