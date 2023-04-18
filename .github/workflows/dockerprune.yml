@@ -96,26 +96,30 @@ jobs:
             # build a list of images from tags
             for j in ${IMAGE_TAGS}
             do
+                if [[ "${j}" =~ ^[0-9][.][0-9][.][0-9]$ ]]; then
+                  echo "Version tag (${j}) will not be deleted"
+                  continue
+                fi
                 echo
                 # add last_updated_time
-              updated_time="$(curl -s -H "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${UNAME}/${i}/tags/${j}/?page_size=10000" | jq -r '.last_updated')"
-              echo "$updated_time"
-              datetime=$updated_time
-              timeago="${DAYS} days ago"
+                updated_time="$(curl -s -H "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${UNAME}/${i}/tags/${j}/?page_size=10000" | jq -r '.last_updated')"
+                echo "$updated_time"
+                datetime=$updated_time
+                timeago="${DAYS} days ago"
 
-              dtSec=$(date --date "$datetime" +'%s')
-              taSec=$(date --date "$timeago" +'%s')
+                dtSec=$(date --date "$datetime" +'%s')
+                taSec=$(date --date "$timeago" +'%s')
 
-              echo "INFO: dtSec=$dtSec, taSec=$taSec"
+                echo "INFO: dtSec=$dtSec, taSec=$taSec"
 
-                    if [ "$dtSec" -lt "$taSec" ]
-                    then
-                        echo "This image ${UNAME}/${i}:${j} is older than ${DAYS} days, deleting this  image"
-                        ## Please uncomment below line to delete docker hub images of docker hub repositories
-                        curl -s  -X DELETE  -H "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${UNAME}/${i}/tags/${j}/"
-                    else
-                        echo "This image ${UNAME}/${i}:${j} is within ${DAYS} days time range, keep this image"
-                    fi
+                if [ "$dtSec" -lt "$taSec" ]
+                then
+                    echo "This image ${UNAME}/${i}:${j} is older than ${DAYS} days, deleting this  image"
+                    ## Please uncomment below line to delete docker hub images of docker hub repositories
+                    curl -s  -X DELETE  -H "Authorization: JWT ${TOKEN}" "https://hub.docker.com/v2/repositories/${UNAME}/${i}/tags/${j}/"
+                else
+                    echo "This image ${UNAME}/${i}:${j} is within ${DAYS} days time range, keep this image"
+                fi
             done
           done
 
@@ -124,4 +128,4 @@ jobs:
           DAYS: "100"
           REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
           OWNER: ${{ steps.string_user.outputs.lowercase }}
-          TOKEN: ${{ secrets.DOCKER_PRUNE_TOKEN }}
+          TOKEN: ${{ secrets.DOCKER_PRUNE__TOKEN }}
