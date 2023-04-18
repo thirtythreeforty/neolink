@@ -141,6 +141,7 @@ impl Default for NeoMediaFactoryImpl {
         };
         threads.spawn(async move {
             loop {
+                tokio::task::yield_now().await;
                 match sender.run().await {
                     Err(e) => {
                         warn!("Media send thead failed... restarting. Cause: {:?}", e);

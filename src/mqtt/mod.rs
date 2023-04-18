@@ -93,6 +93,7 @@ pub(crate) async fn main(_: Opt, config: Config) -> Result<()> {
             info!("{}: Setting up mqtt", camera_config.name);
             set.spawn(async move {
                 while loop_arc_app.running("app") {
+                    tokio::task::yield_now().await;
                     let _ =
                         listen_on_camera(camera_config.clone(), &mqtt_config, loop_arc_app.clone())
                             .await;
@@ -115,7 +116,7 @@ async fn listen_on_camera(
 ) -> Result<()> {
     // Camera thread
     let arc_event_cam = Arc::new(EventCam::new(cam_config.clone(), arc_app.clone()));
-    let arc_mqtt = Mqtt::new(mqtt_config, &cam_config.name, arc_app.clone());
+    let mut mqtt = Mqtt::new(mqtt_config, &cam_config.name, arc_app.clone()).await;
     let mut set = tokio::task::JoinSet::new();
     // Start listening to camera events
     let event_cam = arc_event_cam.clone();
@@ -124,35 +125,40 @@ async fn listen_on_camera(
         event_cam.abort(); // Just to ensure everything aborts
     });
 
-    // Start listening to mqtt events
-    let event_cam = arc_event_cam.clone();
-    let mqtt = arc_mqtt.clone();
-    set.spawn(async move {
-        let _ = mqtt.start().is_err();
-        event_cam.abort();
-    });
-
     // Listen on camera messages and post on mqtt
     let camera_name = cam_config.name.clone();
     let event_cam = arc_event_cam.clone();
-    let mqtt = arc_mqtt.clone();
     let app = arc_app.clone();
+    let mqtt_sender = mqtt.get_sender();
     set.spawn(async move {
         while app.running(&format!("app: {}", camera_name)) {
+            tokio::task::yield_now().await;
             if let Ok(msg) = event_cam.poll().await {
                 match msg {
                     Messages::Login => {
-                        if mqtt.send_message("status", "connected", true).is_err() {
+                        if mqtt_sender
+                            .send_message("status", "connected", true)
+                            .await
+                            .is_err()
+                        {
                             error!("Failed to post connect over MQTT for {}", camera_name);
                         }
                     }
                     Messages::MotionStop => {
-                        if mqtt.send_message("status/motion", "off", true).is_err() {
+                        if mqtt_sender
+                            .send_message("status/motion", "off", true)
+                            .await
+                            .is_err()
+                        {
                             error!("Failed to publish motion stop for {}", camera_name);
                         }
                     }
                     Messages::MotionStart => {
-                        if mqtt.send_message("status/motion", "on", true).is_err() {
+                        if mqtt_sender
+                            .send_message("status/motion", "on", true)
+                            .await
+                            .is_err()
+                        {
                             error!("Failed to publish motion start for {}", camera_name);
                         }
                     }
@@ -164,12 +170,13 @@ async fn listen_on_camera(
 
     // Listen on mqtt messages and post on camera
     let event_cam = arc_event_cam.clone();
-    let mqtt = arc_mqtt.clone();
     let app = arc_app.clone();
     let camera_name = cam_config.name.clone();
+    let mqtt_sender = mqtt.get_sender();
     set.spawn(async move {
         while app.running(&format!("app: {}", camera_name)) {
-            if let Ok(msg) = mqtt.poll() {
+            tokio::task::yield_now().await;
+            if let Ok(msg) = mqtt.poll().await {
                 match msg.as_ref() {
                     MqttReplyRef {
                         topic: "control/led",
@@ -279,7 +286,11 @@ async fn listen_on_camera(
                         ..
                     } => match event_cam.send_message_with_reply(Messages::Battery).await {
                         Ok(reply) => {
-                            if mqtt.send_message("status/battery", &reply, false).is_err() {
+                            if mqtt_sender
+                                .send_message("status/battery", &reply, false)
+                                .await
+                                .is_err()
+                            {
                                 error!("Failed to send battery status reply");
                             }
                         }
@@ -289,7 +300,11 @@ async fn listen_on_camera(
                         topic: "query/pir", ..
                     } => match event_cam.send_message_with_reply(Messages::PIRQuery).await {
                         Ok(reply) => {
-                            if mqtt.send_message("status/pir", &reply, false).is_err() {
+                            if mqtt_sender
+                                .send_message("status/pir", &reply, false)
+                                .await
+                                .is_err()
+                            {
                                 error!("Failed to send pir status reply");
                             }
                         }

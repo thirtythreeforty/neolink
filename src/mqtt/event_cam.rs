@@ -130,6 +130,7 @@ impl EventCam {
 
         while self.app.running(&self.config.name) {
             // Ignore errors and just loop
+            tokio::task::yield_now().await;
             let _ = Self::cam_run(
                 &loop_config,
                 loop_tx.clone(),

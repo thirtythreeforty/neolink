@@ -105,6 +105,7 @@ impl BcCamera {
         let channel_id = self.channel_id;
 
         let handle = task::spawn(async move {
+            tokio::task::yield_now().await;
             let mut sub_video = connection.subscribe(msg_num).await?;
 
             // On an E1 and swann cameras:

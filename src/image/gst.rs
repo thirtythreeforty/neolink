@@ -65,6 +65,7 @@ async fn output(pipeline: Pipeline) -> Result<GstSender> {
     let mut set = JoinSet::new();
     set.spawn(async move {
         while let Some(control) = reciever.recv().await {
+            tokio::task::yield_now().await;
             match control {
                 GstControl::Data(buf) => {
                     let mut gst_buf = gstreamer::Buffer::with_size(buf.len()).unwrap();

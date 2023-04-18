@@ -101,6 +101,7 @@ impl Discoverer {
         let thread_subscriber = subsribers.clone();
         set.spawn(async move {
             loop {
+                tokio::task::yield_now().await;
                 match reader.next().await {
                     Some(Ok((BcUdp::Discovery(bcudp), addr))) => {
                         let mut tid = bcudp.tid;
@@ -852,6 +853,7 @@ impl Discoverer {
         let mut interval = interval(Duration::from_secs(1));
         self.handle.write().await.spawn(async move {
             loop {
+                tokio::task::yield_now().await;
                 interval.tick().await;
                 let msg = BcUdp::Discovery(UdpDiscovery {
                     tid,
@@ -880,6 +882,7 @@ impl Discoverer {
         let mut interval = interval(Duration::from_secs(1));
         self.handle.write().await.spawn(async move {
             loop {
+                tokio::task::yield_now().await;
                 interval.tick().await;
                 let msg = BcUdp::Discovery(UdpDiscovery {
                     tid,

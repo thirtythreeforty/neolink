@@ -1,23 +1,21 @@
 use super::App;
 use crate::config::MqttConfig;
 use anyhow::{Context, Result};
-use crossbeam_channel::{unbounded, Receiver, RecvError, Sender};
 use log::*;
 use rumqttc::{
-    Client, ClientError, ConnectReturnCode, Connection, Event, Incoming, Key, LastWill,
+    AsyncClient, ClientError, ConnectReturnCode, Event, EventLoop, Incoming, Key, LastWill,
     MqttOptions, Publish, QoS, TlsConfiguration, Transport,
 };
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::task::JoinSet;
 
 pub(crate) struct Mqtt {
-    app: Arc<App>,
-    client: Mutex<Client>,
-    connection: Mutex<Connection>,
+    client: Arc<AsyncClient>,
     name: String,
-    incoming: (Sender<Publish>, Receiver<Publish>),
-    msg_channel: (Sender<MqttReply>, Receiver<MqttReply>),
-    drop_message: Mutex<Option<MqttReply>>,
+    incoming: Receiver<MqttReply>,
+    drop_message: Option<MqttReply>,
 }
 
 pub(crate) struct MqttReply {
@@ -39,10 +37,121 @@ pub(crate) struct MqttReplyRef<'a> {
     pub(crate) message: &'a str,
 }
 
+struct MqttReciever {
+    app: Arc<App>,
+    client: MqttSender,
+    incoming_tx: Sender<MqttReply>,
+    name: String,
+}
+
+pub(crate) struct MqttSender {
+    client: Arc<AsyncClient>,
+    name: String,
+}
+
+impl MqttSender {
+    pub async fn send_message(
+        &self,
+        sub_topic: &str,
+        message: &str,
+        retain: bool,
+    ) -> Result<(), ClientError> {
+        self.client
+            .publish(
+                format!("neolink/{}/{}", self.name, sub_topic),
+                QoS::AtLeastOnce,
+                retain,
+                message,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn subscribe(&self) -> Result<(), ClientError> {
+        self.client
+            .subscribe(format!("neolink/{}/#", self.name), QoS::AtMostOnce)
+            .await?;
+        Ok(())
+    }
+
+    async fn update_status(&self) -> Result<()> {
+        self.send_message("status", "disconnected", true).await?;
+        Ok(())
+    }
+
+    pub fn try_send_message(&self, sub_topic: &str, message: &str, retain: bool) -> Result<()> {
+        self.client
+            .try_publish(
+                format!("neolink/{}/{}", self.name, sub_topic),
+                QoS::AtLeastOnce,
+                retain,
+                message,
+            )
+            .map_err(|e| e.into())
+    }
+}
+
+impl MqttReciever {
+    async fn run(&mut self, connection: &mut EventLoop) -> Result<()> {
+        // This acts as an event loop
+        let name = self.name.clone();
+        info!("Starting MQTT Client for {}", name);
+        while self.app.running(&format!("app:{}", name)) {
+            if let Ok(notification) = connection.poll().await {
+                // if let Ok(notification) = notification {
+                match notification {
+                    Event::Incoming(Incoming::ConnAck(connected)) => {
+                        if ConnectReturnCode::Success == connected.code {
+                            self.client
+                                .update_status()
+                                .await
+                                .context("Failed to update status")?;
+                            // We succesfully logged in. Now ask for the cameras subscription.
+                            self.client
+                                .subscribe()
+                                .await
+                                .context("Failed to subscribe")?;
+                        }
+                    }
+                    Event::Incoming(Incoming::Publish(published_message)) => {
+                        if self.handle_message(published_message).await.is_err() {
+                            error!("Failed to forward messages in mqtt");
+                        }
+                    }
+                    _ => {}
+                }
+                // }
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_message(&mut self, published_message: Publish) -> Result<()> {
+        if let Some(sub_topic) = published_message
+            .topic
+            .strip_prefix(&format!("neolink/{}/", &self.name))
+        {
+            if self
+                .incoming_tx
+                .send(MqttReply {
+                    topic: sub_topic.to_string(),
+                    message: String::from_utf8_lossy(published_message.payload.as_ref())
+                        .into_owned(),
+                })
+                .await
+                .is_err()
+            {
+                error!("Failed to send messages up the mqtt msg channel");
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl Mqtt {
-    pub(crate) fn new(config: &MqttConfig, name: &str, app: Arc<App>) -> Arc<Self> {
-        let incoming = unbounded::<Publish>();
-        let msg_channel = unbounded::<MqttReply>();
+    pub(crate) async fn new(config: &MqttConfig, name: &str, app: Arc<App>) -> Self {
+        let (incoming_tx, incoming) = channel::<MqttReply>(100);
         let mut mqttoptions = MqttOptions::new(
             format!("Neolink-{}", name),
             &config.broker_addr,
@@ -91,158 +200,75 @@ impl Mqtt {
             true,
         ));
 
-        let (client, connection) = Client::new(mqttoptions, 10);
+        let (client, mut connection) = AsyncClient::new(mqttoptions, 10);
 
-        let me = Self {
-            app: app.clone(),
-            client: Mutex::new(client),
-            connection: Mutex::new(connection),
-            name: name.to_string(),
-            incoming,
-            msg_channel,
-            // Send the drop message on clean disconnect
-            drop_message: Mutex::new(Some(MqttReply {
-                topic: "status".to_string(),
-                message: "offline".to_string(),
-            })),
-        };
-
-        let arc_me = Arc::new(me);
+        let client = Arc::new(client);
 
         // Start the mqtt server
-        let mqtt_running = arc_me.clone();
-        let mqtt_app = app.clone();
-        let mqtt_name = name.to_string();
-        std::thread::spawn(move || {
-            let _ = (*mqtt_running).start();
-            mqtt_app.abort(&mqtt_name)
-        });
+        let mut set = JoinSet::<Result<()>>::new();
 
-        // Start polling messages
-        info!("{}: Starting listening to mqtt", name);
-        let mqtt_read_app = app;
-        let mqtt_reading = arc_me.clone();
-        let mqtt_read_name = name.to_string();
-        std::thread::spawn(move || {
-            while mqtt_read_app.running(&format!("app:{}", mqtt_read_name)) {
-                if (*mqtt_reading).handle_message().is_err() {
-                    error!(
-                        "Failed to get messages from mqtt client {}",
-                        (mqtt_read_name)
-                    );
-                }
-            }
-        });
+        let mut reciever = MqttReciever {
+            app: app.clone(),
+            incoming_tx,
+            name: name.to_string(),
+            client: MqttSender {
+                client: client.clone(),
+                name: name.to_string(),
+            },
+        };
+        set.spawn(async move { reciever.run(&mut connection).await });
 
-        arc_me
-    }
-
-    #[allow(unused)]
-    pub(crate) fn set_drop_message(&mut self, topic: &str, message: &str) {
-        self.drop_message.lock().unwrap().replace(MqttReply {
-            topic: topic.to_string(),
-            message: message.to_string(),
-        });
-    }
-
-    fn subscribe(&self) -> Result<(), ClientError> {
-        let mut client = self.client.lock().unwrap();
-        client.subscribe(format!("neolink/{}/#", self.name), QoS::AtMostOnce)?;
-        Ok(())
-    }
-
-    fn update_status(&self) -> Result<(), ClientError> {
-        self.send_message("status", "disconnected", true)?;
-        Ok(())
-    }
-
-    pub fn send_message(
-        &self,
-        sub_topic: &str,
-        message: &str,
-        retain: bool,
-    ) -> Result<(), ClientError> {
-        let mut client = self.client.lock().unwrap();
-        client.publish(
-            format!("neolink/{}/{}", self.name, sub_topic),
-            QoS::AtLeastOnce,
-            retain,
-            message,
-        )?;
-        Ok(())
-    }
-
-    fn handle_message(&self) -> Result<(), RecvError> {
-        let (_, receiver) = &self.incoming;
-        let published_message = receiver.recv()?;
-
-        if let Some(sub_topic) = published_message
-            .topic
-            .strip_prefix(&format!("neolink/{}/", &self.name))
-        {
-            if self
-                .msg_channel
-                .0
-                .send(MqttReply {
-                    topic: sub_topic.to_string(),
-                    message: String::from_utf8_lossy(published_message.payload.as_ref())
-                        .into_owned(),
-                })
-                .is_err()
-            {
-                error!("Failed to send messages up the mqtt msg channel");
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn get_message_listener(&self) -> Receiver<MqttReply> {
-        self.msg_channel.1.clone()
-    }
-
-    pub(crate) fn poll(&self) -> Result<MqttReply> {
-        self.get_message_listener()
-            .recv()
-            .context("Mqtt Polling error")
-    }
-
-    pub(crate) fn start(&self) -> Result<()> {
-        // This acts as an event loop
-        let mut connection = self.connection.lock().unwrap();
-        let (sender, _) = &self.incoming;
-        info!("Starting MQTT Client for {}", self.name);
-        while self.app.running(&format!("app:{}", self.name)) {
-            for (_i, notification) in connection.iter().enumerate() {
-                if let Ok(notification) = notification {
-                    match notification {
-                        Event::Incoming(Incoming::ConnAck(connected)) => {
-                            if ConnectReturnCode::Success == connected.code {
-                                self.update_status().context("Failed to update status")?;
-                                // We succesfully logged in. Now ask for the cameras subscription.
-                                self.subscribe().context("Failed to subscribe")?;
-                            }
-                        }
-                        Event::Incoming(Incoming::Publish(published_message)) => {
-                            if sender.send(published_message).is_err() {
-                                error!("Failed to publish motion message on mqtt");
-                            }
-                        }
-                        _ => {}
+        let join_app = app;
+        let join_name = name.to_string();
+        tokio::task::spawn(async move {
+            while let Some(joined) = set.join_next().await {
+                tokio::task::yield_now().await;
+                match joined {
+                    Err(e) => {
+                        error!("MQTT reciever panicked: {:?}", e);
+                        join_app.abort(&join_name);
+                    }
+                    Ok(Err(e)) => {
+                        error!("MQTT stopped with error: {:?}", e);
+                        join_app.abort(&join_name);
+                    }
+                    Ok(Ok(())) => {
+                        info!("Normal shutdown of MQTT");
                     }
                 }
             }
+        });
+
+        Self {
+            client,
+            name: name.to_string(),
+            incoming,
+            // Send the drop message on clean disconnect
+            drop_message: Some(MqttReply {
+                topic: "status".to_string(),
+                message: "offline".to_string(),
+            }),
         }
-        Ok(())
+    }
+
+    pub fn get_sender(&self) -> MqttSender {
+        MqttSender {
+            client: self.client.clone(),
+            name: self.name.to_string(),
+        }
+    }
+
+    pub(crate) async fn poll(&mut self) -> Result<MqttReply> {
+        self.incoming.recv().await.context("Mqtt Polling error")
     }
 }
 
 impl Drop for Mqtt {
     fn drop(&mut self) {
-        let drop_message = self.drop_message.lock().unwrap();
-        if let Some(drop_message) = drop_message.as_ref() {
+        if let Some(drop_message) = self.drop_message.as_ref() {
             if self
-                .send_message(&drop_message.topic, &drop_message.message, true)
+                .get_sender()
+                .try_send_message(&drop_message.topic, &drop_message.message, true)
                 .is_err()
             {
                 error!("Failed to send offline message to mqtt");

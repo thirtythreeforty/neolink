@@ -52,6 +52,7 @@ impl Camera<Streaming> {
                 .await?;
             set.spawn(async move {
                 loop {
+                    tokio::task::yield_now().await;
                     // debug!("Straming: Get");
                     let data = timeout(Duration::from_secs(15), stream_data.get_data()).await??;
                     // debug!("Straming: Got");
