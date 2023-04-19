@@ -124,12 +124,6 @@ impl BcCamera {
     /// Try to connect to the camera via appropaite methods and return
     /// the location that should be used
     async fn find_camera(options: &BcCameraOpt) -> Result<CameraLocation> {
-        let mut tcp_set = tokio::task::JoinSet::new();
-        let mut local_set = tokio::task::JoinSet::new();
-        let mut remote_set = tokio::task::JoinSet::new();
-        let mut map_set = tokio::task::JoinSet::new();
-        let mut relay_set = tokio::task::JoinSet::new();
-
         if let ConnectionProtocol::Tcp | ConnectionProtocol::TcpUdp = options.protocol {
             let mut sockets = vec![];
             match options.port {
@@ -148,12 +142,12 @@ impl BcCamera {
             for socket in sockets.drain(..) {
                 let channel_id: u8 = options.channel_id;
                 let name: String = options.name.clone();
-                tcp_set.spawn(async move {
-                    Discovery::check_tcp(socket, channel_id).await.map(|_| {
-                        info!("{}: TCP Discovery success at {:?}", name, &socket);
-                        socket
-                    })
-                });
+                if let Ok(addr) = Discovery::check_tcp(socket, channel_id).await.map(|_| {
+                    info!("{}: TCP Discovery success at {:?}", name, &socket);
+                    socket
+                }) {
+                    return Ok(CameraLocation::Tcp(addr));
+                }
             }
         }
 
@@ -186,108 +180,62 @@ impl BcCamera {
             };
 
             if allow_local {
-                let uid_local = uid.clone();
                 let name: String = options.name.clone();
-                local_set.spawn(async move {
-                    trace!("{}: Starting Local discovery", name);
-                    let result = Discovery::local(&uid_local, Some(sockets)).await;
-                    if let Ok(disc) = &result {
-                        info!(
-                            "{}: Local discovery success {} at {}",
-                            name,
-                            uid_local,
-                            disc.get_addr()
-                        );
-                    }
-                    result
-                });
+                let uid_local = uid.clone();
+                trace!("{}: Starting Local discovery", name);
+                let result = Discovery::local(&uid_local, Some(sockets)).await;
+                if let Ok(disc) = result {
+                    info!(
+                        "{}: Local discovery success {} at {}",
+                        name,
+                        uid_local,
+                        disc.get_addr()
+                    );
+                    return Ok(CameraLocation::Udp(disc));
+                }
             }
             if allow_remote {
                 let uid_remote = uid.clone();
                 let name: String = options.name.clone();
-                remote_set.spawn(async move {
-                    trace!("Starting Remote discovery");
-                    let result = Discovery::remote(&uid_remote).await;
-                    if let Ok(disc) = &result {
-                        info!(
-                            "{}: Remote discovery success {} at {}",
-                            name,
-                            uid_remote,
-                            disc.get_addr()
-                        );
-                    }
-                    result
-                });
+                trace!("Starting Remote discovery");
+                let result = Discovery::remote(&uid_remote).await;
+                if let Ok(disc) = result {
+                    info!(
+                        "{}: Remote discovery success {} at {}",
+                        name,
+                        uid_remote,
+                        disc.get_addr()
+                    );
+                    return Ok(CameraLocation::Udp(disc));
+                }
             }
             if allow_map {
                 let uid_map = uid.clone();
                 let name: String = options.name.clone();
-                map_set.spawn(async move {
-                    trace!("Starting Map");
-                    let result = Discovery::map(&uid_map).await;
-                    if let Ok(disc) = &result {
-                        info!("{}: Map success {} at {}", name, uid_map, disc.get_addr());
-                    }
-                    result
-                });
+                trace!("Starting Map");
+                let result = Discovery::map(&uid_map).await;
+                if let Ok(disc) = result {
+                    info!("{}: Map success {} at {}", name, uid_map, disc.get_addr());
+                    return Ok(CameraLocation::Udp(disc));
+                }
             }
             if allow_relay {
                 let uid_relay = uid.clone();
                 let name: String = options.name.clone();
-                relay_set.spawn(async move {
-                    trace!("Starting Relay");
-                    let result = Discovery::relay(&uid_relay).await;
-                    if let Ok(disc) = &result {
-                        info!(
-                            "{}: Relay success {} at {}",
-                            name,
-                            uid_relay,
-                            disc.get_addr()
-                        );
-                    }
-                    result
-                });
+                trace!("Starting Relay");
+                let result = Discovery::relay(&uid_relay).await;
+                if let Ok(disc) = result {
+                    info!(
+                        "{}: Relay success {} at {}",
+                        name,
+                        uid_relay,
+                        disc.get_addr()
+                    );
+                    return Ok(CameraLocation::Udp(disc));
+                }
             }
         }
 
-        // Wait for all TCP to finish
-        while let Some(result) = tcp_set.join_next().await {
-            if let Ok(Ok(addr)) = result {
-                return Ok(CameraLocation::Tcp(addr));
-            }
-        }
-        debug!("TCP fail");
-        // Tcp failed see if Local faired any better
-        // Wait for all local to finish
-        while let Some(result) = local_set.join_next().await {
-            if let Ok(Ok(discovery)) = result {
-                return Ok(CameraLocation::Udp(discovery));
-            }
-        }
-        debug!("Local fail");
-        // Local failed see if Remote faired any better
-        // Wait for all remote to finish
-        while let Some(result) = remote_set.join_next().await {
-            if let Ok(Ok(discovery)) = result {
-                return Ok(CameraLocation::Udp(discovery));
-            }
-        }
-        debug!("Remote fail");
-        // Remote failed see if Map faired any better
-        // Wait for all Map to finish
-        while let Some(result) = map_set.join_next().await {
-            if let Ok(Ok(discovery)) = result {
-                return Ok(CameraLocation::Udp(discovery));
-            }
-        }
-        debug!("Map fail");
-        // Map failed see if Relay faired any better
-        // Wait for all Relay to finish
-        while let Some(result) = relay_set.join_next().await {
-            if let Ok(Ok(discovery)) = result {
-                return Ok(CameraLocation::Udp(discovery));
-            }
-        }
         debug!("Relay (All) fail");
         // Nothing works
         Err(Error::CannotInitCamera)
