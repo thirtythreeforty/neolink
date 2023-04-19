@@ -4,17 +4,16 @@ use crate::utils::AddressOrUid;
 use anyhow::{anyhow, Context, Result};
 use log::*;
 use neolink_core::bc_protocol::{
-    BcCamera, Direction as BcDirection, Error as BcError, LightState, MotionStatus,
+    BcCamera, Direction as BcDirection, Error as BcError, LightState, MaxEncryption, MotionStatus,
 };
 use std::sync::Arc;
-use tokio::sync::{
-    mpsc::{channel, error::TryRecvError, Receiver, Sender},
-    Mutex,
+use tokio::{
+    sync::mpsc::{channel, Receiver, Sender},
+    task::JoinSet,
 };
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum Messages {
-    None,
     Login,
     MotionStop,
     MotionStart,
@@ -50,103 +49,119 @@ enum ToCamera {
     },
 }
 
-pub(crate) struct EventCam {
-    config: Arc<CameraConfig>,
-    app: Arc<App>,
-    channel_out: Arc<Mutex<Option<Receiver<Messages>>>>,
-    channel_in: Arc<Mutex<Option<Sender<ToCamera>>>>,
+#[derive(Clone)]
+pub(crate) struct EventCamSender {
+    channel_in: Sender<ToCamera>,
 }
 
-impl EventCam {
-    pub(crate) fn new(config: Arc<CameraConfig>, app: Arc<App>) -> Self {
-        Self {
-            config,
-            app,
-            channel_out: Arc::new(Mutex::new(None)),
-            channel_in: Arc::new(Mutex::new(None)),
-        }
-    }
-
-    pub(crate) async fn poll(&self) -> Result<Messages> {
-        if let Ok(ref mut channel_out) = self.channel_out.try_lock() {
-            if let Some(channel_out) = channel_out.as_mut() {
-                channel_out.recv().await.context("Camera failed to poll")
-            } else {
-                Ok(Messages::None)
-            }
-        } else {
-            Ok(Messages::None)
-        }
-    }
-
+impl EventCamSender {
     pub(crate) async fn send_message(&self, msg: Messages) -> Result<()> {
-        let mut channel_in = self.channel_in.lock().await;
-        if let Some(channel_in) = channel_in.as_mut() {
-            channel_in
-                .send(ToCamera::Send(msg))
-                .await
-                .context("Failed to send message from camera")
-        } else {
-            Err(anyhow!("Failed to send camera data over channel"))
-        }
+        self.channel_in
+            .send(ToCamera::Send(msg))
+            .await
+            .context("Failed to send message from camera")
     }
 
     pub(crate) async fn send_message_with_reply(&self, msg: Messages) -> Result<String> {
-        let mut channel_in = self.channel_in.lock().await;
-        if let Some(channel_in) = channel_in.as_mut() {
-            let (tx, mut rx) = channel(1);
-            channel_in
-                .send(ToCamera::SendAndReply {
-                    message: msg,
-                    reply: tx,
-                })
-                .await
-                .context("Failed to send message from camera")?;
-            tokio::time::timeout(std::time::Duration::from_secs(3), rx.recv())
-                .await
-                .context("Failed to recieve reply Timeout")?
-                .ok_or_else(|| anyhow!("Failed to recieve reply"))
-        } else {
-            Err(anyhow!("Failed to send camera data over crossbeam"))
-        }
+        let (tx, mut rx) = channel(1);
+        self.channel_in
+            .send(ToCamera::SendAndReply {
+                message: msg,
+                reply: tx,
+            })
+            .await
+            .context("Failed to send message from camera")?;
+        tokio::time::timeout(std::time::Duration::from_secs(3), rx.recv())
+            .await
+            .context("Failed to recieve reply Timeout")?
+            .ok_or_else(|| anyhow!("Failed to recieve reply"))
     }
+}
+pub(crate) struct EventCam {
+    sender: EventCamSender,
+    channel_out: Receiver<Messages>,
+}
 
-    pub(crate) fn abort(&self) {
-        self.app.abort(&self.config.name);
-    }
-
-    pub(crate) async fn start_listening(&self) {
-        let loop_config = self.config.clone();
-
+impl EventCam {
+    pub(crate) async fn new(config: Arc<CameraConfig>, app: Arc<App>) -> Self {
         // Channels from the camera
         let (tx, rx) = channel(40);
-        let loop_tx = Arc::new(Mutex::new(tx));
-        *self.channel_out.lock().await = Some(rx);
 
         // Channels to the camera
         let (stx, srx) = channel(40);
-        let loop_rx = Arc::new(Mutex::new(srx));
-        *self.channel_in.lock().await = Some(stx);
 
-        while self.app.running(&self.config.name) {
-            // Ignore errors and just loop
-            tokio::task::yield_now().await;
-            let _ = Self::cam_run(
-                &loop_config,
-                loop_tx.clone(),
-                loop_rx.clone(),
-                self.app.clone(),
-            )
-            .await;
+        let name = config.name.clone();
+        let mut set = JoinSet::<Result<()>>::new();
+        let thread_app = app.clone();
+        let thread_config = config.clone();
+        let mut eventcam_thread = EventCamThread {
+            rx: srx,
+            tx,
+            app: app.clone(),
+        };
+        set.spawn(async move {
+            let mut wait_for = tokio::time::Duration::from_micros(125);
+            while thread_app.running(&name) {
+                // Ignore errors and just loop
+                tokio::task::yield_now().await;
+                if let Err(e) = eventcam_thread.cam_run(&thread_config).await {
+                    warn!("Camera thread error: {:?}. Restarting...", e);
+                    tokio::time::sleep(wait_for).await;
+                    wait_for *= 2;
+                }
+            }
+            Ok(())
+        });
+
+        // Watch the thread and abort the app if it fails
+        let join_app = app;
+        let join_name = config.name.to_string();
+        tokio::task::spawn(async move {
+            while let Some(joined) = set.join_next().await {
+                tokio::task::yield_now().await;
+                match joined {
+                    Err(e) => {
+                        error!("EventCam panicked: {:?}", e);
+                        join_app.abort(&join_name);
+                    }
+                    Ok(Err(e)) => {
+                        error!("EventCam stopped with error: {:?}", e);
+                        join_app.abort(&join_name);
+                    }
+                    Ok(Ok(())) => {
+                        info!("Normal shutdown of EventCam");
+                    }
+                }
+                info!("EventCam Loop End");
+            }
+        });
+
+        Self {
+            sender: EventCamSender { channel_in: stx },
+            channel_out: rx,
         }
     }
 
-    async fn cam_run(
-        camera_config: &CameraConfig,
-        tx: Arc<Mutex<Sender<Messages>>>,
-        rx: Arc<Mutex<Receiver<ToCamera>>>,
-        app: Arc<App>,
-    ) -> Result<()> {
+    pub(crate) async fn poll(&mut self) -> Result<Messages> {
+        self.channel_out
+            .recv()
+            .await
+            .context("Camera failed to poll")
+    }
+
+    pub(crate) fn get_sender(&self) -> EventCamSender {
+        self.sender.clone()
+    }
+}
+
+struct EventCamThread {
+    rx: Receiver<ToCamera>,
+    tx: Sender<Messages>,
+    app: Arc<App>,
+}
+
+impl EventCamThread {
+    async fn cam_run(&mut self, camera_config: &CameraConfig) -> Result<()> {
         let camera_addr = AddressOrUid::new(
             &camera_config.camera_addr,
             &camera_config.camera_uid,
@@ -169,48 +184,73 @@ impl EventCam {
             })?;
 
         info!("{}: Logging in", camera_config.name);
+        let max_encryption = match camera_config.max_encryption.to_lowercase().as_str() {
+            "none" => MaxEncryption::None,
+            "bcencrypt" => MaxEncryption::BcEncrypt,
+            "aes" => MaxEncryption::Aes,
+            _ => MaxEncryption::Aes,
+        };
         camera
-            .login()
+            .login_with_maxenc(max_encryption)
             .await
             .context("Failed to login to the camera")?;
         info!("{}: Connected and logged in", camera_config.name);
 
-        (tx.lock().await).send(Messages::Login).await?;
+        self.tx.send(Messages::Login).await?;
 
         // Shararble cameras
         let arc_cam = Arc::new(camera);
 
         let mut motion_thread = MotionThread {
-            app: app.clone(),
-            tx,
+            app: self.app.clone(),
+            tx: self.tx.clone(),
             camera: arc_cam.clone(),
             name: camera_config.name.to_string(),
         };
 
+        let thread_app = self.app.clone();
         let mut message_handler = MessageHandler {
-            app: app.clone(),
-            rx,
+            app: self.app.clone(),
+            rx: &mut self.rx,
             camera: arc_cam,
             name: camera_config.name.to_string(),
         };
 
-        let camera_name = camera_config.name.clone();
-        info!("{}: Listening to Camera Motion", camera_config.name);
-        let handle_motion = tokio::task::spawn(async move {
-            if let Err(e) = motion_thread.run().await {
-                error!("Motion thread aborted: {:?}", e);
-            }
-            app.abort(&camera_name);
-        });
-        info!("{}: Setting up camera actions", camera_config.name);
-        let handle_camera = tokio::task::spawn(async move {
-            message_handler.listen().await;
-        });
-
         tokio::select! {
-            val = async {handle_motion.await} => {val},
-            val = async {handle_camera.await} => {val}
+            val = async {
+                info!("{}: Listening to Camera Motion", camera_config.name);
+                motion_thread.run().await
+            } => {
+                if let Err(e) = val {
+                    error!("Motion thread aborted: {:?}", e);
+                    Err(e)
+                } else {
+                    debug!("Normal finish on motion thread");
+                    Ok(())
+                }
+            },
+            val = async {
+                info!("{}: Setting up camera actions", camera_config.name);
+                message_handler.listen().await
+            } => {
+                if let Err(e) = val {
+                    error!("Camera message handler aborted: {:?}", e);
+                    Err(e)
+                } else {
+                    debug!("Normal finish on camera message thread");
+                    Ok(())
+                }
+            },
+            val = async {
+                while thread_app.running(&format!("app:{}", camera_config.name)) {
+                    tokio::time::sleep(tokio::time::Duration::from_micros(500)).await
+                }
+            } => {
+                info!("Normal finish on cam run");
+                Result::Ok(())
+            },
         }?;
+        self.app.abort(&camera_config.name);
 
         Ok(())
     }
@@ -218,7 +258,7 @@ impl EventCam {
 
 struct MotionThread {
     app: Arc<App>,
-    tx: Arc<Mutex<Sender<Messages>>>,
+    tx: Sender<Messages>,
     camera: Arc<BcCamera>,
     name: String,
 }
@@ -226,17 +266,19 @@ struct MotionThread {
 impl MotionThread {
     async fn run(&mut self) -> Result<()> {
         let mut motion_data = self.camera.listen_on_motion().await?;
+        let mut queued_motion = motion_data.consume_motion_events()?;
         while self.app.running(&format!("app:{}", self.name)) {
-            for motion_status in motion_data.consume_motion_events()?.drain(..) {
+            tokio::task::yield_now().await;
+            for motion_status in queued_motion.drain(..) {
                 match motion_status {
                     MotionStatus::Start(_) => {
-                        (self.tx.lock().await)
+                        self.tx
                             .send(Messages::MotionStart)
                             .await
                             .map_err(|_| BcError::Other("Failed to send Message"))?;
                     }
                     MotionStatus::Stop(_) => {
-                        (self.tx.lock().await)
+                        self.tx
                             .send(Messages::MotionStop)
                             .await
                             .map_err(|_| BcError::Other("Failed to send Message"))?;
@@ -244,182 +286,185 @@ impl MotionThread {
                     _ => {}
                 }
             }
+            queued_motion.push(motion_data.next_motion().await?);
         }
         Ok(())
     }
 }
 
-struct MessageHandler {
+struct MessageHandler<'a> {
     app: Arc<App>,
-    rx: Arc<Mutex<Receiver<ToCamera>>>,
+    rx: &'a mut Receiver<ToCamera>,
     camera: Arc<BcCamera>,
     name: String,
 }
 
-impl MessageHandler {
-    async fn listen(&mut self) {
+impl<'a> MessageHandler<'a> {
+    async fn listen(&mut self) -> Result<()> {
         while self.app.running(&format!("app:{}", self.name)) {
-            // Try and lock don't worry if not
-            if let Ok(ref mut channel_out) = self.rx.try_lock() {
-                match channel_out.try_recv() {
-                    Ok(to_camera) => {
-                        let (replier, message) = match to_camera {
-                            ToCamera::Send(message) => (None, message),
-                            ToCamera::SendAndReply { message, reply } => (Some(reply), message),
-                        };
-                        let reply = match message {
-                            Messages::Reboot => {
-                                if self.camera.reboot().await.is_err() {
-                                    error!("Failed to reboot the camera");
-                                    self.abort();
-                                    "FAIL".to_string()
-                                } else {
-                                    "OK".to_string()
-                                }
+            tokio::task::yield_now().await;
+            match self.rx.recv().await {
+                Some(to_camera) => {
+                    let (replier, message) = match to_camera {
+                        ToCamera::Send(message) => (None, message),
+                        ToCamera::SendAndReply { message, reply } => (Some(reply), message),
+                    };
+                    let reply = match message {
+                        Messages::Reboot => {
+                            if self.camera.reboot().await.is_err() {
+                                error!("Failed to reboot the camera");
+                                self.abort();
+                                "FAIL".to_string()
+                            } else {
+                                "OK".to_string()
                             }
-                            Messages::StatusLedOn => {
-                                if self.camera.led_light_set(true).await.is_err() {
-                                    error!("Failed to turn on the status light");
-                                    self.abort();
-                                    "FAIL".to_string()
-                                } else {
-                                    "OK".to_string()
-                                }
-                            }
-                            Messages::StatusLedOff => {
-                                if self.camera.led_light_set(false).await.is_err() {
-                                    error!("Failed to turn off the status light");
-                                    self.abort();
-                                    "FAIL".to_string()
-                                } else {
-                                    "OK".to_string()
-                                }
-                            }
-                            Messages::IRLedOn => {
-                                if self.camera.irled_light_set(LightState::On).await.is_err() {
-                                    error!("Failed to turn on the status light");
-                                    self.abort();
-                                    "FAIL".to_string()
-                                } else {
-                                    "OK".to_string()
-                                }
-                            }
-                            Messages::IRLedOff => {
-                                if self.camera.irled_light_set(LightState::Off).await.is_err() {
-                                    error!("Failed to turn on the status light");
-                                    self.abort();
-                                    "FAIL".to_string()
-                                } else {
-                                    "OK".to_string()
-                                }
-                            }
-                            Messages::IRLedAuto => {
-                                if self.camera.irled_light_set(LightState::Auto).await.is_err() {
-                                    error!("Failed to turn on the status light");
-                                    self.abort();
-                                    "FAIL".to_string()
-                                } else {
-                                    "OK".to_string()
-                                }
-                            }
-                            Messages::Battery => match self.camera.battery_info().await {
-                                Err(_) => {
-                                    error!("Failed to get battery status");
-                                    "FAIL".to_string()
-                                }
-                                Ok(battery_info) => {
-                                    let bytes_res = yaserde::ser::serialize_with_writer(
-                                        &battery_info,
-                                        vec![],
-                                        &Default::default(),
-                                    );
-                                    match bytes_res {
-                                        Ok(bytes) => match String::from_utf8(bytes) {
-                                            Ok(str) => str,
-                                            Err(_) => {
-                                                error!("Failed to encode battery status");
-                                                "FAIL".to_string()
-                                            }
-                                        },
-                                        Err(_) => {
-                                            error!("Failed to serialise battery status");
-                                            "FAIL".to_string()
-                                        }
-                                    }
-                                }
-                            },
-                            Messages::PIRQuery => match self.camera.get_pirstate().await {
-                                Err(_) => {
-                                    error!("Failed to get pir status");
-                                    "FAIL".to_string()
-                                }
-                                Ok(pir_info) => {
-                                    let bytes_res = yaserde::ser::serialize_with_writer(
-                                        &pir_info,
-                                        vec![],
-                                        &Default::default(),
-                                    );
-                                    match bytes_res {
-                                        Ok(bytes) => match String::from_utf8(bytes) {
-                                            Ok(str) => str,
-                                            Err(_) => {
-                                                error!("Failed to encode pir status");
-                                                "FAIL".to_string()
-                                            }
-                                        },
-                                        Err(_) => {
-                                            error!("Failed to serialise pir status");
-                                            "FAIL".to_string()
-                                        }
-                                    }
-                                }
-                            },
-                            Messages::PIROn => {
-                                if self.camera.pir_set(true).await.is_err() {
-                                    error!("Failed to turn on the pir");
-                                    self.abort();
-                                    "FAIL".to_string()
-                                } else {
-                                    "OK".to_string()
-                                }
-                            }
-                            Messages::PIROff => {
-                                if self.camera.pir_set(false).await.is_err() {
-                                    error!("Failed to turn on the pir");
-                                    self.abort();
-                                    "FAIL".to_string()
-                                } else {
-                                    "OK".to_string()
-                                }
-                            }
-                            Messages::Ptz(direction) => {
-                                let (bc_direction, amount) = match direction {
-                                    Direction::Up(amount) => (BcDirection::Up, amount),
-                                    Direction::Down(amount) => (BcDirection::Down, amount),
-                                    Direction::Left(amount) => (BcDirection::Left, amount),
-                                    Direction::Right(amount) => (BcDirection::Right, amount),
-                                    Direction::In(amount) => (BcDirection::In, amount),
-                                    Direction::Out(amount) => (BcDirection::Out, amount),
-                                };
-                                if self.camera.send_ptz(bc_direction, amount).await.is_err() {
-                                    error!("Failed to turn on the status light");
-                                    self.abort();
-                                    "FAIL".to_string()
-                                } else {
-                                    "OK".to_string()
-                                }
-                            }
-                            _ => "UNKNOWN COMMAND".to_string(),
-                        };
-                        if let Some(replier) = replier {
-                            let _ = replier.send(reply).await;
                         }
+                        Messages::StatusLedOn => {
+                            if self.camera.led_light_set(true).await.is_err() {
+                                error!("Failed to turn on the status light");
+                                self.abort();
+                                "FAIL".to_string()
+                            } else {
+                                "OK".to_string()
+                            }
+                        }
+                        Messages::StatusLedOff => {
+                            if self.camera.led_light_set(false).await.is_err() {
+                                error!("Failed to turn off the status light");
+                                self.abort();
+                                "FAIL".to_string()
+                            } else {
+                                "OK".to_string()
+                            }
+                        }
+                        Messages::IRLedOn => {
+                            if self.camera.irled_light_set(LightState::On).await.is_err() {
+                                error!("Failed to turn on the status light");
+                                self.abort();
+                                "FAIL".to_string()
+                            } else {
+                                "OK".to_string()
+                            }
+                        }
+                        Messages::IRLedOff => {
+                            if self.camera.irled_light_set(LightState::Off).await.is_err() {
+                                error!("Failed to turn on the status light");
+                                self.abort();
+                                "FAIL".to_string()
+                            } else {
+                                "OK".to_string()
+                            }
+                        }
+                        Messages::IRLedAuto => {
+                            if self.camera.irled_light_set(LightState::Auto).await.is_err() {
+                                error!("Failed to turn on the status light");
+                                self.abort();
+                                "FAIL".to_string()
+                            } else {
+                                "OK".to_string()
+                            }
+                        }
+                        Messages::Battery => match self.camera.battery_info().await {
+                            Err(_) => {
+                                error!("Failed to get battery status");
+                                "FAIL".to_string()
+                            }
+                            Ok(battery_info) => {
+                                let bytes_res = yaserde::ser::serialize_with_writer(
+                                    &battery_info,
+                                    vec![],
+                                    &Default::default(),
+                                );
+                                match bytes_res {
+                                    Ok(bytes) => match String::from_utf8(bytes) {
+                                        Ok(str) => str,
+                                        Err(_) => {
+                                            error!("Failed to encode battery status");
+                                            "FAIL".to_string()
+                                        }
+                                    },
+                                    Err(_) => {
+                                        error!("Failed to serialise battery status");
+                                        "FAIL".to_string()
+                                    }
+                                }
+                            }
+                        },
+                        Messages::PIRQuery => match self.camera.get_pirstate().await {
+                            Err(_) => {
+                                error!("Failed to get pir status");
+                                "FAIL".to_string()
+                            }
+                            Ok(pir_info) => {
+                                let bytes_res = yaserde::ser::serialize_with_writer(
+                                    &pir_info,
+                                    vec![],
+                                    &Default::default(),
+                                );
+                                match bytes_res {
+                                    Ok(bytes) => match String::from_utf8(bytes) {
+                                        Ok(str) => str,
+                                        Err(_) => {
+                                            error!("Failed to encode pir status");
+                                            "FAIL".to_string()
+                                        }
+                                    },
+                                    Err(_) => {
+                                        error!("Failed to serialise pir status");
+                                        "FAIL".to_string()
+                                    }
+                                }
+                            }
+                        },
+                        Messages::PIROn => {
+                            if self.camera.pir_set(true).await.is_err() {
+                                error!("Failed to turn on the pir");
+                                self.abort();
+                                "FAIL".to_string()
+                            } else {
+                                "OK".to_string()
+                            }
+                        }
+                        Messages::PIROff => {
+                            if self.camera.pir_set(false).await.is_err() {
+                                error!("Failed to turn on the pir");
+                                self.abort();
+                                "FAIL".to_string()
+                            } else {
+                                "OK".to_string()
+                            }
+                        }
+                        Messages::Ptz(direction) => {
+                            let (bc_direction, amount) = match direction {
+                                Direction::Up(amount) => (BcDirection::Up, amount),
+                                Direction::Down(amount) => (BcDirection::Down, amount),
+                                Direction::Left(amount) => (BcDirection::Left, amount),
+                                Direction::Right(amount) => (BcDirection::Right, amount),
+                                Direction::In(amount) => (BcDirection::In, amount),
+                                Direction::Out(amount) => (BcDirection::Out, amount),
+                            };
+                            if self.camera.send_ptz(bc_direction, amount).await.is_err() {
+                                error!("Failed to turn on the status light");
+                                self.abort();
+                                "FAIL".to_string()
+                            } else {
+                                "OK".to_string()
+                            }
+                        }
+                        _ => "UNKNOWN COMMAND".to_string(),
+                    };
+                    if let Some(replier) = replier {
+                        let _ = replier.send(reply).await;
                     }
-                    Err(TryRecvError::Empty) => (),
-                    Err(TryRecvError::Disconnected) => self.abort(),
+                }
+                None => {
+                    self.abort();
+                    return Err(anyhow!("Message handller channel dropped"));
                 }
             }
         }
+
+        Ok(())
     }
 
     fn abort(&self) {

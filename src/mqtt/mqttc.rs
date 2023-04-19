@@ -1,6 +1,6 @@
 use super::App;
 use crate::config::MqttConfig;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use log::*;
 use rumqttc::{
     AsyncClient, ClientError, ConnectReturnCode, Event, EventLoop, Incoming, Key, LastWill,
@@ -121,6 +121,9 @@ impl MqttReciever {
                     _ => {}
                 }
                 // }
+            } else {
+                error!("Mqtt connection failure");
+                return Err(anyhow!("Mqtt connection failure"));
             }
         }
         Ok(())
@@ -237,6 +240,7 @@ impl Mqtt {
                     }
                 }
             }
+            info!("MQTT Loop End");
         });
 
         Self {

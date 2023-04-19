@@ -115,61 +115,13 @@ async fn listen_on_camera(
     arc_app: Arc<App>,
 ) -> Result<()> {
     // Camera thread
-    let arc_event_cam = Arc::new(EventCam::new(cam_config.clone(), arc_app.clone()));
+    let mut event_cam = EventCam::new(cam_config.clone(), arc_app.clone()).await;
     let mut mqtt = Mqtt::new(mqtt_config, &cam_config.name, arc_app.clone()).await;
     let mut set = tokio::task::JoinSet::new();
-    // Start listening to camera events
-    let event_cam = arc_event_cam.clone();
-    set.spawn(async move {
-        event_cam.start_listening().await; // Loop forever
-        event_cam.abort(); // Just to ensure everything aborts
-    });
-
-    // Listen on camera messages and post on mqtt
-    let camera_name = cam_config.name.clone();
-    let event_cam = arc_event_cam.clone();
-    let app = arc_app.clone();
-    let mqtt_sender = mqtt.get_sender();
-    set.spawn(async move {
-        while app.running(&format!("app: {}", camera_name)) {
-            tokio::task::yield_now().await;
-            if let Ok(msg) = event_cam.poll().await {
-                match msg {
-                    Messages::Login => {
-                        if mqtt_sender
-                            .send_message("status", "connected", true)
-                            .await
-                            .is_err()
-                        {
-                            error!("Failed to post connect over MQTT for {}", camera_name);
-                        }
-                    }
-                    Messages::MotionStop => {
-                        if mqtt_sender
-                            .send_message("status/motion", "off", true)
-                            .await
-                            .is_err()
-                        {
-                            error!("Failed to publish motion stop for {}", camera_name);
-                        }
-                    }
-                    Messages::MotionStart => {
-                        if mqtt_sender
-                            .send_message("status/motion", "on", true)
-                            .await
-                            .is_err()
-                        {
-                            error!("Failed to publish motion start for {}", camera_name);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    });
+    let mqtt_sender_cam = mqtt.get_sender();
 
     // Listen on mqtt messages and post on camera
-    let event_cam = arc_event_cam.clone();
+    let event_cam_sender = event_cam.get_sender();
     let app = arc_app.clone();
     let camera_name = cam_config.name.clone();
     let mqtt_sender = mqtt.get_sender();
@@ -182,7 +134,11 @@ async fn listen_on_camera(
                         topic: "control/led",
                         message: "on",
                     } => {
-                        if event_cam.send_message(Messages::StatusLedOn).await.is_err() {
+                        if event_cam_sender
+                            .send_message(Messages::StatusLedOn)
+                            .await
+                            .is_err()
+                        {
                             error!("Failed to set camera status light on");
                         }
                     }
@@ -190,7 +146,7 @@ async fn listen_on_camera(
                         topic: "control/led",
                         message: "off",
                     } => {
-                        if event_cam
+                        if event_cam_sender
                             .send_message(Messages::StatusLedOff)
                             .await
                             .is_err()
@@ -202,7 +158,11 @@ async fn listen_on_camera(
                         topic: "control/ir",
                         message: "on",
                     } => {
-                        if event_cam.send_message(Messages::IRLedOn).await.is_err() {
+                        if event_cam_sender
+                            .send_message(Messages::IRLedOn)
+                            .await
+                            .is_err()
+                        {
                             error!("Failed to set camera status light on");
                         }
                     }
@@ -210,7 +170,11 @@ async fn listen_on_camera(
                         topic: "control/ir",
                         message: "off",
                     } => {
-                        if event_cam.send_message(Messages::IRLedOff).await.is_err() {
+                        if event_cam_sender
+                            .send_message(Messages::IRLedOff)
+                            .await
+                            .is_err()
+                        {
                             error!("Failed to set camera status light off");
                         }
                     }
@@ -218,7 +182,11 @@ async fn listen_on_camera(
                         topic: "control/ir",
                         message: "auto",
                     } => {
-                        if event_cam.send_message(Messages::IRLedAuto).await.is_err() {
+                        if event_cam_sender
+                            .send_message(Messages::IRLedAuto)
+                            .await
+                            .is_err()
+                        {
                             error!("Failed to set camera status light off");
                         }
                     }
@@ -226,7 +194,11 @@ async fn listen_on_camera(
                         topic: "control/reboot",
                         ..
                     } => {
-                        if event_cam.send_message(Messages::Reboot).await.is_err() {
+                        if event_cam_sender
+                            .send_message(Messages::Reboot)
+                            .await
+                            .is_err()
+                        {
                             error!("Failed to set camera status light off");
                         }
                     }
@@ -251,7 +223,7 @@ async fn listen_on_camera(
                                         continue;
                                     }
                                 };
-                                if event_cam
+                                if event_cam_sender
                                     .send_message(Messages::Ptz(direction))
                                     .await
                                     .is_err()
@@ -269,7 +241,11 @@ async fn listen_on_camera(
                         topic: "control/pir",
                         message: "on",
                     } => {
-                        if event_cam.send_message(Messages::PIROn).await.is_err() {
+                        if event_cam_sender
+                            .send_message(Messages::PIROn)
+                            .await
+                            .is_err()
+                        {
                             error!("Failed to set pir on");
                         }
                     }
@@ -277,14 +253,21 @@ async fn listen_on_camera(
                         topic: "control/pir",
                         message: "off",
                     } => {
-                        if event_cam.send_message(Messages::PIROff).await.is_err() {
+                        if event_cam_sender
+                            .send_message(Messages::PIROff)
+                            .await
+                            .is_err()
+                        {
                             error!("Failed to set pir off");
                         }
                     }
                     MqttReplyRef {
                         topic: "query/battery",
                         ..
-                    } => match event_cam.send_message_with_reply(Messages::Battery).await {
+                    } => match event_cam_sender
+                        .send_message_with_reply(Messages::Battery)
+                        .await
+                    {
                         Ok(reply) => {
                             if mqtt_sender
                                 .send_message("status/battery", &reply, false)
@@ -298,7 +281,10 @@ async fn listen_on_camera(
                     },
                     MqttReplyRef {
                         topic: "query/pir", ..
-                    } => match event_cam.send_message_with_reply(Messages::PIRQuery).await {
+                    } => match event_cam_sender
+                        .send_message_with_reply(Messages::PIRQuery)
+                        .await
+                    {
                         Ok(reply) => {
                             if mqtt_sender
                                 .send_message("status/pir", &reply, false)
@@ -310,6 +296,48 @@ async fn listen_on_camera(
                         }
                         Err(_) => error!("Failed to get pir status"),
                     },
+                    _ => {}
+                }
+            }
+        }
+    });
+
+    // Listen on camera messages and post on mqtt
+    let camera_name = cam_config.name.clone();
+    let app = arc_app.clone();
+
+    set.spawn(async move {
+        while app.running(&format!("app: {}", camera_name)) {
+            tokio::task::yield_now().await;
+            if let Ok(msg) = event_cam.poll().await {
+                match msg {
+                    Messages::Login => {
+                        if mqtt_sender_cam
+                            .send_message("status", "connected", true)
+                            .await
+                            .is_err()
+                        {
+                            error!("Failed to post connect over MQTT for {}", camera_name);
+                        }
+                    }
+                    Messages::MotionStop => {
+                        if mqtt_sender_cam
+                            .send_message("status/motion", "off", true)
+                            .await
+                            .is_err()
+                        {
+                            error!("Failed to publish motion stop for {}", camera_name);
+                        }
+                    }
+                    Messages::MotionStart => {
+                        if mqtt_sender_cam
+                            .send_message("status/motion", "on", true)
+                            .await
+                            .is_err()
+                        {
+                            error!("Failed to publish motion start for {}", camera_name);
+                        }
+                    }
                     _ => {}
                 }
             }
