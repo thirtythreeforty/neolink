@@ -54,6 +54,7 @@ pub(crate) struct EventCamSender {
 }
 
 impl EventCamSender {
+    #[allow(dead_code)]
     pub(crate) async fn send_message(&self, msg: Messages) -> Result<()> {
         self.channel_in
             .send(ToCamera::Send(msg))
