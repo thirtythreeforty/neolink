@@ -139,11 +139,11 @@ impl BcCamera {
                     }
                 }
             }
+            info!("{}: Trying TCP discovery", options.name);
             for socket in sockets.drain(..) {
                 let channel_id: u8 = options.channel_id;
-                let name: String = options.name.clone();
                 if let Ok(addr) = Discovery::check_tcp(socket, channel_id).await.map(|_| {
-                    info!("{}: TCP Discovery success at {:?}", name, &socket);
+                    info!("{}: TCP Discovery success at {:?}", options.name, &socket);
                     socket
                 }) {
                     return Ok(CameraLocation::Tcp(addr));
@@ -180,14 +180,13 @@ impl BcCamera {
             };
 
             if allow_local {
-                let name: String = options.name.clone();
                 let uid_local = uid.clone();
-                trace!("{}: Starting Local discovery", name);
+                info!("{}: Trying local discovery", options.name);
                 let result = Discovery::local(&uid_local, Some(sockets)).await;
                 if let Ok(disc) = result {
                     info!(
                         "{}: Local discovery success {} at {}",
-                        name,
+                        options.name,
                         uid_local,
                         disc.get_addr()
                     );
@@ -196,13 +195,12 @@ impl BcCamera {
             }
             if allow_remote {
                 let uid_remote = uid.clone();
-                let name: String = options.name.clone();
-                trace!("Starting Remote discovery");
+                info!("{}: Trying remote discovery", options.name);
                 let result = Discovery::remote(&uid_remote).await;
                 if let Ok(disc) = result {
                     info!(
                         "{}: Remote discovery success {} at {}",
-                        name,
+                        options.name,
                         uid_remote,
                         disc.get_addr()
                     );
@@ -211,23 +209,26 @@ impl BcCamera {
             }
             if allow_map {
                 let uid_map = uid.clone();
-                let name: String = options.name.clone();
-                trace!("Starting Map");
+                info!("{}: Trying map discovery", options.name);
                 let result = Discovery::map(&uid_map).await;
                 if let Ok(disc) = result {
-                    info!("{}: Map success {} at {}", name, uid_map, disc.get_addr());
+                    info!(
+                        "{}: Map success {} at {}",
+                        options.name,
+                        uid_map,
+                        disc.get_addr()
+                    );
                     return Ok(CameraLocation::Udp(disc));
                 }
             }
             if allow_relay {
                 let uid_relay = uid.clone();
-                let name: String = options.name.clone();
-                trace!("Starting Relay");
+                info!("{}: Trying relay discovery", options.name);
                 let result = Discovery::relay(&uid_relay).await;
                 if let Ok(disc) = result {
                     info!(
                         "{}: Relay success {} at {}",
-                        name,
+                        options.name,
                         uid_relay,
                         disc.get_addr()
                     );
@@ -236,7 +237,7 @@ impl BcCamera {
             }
         }
 
-        debug!("Relay (All) fail");
+        info!("{}: Discovery failed", options.name);
         // Nothing works
         Err(Error::CannotInitCamera)
     }
