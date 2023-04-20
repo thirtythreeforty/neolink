@@ -2,7 +2,7 @@
 //! gstreamer media stream
 use anyhow::anyhow;
 use futures::stream::StreamExt;
-use gstreamer::{prelude::*, ClockTime};
+use gstreamer::ClockTime;
 use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use log::*;
@@ -67,7 +67,7 @@ impl NeoMediaSender {
                             self.inspect_bcmedia(&bc_media).await;
                             match bc_media {
                                 BcMedia::Iframe(frame) => {
-                                    if buffer_write.len() > 100 {
+                                    if buffer_write.len() > 25 {
                                         std::mem::swap(buffer_read, buffer_write);
                                         buffer_write.clear();
                                         std::mem::swap(audbuffer_read, audbuffer_write);
@@ -123,39 +123,46 @@ impl NeoMediaSender {
                         // Resend the video and audio buffers
                         if !clientdata.inited {
                             clientdata.inited = true;
-                            let mut vid_resend = buffer_read.iter().chain(buffer_write.iter()).enumerate();
-                            let mut aud_resend = audbuffer_read.iter().chain(audbuffer_write.iter()).enumerate();
+                            if let Some(last) = buffer_read.first() {
+                                debug!("Start PTS SET: {:?}", tokio::time::Duration::from_micros(last.ms));
+                                clientdata.set_start_time(last.ms);
+                            }
+                            let mut vid_resend = buffer_read.iter().chain(buffer_write.iter());
+                            let mut aud_resend = audbuffer_read.iter().chain(audbuffer_write.iter());
                             loop {
                                 let next_vid = vid_resend.next();
-                                if let Some((idx, next_vid)) = next_vid.as_ref() {
+                                if let Some(next_vid) = next_vid.as_ref() {
                                     if let Some(src) = clientdata.vidsrc.as_ref() {
                                         if Self::send_buffer(
                                             src,
                                             next_vid.data.as_slice(),
-                                            *idx as u64,
-                                            0,
+                                            next_vid.ms,
+                                            clientdata.get_start_time(),
                                         ).await.is_err() {
                                             break;
                                         };
                                     }
                                 }
                                 let next_aud = aud_resend.next();
-                                if let Some((idx, next_aud)) = next_aud.as_ref() {
-                                    if let Some(src) = clientdata.audsrc.as_ref() {
-                                        if Self::send_buffer(
-                                            src,
-                                            next_aud.data.as_slice(),
-                                            *idx as u64,
-                                            0,
-                                        ).await.is_err() {
-                                            break;
-                                        };
+                                if let Some(next_aud) = next_aud.as_ref() {
+                                    if next_aud.ms >= clientdata.get_start_time() {
+                                        if let Some(src) = clientdata.audsrc.as_ref() {
+                                            if Self::send_buffer(
+                                                src,
+                                                next_aud.data.as_slice(),
+                                                next_aud.ms,
+                                                clientdata.get_start_time(),
+                                            ).await.is_err() {
+                                                break;
+                                            };
+                                        }
                                     }
                                 }
                                 if next_vid.is_none() && next_aud.is_none() {
                                     break;
                                 }
                             }
+                            debug!("Advance PTS Pushed");
                         }
                         // Save the client for future sends
                         self.clientdata.insert(self.uid.fetch_add(1, Ordering::Relaxed) , clientdata);
@@ -187,35 +194,17 @@ impl NeoMediaSender {
             match self.clientdata.entry(key) {
                 Entry::Occupied(data) => {
                     if let Some(vidsrc) = data.get().vidsrc.as_ref() {
-                        if !data.get().enough_data.load(Ordering::Relaxed) {
-                            let ms = stamped_data.ms;
-                            let st = data.get().start_time;
-                            let micros = ms - st;
-                            if let Some(clock) = data.get().clock.as_ref() {
-                                if let Some(time) = clock.time() {
-                                    let buffer_time = ClockTime::from_useconds(micros);
-                                    log::debug!(
-                                        "Buffer time: {:?}. Clock time: {:?}",
-                                        buffer_time,
-                                        time
-                                    );
-                                }
-                            }
-                            debug!(
-                                "Pushed Video Buffer: ms: {}, st: {}, delta: {}",
-                                ms, st, micros
-                            );
-                            if Self::send_buffer(
+                        if !data.get().enough_data.load(Ordering::Relaxed)
+                            && Self::send_buffer(
                                 vidsrc,
                                 stamped_data.data.as_slice(),
                                 stamped_data.ms,
-                                data.get().start_time,
+                                data.get().get_start_time(),
                             )
                             .await
                             .is_err()
-                            {
-                                data.remove();
-                            }
+                        {
+                            data.remove();
                         }
                     } else {
                         data.remove();
@@ -237,19 +226,17 @@ impl NeoMediaSender {
             match self.clientdata.entry(key) {
                 Entry::Occupied(data) => {
                     if let Some(audsrc) = data.get().audsrc.as_ref() {
-                        if !data.get().enough_data.load(Ordering::Relaxed) {
-                            debug!("Pushed Audio Buffer");
-                            if Self::send_buffer(
+                        if !data.get().enough_data.load(Ordering::Relaxed)
+                            && Self::send_buffer(
                                 audsrc,
                                 stamped_data.data.as_slice(),
                                 stamped_data.ms,
-                                data.get().start_time,
+                                data.get().get_start_time(),
                             )
                             .await
                             .is_err()
-                            {
-                                data.remove();
-                            }
+                        {
+                            data.remove();
                         }
                     } else {
                         data.remove();
@@ -266,11 +253,12 @@ impl NeoMediaSender {
         frame_ms: u64,
         start_time: u64,
     ) -> AnyResult<()> {
-        let micros = if frame_ms > start_time {
+        let micros = if frame_ms >= start_time {
             frame_ms - start_time
         } else {
-            start_time
+            0
         };
+        debug!("PTS: {:?}", tokio::time::Duration::from_micros(micros));
 
         let mut gst_buf = gstreamer::Buffer::with_size(buf.len()).unwrap();
         {

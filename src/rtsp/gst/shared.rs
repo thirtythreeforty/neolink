@@ -1,9 +1,8 @@
 //! Data shared between the various
 //! components that manage a media stream
-use gstreamer::Clock;
 use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -45,8 +44,16 @@ impl Default for NeoMediaShared {
 pub(super) struct ClientPipelineData {
     pub(super) vidsrc: Option<AppSrc>,
     pub(super) audsrc: Option<AppSrc>,
-    pub(super) start_time: u64,
+    pub(super) start_time: Arc<AtomicU64>,
     pub(super) inited: bool,
-    pub(super) clock: Option<Clock>,
     pub(super) enough_data: Arc<AtomicBool>,
+}
+
+impl ClientPipelineData {
+    pub(super) fn get_start_time(&self) -> u64 {
+        self.start_time.load(Ordering::Relaxed)
+    }
+    pub(super) fn set_start_time(&self, time: u64) {
+        self.start_time.store(time, Ordering::Relaxed)
+    }
 }
