@@ -1,4 +1,3 @@
-use super::App;
 use crate::config::MqttConfig;
 use anyhow::{anyhow, Context, Result};
 use log::*;
@@ -15,6 +14,7 @@ pub(crate) struct Mqtt {
     client: Arc<AsyncClient>,
     name: String,
     incoming: Receiver<MqttReply>,
+    set: JoinSet<Result<()>>,
     drop_message: Option<MqttReply>,
 }
 
@@ -38,7 +38,6 @@ pub(crate) struct MqttReplyRef<'a> {
 }
 
 struct MqttReciever {
-    app: Arc<App>,
     client: MqttSender,
     incoming_tx: Sender<MqttReply>,
     name: String,
@@ -96,37 +95,33 @@ impl MqttReciever {
         // This acts as an event loop
         let name = self.name.clone();
         info!("Starting MQTT Client for {}", name);
-        while self.app.running(&format!("app:{}", name)) {
-            if let Ok(notification) = connection.poll().await {
-                // if let Ok(notification) = notification {
-                match notification {
-                    Event::Incoming(Incoming::ConnAck(connected)) => {
-                        if ConnectReturnCode::Success == connected.code {
-                            self.client
-                                .update_status()
-                                .await
-                                .context("Failed to update status")?;
-                            // We succesfully logged in. Now ask for the cameras subscription.
-                            self.client
-                                .subscribe()
-                                .await
-                                .context("Failed to subscribe")?;
-                        }
+        loop {
+            let notification = connection
+                .poll()
+                .await
+                .with_context(|| "MQTT connection dropped")?;
+            match notification {
+                Event::Incoming(Incoming::ConnAck(connected)) => {
+                    if ConnectReturnCode::Success == connected.code {
+                        self.client
+                            .update_status()
+                            .await
+                            .context("Failed to update status")?;
+                        // We succesfully logged in. Now ask for the cameras subscription.
+                        self.client
+                            .subscribe()
+                            .await
+                            .context("Failed to subscribe")?;
                     }
-                    Event::Incoming(Incoming::Publish(published_message)) => {
-                        if self.handle_message(published_message).await.is_err() {
-                            error!("Failed to forward messages in mqtt");
-                        }
-                    }
-                    _ => {}
                 }
-                // }
-            } else {
-                error!("Mqtt connection failure");
-                return Err(anyhow!("Mqtt connection failure"));
+                Event::Incoming(Incoming::Publish(published_message)) => {
+                    if self.handle_message(published_message).await.is_err() {
+                        error!("Failed to forward messages in mqtt");
+                    }
+                }
+                _ => {}
             }
         }
-        Ok(())
     }
 
     async fn handle_message(&mut self, published_message: Publish) -> Result<()> {
@@ -153,7 +148,7 @@ impl MqttReciever {
 }
 
 impl Mqtt {
-    pub(crate) async fn new(config: &MqttConfig, name: &str, app: Arc<App>) -> Self {
+    pub(crate) async fn new(config: &MqttConfig, name: &str) -> Self {
         let (incoming_tx, incoming) = channel::<MqttReply>(100);
         let mut mqttoptions = MqttOptions::new(
             format!("Neolink-{}", name),
@@ -211,7 +206,6 @@ impl Mqtt {
         let mut set = JoinSet::<Result<()>>::new();
 
         let mut reciever = MqttReciever {
-            app: app.clone(),
             incoming_tx,
             name: name.to_string(),
             client: MqttSender {
@@ -221,32 +215,11 @@ impl Mqtt {
         };
         set.spawn(async move { reciever.run(&mut connection).await });
 
-        let join_app = app;
-        let join_name = name.to_string();
-        tokio::task::spawn(async move {
-            while let Some(joined) = set.join_next().await {
-                tokio::task::yield_now().await;
-                match joined {
-                    Err(e) => {
-                        error!("MQTT reciever panicked: {:?}", e);
-                        join_app.abort(&join_name);
-                    }
-                    Ok(Err(e)) => {
-                        error!("MQTT stopped with error: {:?}", e);
-                        join_app.abort(&join_name);
-                    }
-                    Ok(Ok(())) => {
-                        info!("Normal shutdown of MQTT");
-                    }
-                }
-            }
-            info!("MQTT Loop End");
-        });
-
         Self {
             client,
             name: name.to_string(),
             incoming,
+            set,
             // Send the drop message on clean disconnect
             drop_message: Some(MqttReply {
                 topic: "status".to_string(),
@@ -262,8 +235,28 @@ impl Mqtt {
         }
     }
 
+    /// This will also error is the join set errors
     pub(crate) async fn poll(&mut self) -> Result<MqttReply> {
-        self.incoming.recv().await.context("Mqtt Polling error")
+        let (incoming, set) = (&mut self.incoming, &mut self.set);
+        tokio::select! {
+            v = incoming.recv() => v.with_context(|| "Mqtt Polling error"),
+            v = async {
+                while let Some(res) = set.join_next().await {
+                    match res {
+                        Err(e) => {
+                            set.abort_all();
+                            return Err(e.into());
+                        }
+                        Ok(Err(e)) => {
+                            set.abort_all();
+                            return Err(e);
+                        }
+                        Ok(Ok(())) => {}
+                    }
+                }
+                Err(anyhow!("MQTT background thread dropped without error"))
+            } => v.with_context(|| "MQTT Threads aborted"),
+        }
     }
 }
 
@@ -278,5 +271,6 @@ impl Drop for Mqtt {
                 error!("Failed to send offline message to mqtt");
             }
         }
+        self.set.abort_all();
     }
 }
