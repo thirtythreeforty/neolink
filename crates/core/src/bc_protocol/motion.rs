@@ -216,6 +216,7 @@ impl BcCamera {
             let mut sub = connection.subscribe(msg_num).await?;
 
             loop {
+                tokio::task::yield_now().await;
                 let msg = sub.recv().await;
                 let status = match msg {
                     Ok(motion_msg) => {

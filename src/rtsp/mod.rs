@@ -97,6 +97,7 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
             let name = camera.get_name();
             let mut backoff = Duration::from_micros(125);
             loop {
+                tokio::task::yield_now().await;
                 let failure = camera_main(camera).await;
                 match failure {
                     Err(CameraFailureKind::Fatal(e)) => {

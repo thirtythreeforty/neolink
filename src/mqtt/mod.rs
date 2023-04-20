@@ -1,4 +1,3 @@
-use log::*;
 ///
 /// # Neolink MQTT
 ///
@@ -54,27 +53,24 @@ use log::*;
 // `credentials` are the username and password required to identify with the mqtt server
 //
 use std::sync::Arc;
+use tokio::time::{sleep, Duration};
 
-mod app;
 mod cmdline;
 mod event_cam;
 mod mqttc;
 
 use crate::config::{CameraConfig, Config, MqttConfig};
-use anyhow::{anyhow, Result};
-pub(crate) use app::App;
+use anyhow::{anyhow, Context, Error, Result};
 pub(crate) use cmdline::Opt;
 use event_cam::EventCam;
 pub(crate) use event_cam::{Direction, Messages};
+use log::*;
 use mqttc::{Mqtt, MqttReplyRef};
 
 /// Entry point for the mqtt subcommand
 ///
 /// Opt is the command line options
 pub(crate) async fn main(_: Opt, config: Config) -> Result<()> {
-    let app = App::new();
-    let arc_app = Arc::new(app);
-
     if config.cameras.iter().all(|config| config.mqtt.is_none()) {
         return Err(anyhow!(
             "MQTT command run, but no cameras configured with MQTT settings. Exiting."
@@ -89,219 +85,247 @@ pub(crate) async fn main(_: Opt, config: Config) -> Result<()> {
         .collect::<Vec<_>>()
     {
         if let Some(mqtt_config) = camera_config.mqtt.as_ref().map(|a| Arc::new(a.clone())) {
-            let loop_arc_app = arc_app.clone();
             info!("{}: Setting up mqtt", camera_config.name);
             set.spawn(async move {
-                while loop_arc_app.running("app") {
-                    let _ =
-                        listen_on_camera(camera_config.clone(), &mqtt_config, loop_arc_app.clone())
-                            .await;
+                let mut wait_for = Duration::from_micros(125);
+                loop {
+                    tokio::task::yield_now().await;
+                    if let Err(e) = listen_on_camera(camera_config.clone(), &mqtt_config).await {
+                        warn!("Error: {:?}. Retrying", e);
+                    }
+                    sleep(wait_for).await;
+                    wait_for *= 2;
                 }
             });
         }
     }
 
-    if let Some(result) = set.join_next().await {
+    while let Some(result) = set.join_next().await {
         result?;
     }
 
     Ok(())
 }
 
-async fn listen_on_camera(
-    cam_config: Arc<CameraConfig>,
-    mqtt_config: &MqttConfig,
-    arc_app: Arc<App>,
-) -> Result<()> {
+async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfig) -> Result<()> {
     // Camera thread
-    let arc_event_cam = Arc::new(EventCam::new(cam_config.clone(), arc_app.clone()));
-    let arc_mqtt = Mqtt::new(mqtt_config, &cam_config.name, arc_app.clone());
-    let mut set = tokio::task::JoinSet::new();
-    // Start listening to camera events
-    let event_cam = arc_event_cam.clone();
-    set.spawn(async move {
-        event_cam.start_listening().await; // Loop forever
-        event_cam.abort(); // Just to ensure everything aborts
-    });
+    let mut event_cam = EventCam::new(cam_config.clone()).await;
+    let mut mqtt = Mqtt::new(mqtt_config, &cam_config.name).await;
 
-    // Start listening to mqtt events
-    let event_cam = arc_event_cam.clone();
-    let mqtt = arc_mqtt.clone();
-    set.spawn(async move {
-        let _ = mqtt.start().is_err();
-        event_cam.abort();
-    });
-
-    // Listen on camera messages and post on mqtt
-    let camera_name = cam_config.name.clone();
-    let event_cam = arc_event_cam.clone();
-    let mqtt = arc_mqtt.clone();
-    let app = arc_app.clone();
-    set.spawn(async move {
-        while app.running(&format!("app: {}", camera_name)) {
-            if let Ok(msg) = event_cam.poll().await {
-                match msg {
-                    Messages::Login => {
-                        if mqtt.send_message("status", "connected", true).is_err() {
-                            error!("Failed to post connect over MQTT for {}", camera_name);
-                        }
-                    }
-                    Messages::MotionStop => {
-                        if mqtt.send_message("status/motion", "off", true).is_err() {
-                            error!("Failed to publish motion stop for {}", camera_name);
-                        }
-                    }
-                    Messages::MotionStart => {
-                        if mqtt.send_message("status/motion", "on", true).is_err() {
-                            error!("Failed to publish motion start for {}", camera_name);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    });
+    let mqtt_sender_cam = mqtt.get_sender();
+    let mqtt_sender_mqtt = mqtt.get_sender();
+    let event_cam_sender = event_cam.get_sender();
 
     // Listen on mqtt messages and post on camera
-    let event_cam = arc_event_cam.clone();
-    let mqtt = arc_mqtt.clone();
-    let app = arc_app.clone();
     let camera_name = cam_config.name.clone();
-    set.spawn(async move {
-        while app.running(&format!("app: {}", camera_name)) {
-            if let Ok(msg) = mqtt.poll() {
-                match msg.as_ref() {
-                    MqttReplyRef {
-                        topic: "control/led",
-                        message: "on",
-                    } => {
-                        if event_cam.send_message(Messages::StatusLedOn).await.is_err() {
-                            error!("Failed to set camera status light on");
-                        }
-                    }
-                    MqttReplyRef {
-                        topic: "control/led",
-                        message: "off",
-                    } => {
-                        if event_cam
-                            .send_message(Messages::StatusLedOff)
+
+    let mqtt_to_cam = async {
+        while let Ok(msg) = mqtt.poll().await {
+            tokio::task::yield_now().await;
+            let mut reply = None;
+            let mut reply_topic = None;
+            match msg.as_ref() {
+                MqttReplyRef {
+                    topic: "control/led",
+                    message: "on",
+                } => {
+                    reply = Some(
+                        event_cam_sender
+                            .send_message_with_reply(Messages::StatusLedOn)
                             .await
-                            .is_err()
-                        {
-                            error!("Failed to set camera status light off");
-                        }
-                    }
-                    MqttReplyRef {
-                        topic: "control/ir",
-                        message: "on",
-                    } => {
-                        if event_cam.send_message(Messages::IRLedOn).await.is_err() {
-                            error!("Failed to set camera status light on");
-                        }
-                    }
-                    MqttReplyRef {
-                        topic: "control/ir",
-                        message: "off",
-                    } => {
-                        if event_cam.send_message(Messages::IRLedOff).await.is_err() {
-                            error!("Failed to set camera status light off");
-                        }
-                    }
-                    MqttReplyRef {
-                        topic: "control/ir",
-                        message: "auto",
-                    } => {
-                        if event_cam.send_message(Messages::IRLedAuto).await.is_err() {
-                            error!("Failed to set camera status light off");
-                        }
-                    }
-                    MqttReplyRef {
-                        topic: "control/reboot",
-                        ..
-                    } => {
-                        if event_cam.send_message(Messages::Reboot).await.is_err() {
-                            error!("Failed to set camera status light off");
-                        }
-                    }
-                    MqttReplyRef {
-                        topic: "control/ptz",
-                        message,
-                    } => {
-                        let lowercase_message = message.to_lowercase();
-                        let mut words = lowercase_message.split_whitespace();
-                        if let Some(direction_txt) = words.next() {
-                            let amount = words.next().unwrap_or("32.0");
-                            if let Ok(amount) = amount.parse::<f32>() {
-                                let direction = match direction_txt {
-                                    "up" => Direction::Up(amount),
-                                    "down" => Direction::Down(amount),
-                                    "left" => Direction::Left(amount),
-                                    "right" => Direction::Right(amount),
-                                    "in" => Direction::In(amount),
-                                    "out" => Direction::Out(amount),
-                                    _ => {
-                                        error!("Unrecongnized PTZ direction");
-                                        continue;
-                                    }
-                                };
-                                if event_cam
-                                    .send_message(Messages::Ptz(direction))
-                                    .await
-                                    .is_err()
-                                {
-                                    error!("Failed to send PTZ");
+                            .with_context(|| "Failed to set camera status light on")?,
+                    );
+                }
+                MqttReplyRef {
+                    topic: "control/led",
+                    message: "off",
+                } => {
+                    reply = Some(
+                        event_cam_sender
+                            .send_message_with_reply(Messages::StatusLedOff)
+                            .await
+                            .with_context(|| "Failed to set camera status light off")?,
+                    );
+                }
+                MqttReplyRef {
+                    topic: "control/ir",
+                    message: "on",
+                } => {
+                    reply = Some(
+                        event_cam_sender
+                            .send_message_with_reply(Messages::IRLedOn)
+                            .await
+                            .with_context(|| "Failed to set camera status light on")?,
+                    );
+                }
+                MqttReplyRef {
+                    topic: "control/ir",
+                    message: "off",
+                } => {
+                    reply = Some(
+                        event_cam_sender
+                            .send_message_with_reply(Messages::IRLedOff)
+                            .await
+                            .with_context(|| "Failed to set camera status light off")?,
+                    );
+                }
+                MqttReplyRef {
+                    topic: "control/ir",
+                    message: "auto",
+                } => {
+                    reply = Some(
+                        event_cam_sender
+                            .send_message_with_reply(Messages::IRLedAuto)
+                            .await
+                            .with_context(|| "Failed to set camera status light off")?,
+                    );
+                }
+                MqttReplyRef {
+                    topic: "control/reboot",
+                    ..
+                } => {
+                    reply = Some(
+                        event_cam_sender
+                            .send_message_with_reply(Messages::Reboot)
+                            .await
+                            .with_context(|| "Failed to set camera status light off")?,
+                    );
+                }
+                MqttReplyRef {
+                    topic: "control/ptz",
+                    message,
+                } => {
+                    let lowercase_message = message.to_lowercase();
+                    let mut words = lowercase_message.split_whitespace();
+                    if let Some(direction_txt) = words.next() {
+                        let amount = words.next().unwrap_or("32.0");
+                        if let Ok(amount) = amount.parse::<f32>() {
+                            let direction = match direction_txt {
+                                "up" => Direction::Up(amount),
+                                "down" => Direction::Down(amount),
+                                "left" => Direction::Left(amount),
+                                "right" => Direction::Right(amount),
+                                "in" => Direction::In(amount),
+                                "out" => Direction::Out(amount),
+                                _ => {
+                                    error!("Unrecongnized PTZ direction");
+                                    continue;
                                 }
-                            } else {
-                                error!("No PTZ direction speed was not a valid number");
-                            }
+                            };
+                            reply = Some(
+                                event_cam_sender
+                                    .send_message_with_reply(Messages::Ptz(direction))
+                                    .await
+                                    .with_context(|| "Failed to send PTZ")?,
+                            );
                         } else {
-                            error!("No PTZ Direction given. Please add up/down/left/right/in/out");
+                            error!("No PTZ direction speed was not a valid number");
                         }
+                    } else {
+                        error!("No PTZ Direction given. Please add up/down/left/right/in/out");
                     }
-                    MqttReplyRef {
-                        topic: "control/pir",
-                        message: "on",
-                    } => {
-                        if event_cam.send_message(Messages::PIROn).await.is_err() {
-                            error!("Failed to set pir on");
-                        }
-                    }
-                    MqttReplyRef {
-                        topic: "control/pir",
-                        message: "off",
-                    } => {
-                        if event_cam.send_message(Messages::PIROff).await.is_err() {
-                            error!("Failed to set pir off");
-                        }
-                    }
-                    MqttReplyRef {
-                        topic: "query/battery",
-                        ..
-                    } => match event_cam.send_message_with_reply(Messages::Battery).await {
-                        Ok(reply) => {
-                            if mqtt.send_message("status/battery", &reply, false).is_err() {
-                                error!("Failed to send battery status reply");
-                            }
-                        }
-                        Err(_) => error!("Failed to get battery status"),
-                    },
-                    MqttReplyRef {
-                        topic: "query/pir", ..
-                    } => match event_cam.send_message_with_reply(Messages::PIRQuery).await {
-                        Ok(reply) => {
-                            if mqtt.send_message("status/pir", &reply, false).is_err() {
-                                error!("Failed to send pir status reply");
-                            }
-                        }
-                        Err(_) => error!("Failed to get pir status"),
-                    },
-                    _ => {}
+                }
+                MqttReplyRef {
+                    topic: "control/pir",
+                    message: "on",
+                } => {
+                    reply = Some(
+                        event_cam_sender
+                            .send_message_with_reply(Messages::PIROn)
+                            .await
+                            .with_context(|| "Failed to set pir on")?,
+                    );
+                }
+                MqttReplyRef {
+                    topic: "control/pir",
+                    message: "off",
+                } => {
+                    reply = Some(
+                        event_cam_sender
+                            .send_message_with_reply(Messages::PIROff)
+                            .await
+                            .with_context(|| "Failed to set pir off")?,
+                    );
+                }
+                MqttReplyRef {
+                    topic: "query/battery",
+                    ..
+                } => {
+                    reply = Some(
+                        event_cam_sender
+                            .send_message_with_reply(Messages::Battery)
+                            .await
+                            .with_context(|| "Failed to get battery status")?,
+                    );
+                    reply_topic = Some("status/battery");
+                }
+                MqttReplyRef {
+                    topic: "query/pir", ..
+                } => {
+                    reply = Some(
+                        event_cam_sender
+                            .send_message_with_reply(Messages::PIRQuery)
+                            .await
+                            .with_context(|| "Failed to get pir status")?,
+                    );
+                    reply_topic = Some("status/pir");
+                }
+                _ => {}
+            }
+            if let Some(reply) = reply {
+                if let Some(topic) = reply_topic {
+                    mqtt_sender_mqtt
+                        .send_message(topic, &reply, false)
+                        .await
+                        .with_context(|| "Failed to send Camera reply to Mqtt")?;
+                } else {
+                    mqtt_sender_mqtt
+                        .send_message(&msg.topic, &reply, false)
+                        .await
+                        .with_context(|| "Failed to send Camera reply to Mqtt")?;
                 }
             }
         }
-    });
+        Result::<(), Error>::Ok(())
+    };
 
-    while set.join_next().await.is_some() {}
+    let cam_to_mqtt = async {
+        loop {
+            tokio::task::yield_now().await;
+            match event_cam.poll().await? {
+                Messages::Login => {
+                    mqtt_sender_cam
+                        .send_message("status", "connected", true)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to post connect over MQTT for {}", camera_name)
+                        })?;
+                }
+                Messages::MotionStop => {
+                    mqtt_sender_cam
+                        .send_message("status/motion", "off", true)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to publish motion stop for {}", camera_name)
+                        })?;
+                }
+                Messages::MotionStart => {
+                    mqtt_sender_cam
+                        .send_message("status/motion", "on", true)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to publish motion start for {}", camera_name)
+                        })?;
+                }
+                _ => {}
+            }
+        }
+    };
+
+    tokio::select! {
+        v = mqtt_to_cam => {v},
+        v = cam_to_mqtt => {v},
+    }?;
 
     Ok(())
 }
