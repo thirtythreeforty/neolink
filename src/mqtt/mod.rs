@@ -209,7 +209,7 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                                 "out" => Direction::Out(amount),
                                 "stop" => Direction::Stop(amount),
                                 _ => {
-                                    error!("Unrecongnized PTZ direction");
+                                    error!("Unrecognized PTZ direction \"{}\"", direction_txt);
                                     continue;
                                 }
                             };
