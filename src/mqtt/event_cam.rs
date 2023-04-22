@@ -37,6 +37,7 @@ pub(crate) enum Direction {
     Right(f32),
     In(f32),
     Out(f32),
+    Stop(f32)
 }
 
 #[derive(Debug)]
@@ -415,6 +416,7 @@ impl<'a> MessageHandler<'a> {
                                 Direction::Right(amount) => (BcDirection::Right, amount),
                                 Direction::In(amount) => (BcDirection::In, amount),
                                 Direction::Out(amount) => (BcDirection::Out, amount),
+                                Direction::Stop(amount) => (BcDirection::Stop, amount)
                             };
                             if let Err(e) = self.camera.send_ptz(bc_direction, amount).await {
                                 error = Some(format!("Failed to send PTZ: {:?}", e));
