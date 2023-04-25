@@ -199,28 +199,42 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                     let mut words = lowercase_message.split_whitespace();
                     if let Some(direction_txt) = words.next() {
                         let amount = words.next().unwrap_or("32.0");
+                        let seconds = words.next().unwrap_or("1.0");
                         if let Ok(amount) = amount.parse::<f32>() {
-                            let direction = match direction_txt {
-                                "up" => Direction::Up(amount),
-                                "down" => Direction::Down(amount),
-                                "left" => Direction::Left(amount),
-                                "right" => Direction::Right(amount),
-                                "in" => Direction::In(amount),
-                                "out" => Direction::Out(amount),
-                                "stop" => Direction::Stop(amount),
-                                _ => {
-                                    error!("Unrecognized PTZ direction \"{}\"", direction_txt);
-                                    continue;
-                                }
-                            };
-                            reply = Some(
-                                event_cam_sender
-                                    .send_message_with_reply(Messages::Ptz(direction))
-                                    .await
-                                    .with_context(|| "Failed to send PTZ")?,
-                            );
+                            if let Ok(seconds) = seconds.parse::<f32>() {
+
+                                // range checking on seconds so that you can't sleep for 3.4E+38 seconds
+                                match seconds {
+                                    x if (0.0..10.0).contains(&x) => seconds,
+                                    _ => {
+                                        error!("seconds was not a valid number (out of range)");
+                                        continue;
+                                    }
+                                };
+
+                                let direction = match direction_txt {
+                                    "up" => Direction::Up(amount, seconds),
+                                    "down" => Direction::Down(amount, seconds),
+                                    "left" => Direction::Left(amount, seconds),
+                                    "right" => Direction::Right(amount, seconds),
+                                    "in" => Direction::In(amount, seconds),
+                                    "out" => Direction::Out(amount, seconds),
+                                    _ => {
+                                        error!("Unrecognized PTZ direction \"{}\"", direction_txt);
+                                        continue;
+                                    }
+                                };
+                                reply = Some(
+                                    event_cam_sender
+                                        .send_message_with_reply(Messages::Ptz(direction))
+                                        .await
+                                        .with_context(|| "Failed to send PTZ")?,
+                                );
+                            } else {
+                                error!("seconds was not a valid number");
+                            }
                         } else {
-                            error!("No PTZ direction speed was not a valid number");
+                            error!("No PTZ direction speed was not a valid number (unrecognized)");
                         }
                     } else {
                         error!("No PTZ Direction given. Please add up/down/left/right/in/out");
