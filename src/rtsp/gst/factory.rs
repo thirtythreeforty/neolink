@@ -11,7 +11,7 @@ use gstreamer::{
     glib::{self, Object},
     Structure,
 };
-use gstreamer::{Bin, Caps, ClockTime, Element, ElementFactory};
+use gstreamer::{Bin, Caps, Element, ElementFactory};
 use gstreamer_app::{AppSrc, AppSrcCallbacks, AppStreamType};
 use gstreamer_rtsp::RTSPUrl;
 use gstreamer_rtsp_server::prelude::*;
@@ -23,14 +23,12 @@ use log::*;
 use neolink_core::bcmedia::model::*;
 use std::{
     collections::HashSet,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
+    sync::{atomic::Ordering, Arc},
 };
 use tokio::{
     sync::mpsc::{channel, Sender},
     task::JoinSet,
+    time::Duration,
 };
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -113,7 +111,7 @@ unsafe impl Sync for NeoMediaFactory {}
 
 pub(crate) struct NeoMediaFactoryImpl {
     sender: Sender<BcMedia>,
-    clientsender: Sender<ClientPipelineData>,
+    clientsender: Sender<NeoMediaSender>,
     shared: Arc<NeoMediaShared>,
     #[allow(dead_code)] // Not dead just need a handle to keep it alive and drop with this obj
     threads: JoinSet<AnyResult<()>>,
@@ -134,14 +132,11 @@ impl Default for NeoMediaFactoryImpl {
 
         // Prepare thread that sends data into the appsrcs
         let mut threads: JoinSet<AnyResult<()>> = Default::default();
-        let mut sender = NeoMediaSender {
-            data_source: ReceiverStream::new(datarx),
-            clientsource: ReceiverStream::new(rx_clientsender),
-            shared: shared.clone(),
-            uid: Default::default(),
-            clientdata: Default::default(),
-            waiting_for_iframe: true,
-        };
+        let mut sender = NeoMediaSenders::new(
+            shared.clone(),
+            ReceiverStream::new(datarx),
+            ReceiverStream::new(rx_clientsender),
+        );
         threads.spawn(async move {
             loop {
                 tokio::task::yield_now().await;
@@ -153,7 +148,6 @@ impl Default for NeoMediaFactoryImpl {
                         break;
                     }
                 }
-                sender.waiting_for_iframe = true;
             }
             Ok(())
         });
@@ -231,12 +225,7 @@ impl NeoMediaFactoryImpl {
             bin.remove(&element)?;
         }
 
-        let mut client_data = ClientPipelineData {
-            start_time: Arc::new(AtomicU64::new(
-                self.shared.microseconds.load(Ordering::Relaxed),
-            )),
-            ..Default::default()
-        };
+        let mut client_data = NeoMediaSender::new();
 
         // Now contruct the actual ones
         match *self.shared.vid_format.blocking_read() {
@@ -245,38 +234,28 @@ impl NeoMediaFactoryImpl {
                 let source = make_element("appsrc", "vidsrc")?
                     .dynamic_cast::<AppSrc>()
                     .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
-                source.set_base_time(ClockTime::from_mseconds(
-                    self.shared.microseconds.load(Ordering::Relaxed),
-                ));
                 source.set_is_live(true);
                 source.set_block(false);
                 source.set_property("emit-signals", false);
                 source.set_max_bytes(52428800);
                 source.set_do_timestamp(false);
-                source.set_stream_type(AppStreamType::Seekable);
+                source.set_stream_type(AppStreamType::RandomAccess);
 
-                let enough_data_start = client_data.enough_data.clone();
-                let enough_data_stop = client_data.enough_data.clone();
-                let seek_shared = self.shared.clone();
-                let seek_start_time = client_data.start_time.clone();
+                let need_command = client_data.get_commader();
+                let enough_command = client_data.get_commader();
+                let seek_command = client_data.get_commader();
                 source.set_callbacks(
                     AppSrcCallbacks::builder()
                         .need_data(move |_appsrc, _amt| {
-                            if enough_data_stop.load(Ordering::Relaxed) {
-                                log::debug!("Client is in need of data");
-                            }
-                            enough_data_stop.store(false, Ordering::Relaxed);
+                            let _ = need_command.blocking_send(NeoMediaSenderCommand::Resume);
                         })
                         .enough_data(move |_appsrc| {
-                            if !enough_data_start.load(Ordering::Relaxed) {
-                                log::debug!("Client is full of of data");
-                            }
-                            enough_data_start.store(true, Ordering::Relaxed);
+                            let _ = enough_command.blocking_send(NeoMediaSenderCommand::Pause);
                         })
                         .seek_data(move |_appsrc, seek_pos| {
-                            log::debug!("Seeking to {}", &seek_pos);
-                            let current_time = seek_shared.microseconds.load(Ordering::Relaxed);
-                            seek_start_time.store(current_time - seek_pos, Ordering::Relaxed);
+                            debug!("Send seek H265");
+                            let _ =
+                                seek_command.blocking_send(NeoMediaSenderCommand::Seek(seek_pos));
                             true
                         })
                         .build(),
@@ -290,7 +269,6 @@ impl NeoMediaFactoryImpl {
                 let queue = make_element("queue", "source_queue")?;
                 queue.set_property_from_str("leaky", "downstream");
                 queue.set_property("max-size-bytes", 104857600u32);
-                queue.set_property("min-threshold-time", 500u64 * 1000u64);
                 let parser = make_element("h265parse", "parser")?;
                 // parser.set_property("config-interval", 5i32);
                 let payload = make_element("rtph265pay", "pay0")?;
@@ -300,46 +278,47 @@ impl NeoMediaFactoryImpl {
                 let source = source
                     .dynamic_cast::<AppSrc>()
                     .map_err(|_| anyhow!("Cannot convert appsrc"))?;
-                client_data.vidsrc.replace(source);
+                client_data.update_vid(source);
             }
             VidFormats::H264 => {
                 debug!("Building H264 Pipeline");
                 let source = make_element("appsrc", "vidsrc")?
                     .dynamic_cast::<AppSrc>()
                     .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
-                source.set_base_time(ClockTime::from_mseconds(
-                    self.shared.microseconds.load(Ordering::Relaxed),
-                ));
+
                 source.set_is_live(true);
                 source.set_block(false);
                 source.set_property("emit-signals", false);
-                source.set_max_bytes(52428800);
+                source.set_max_bytes(50000000u64); // 50MB
+                                                   // source.set_property("max-buffers", 0u32); // v1.20
+                                                   // source.set_property("max-time", Duration::from_secs_f32(2.25).as_nanos() as u64);
                 source.set_do_timestamp(false);
-                source.set_stream_type(AppStreamType::Seekable);
+                source.set_stream_type(AppStreamType::RandomAccess);
+                let clock = source.clock();
+                if let Some(clock) = clock {
+                    debug!("Clock: {:?}", clock.time());
+                } else {
+                    debug!("No clock");
+                }
 
-                let enough_data_start = client_data.enough_data.clone();
-                let enough_data_stop = client_data.enough_data.clone();
-                let seek_shared = self.shared.clone();
-                let seek_start_time = client_data.start_time.clone();
+                let need_command = client_data.get_commader();
+                let enough_command = client_data.get_commader();
+                let seek_command = client_data.get_commader();
                 source.set_callbacks(
                     AppSrcCallbacks::builder()
                         .need_data(move |_appsrc, _amt| {
-                            if enough_data_stop.load(Ordering::Relaxed) {
-                                log::debug!("Client is in need of data");
-                            }
-                            enough_data_stop.store(false, Ordering::Relaxed);
+                            let _ = need_command.try_send(NeoMediaSenderCommand::Resume);
                         })
                         .enough_data(move |_appsrc| {
-                            if !enough_data_start.load(Ordering::Relaxed) {
-                                log::debug!("Client is full of of data");
-                            }
-                            enough_data_start.store(true, Ordering::Relaxed);
+                            let _ = enough_command.try_send(NeoMediaSenderCommand::Pause);
                         })
                         .seek_data(move |_appsrc, seek_pos| {
-                            log::debug!("Seeking to {}", &seek_pos);
-                            let current_time = seek_shared.microseconds.load(Ordering::Relaxed);
-                            seek_start_time.store(current_time - seek_pos, Ordering::Relaxed);
-                            true
+                            debug!("Send seek H264: {}", seek_pos);
+                            let result = seek_command
+                                .try_send(NeoMediaSenderCommand::Seek(seek_pos))
+                                .is_ok();
+                            debug!("  - Sent seek H264: {}", result);
+                            result
                         })
                         .build(),
                 );
@@ -351,18 +330,36 @@ impl NeoMediaFactoryImpl {
                     .map_err(|_| anyhow!("Cannot cast back"))?;
                 let queue = make_element("queue", "source_queue")?;
                 queue.set_property_from_str("leaky", "downstream");
-                queue.set_property("min-threshold-time", 500u64 * 1000u64);
+                // queue.set_property("max-size-bytes", 0u32);
+                // queue.set_property("max-size-buffers", 0u32);
+                queue.set_property("max-size-time", Duration::from_secs(2).as_nanos() as u64);
                 let parser = make_element("h264parse", "parser")?;
                 // parser.set_property("update-timecode", true);
                 let payload = make_element("rtph264pay", "pay0")?;
+                // payload.set_property("config-interval", 1i32);
+                // let storage = make_element("rtpstorage", "vidstorage")?;
+                // storage.set_property("size-time", Duration::from_secs_f32(2.25).as_nanos() as u64);
+                // let jitter = make_element("rtpjitterbuffer", "pay0")?;
+                // jitter.set_property("latency", Duration::from_secs_f32(2.0).as_nanos() as u32);
+
                 // payload.set_property("config-interval", 5i32);
-                bin.add_many(&[&source, &queue, &parser, &payload])?;
-                Element::link_many(&[&source, &queue, &parser, &payload])?;
+                bin.add_many(&[
+                    &source, &queue, &parser,
+                    &payload,
+                    // &storage,
+                    // &jitter,
+                ])?;
+                Element::link_many(&[
+                    &source, &queue, &parser,
+                    &payload,
+                    // &storage,
+                    // &jitter,
+                ])?;
 
                 let source = source
                     .dynamic_cast::<AppSrc>()
                     .map_err(|_| anyhow!("Cannot convert appsrc"))?;
-                client_data.vidsrc.replace(source);
+                client_data.update_vid(source);
             }
             VidFormats::Unknown => {
                 debug!("Building Unknown Pipeline");
@@ -371,7 +368,6 @@ impl NeoMediaFactoryImpl {
                 let queue = make_element("queue", "queue0")?;
                 queue.set_property_from_str("leaky", "downstream");
                 queue.set_property("max-size-bytes", 104857600u32);
-                queue.set_property("min-threshold-time", 500u64 * 1000u64 * 1000u64);
                 let overlay = make_element("textoverlay", "overlay")?;
                 overlay.set_property("text", "Stream not Ready");
                 overlay.set_property_from_str("valignment", "top");
@@ -391,171 +387,158 @@ impl NeoMediaFactoryImpl {
                         .build(),
                 )?;
                 // source.link(&queue)?;
-                queue.link(&overlay)?;
-                overlay.link(&encoder)?;
-                encoder.link(&payload)?;
+                Element::link_many(&[&queue, &overlay, &encoder, &payload])?;
             }
         }
 
-        match *self.shared.aud_format.blocking_read() {
-            AudFormats::Unknown => {}
-            AudFormats::Aac => {
-                debug!("Building Aac pipeline");
-                let source = make_element("appsrc", "audsrc")?
-                    .dynamic_cast::<AppSrc>()
-                    .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
-                source.set_base_time(ClockTime::from_mseconds(
-                    self.shared.microseconds.load(Ordering::Relaxed),
-                ));
-                source.set_is_live(true);
-                source.set_block(false);
-                source.set_property("emit-signals", false);
-                source.set_max_bytes(52428800);
-                source.set_do_timestamp(false);
-                source.set_stream_type(AppStreamType::Seekable);
+        let do_aud = false;
+        if do_aud {
+            match *self.shared.aud_format.blocking_read() {
+                AudFormats::Unknown => {}
+                AudFormats::Aac => {
+                    debug!("Building Aac pipeline");
+                    let source = make_element("appsrc", "audsrc")?
+                        .dynamic_cast::<AppSrc>()
+                        .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
 
-                let enough_data_start = client_data.enough_data.clone();
-                let enough_data_stop = client_data.enough_data.clone();
-                let seek_shared = self.shared.clone();
-                let seek_start_time = client_data.start_time.clone();
-                source.set_callbacks(
-                    AppSrcCallbacks::builder()
-                        .need_data(move |_appsrc, _amt| {
-                            if enough_data_stop.load(Ordering::Relaxed) {
-                                log::debug!("Client is in need of data");
-                            }
-                            enough_data_stop.store(false, Ordering::Relaxed);
-                        })
-                        .enough_data(move |_appsrc| {
-                            if !enough_data_start.load(Ordering::Relaxed) {
-                                log::debug!("Client is full of of data");
-                            }
-                            enough_data_start.store(true, Ordering::Relaxed);
-                        })
-                        .seek_data(move |_appsrc, seek_pos| {
-                            log::debug!("Seeking to {}", &seek_pos);
-                            let current_time = seek_shared.microseconds.load(Ordering::Relaxed);
-                            seek_start_time.store(current_time - seek_pos, Ordering::Relaxed);
-                            true
-                        })
-                        .build(),
-                );
+                    source.set_is_live(true);
+                    source.set_block(false);
+                    source.set_property("emit-signals", false);
+                    source.set_max_bytes(52428800);
+                    source.set_do_timestamp(false);
+                    source.set_stream_type(AppStreamType::Seekable);
 
-                let source = source
-                    .dynamic_cast::<Element>()
-                    .map_err(|_| anyhow!("Cannot cast back"))?;
+                    let need_command = client_data.get_commader();
+                    let enough_command = client_data.get_commader();
+                    let seek_command = client_data.get_commader();
+                    source.set_callbacks(
+                        AppSrcCallbacks::builder()
+                            .need_data(move |_appsrc, _amt| {
+                                let _ = need_command.blocking_send(NeoMediaSenderCommand::Resume);
+                            })
+                            .enough_data(move |_appsrc| {
+                                let _ = enough_command.blocking_send(NeoMediaSenderCommand::Pause);
+                            })
+                            .seek_data(move |_appsrc, seek_pos| {
+                                debug!("Send seek AAC");
+                                let _ = seek_command
+                                    .blocking_send(NeoMediaSenderCommand::Seek(seek_pos));
+                                true
+                            })
+                            .build(),
+                    );
 
-                let queue = make_element("queue", "audqueue")?;
-                queue.set_property_from_str("leaky", "downstream");
-                queue.set_property("max-size-bytes", 104857600u32);
-                queue.set_property("min-threshold-time", 500u64 * 1000u64);
-                let parser = make_element("aacparse", "audparser")?;
-                let decoder = make_element("decodebin", "auddecoder")?;
-                let encoder = make_element("audioconvert", "audencoder")?;
-                let payload = make_element("rtpL16pay", "pay1")?;
+                    let source = source
+                        .dynamic_cast::<Element>()
+                        .map_err(|_| anyhow!("Cannot cast back"))?;
 
-                bin.add_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
-                Element::link_many(&[&source, &queue, &parser, &decoder])?;
-                Element::link_many(&[&encoder, &payload])?;
-                decoder.connect_pad_added(move |_element, pad| {
-                    debug!("Linking encoder to decoder: {:?}", pad.caps());
-                    let sink_pad = encoder
-                        .static_pad("sink")
-                        .expect("Encoder is missing its pad");
-                    pad.link(&sink_pad)
-                        .expect("Failed to link AAC decoder to encoder");
-                });
+                    let queue = make_element("queue", "audqueue")?;
+                    queue.set_property_from_str("leaky", "downstream");
+                    queue.set_property("max-size-bytes", 104857600u32);
+                    let parser = make_element("aacparse", "audparser")?;
+                    let decoder = make_element("decodebin", "auddecoder")?;
+                    let encoder = make_element("audioconvert", "audencoder")?;
+                    let payload = make_element("rtpL16pay", "audpayload")?;
+                    let storage = make_element("rtpstorage", "audstorage")?;
+                    storage
+                        .set_property("size-time", Duration::from_secs_f32(2.25).as_nanos() as u64);
+                    let jitter = make_element("rtpjitterbuffer", "pay1")?;
+                    jitter.set_property("latency", Duration::from_secs_f32(2.0).as_nanos() as u32);
 
-                let source = source
-                    .dynamic_cast::<AppSrc>()
-                    .map_err(|_| anyhow!("Cannot convert appsrc"))?;
-                client_data.audsrc.replace(source);
-            }
-            AudFormats::Adpcm(block_size) => {
-                debug!("Building Adpcm pipeline");
-                // Original command line
-                // caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000
-                // ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024
-                // ! adpcmdec
-                // ! audioconvert
-                // ! rtpL16pay name=pay1
+                    bin.add_many(&[
+                        &source, &queue, &parser, &decoder, &encoder, &payload, &storage, &jitter,
+                    ])?;
+                    Element::link_many(&[&source, &queue, &parser, &decoder])?;
+                    Element::link_many(&[&encoder, &payload, &storage, &jitter])?;
+                    decoder.connect_pad_added(move |_element, pad| {
+                        debug!("Linking encoder to decoder: {:?}", pad.caps());
+                        let sink_pad = encoder
+                            .static_pad("sink")
+                            .expect("Encoder is missing its pad");
+                        pad.link(&sink_pad)
+                            .expect("Failed to link AAC decoder to encoder");
+                    });
 
-                let source = make_element("appsrc", "audsrc")?
-                    .dynamic_cast::<AppSrc>()
-                    .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
-                source.set_base_time(ClockTime::from_mseconds(
-                    self.shared.microseconds.load(Ordering::Relaxed),
-                ));
-                source.set_is_live(true);
-                source.set_block(false);
-                source.set_property("emit-signals", false);
-                source.set_max_bytes(52428800);
-                source.set_do_timestamp(false);
-                source.set_stream_type(AppStreamType::Seekable);
-                source.set_caps(Some(
-                    &Caps::builder("audio/x-adpcm")
-                        .field("layout", "div")
-                        .field("block_align", block_size as i32)
-                        .field("channels", 1i32)
-                        .field("rate", 8000i32)
-                        .build(),
-                ));
+                    let source = source
+                        .dynamic_cast::<AppSrc>()
+                        .map_err(|_| anyhow!("Cannot convert appsrc"))?;
+                    client_data.update_aud(source);
+                }
+                AudFormats::Adpcm(block_size) => {
+                    debug!("Building Adpcm pipeline");
+                    // Original command line
+                    // caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000
+                    // ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024
+                    // ! adpcmdec
+                    // ! audioconvert
+                    // ! rtpL16pay name=pay1
 
-                let enough_data_start = client_data.enough_data.clone();
-                let enough_data_stop = client_data.enough_data.clone();
-                let seek_shared = self.shared.clone();
-                let seek_start_time = client_data.start_time.clone();
-                source.set_callbacks(
-                    AppSrcCallbacks::builder()
-                        .need_data(move |_appsrc, _amt| {
-                            if enough_data_stop.load(Ordering::Relaxed) {
-                                log::debug!("Client is in need of data");
-                            }
-                            enough_data_stop.store(false, Ordering::Relaxed);
-                        })
-                        .enough_data(move |_appsrc| {
-                            if !enough_data_start.load(Ordering::Relaxed) {
-                                log::debug!("Client is full of of data");
-                            }
-                            enough_data_start.store(true, Ordering::Relaxed);
-                        })
-                        .seek_data(move |_appsrc, seek_pos| {
-                            log::debug!("Seeking to {}", &seek_pos);
-                            let current_time = seek_shared.microseconds.load(Ordering::Relaxed);
-                            seek_start_time.store(current_time - seek_pos, Ordering::Relaxed);
-                            true
-                        })
-                        .build(),
-                );
+                    let source = make_element("appsrc", "audsrc")?
+                        .dynamic_cast::<AppSrc>()
+                        .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
+                    source.set_is_live(true);
+                    source.set_block(false);
+                    source.set_property("emit-signals", false);
+                    source.set_max_bytes(52428800);
+                    source.set_do_timestamp(false);
+                    source.set_stream_type(AppStreamType::RandomAccess);
+                    source.set_caps(Some(
+                        &Caps::builder("audio/x-adpcm")
+                            .field("layout", "div")
+                            .field("block_align", block_size as i32)
+                            .field("channels", 1i32)
+                            .field("rate", 8000i32)
+                            .build(),
+                    ));
 
-                let source = source
-                    .dynamic_cast::<Element>()
-                    .map_err(|_| anyhow!("Cannot cast back"))?;
+                    let need_command = client_data.get_commader();
+                    let enough_command = client_data.get_commader();
+                    let seek_command = client_data.get_commader();
+                    source.set_callbacks(
+                        AppSrcCallbacks::builder()
+                            .need_data(move |_appsrc, _amt| {
+                                let _ = need_command.blocking_send(NeoMediaSenderCommand::Resume);
+                            })
+                            .enough_data(move |_appsrc| {
+                                let _ = enough_command.blocking_send(NeoMediaSenderCommand::Pause);
+                            })
+                            .seek_data(move |_appsrc, seek_pos| {
+                                debug!("Send seek Adpcm");
+                                let _ = seek_command
+                                    .blocking_send(NeoMediaSenderCommand::Seek(seek_pos));
+                                true
+                            })
+                            .build(),
+                    );
 
-                let queue = make_element("queue", "audqueue")?;
-                queue.set_property_from_str("leaky", "downstream");
-                queue.set_property("max-size-bytes", 104857600u32);
-                queue.set_property("min-threshold-time", 500u64 * 1000u64);
-                let decoder = make_element("decodebin", "auddecoder")?;
-                let encoder = make_element("audioconvert", "audencoder")?;
-                let payload = make_element("rtpL16pay", "pay1")?;
+                    let source = source
+                        .dynamic_cast::<Element>()
+                        .map_err(|_| anyhow!("Cannot cast back"))?;
 
-                bin.add_many(&[&source, &queue, &decoder, &encoder, &payload])?;
-                Element::link_many(&[&source, &queue, &decoder])?;
-                Element::link_many(&[&encoder, &payload])?;
-                decoder.connect_pad_added(move |_element, pad| {
-                    debug!("Linking encoder to decoder: {:?}", pad.caps());
-                    let sink_pad = encoder
-                        .static_pad("sink")
-                        .expect("Encoder is missing its pad");
-                    pad.link(&sink_pad)
-                        .expect("Failed to link ADPCM decoder to encoder");
-                });
+                    let queue = make_element("queue", "audqueue")?;
+                    queue.set_property_from_str("leaky", "downstream");
+                    queue.set_property("max-size-bytes", 104857600u32);
+                    let decoder = make_element("decodebin", "auddecoder")?;
+                    let encoder = make_element("audioconvert", "audencoder")?;
+                    let payload = make_element("rtpL16pay", "pay1")?;
 
-                let source = source
-                    .dynamic_cast::<AppSrc>()
-                    .map_err(|_| anyhow!("Cannot convert appsrc"))?;
-                client_data.audsrc.replace(source);
+                    bin.add_many(&[&source, &queue, &decoder, &encoder, &payload])?;
+                    Element::link_many(&[&source, &queue, &decoder])?;
+                    Element::link_many(&[&encoder, &payload])?;
+                    decoder.connect_pad_added(move |_element, pad| {
+                        debug!("Linking encoder to decoder: {:?}", pad.caps());
+                        let sink_pad = encoder
+                            .static_pad("sink")
+                            .expect("Encoder is missing its pad");
+                        pad.link(&sink_pad)
+                            .expect("Failed to link ADPCM decoder to encoder");
+                    });
+
+                    let source = source
+                        .dynamic_cast::<AppSrc>()
+                        .map_err(|_| anyhow!("Cannot convert appsrc"))?;
+                    client_data.update_aud(source);
+                }
             }
         }
 
