@@ -231,10 +231,10 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                                         .with_context(|| "Failed to send PTZ")?,
                                 );
                             } else {
-                                error!("seconds was not a valid number");
+                                error!("seconds was not a valid number (unrecognized)");
                             }
                         } else {
-                            error!("No PTZ direction speed was not a valid number (unrecognized)");
+                            error!("No PTZ direction speed was not a valid number");
                         }
                     } else {
                         error!("No PTZ Direction given. Please add up/down/left/right/in/out");
