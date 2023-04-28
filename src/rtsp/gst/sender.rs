@@ -407,6 +407,7 @@ impl NeoMediaSender {
                     self.send_buffer(frame).await?;
                 }
             }
+        }
 
         Ok(())
     }
