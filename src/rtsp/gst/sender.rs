@@ -55,17 +55,21 @@ impl NeoBuffer {
             }
             BcMedia::InfoV1(_) | BcMedia::InfoV2(_) => {}
         }
-        while self.buf.len() > 25 {
-            // 25 iframes
+        while self.buf.len() > 10 {
+            // Remove excess
             let _ = self.buf.pop_front();
         }
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &BcMedia> {
+        self.buf.iter().flatten()
     }
 
     fn start_time(&self) -> Option<Duration> {
         if let Some(BcMedia::Iframe(data)) =
             self.buf.front().and_then(|inner_buf| inner_buf.first())
         {
-            Some(Duration::from_micros(data.microseconds))
+            Some(Duration::from_micros(data.microseconds as u64))
         } else {
             None
         }
@@ -77,17 +81,17 @@ impl NeoBuffer {
             for frame in innerbuffer.iter() {
                 match frame {
                     BcMedia::Iframe(frame) => {
-                        let frame_ms = Duration::from_micros(frame.microseconds);
+                        let frame_ms = Duration::from_micros(frame.microseconds as u64);
                         let v = last_ms.get_or_insert(frame_ms);
-                        
-                        if *v < frame.microseconds {
-                            *v = frame.microseconds;
+
+                        if *v < frame_ms {
+                            *v = frame_ms;
                         }
                     }
                     BcMedia::Pframe(frame) => {
-                        let frame_ms = Duration::from_micros(frame.microseconds);
+                        let frame_ms = Duration::from_micros(frame.microseconds as u64);
                         let v = last_ms.get_or_insert(frame_ms);
-                        
+
                         if *v < frame_ms {
                             *v = frame_ms;
                         }
@@ -244,7 +248,7 @@ pub(super) enum NeoMediaSenderCommand {
 #[derive(Debug)]
 pub(super) struct NeoMediaSender {
     start_time: Duration,
-    last_sent_time: Durataion,
+    last_sent_time: Duration,
     vid: Option<AppSrc>,
     aud: Option<AppSrc>,
     command_reciever: Receiver<NeoMediaSenderCommand>,
@@ -258,7 +262,7 @@ impl NeoMediaSender {
         let (tx, rx) = channel(3);
         Self {
             start_time: Duration::ZERO,
-            last_sent_time: Duration:ZERO,
+            last_sent_time: Duration::ZERO,
             vid: None,
             aud: None,
             command_reciever: rx,
@@ -282,21 +286,27 @@ impl NeoMediaSender {
 
     async fn jump_to_live(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
         if self.inited {
-            if let (Some(runtime), Some(buffer_start), Some(buffer_end)) = (self.get_runtime(), buffer.start_time(), buffer.end_time()) {
+            if let (Some(runtime), Some(buffer_start), Some(buffer_end)) =
+                (self.get_runtime(), buffer.start_time(), buffer.end_time())
+            {
                 // Jump to the mid point
                 let target_time = (buffer_start + buffer_end) / 2;
                 self.start_time = target_time - runtime;
                 self.last_sent_time = target_time;
             }
         }
-    }
-    
-    async fn seek(&mut self, target_time: Duration) -> AnyResult<()> {
-        self.last_sent_time = runtime_to_buftime(target_time);
+
         Ok(())
     }
 
-    
+    async fn seek(&mut self, target_time: Duration) -> AnyResult<()> {
+        self.last_sent_time = self.runtime_to_buftime(target_time);
+        debug!(
+            "Seeked last_sent_time to {:?} ({:?})",
+            self.last_sent_time, target_time
+        );
+        Ok(())
+    }
 
     async fn process_commands(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
         if self.inited {
@@ -344,20 +354,18 @@ impl NeoMediaSender {
         }
         Ok(())
     }
-    
+
     fn runtime_to_buftime(&self, runtime: Duration) -> Duration {
         runtime + self.start_time
     }
-    
+
     fn buftime_to_runtime(&self, buftime: Duration) -> Duration {
         if buftime > self.start_time {
             buftime - self.start_time
         } else {
-            0
+            Duration::ZERO
         }
     }
-    
-    
 
     async fn process_buffer(&mut self, buf: &NeoBuffer) -> AnyResult<()> {
         if self.inited && self.playing {
@@ -366,29 +374,33 @@ impl NeoMediaSender {
                 // We are live only send the buffer up to the runtime
                 let min_time = self.last_sent_time;
                 let max_time = self.runtime_to_buftime(runtime) + LATENCY;
-                
+
                 let mut found_start = false;
                 let mut buf_it = buf.buf.iter().peekable();
                 while let Some(frames) = buf_it.next() {
                     if !found_start {
                         let next_frames = buf_it.peek();
-                        if let Some(BcMedia::Iframe(frame)) = next_frames.first() {
+                        if let Some(BcMedia::Iframe(frame)) = next_frames.and_then(|b| b.first()) {
                             // Get time of next IFrame
                             // if it is after min_time, then the
                             // start shuld happen between frames and next_frames
-                            if Duration::from_micros(frame.microseconds) > min_time {
+                            if Duration::from_micros(frame.microseconds as u64) > min_time {
                                 found_start = true;
                             }
                         }
                     }
-                    
+
                     if found_start {
                         // We have found the start send eveythin until we get passed the
                         // max time
                         for frame in frames {
                             let frame_time = match frame {
-                                BcMedia::Iframe(data) => Duration::from_micros(data.microseconds),
-                                BcMedia::Pframe(data) => Duration::from_micros(data.microseconds),
+                                BcMedia::Iframe(data) => {
+                                    Duration::from_micros(data.microseconds as u64)
+                                }
+                                BcMedia::Pframe(data) => {
+                                    Duration::from_micros(data.microseconds as u64)
+                                }
                                 _ => self.last_sent_time,
                             };
                             if frame_time > min_time && frame_time <= max_time {
@@ -400,7 +412,6 @@ impl NeoMediaSender {
                         }
                     }
                 }
-                
             } else {
                 // Not live. Send the WHOLE buffer for analysis
                 for frame in buf.iter() {
@@ -414,9 +425,12 @@ impl NeoMediaSender {
 
     async fn process_jump_to_live(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
         if self.inited {
-            if let (Some(runtime), Some(buffer_start), Some(buffer_end)) = (self.get_runtime(), buffer.start_time(), buffer.end_time()) {
+            if let (Some(runtime), Some(buffer_start), Some(buffer_end)) =
+                (self.get_buftime(), buffer.start_time(), buffer.end_time())
+            {
                 if runtime < (buffer_start - LATENCY) || runtime > (buffer_end + LATENCY) {
-                    self.jump_to_live(buffer)?;
+                    debug!("Outside buffer jumping to live");
+                    self.jump_to_live(buffer).await?;
                 }
             }
         }
@@ -437,15 +451,31 @@ impl NeoMediaSender {
         None
     }
 
+    fn get_buftime(&self) -> Option<Duration> {
+        if let Some(appsrc) = self.vid.as_ref() {
+            if let Some(clock) = appsrc.clock() {
+                if let Some(time) = clock.time() {
+                    if let Some(base_time) = appsrc.base_time() {
+                        let runtime = time - base_time;
+                        return Some(
+                            self.runtime_to_buftime(Duration::from_nanos(runtime.nseconds())),
+                        );
+                    }
+                }
+            }
+        }
+        None
+    }
+
     async fn send_buffer(&mut self, media: &BcMedia) -> AnyResult<bool> {
         if self.inited && self.playing {
             let buftime = match media {
-                BcMedia::Iframe(data) => Duration::from_micros(data.microseconds),
-                BcMedia::Pframe(data) => Duration::from_micros(data.microseconds),
+                BcMedia::Iframe(data) => Duration::from_micros(data.microseconds as u64),
+                BcMedia::Pframe(data) => Duration::from_micros(data.microseconds as u64),
                 _ => self.last_sent_time,
             };
-            let runtime = buftime_to_runtime(buftime);
-            
+            let runtime = self.buftime_to_runtime(buftime);
+
             let buf = match media {
                 BcMedia::Iframe(data) => Some(&data.data),
                 BcMedia::Pframe(data) => Some(&data.data),
@@ -460,13 +490,13 @@ impl NeoMediaSender {
             };
 
             if let (Some(buf), Some(appsrc)) = (buf, appsrc) {
-                debug!("PTS: {:?}", runtime);
+                debug!("PTS: {:?}, Expected: {:?}", runtime, self.get_runtime());
 
                 let mut gst_buf = gstreamer::Buffer::with_size(buf.len()).unwrap();
                 {
                     let gst_buf_mut = gst_buf.get_mut().unwrap();
 
-                    let time = ClockTime::from_useconds(runtime.as_microseconds());
+                    let time = ClockTime::from_useconds(runtime.as_micros() as u64);
                     gst_buf_mut.set_pts(time);
                     let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
                     gst_buf_data.copy_from_slice(buf);
