@@ -31,7 +31,6 @@ use tokio::{
         RwLock,
     },
     task::JoinSet,
-    time::Duration,
 };
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -215,6 +214,12 @@ fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
     })
 }
 
+fn make_queue(name: &str) -> AnyResult<Element> {
+    let queue = make_element("queue2", name)?;
+    queue.set_property("use-buffering", true);
+    Ok(queue)
+}
+
 impl NeoMediaFactoryImpl {
     pub(crate) fn buffer_ready(&self) -> bool {
         self.shared.buffer_ready.load(Ordering::Relaxed)
@@ -274,9 +279,7 @@ impl NeoMediaFactoryImpl {
                 let source = source
                     .dynamic_cast::<Element>()
                     .map_err(|_| anyhow!("Cannot cast back"))?;
-                let queue = make_element("queue", "source_queue")?;
-                queue.set_property_from_str("leaky", "downstream");
-                queue.set_property("max-size-bytes", 104857600u32);
+                let queue = make_queue("source_queue")?;
                 let parser = make_element("h265parse", "parser")?;
                 // parser.set_property("config-interval", 5i32);
                 let payload = make_element("rtph265pay", "pay0")?;
@@ -330,11 +333,7 @@ impl NeoMediaFactoryImpl {
                 let source = source
                     .dynamic_cast::<Element>()
                     .map_err(|_| anyhow!("Cannot cast back"))?;
-                let queue = make_element("queue", "source_queue")?;
-                queue.set_property_from_str("leaky", "downstream");
-                // queue.set_property("max-size-bytes", 0u32);
-                // queue.set_property("max-size-buffers", 0u32);
-                queue.set_property("max-size-time", Duration::from_secs(2).as_nanos() as u64);
+                let queue = make_queue("source_queue")?;
                 let parser = make_element("h264parse", "parser")?;
                 // parser.set_property("update-timecode", true);
                 let payload = make_element("rtph264pay", "pay0")?;
@@ -367,9 +366,7 @@ impl NeoMediaFactoryImpl {
                 debug!("Building Unknown Pipeline");
                 let source = make_element("videotestsrc", "vidsrc")?;
                 source.set_property_from_str("pattern", "snow");
-                let queue = make_element("queue", "queue0")?;
-                queue.set_property_from_str("leaky", "downstream");
-                queue.set_property("max-size-bytes", 104857600u32);
+                let queue = make_queue("queue0")?;
                 let overlay = make_element("textoverlay", "overlay")?;
                 overlay.set_property("text", "Stream not Ready");
                 overlay.set_property_from_str("valignment", "top");
@@ -429,9 +426,7 @@ impl NeoMediaFactoryImpl {
                     .dynamic_cast::<Element>()
                     .map_err(|_| anyhow!("Cannot cast back"))?;
 
-                let queue = make_element("queue", "audqueue")?;
-                queue.set_property_from_str("leaky", "downstream");
-                queue.set_property("max-size-bytes", 104857600u32);
+                let queue = make_queue("audqueue")?;
                 let parser = make_element("aacparse", "audparser")?;
                 let decoder = make_element("decodebin", "auddecoder")?;
                 let encoder = make_element("audioconvert", "audencoder")?;
@@ -500,9 +495,7 @@ impl NeoMediaFactoryImpl {
                     .dynamic_cast::<Element>()
                     .map_err(|_| anyhow!("Cannot cast back"))?;
 
-                let queue = make_element("queue", "audqueue")?;
-                queue.set_property_from_str("leaky", "downstream");
-                queue.set_property("max-size-bytes", 104857600u32);
+                let queue = make_queue("audqueue")?;
                 let decoder = make_element("decodebin", "auddecoder")?;
                 let encoder = make_element("audioconvert", "audencoder")?;
                 let payload = make_element("rtpL16pay", "pay1")?;
