@@ -11,12 +11,9 @@ use std::collections::{
     VecDeque,
     {hash_map::Entry, HashMap},
 };
-use std::{
-    iter::Iterator,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
 };
 // use tokio::time::{interval, Duration, MissedTickBehavior};
 use tokio::{
@@ -108,10 +105,6 @@ impl NeoBuffer {
                     None
                 }
             })
-    }
-
-    fn iter(&self) -> impl Iterator<Item = &BcMedia> {
-        self.buf.iter().flatten()
     }
 
     fn start_time(&self) -> Option<Duration> {
@@ -320,6 +313,7 @@ pub(super) struct NeoMediaSender {
     command_sender: Sender<NeoMediaSenderCommand>,
     inited: bool,
     playing: bool,
+    prebuffered: Duration,
 }
 
 impl NeoMediaSender {
@@ -334,6 +328,7 @@ impl NeoMediaSender {
             command_sender: tx,
             inited: false,
             playing: true,
+            prebuffered: Duration::ZERO,
         }
     }
 
@@ -446,79 +441,66 @@ impl NeoMediaSender {
                 // We are live only send the buffer up to the runtime
                 let min_time = self.last_sent_time;
                 let max_time = self.runtime_to_buftime(runtime) + LATENCY;
+                self.last_sent_time = self.send_buffer_between(buf, min_time, max_time).await?;
+            } else {
+                // We are not playing send pre buffers so that the elements can init themselves
+                let min_time = self.prebuffered;
+                let max_time = self.last_sent_time;
+                self.prebuffered = self.send_buffer_between(buf, min_time, max_time).await?;
+            }
+        }
+        Ok(())
+    }
 
-                let mut found_start = false;
-                let mut buf_it = buf.buf.iter().peekable();
-                while let Some(frames) = buf_it.next() {
-                    tokio::task::yield_now().await;
-                    if !found_start {
-                        let next_frames = buf_it.peek();
-                        if let Some(BcMedia::Iframe(frame)) = next_frames.and_then(|b| b.first()) {
-                            // Get time of next IFrame
-                            // if it is after min_time, then the
-                            // start shuld happen between frames and next_frames
-                            if Duration::from_micros(frame.microseconds as u64) > min_time {
-                                found_start = true;
-                            }
-                        }
-                    }
-
-                    if found_start {
-                        // We have found the start send eveythin until we get passed the
-                        // max time
-                        for frame in frames {
-                            let frame_time = match frame {
-                                BcMedia::Iframe(data) => {
-                                    Duration::from_micros(data.microseconds as u64)
-                                }
-                                BcMedia::Pframe(data) => {
-                                    Duration::from_micros(data.microseconds as u64)
-                                }
-                                _ => self.last_sent_time,
-                            };
-                            if frame_time > min_time && frame_time <= max_time {
-                                self.send_buffer(frame).await?;
-                                self.last_sent_time = frame_time;
-                            } else if frame_time > max_time {
-                                return Ok(());
-                            }
-                        }
+    async fn send_buffer_between(
+        &mut self,
+        buf: &NeoBuffer,
+        min_time: Duration,
+        max_time: Duration,
+    ) -> AnyResult<Duration> {
+        let mut last_sent_time = min_time;
+        let mut found_start = false;
+        let mut buf_it = buf.buf.iter().peekable();
+        while let Some(frames) = buf_it.next() {
+            tokio::task::yield_now().await;
+            if !found_start {
+                let next_frames = buf_it.peek();
+                if let Some(BcMedia::Iframe(frame)) = next_frames.and_then(|b| b.first()) {
+                    // Get time of next IFrame
+                    // if it is after min_time, then the
+                    // start shuld happen between frames and next_frames
+                    if Duration::from_micros(frame.microseconds as u64) > min_time {
+                        found_start = true;
                     }
                 }
-            } else {
-                // Not live. Send the WHOLE buffer for analysis
-                // Up to the last sent frame
-                debug!("Sending pre buffer");
-                for frame in buf.iter() {
+            }
+
+            if found_start {
+                // We have found the start send eveythin until we get passed the
+                // max time
+                for frame in frames {
                     let frame_time = match frame {
-                        BcMedia::Iframe(data) => {
-                            Some(Duration::from_micros(data.microseconds as u64))
-                        }
-                        BcMedia::Pframe(data) => {
-                            Some(Duration::from_micros(data.microseconds as u64))
-                        }
-                        _ => None,
+                        BcMedia::Iframe(data) => Duration::from_micros(data.microseconds as u64),
+                        BcMedia::Pframe(data) => Duration::from_micros(data.microseconds as u64),
+                        _ => last_sent_time,
                     };
-                    debug!(" - Maybe: {:?} > {:?}", frame_time, self.last_sent_time);
-                    if let Some(frame_time) = frame_time {
-                        if frame_time > self.last_sent_time {
-                            return Ok(());
-                        }
+                    if frame_time > min_time && frame_time <= max_time {
+                        self.send_buffer(frame).await?;
+                        last_sent_time = frame_time;
+                    } else if frame_time > max_time {
+                        return Ok(last_sent_time);
                     }
-                    debug!("  - Send: {:?}", frame_time);
-                    self.send_buffer(frame).await?;
                 }
             }
         }
-
-        Ok(())
+        Ok(last_sent_time)
     }
 
     async fn process_jump_to_live(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
         if self.inited {
-            if let (Some(runtime), Some(buffer_start), Some(buffer_end)) =
-                (self.get_buftime(), buffer.start_time(), buffer.end_time())
+            if let (Some(buffer_start), Some(buffer_end)) = (buffer.start_time(), buffer.end_time())
             {
+                let runtime = self.get_buftime().unwrap_or(Duration::ZERO);
                 if runtime < (buffer_start - LATENCY * 2) || runtime > (buffer_end + LATENCY * 2) {
                     debug!(
                         "Outside buffer jumping to live: {:?} < {:?} < {:?}",
