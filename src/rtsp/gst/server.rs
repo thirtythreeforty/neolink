@@ -24,7 +24,7 @@ use std::{
 };
 use tokio::{
     sync::{mpsc::Sender, RwLock},
-    task::JoinHandle,
+    task::JoinSet,
 };
 
 glib::wrapper! {
@@ -83,11 +83,7 @@ impl NeoRtspServer {
         self.imp().add_permitted_roles(tag, permitted_users).await
     }
 
-    pub(crate) async fn run(
-        &self,
-        bind_addr: &str,
-        bind_port: u16,
-    ) -> AnyResult<(JoinHandle<AnyResult<()>>, Arc<MainLoop>)> {
+    pub(crate) async fn run(&self, bind_addr: &str, bind_port: u16) -> AnyResult<()> {
         let server = self;
         server.set_address(bind_addr);
         server.set_service(&format!("{}", bind_port));
@@ -96,10 +92,32 @@ impl NeoRtspServer {
         let main_loop = Arc::new(MainLoop::new(None, false));
         // Run the Glib main loop.
         let main_loop_thread = main_loop.clone();
-        #[allow(clippy::unit_arg)]
-        let handle = tokio::task::spawn_blocking(move || Ok(main_loop_thread.run()));
+        let handle = tokio::task::spawn_blocking(move || {
+            main_loop_thread.run();
+            AnyResult::Ok(())
+        });
+        self.imp()
+            .threads
+            .write()
+            .await
+            .spawn(async move { handle.await? });
+        self.imp().main_loop.write().await.replace(main_loop);
+        Ok(())
+    }
 
-        Ok((handle, main_loop))
+    pub(crate) async fn quit(&self) -> AnyResult<()> {
+        if let Some(main_loop) = self.imp().main_loop.read().await.as_ref() {
+            main_loop.quit();
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn join(&self) -> AnyResult<()> {
+        let mut threads = self.imp().threads.write().await;
+        while let Some(thread) = threads.join_next().await {
+            thread??;
+        }
+        Ok(())
     }
 
     pub(crate) fn set_up_tls(&self, config: &Config) {
@@ -163,6 +181,8 @@ struct FactoryData {
 #[derive(Default)]
 pub(crate) struct NeoRtspServerImpl {
     medias: RwLock<HashMap<String, FactoryData>>,
+    threads: RwLock<JoinSet<AnyResult<()>>>,
+    main_loop: RwLock<Option<Arc<MainLoop>>>,
 }
 
 impl ObjectImpl for NeoRtspServerImpl {}
@@ -182,6 +202,11 @@ impl NeoRtspServerImpl {
             Entry::Occupied(_occ) => {}
             Entry::Vacant(vac) => {
                 let media = NeoMediaFactory::new();
+                let thread_media = media.clone();
+                self.threads
+                    .write()
+                    .await
+                    .spawn(async move { thread_media.join().await });
                 vac.insert(FactoryData {
                     factory: media,
                     paths: Default::default(),

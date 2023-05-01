@@ -131,14 +131,15 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
 
     let bind_addr = config.bind_addr.clone();
     let bind_port = config.bind_port;
-    let (handle, main_loop) = rtsp.run(&bind_addr, bind_port).await?;
-    set.spawn(async move { handle.await? });
+    rtsp.run(&bind_addr, bind_port).await?;
+    let thread_rtsp = rtsp.clone();
+    set.spawn(async move { thread_rtsp.join().await });
 
     while let Some(joined) = set.join_next().await {
         match &joined {
             Err(_) | Ok(Err(_)) => {
                 // Panicked or error in task
-                main_loop.quit();
+                rtsp.quit().await?;
             }
             Ok(Ok(_)) => {
                 // All good
@@ -200,9 +201,7 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
             break;
         }
     }
-    if streaming.get_config().pause.on_motion || streaming.get_config().pause.on_disconnect {
-        log::info!("Pause buffer prepared");
-    }
+    log::info!("{}: Buffers prepared", name);
 
     // tokio::task::spawn(async move {
     //     let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));

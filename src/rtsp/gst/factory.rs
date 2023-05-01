@@ -26,7 +26,10 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 use tokio::{
-    sync::mpsc::{channel, Sender},
+    sync::{
+        mpsc::{channel, Sender},
+        RwLock,
+    },
     task::JoinSet,
     time::Duration,
 };
@@ -104,6 +107,10 @@ impl NeoMediaFactory {
     pub(crate) fn buffer_ready(&self) -> bool {
         self.imp().buffer_ready()
     }
+
+    pub(crate) async fn join(&self) -> AnyResult<()> {
+        self.imp().join().await
+    }
 }
 
 unsafe impl Send for NeoMediaFactory {}
@@ -114,7 +121,7 @@ pub(crate) struct NeoMediaFactoryImpl {
     clientsender: Sender<NeoMediaSender>,
     shared: Arc<NeoMediaShared>,
     #[allow(dead_code)] // Not dead just need a handle to keep it alive and drop with this obj
-    threads: JoinSet<AnyResult<()>>,
+    threads: RwLock<JoinSet<AnyResult<()>>>,
 }
 
 impl Drop for NeoMediaFactoryImpl {
@@ -149,14 +156,15 @@ impl Default for NeoMediaFactoryImpl {
                     }
                 }
             }
-            Ok(())
+            unreachable!();
+            // Ok(())
         });
 
         Self {
             sender: datasender,
             clientsender,
             shared,
-            threads,
+            threads: RwLock::new(threads),
         }
     }
 }
@@ -294,12 +302,6 @@ impl NeoMediaFactoryImpl {
                                                    // source.set_property("max-time", Duration::from_secs_f32(2.25).as_nanos() as u64);
                 source.set_do_timestamp(false);
                 source.set_stream_type(AppStreamType::RandomAccess);
-                let clock = source.clock();
-                if let Some(clock) = clock {
-                    debug!("Clock: {:?}", clock.time());
-                } else {
-                    debug!("No clock");
-                }
 
                 let need_command = client_data.get_commader();
                 let enough_command = client_data.get_commader();
@@ -391,154 +393,136 @@ impl NeoMediaFactoryImpl {
             }
         }
 
-        let do_aud = false;
-        if do_aud {
-            match *self.shared.aud_format.blocking_read() {
-                AudFormats::Unknown => {}
-                AudFormats::Aac => {
-                    debug!("Building Aac pipeline");
-                    let source = make_element("appsrc", "audsrc")?
-                        .dynamic_cast::<AppSrc>()
-                        .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
+        // let do_aud = false;
+        // if do_aud {
+        match *self.shared.aud_format.blocking_read() {
+            AudFormats::Unknown => {}
+            AudFormats::Aac => {
+                debug!("Building Aac pipeline");
+                let source = make_element("appsrc", "audsrc")?
+                    .dynamic_cast::<AppSrc>()
+                    .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
 
-                    source.set_is_live(true);
-                    source.set_block(false);
-                    source.set_property("emit-signals", false);
-                    source.set_max_bytes(52428800);
-                    source.set_do_timestamp(false);
-                    source.set_stream_type(AppStreamType::Seekable);
+                source.set_is_live(true);
+                source.set_block(false);
+                source.set_property("emit-signals", false);
+                source.set_max_bytes(52428800);
+                source.set_do_timestamp(false);
+                source.set_stream_type(AppStreamType::Seekable);
 
-                    let need_command = client_data.get_commader();
-                    let enough_command = client_data.get_commader();
-                    let seek_command = client_data.get_commader();
-                    source.set_callbacks(
-                        AppSrcCallbacks::builder()
-                            .need_data(move |_appsrc, _amt| {
-                                let _ = need_command.blocking_send(NeoMediaSenderCommand::Resume);
-                            })
-                            .enough_data(move |_appsrc| {
-                                let _ = enough_command.blocking_send(NeoMediaSenderCommand::Pause);
-                            })
-                            .seek_data(move |_appsrc, seek_pos| {
-                                debug!("Send seek AAC");
-                                let _ = seek_command
-                                    .blocking_send(NeoMediaSenderCommand::Seek(seek_pos));
-                                true
-                            })
-                            .build(),
-                    );
+                let need_command = client_data.get_commader();
+                let enough_command = client_data.get_commader();
+                // let seek_command = client_data.get_commader();
+                source.set_callbacks(
+                    AppSrcCallbacks::builder()
+                        .need_data(move |_appsrc, _amt| {
+                            let _ = need_command.blocking_send(NeoMediaSenderCommand::Resume);
+                        })
+                        .enough_data(move |_appsrc| {
+                            let _ = enough_command.blocking_send(NeoMediaSenderCommand::Pause);
+                        })
+                        .seek_data(move |_appsrc, _seek_pos| true)
+                        .build(),
+                );
 
-                    let source = source
-                        .dynamic_cast::<Element>()
-                        .map_err(|_| anyhow!("Cannot cast back"))?;
+                let source = source
+                    .dynamic_cast::<Element>()
+                    .map_err(|_| anyhow!("Cannot cast back"))?;
 
-                    let queue = make_element("queue", "audqueue")?;
-                    queue.set_property_from_str("leaky", "downstream");
-                    queue.set_property("max-size-bytes", 104857600u32);
-                    let parser = make_element("aacparse", "audparser")?;
-                    let decoder = make_element("decodebin", "auddecoder")?;
-                    let encoder = make_element("audioconvert", "audencoder")?;
-                    let payload = make_element("rtpL16pay", "audpayload")?;
-                    let storage = make_element("rtpstorage", "audstorage")?;
-                    storage
-                        .set_property("size-time", Duration::from_secs_f32(2.25).as_nanos() as u64);
-                    let jitter = make_element("rtpjitterbuffer", "pay1")?;
-                    jitter.set_property("latency", Duration::from_secs_f32(2.0).as_nanos() as u32);
+                let queue = make_element("queue", "audqueue")?;
+                queue.set_property_from_str("leaky", "downstream");
+                queue.set_property("max-size-bytes", 104857600u32);
+                let parser = make_element("aacparse", "audparser")?;
+                let decoder = make_element("decodebin", "auddecoder")?;
+                let encoder = make_element("audioconvert", "audencoder")?;
+                let payload = make_element("rtpL16pay", "pay1")?;
 
-                    bin.add_many(&[
-                        &source, &queue, &parser, &decoder, &encoder, &payload, &storage, &jitter,
-                    ])?;
-                    Element::link_many(&[&source, &queue, &parser, &decoder])?;
-                    Element::link_many(&[&encoder, &payload, &storage, &jitter])?;
-                    decoder.connect_pad_added(move |_element, pad| {
-                        debug!("Linking encoder to decoder: {:?}", pad.caps());
-                        let sink_pad = encoder
-                            .static_pad("sink")
-                            .expect("Encoder is missing its pad");
-                        pad.link(&sink_pad)
-                            .expect("Failed to link AAC decoder to encoder");
-                    });
+                bin.add_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
+                Element::link_many(&[&source, &queue, &parser, &decoder])?;
+                Element::link_many(&[&encoder, &payload])?;
+                decoder.connect_pad_added(move |_element, pad| {
+                    debug!("Linking encoder to decoder: {:?}", pad.caps());
+                    let sink_pad = encoder
+                        .static_pad("sink")
+                        .expect("Encoder is missing its pad");
+                    pad.link(&sink_pad)
+                        .expect("Failed to link AAC decoder to encoder");
+                });
 
-                    let source = source
-                        .dynamic_cast::<AppSrc>()
-                        .map_err(|_| anyhow!("Cannot convert appsrc"))?;
-                    client_data.update_aud(source);
-                }
-                AudFormats::Adpcm(block_size) => {
-                    debug!("Building Adpcm pipeline");
-                    // Original command line
-                    // caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000
-                    // ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024
-                    // ! adpcmdec
-                    // ! audioconvert
-                    // ! rtpL16pay name=pay1
+                let source = source
+                    .dynamic_cast::<AppSrc>()
+                    .map_err(|_| anyhow!("Cannot convert appsrc"))?;
+                client_data.update_aud(source);
+            }
+            AudFormats::Adpcm(block_size) => {
+                debug!("Building Adpcm pipeline");
+                // Original command line
+                // caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000
+                // ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024
+                // ! adpcmdec
+                // ! audioconvert
+                // ! rtpL16pay name=pay1
 
-                    let source = make_element("appsrc", "audsrc")?
-                        .dynamic_cast::<AppSrc>()
-                        .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
-                    source.set_is_live(true);
-                    source.set_block(false);
-                    source.set_property("emit-signals", false);
-                    source.set_max_bytes(52428800);
-                    source.set_do_timestamp(false);
-                    source.set_stream_type(AppStreamType::RandomAccess);
-                    source.set_caps(Some(
-                        &Caps::builder("audio/x-adpcm")
-                            .field("layout", "div")
-                            .field("block_align", block_size as i32)
-                            .field("channels", 1i32)
-                            .field("rate", 8000i32)
-                            .build(),
-                    ));
+                let source = make_element("appsrc", "audsrc")?
+                    .dynamic_cast::<AppSrc>()
+                    .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
+                source.set_is_live(true);
+                source.set_block(false);
+                source.set_property("emit-signals", false);
+                source.set_max_bytes(52428800);
+                source.set_do_timestamp(false);
+                source.set_stream_type(AppStreamType::RandomAccess);
+                source.set_caps(Some(
+                    &Caps::builder("audio/x-adpcm")
+                        .field("layout", "div")
+                        .field("block_align", block_size as i32)
+                        .field("channels", 1i32)
+                        .field("rate", 8000i32)
+                        .build(),
+                ));
 
-                    let need_command = client_data.get_commader();
-                    let enough_command = client_data.get_commader();
-                    let seek_command = client_data.get_commader();
-                    source.set_callbacks(
-                        AppSrcCallbacks::builder()
-                            .need_data(move |_appsrc, _amt| {
-                                let _ = need_command.blocking_send(NeoMediaSenderCommand::Resume);
-                            })
-                            .enough_data(move |_appsrc| {
-                                let _ = enough_command.blocking_send(NeoMediaSenderCommand::Pause);
-                            })
-                            .seek_data(move |_appsrc, seek_pos| {
-                                debug!("Send seek Adpcm");
-                                let _ = seek_command
-                                    .blocking_send(NeoMediaSenderCommand::Seek(seek_pos));
-                                true
-                            })
-                            .build(),
-                    );
+                let need_command = client_data.get_commader();
+                let enough_command = client_data.get_commader();
+                // let seek_command = client_data.get_commader();
+                source.set_callbacks(
+                    AppSrcCallbacks::builder()
+                        .need_data(move |_appsrc, _amt| {
+                            let _ = need_command.blocking_send(NeoMediaSenderCommand::Resume);
+                        })
+                        .enough_data(move |_appsrc| {
+                            let _ = enough_command.blocking_send(NeoMediaSenderCommand::Pause);
+                        })
+                        .seek_data(move |_appsrc, _seek_pos| true)
+                        .build(),
+                );
 
-                    let source = source
-                        .dynamic_cast::<Element>()
-                        .map_err(|_| anyhow!("Cannot cast back"))?;
+                let source = source
+                    .dynamic_cast::<Element>()
+                    .map_err(|_| anyhow!("Cannot cast back"))?;
 
-                    let queue = make_element("queue", "audqueue")?;
-                    queue.set_property_from_str("leaky", "downstream");
-                    queue.set_property("max-size-bytes", 104857600u32);
-                    let decoder = make_element("decodebin", "auddecoder")?;
-                    let encoder = make_element("audioconvert", "audencoder")?;
-                    let payload = make_element("rtpL16pay", "pay1")?;
+                let queue = make_element("queue", "audqueue")?;
+                queue.set_property_from_str("leaky", "downstream");
+                queue.set_property("max-size-bytes", 104857600u32);
+                let decoder = make_element("decodebin", "auddecoder")?;
+                let encoder = make_element("audioconvert", "audencoder")?;
+                let payload = make_element("rtpL16pay", "pay1")?;
 
-                    bin.add_many(&[&source, &queue, &decoder, &encoder, &payload])?;
-                    Element::link_many(&[&source, &queue, &decoder])?;
-                    Element::link_many(&[&encoder, &payload])?;
-                    decoder.connect_pad_added(move |_element, pad| {
-                        debug!("Linking encoder to decoder: {:?}", pad.caps());
-                        let sink_pad = encoder
-                            .static_pad("sink")
-                            .expect("Encoder is missing its pad");
-                        pad.link(&sink_pad)
-                            .expect("Failed to link ADPCM decoder to encoder");
-                    });
+                bin.add_many(&[&source, &queue, &decoder, &encoder, &payload])?;
+                Element::link_many(&[&source, &queue, &decoder])?;
+                Element::link_many(&[&encoder, &payload])?;
+                decoder.connect_pad_added(move |_element, pad| {
+                    debug!("Linking encoder to decoder: {:?}", pad.caps());
+                    let sink_pad = encoder
+                        .static_pad("sink")
+                        .expect("Encoder is missing its pad");
+                    pad.link(&sink_pad)
+                        .expect("Failed to link ADPCM decoder to encoder");
+                });
 
-                    let source = source
-                        .dynamic_cast::<AppSrc>()
-                        .map_err(|_| anyhow!("Cannot convert appsrc"))?;
-                    client_data.update_aud(source);
-                }
+                let source = source
+                    .dynamic_cast::<AppSrc>()
+                    .map_err(|_| anyhow!("Cannot convert appsrc"))?;
+                client_data.update_aud(source);
             }
         }
 
@@ -546,5 +530,13 @@ impl NeoMediaFactoryImpl {
         // debug!("Pipeline built");
         bin.dynamic_cast::<Element>()
             .map_err(|_| anyhow!("Cannot cast back"))
+    }
+
+    async fn join(&self) -> AnyResult<()> {
+        let mut threads = self.threads.write().await;
+        while let Some(thread) = threads.join_next().await {
+            thread??;
+        }
+        Ok(())
     }
 }
