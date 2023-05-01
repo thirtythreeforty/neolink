@@ -64,12 +64,16 @@ impl NeoBuffer {
         }
         if was_iframe {
             if let Some(last_frame_time) = self.last_iframe_time() {
-                let mut time_delta = self.first_iframe_time().map(|ff| last_frame_time - ff);
+                let mut time_delta = self
+                    .first_iframe_time()
+                    .map(|ff| last_frame_time.saturating_sub(ff));
                 while let Some(time) = time_delta {
                     if time > BUFFER_TIME && self.buf.len() > BUFFER_SIZE {
                         let _ = self.buf.pop_front();
                         debug!("Popping frame with time difference of {:?}", time);
-                        time_delta = self.first_iframe_time().map(|ff| last_frame_time - ff);
+                        time_delta = self
+                            .first_iframe_time()
+                            .map(|ff| last_frame_time.saturating_sub(ff));
                     } else {
                         debug!("Iframes left in the buffer: {}", self.buf.len());
                         break;
@@ -358,11 +362,11 @@ impl NeoMediaSender {
                 }
             });
             if let Some(target_time) = target_time {
-                self.start_time = target_time - runtime;
+                self.start_time = target_time.saturating_sub(runtime);
                 self.last_sent_time = target_time;
                 debug!(
                     "Target time: {:?}, New start time: {:?}, New Runtime: {:?}, Actual Runtime: {:?}",
-                    target_time, self.start_time, target_time - self.start_time, runtime
+                    target_time, self.start_time, target_time.saturating_sub(self.start_time), runtime
                 );
             }
         }
@@ -409,7 +413,7 @@ impl NeoMediaSender {
     async fn initialise(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
         if !self.inited {
             if let (Some(first_ms), Some(end_ms)) = (buffer.start_time(), buffer.end_time()) {
-                if end_ms - first_ms > LATENCY * 5 {
+                if end_ms.saturating_sub(first_ms) > LATENCY * 5 {
                     // Minimum buffer
                     self.inited = true;
 
@@ -423,15 +427,11 @@ impl NeoMediaSender {
     }
 
     fn runtime_to_buftime(&self, runtime: Duration) -> Duration {
-        runtime + self.start_time
+        runtime.saturating_add(self.start_time)
     }
 
     fn buftime_to_runtime(&self, buftime: Duration) -> Duration {
-        if buftime > self.start_time {
-            buftime - self.start_time
-        } else {
-            Duration::ZERO
-        }
+        buftime.saturating_sub(self.start_time)
     }
 
     async fn process_buffer(&mut self, buf: &NeoBuffer) -> AnyResult<()> {
@@ -440,7 +440,7 @@ impl NeoMediaSender {
             if let Some(runtime) = runtime {
                 // We are live only send the buffer up to the runtime
                 let min_time = self.last_sent_time;
-                let max_time = self.runtime_to_buftime(runtime) + LATENCY;
+                let max_time = self.runtime_to_buftime(runtime).saturating_add(LATENCY);
                 self.last_sent_time = self.send_buffer_between(buf, min_time, max_time).await?;
             } else {
                 // We are not playing send pre buffers so that the elements can init themselves
@@ -501,7 +501,9 @@ impl NeoMediaSender {
             if let (Some(buffer_start), Some(buffer_end)) = (buffer.start_time(), buffer.end_time())
             {
                 let runtime = self.get_buftime().unwrap_or(Duration::ZERO);
-                if runtime < (buffer_start - LATENCY * 2) || runtime > (buffer_end + LATENCY * 2) {
+                if runtime < buffer_start.saturating_sub(LATENCY * 2)
+                    || runtime > buffer_end.saturating_add(LATENCY * 2)
+                {
                     debug!(
                         "Outside buffer jumping to live: {:?} < {:?} < {:?}",
                         buffer_start, runtime, buffer_end
@@ -518,7 +520,7 @@ impl NeoMediaSender {
             if let Some(clock) = appsrc.clock() {
                 if let Some(time) = clock.time() {
                     if let Some(base_time) = appsrc.base_time() {
-                        let runtime = time - base_time;
+                        let runtime = time.saturating_sub(base_time);
                         return Some(Duration::from_nanos(runtime.nseconds()));
                     }
                 }
@@ -532,7 +534,7 @@ impl NeoMediaSender {
             if let Some(clock) = appsrc.clock() {
                 if let Some(time) = clock.time() {
                     if let Some(base_time) = appsrc.base_time() {
-                        let runtime = time - base_time;
+                        let runtime = time.saturating_sub(base_time);
                         return Some(
                             self.runtime_to_buftime(Duration::from_nanos(runtime.nseconds())),
                         );
