@@ -201,6 +201,13 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
             break;
         }
     }
+    // Clear all current media and force a reconnect
+    //   This shoudld stop them from watching the "Stream Not Ready Thing"
+    tags.iter()
+        .map(|tag| rtsp_thread.clear_session(tag))
+        .collect::<FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
     log::info!("{}: Buffers prepared", name);
 
     // tokio::task::spawn(async move {

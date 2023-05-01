@@ -13,7 +13,7 @@ use gstreamer_rtsp_server::{
     gio::{TlsAuthenticationMode, TlsCertificate},
     prelude::*,
     subclass::prelude::*,
-    RTSPAuth, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
+    RTSPAuth, RTSPFilterResult, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
 use neolink_core::bcmedia::model::*;
@@ -167,6 +167,33 @@ impl NeoRtspServer {
     /// Returns true once the pause buffer is ready
     pub(crate) async fn buffer_ready<T: Into<String>>(&self, tag: T) -> Option<bool> {
         self.imp().buffer_ready(tag).await
+    }
+
+    pub(crate) async fn clear_session<T: Into<String>>(&self, tag: T) {
+        let tag: String = tag.into();
+        if let Some(media) = self.imp().medias.read().await.get(&tag) {
+            self.clear_session_paths(media.paths.iter());
+        }
+    }
+
+    fn clear_session_paths<T: AsRef<str>>(&self, paths: impl Iterator<Item = T>) {
+        let paths: Vec<_> = paths.collect();
+        for client in self.client_filter(None) {
+            for session in client.session_filter(None) {
+                session.filter(Some(&mut |_session, session_media| {
+                    if paths.iter().any(|p| {
+                        session_media
+                            .matches(p.as_ref())
+                            .map(|amt| amt > 0)
+                            .unwrap_or(false)
+                    }) {
+                        RTSPFilterResult::Remove
+                    } else {
+                        RTSPFilterResult::Keep
+                    }
+                }));
+            }
+        }
     }
 }
 
