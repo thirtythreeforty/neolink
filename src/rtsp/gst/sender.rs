@@ -34,7 +34,7 @@ const MILLIS: FrameTime = 1000;
 
 const LATENCY: FrameTime = 20 * MILLIS;
 const BUFFER_TIME: FrameTime = 10 * SECS;
-const BUFFER_SIZE: usize = 2;
+const BUFFER_SIZE: usize = 3;
 
 #[derive(Default)]
 struct NeoBuffer {
