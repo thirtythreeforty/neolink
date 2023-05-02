@@ -7,13 +7,16 @@ use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use log::*;
 use neolink_core::bcmedia::model::*;
-use std::collections::{
-    VecDeque,
-    {hash_map::Entry, HashMap},
-};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
+};
+use std::{
+    collections::{
+        VecDeque,
+        {hash_map::Entry, HashMap},
+    },
+    convert::TryInto,
 };
 // use tokio::time::{interval, Duration, MissedTickBehavior};
 use tokio::{
@@ -40,7 +43,7 @@ impl NeoBuffer {
             BcMedia::Iframe(data) => {
                 debug!(
                     "Pushed iFrame to buffer at {:?}",
-                    Duration::from_micros(data.microseconds as u64)
+                    Duration::from_micros(data.microseconds.try_into().unwrap())
                 );
                 was_iframe = true;
                 self.buf.push_back(vec![BcMedia::Iframe(data)])
@@ -90,7 +93,9 @@ impl NeoBuffer {
             .and_then(|b| b.first())
             .and_then(|f| {
                 if let BcMedia::Iframe(frame) = f {
-                    Some(Duration::from_micros(frame.microseconds as u64))
+                    Some(Duration::from_micros(
+                        frame.microseconds.try_into().unwrap(),
+                    ))
                 } else {
                     None
                 }
@@ -104,7 +109,9 @@ impl NeoBuffer {
             .and_then(|b| b.first())
             .and_then(|f| {
                 if let BcMedia::Iframe(frame) = f {
-                    Some(Duration::from_micros(frame.microseconds as u64))
+                    Some(Duration::from_micros(
+                        frame.microseconds.try_into().unwrap(),
+                    ))
                 } else {
                     None
                 }
@@ -115,7 +122,7 @@ impl NeoBuffer {
         if let Some(BcMedia::Iframe(data)) =
             self.buf.front().and_then(|inner_buf| inner_buf.first())
         {
-            Some(Duration::from_micros(data.microseconds as u64))
+            Some(Duration::from_micros(data.microseconds.try_into().unwrap()))
         } else {
             None
         }
@@ -126,8 +133,12 @@ impl NeoBuffer {
             innerbuffer
                 .iter()
                 .flat_map(|frame| match frame {
-                    BcMedia::Iframe(data) => Some(Duration::from_micros(data.microseconds as u64)),
-                    BcMedia::Pframe(data) => Some(Duration::from_micros(data.microseconds as u64)),
+                    BcMedia::Iframe(data) => {
+                        Some(Duration::from_micros(data.microseconds.try_into().unwrap()))
+                    }
+                    BcMedia::Pframe(data) => {
+                        Some(Duration::from_micros(data.microseconds.try_into().unwrap()))
+                    }
                     _ => None,
                 })
                 .max()
@@ -211,7 +222,7 @@ impl NeoMediaSenders {
             BcMedia::Adpcm(data) => {
                 if !matches!(*self.shared.aud_format.read().await, AudFormats::Adpcm(_)) {
                     *self.shared.aud_format.write().await =
-                        AudFormats::Adpcm(data.data.len() as u16);
+                        AudFormats::Adpcm(data.data.len().try_into().unwrap());
                 }
             }
             _ => {}
@@ -224,14 +235,14 @@ impl NeoMediaSenders {
         self.handle_buffer().await?;
         match &data {
             BcMedia::Iframe(data) => {
-                let frame_ms = Duration::from_micros(data.microseconds as u64);
+                let frame_ms = Duration::from_micros(data.microseconds.try_into().unwrap());
                 debug!("New IFrame for buffer @ {:?}", frame_ms);
                 for client in self.client_data.values() {
                     debug!("  - {:?}", client.buftime_to_runtime(frame_ms));
                 }
             }
             BcMedia::Pframe(data) => {
-                let frame_ms = Duration::from_micros(data.microseconds as u64);
+                let frame_ms = Duration::from_micros(data.microseconds.try_into().unwrap());
                 debug!("New PFrame for buffer @ {:?}", frame_ms);
                 for client in self.client_data.values() {
                     debug!("  - {:?}", client.buftime_to_runtime(frame_ms));
@@ -309,7 +320,7 @@ pub(super) enum NeoMediaSenderCommand {
 }
 #[derive(Debug)]
 pub(super) struct NeoMediaSender {
-    start_time: Duration,
+    start_time: i128,
     last_sent_time: Duration,
     vid: Option<AppSrc>,
     aud: Option<AppSrc>,
@@ -324,7 +335,7 @@ impl NeoMediaSender {
     pub(super) fn new() -> Self {
         let (tx, rx) = channel(30);
         Self {
-            start_time: Duration::ZERO,
+            start_time: 0,
             last_sent_time: Duration::ZERO,
             vid: None,
             aud: None,
@@ -356,17 +367,18 @@ impl NeoMediaSender {
             let idx = frames.len().saturating_div(2);
             let target_time = frames.get(idx).and_then(|f| f.first()).and_then(|f| {
                 if let BcMedia::Iframe(data) = f {
-                    Some(Duration::from_micros(data.microseconds as u64))
+                    Some(Duration::from_micros(data.microseconds.try_into().unwrap()))
                 } else {
                     None
                 }
             });
             if let Some(target_time) = target_time {
-                self.start_time = target_time.saturating_sub(runtime);
+                self.start_time = TryInto::<i128>::try_into(target_time.as_micros()).unwrap()
+                    - TryInto::<i128>::try_into(runtime.as_micros()).unwrap();
                 self.last_sent_time = target_time;
                 debug!(
                     "Target time: {:?}, New start time: {:?}, New Runtime: {:?}, Actual Runtime: {:?}",
-                    target_time, self.start_time, target_time.saturating_sub(self.start_time), runtime
+                    target_time, self.start_time, self.buftime_to_runtime(target_time), runtime
                 );
             }
         }
@@ -427,11 +439,25 @@ impl NeoMediaSender {
     }
 
     fn runtime_to_buftime(&self, runtime: Duration) -> Duration {
-        runtime.saturating_add(self.start_time)
+        Duration::from_micros(
+            TryInto::<u64>::try_into(
+                TryInto::<i128>::try_into(runtime.as_micros())
+                    .unwrap()
+                    .saturating_add(self.start_time),
+            )
+            .unwrap_or(0),
+        )
     }
 
     fn buftime_to_runtime(&self, buftime: Duration) -> Duration {
-        buftime.saturating_sub(self.start_time)
+        Duration::from_micros(
+            TryInto::<u64>::try_into(
+                TryInto::<i128>::try_into(buftime.as_micros())
+                    .unwrap()
+                    .saturating_sub(self.start_time),
+            )
+            .unwrap_or(0),
+        )
     }
 
     async fn process_buffer(&mut self, buf: &NeoBuffer) -> AnyResult<()> {
@@ -469,7 +495,7 @@ impl NeoMediaSender {
                     // Get time of next IFrame
                     // if it is after min_time, then the
                     // start shuld happen between frames and next_frames
-                    if Duration::from_micros(frame.microseconds as u64) > min_time {
+                    if Duration::from_micros(frame.microseconds.try_into().unwrap()) > min_time {
                         found_start = true;
                     }
                 }
@@ -480,8 +506,12 @@ impl NeoMediaSender {
                 // max time
                 for frame in frames {
                     let frame_time = match frame {
-                        BcMedia::Iframe(data) => Duration::from_micros(data.microseconds as u64),
-                        BcMedia::Pframe(data) => Duration::from_micros(data.microseconds as u64),
+                        BcMedia::Iframe(data) => {
+                            Duration::from_micros(data.microseconds.try_into().unwrap())
+                        }
+                        BcMedia::Pframe(data) => {
+                            Duration::from_micros(data.microseconds.try_into().unwrap())
+                        }
                         _ => last_sent_time,
                     };
                     if frame_time > min_time && frame_time <= max_time {
@@ -548,8 +578,12 @@ impl NeoMediaSender {
     async fn send_buffer(&mut self, media: &BcMedia) -> AnyResult<bool> {
         if self.inited && self.playing {
             let buftime = match media {
-                BcMedia::Iframe(data) => Duration::from_micros(data.microseconds as u64),
-                BcMedia::Pframe(data) => Duration::from_micros(data.microseconds as u64),
+                BcMedia::Iframe(data) => {
+                    Duration::from_micros(data.microseconds.try_into().unwrap())
+                }
+                BcMedia::Pframe(data) => {
+                    Duration::from_micros(data.microseconds.try_into().unwrap())
+                }
                 _ => self.last_sent_time,
             };
             let runtime = self.buftime_to_runtime(buftime);
@@ -574,7 +608,7 @@ impl NeoMediaSender {
                 {
                     let gst_buf_mut = gst_buf.get_mut().unwrap();
 
-                    let time = ClockTime::from_useconds(runtime.as_micros() as u64);
+                    let time = ClockTime::from_useconds(runtime.as_micros().try_into().unwrap());
                     gst_buf_mut.set_dts(time);
                     let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
                     gst_buf_data.copy_from_slice(buf);
