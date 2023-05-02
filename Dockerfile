@@ -4,7 +4,7 @@
 #                    Miroslav Šedivý
 # SPDX-License-Identifier: AGPL-3.0-only
 
-FROM docker.io/rust:slim-buster AS build
+FROM docker.io/rust:slim-bullseye AS build
 ARG TARGETPLATFORM
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -34,7 +34,7 @@ RUN  echo "TARGETPLATFORM: ${TARGETPLATFORM}"; \
   fi
 
 # Create the release container. Match the base OS used to build
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 ARG TARGETPLATFORM
 ARG REPO
 ARG VERSION
