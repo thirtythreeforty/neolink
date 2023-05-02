@@ -241,8 +241,37 @@ impl NeoMediaFactoryImpl {
         let mut client_data = NeoMediaSender::new();
 
         // Now contruct the actual ones
-        match *self.shared.vid_format.blocking_read() {
-            VidFormats::H265 => {
+        match (
+            *self.shared.vid_format.blocking_read(),
+            self.shared.buffer_ready.load(Ordering::Relaxed),
+        ) {
+            (VidFormats::Unknown, true) | (_, false) => {
+                debug!("Building Unknown Pipeline");
+                let source = make_element("videotestsrc", "vidsrc")?;
+                source.set_property_from_str("pattern", "snow");
+                let queue = make_queue("queue0")?;
+                let overlay = make_element("textoverlay", "overlay")?;
+                overlay.set_property("text", "Stream not Ready");
+                overlay.set_property_from_str("valignment", "top");
+                overlay.set_property_from_str("halignment", "left");
+                overlay.set_property("font-desc", "Sans, 16");
+                let encoder = make_element("jpegenc", "encoder")?;
+                let payload = make_element("rtpjpegpay", "pay0")?;
+
+                bin.add_many(&[&source, &queue, &overlay, &encoder, &payload])?;
+                source.link_filtered(
+                    &queue,
+                    &Caps::builder("video/x-raw")
+                        .field("format", "YUY2")
+                        .field("width", 896i32)
+                        .field("height", 512i32)
+                        .field("framerate", gstreamer::Fraction::new(25, 1))
+                        .build(),
+                )?;
+                // source.link(&queue)?;
+                Element::link_many(&[&queue, &overlay, &encoder, &payload])?;
+            }
+            (VidFormats::H265, true) => {
                 debug!("Building H265 Pipeline");
                 let source = make_element("appsrc", "vidsrc")?
                     .dynamic_cast::<AppSrc>()
@@ -291,7 +320,7 @@ impl NeoMediaFactoryImpl {
                     .map_err(|_| anyhow!("Cannot convert appsrc"))?;
                 client_data.update_vid(source);
             }
-            VidFormats::H264 => {
+            (VidFormats::H264, true) => {
                 debug!("Building H264 Pipeline");
                 let source = make_element("appsrc", "vidsrc")?
                     .dynamic_cast::<AppSrc>()
@@ -362,39 +391,16 @@ impl NeoMediaFactoryImpl {
                     .map_err(|_| anyhow!("Cannot convert appsrc"))?;
                 client_data.update_vid(source);
             }
-            VidFormats::Unknown => {
-                debug!("Building Unknown Pipeline");
-                let source = make_element("videotestsrc", "vidsrc")?;
-                source.set_property_from_str("pattern", "snow");
-                let queue = make_queue("queue0")?;
-                let overlay = make_element("textoverlay", "overlay")?;
-                overlay.set_property("text", "Stream not Ready");
-                overlay.set_property_from_str("valignment", "top");
-                overlay.set_property_from_str("halignment", "left");
-                overlay.set_property("font-desc", "Sans, 16");
-                let encoder = make_element("jpegenc", "encoder")?;
-                let payload = make_element("rtpjpegpay", "pay0")?;
-
-                bin.add_many(&[&source, &queue, &overlay, &encoder, &payload])?;
-                source.link_filtered(
-                    &queue,
-                    &Caps::builder("video/x-raw")
-                        .field("format", "YUY2")
-                        .field("width", 896i32)
-                        .field("height", 512i32)
-                        .field("framerate", gstreamer::Fraction::new(25, 1))
-                        .build(),
-                )?;
-                // source.link(&queue)?;
-                Element::link_many(&[&queue, &overlay, &encoder, &payload])?;
-            }
         }
 
         // let do_aud = false;
         // if do_aud {
-        match *self.shared.aud_format.blocking_read() {
-            AudFormats::Unknown => {}
-            AudFormats::Aac => {
+        match (
+            *self.shared.aud_format.blocking_read(),
+            self.shared.buffer_ready.load(Ordering::Relaxed),
+        ) {
+            (AudFormats::Unknown, true) | (_, false) => {}
+            (AudFormats::Aac, true) => {
                 debug!("Building Aac pipeline");
                 let source = make_element("appsrc", "audsrc")?
                     .dynamic_cast::<AppSrc>()
@@ -449,7 +455,7 @@ impl NeoMediaFactoryImpl {
                     .map_err(|_| anyhow!("Cannot convert appsrc"))?;
                 client_data.update_aud(source);
             }
-            AudFormats::Adpcm(block_size) => {
+            (AudFormats::Adpcm(block_size), true) => {
                 debug!("Building Adpcm pipeline");
                 // Original command line
                 // caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000
