@@ -179,21 +179,30 @@ impl NeoRtspServer {
     fn clear_session_paths<T: AsRef<str>>(&self, paths: impl Iterator<Item = T>) {
         let paths: Vec<_> = paths.collect();
         for client in self.client_filter(None) {
-            for session in client.session_filter(None) {
+            client.session_filter(Some(&mut |_client, session| {
+                let mut clean_up = false;
                 session.filter(Some(&mut |_session, session_media| {
                     if paths.iter().any(|p| {
+                        let s = p.as_ref();
                         session_media
-                            .matches(p.as_ref())
-                            .map(|amt| amt > 0)
+                            .matches(s)
+                            .map(|amt| amt == s.len() as i32)
                             .unwrap_or(false)
                     }) {
                         info!("Removing Session Media");
+                        clean_up = true;
                         RTSPFilterResult::Remove
                     } else {
                         RTSPFilterResult::Keep
                     }
                 }));
-            }
+
+                if clean_up {
+                    RTSPFilterResult::Remove
+                } else {
+                    RTSPFilterResult::Keep
+                }
+            }));
         }
     }
 }
