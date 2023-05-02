@@ -187,6 +187,7 @@ impl NeoRtspServer {
                             .map(|amt| amt > 0)
                             .unwrap_or(false)
                     }) {
+                        info!("Removing Session Media");
                         RTSPFilterResult::Remove
                     } else {
                         RTSPFilterResult::Keep

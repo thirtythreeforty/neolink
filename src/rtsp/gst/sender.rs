@@ -500,7 +500,7 @@ impl NeoMediaSender {
         if self.inited {
             if let (Some(buffer_start), Some(buffer_end)) = (buffer.start_time(), buffer.end_time())
             {
-                let runtime = self.get_buftime().unwrap_or(Duration::ZERO);
+                let runtime = self.get_buftime().unwrap_or(self.last_sent_time);
                 if runtime < buffer_start.saturating_sub(LATENCY * 2)
                     || runtime > buffer_end.saturating_add(LATENCY * 2)
                 {
