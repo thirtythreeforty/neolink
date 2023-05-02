@@ -380,14 +380,17 @@ impl NeoMediaSender {
             let runtime = self.get_runtime().unwrap_or(0);
             let (fronts, backs) = buffer.buf.as_slices();
             let frames = fronts.iter().chain(backs.iter()).collect::<Vec<_>>();
-            let idx = frames.len().saturating_div(2);
-            let target_time = frames.get(idx).and_then(|f| f.first()).and_then(|f| {
-                if let BcMedia::Iframe(data) = f {
-                    Some(data.microseconds as FrameTime)
-                } else {
-                    None
-                }
-            });
+            let target_time = {
+                // Middle iframe
+                let idx = frames.len().saturating_div(2);
+                frames.get(idx).and_then(|f| f.first()).and_then(|f| {
+                    if let BcMedia::Iframe(data) = f {
+                        Some(data.microseconds as FrameTime)
+                    } else {
+                        None
+                    }
+                })
+            };
             if let Some(target_time) = target_time {
                 self.start_time = target_time - runtime;
                 self.last_sent_time = target_time;
@@ -447,7 +450,7 @@ impl NeoMediaSender {
 
                     self.jump_to_live(buffer).await?;
 
-                    self.process_buffer(buffer).await?;
+                    let _ = self.process_buffer(buffer).await; // Ignore errors let them be handled later in the loop
                 }
             }
         }
