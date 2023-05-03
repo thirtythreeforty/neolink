@@ -51,12 +51,14 @@ fn tokio_console_enable() {
 }
 
 #[cfg(not(tokio_unstable))]
-fn tokio_console_enable() {}
+fn tokio_console_enable() {
+    debug!("Tokio Console Disabled");
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tokio_console_enable();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    tokio_console_enable();
 
     info!(
         "Neolink {} {}",

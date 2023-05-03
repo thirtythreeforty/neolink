@@ -30,7 +30,7 @@ regex = "1.7.3"
 rumqttc = "0.20.0"
 serde = { version = "1.0.160", features = ["derive"] }
 time = "0.3.20"
-tokio = { version = "1.27.0", features = ["rt", "macros", "io-util"] } # rt-multi-thread
+tokio = { version = "1.27.0", features = ["rt-multi-thread", "macros", "io-util", "tracing"] }
 tokio-stream = "0.1.12"
 toml = "0.7.3"
 validator = "0.16.0"
