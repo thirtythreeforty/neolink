@@ -38,15 +38,24 @@ mod reboot;
 mod rtsp;
 mod statusled;
 mod talk;
-mod timed_poll;
 mod utils;
 
 use cmdline::{Command, Opt};
 use config::Config;
-pub(crate) use timed_poll::TimedPoll;
+use console_subscriber as _;
+
+#[cfg(tokio_unstable)]
+fn tokio_console_enable() {
+    info!("Tokio Console Enabled");
+    console_subscriber::init();
+}
+
+#[cfg(not(tokio_unstable))]
+fn tokio_console_enable() {}
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tokio_console_enable();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     info!(

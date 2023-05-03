@@ -643,15 +643,12 @@ impl NeoMediaSender {
                 }
                 // debug!("Buffer pushed");
                 let thread_appsrc = appsrc.clone(); // GObjects are refcounted
-                let res = crate::TimedPoll::new(
-                    "SendBuffer",
-                    tokio::task::spawn_blocking(move || {
-                        thread_appsrc
-                            .push_buffer(gst_buf.copy())
-                            .map(|_| ())
-                            .map_err(|_| anyhow!("Could not push buffer to appsrc"))
-                    }),
-                )
+                let res = tokio::task::spawn_blocking(move || {
+                    thread_appsrc
+                        .push_buffer(gst_buf.copy())
+                        .map(|_| ())
+                        .map_err(|_| anyhow!("Could not push buffer to appsrc"))
+                })
                 .await;
                 match &res {
                     Err(e) => {

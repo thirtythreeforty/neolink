@@ -143,7 +143,7 @@ impl Default for NeoMediaFactoryImpl {
             ReceiverStream::new(datarx),
             ReceiverStream::new(rx_clientsender),
         );
-        threads.spawn(crate::TimedPoll::new("MediaSend", async move {
+        threads.spawn(async move {
             loop {
                 tokio::task::yield_now().await;
                 match sender.run().await {
@@ -157,7 +157,7 @@ impl Default for NeoMediaFactoryImpl {
             }
             unreachable!();
             // Ok(())
-        }));
+        });
 
         Self {
             sender: datasender,

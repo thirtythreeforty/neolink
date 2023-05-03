@@ -96,30 +96,24 @@ impl NeoRtspServer {
             main_loop_thread.run();
             AnyResult::Ok(())
         });
-        crate::TimedPoll::new("ServerThreadsLock", self.imp().threads.write())
+        self.imp()
+            .threads
+            .write()
             .await
-            .spawn(crate::TimedPoll::new(
-                "ServerRun",
-                async move { handle.await? },
-            ));
-        crate::TimedPoll::new("ServerMainLoop", self.imp().main_loop.write())
-            .await
-            .replace(main_loop);
+            .spawn(async move { handle.await? });
+        self.imp().main_loop.write().await.replace(main_loop);
         Ok(())
     }
 
     pub(crate) async fn quit(&self) -> AnyResult<()> {
-        if let Some(main_loop) = crate::TimedPoll::new("MainLoopQuit", self.imp().main_loop.read())
-            .await
-            .as_ref()
-        {
+        if let Some(main_loop) = self.imp().main_loop.read().await.as_ref() {
             main_loop.quit();
         }
         Ok(())
     }
 
     pub(crate) async fn join(&self) -> AnyResult<()> {
-        let mut threads = crate::TimedPoll::new("MainLoopJoin", self.imp().threads.write()).await;
+        let mut threads = self.imp().threads.write().await;
         while let Some(thread) = threads.join_next().await {
             thread??;
         }
@@ -257,9 +251,7 @@ impl NeoRtspServerImpl {
                 self.threads
                     .write()
                     .await
-                    .spawn(crate::TimedPoll::new("RtspJoin", async move {
-                        thread_media.join().await
-                    }));
+                    .spawn(async move { thread_media.join().await });
                 vac.insert(FactoryData {
                     factory: media,
                     paths: Default::default(),
