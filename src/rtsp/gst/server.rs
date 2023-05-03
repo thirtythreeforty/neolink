@@ -178,7 +178,8 @@ impl NeoRtspServer {
 
     fn clear_session_paths<T: AsRef<str>>(&self, paths: impl Iterator<Item = T>) {
         let paths: Vec<_> = paths.collect();
-        for client in self.client_filter(None) {
+        self.client_filter(Some(&mut |_server, client| {
+            let mut close_client = false;
             client.session_filter(Some(&mut |_client, session| {
                 let mut clean_up = false;
                 session.filter(Some(&mut |_session, session_media| {
@@ -198,12 +199,19 @@ impl NeoRtspServer {
                 }));
 
                 if clean_up {
+                    close_client = true;
                     RTSPFilterResult::Remove
                 } else {
                     RTSPFilterResult::Keep
                 }
             }));
-        }
+            if close_client {
+                client.close();
+                RTSPFilterResult::Remove
+            } else {
+                RTSPFilterResult::Keep
+            }
+        }));
     }
 }
 

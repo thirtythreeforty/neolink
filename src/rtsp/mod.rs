@@ -179,48 +179,50 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
 
     let _ = loggedin.manage().await;
 
+    let tags = loggedin.shared.get_tags();
+    let rtsp_thread = loggedin.get_rtsp();
+
+    // Check if buffers are already perpared (from say previous connection)
+    let buffers_prepared = tags
+        .iter()
+        .map(|tag| rtsp_thread.buffer_ready(tag))
+        .collect::<FuturesUnordered<_>>()
+        .filter_map(|a| a)
+        .all(|a| a)
+        .await;
+
+    // Start pulling data from the camera
     let mut streaming = loggedin
         .stream()
         .await
         .with_context(|| format!("{}: Could not start stream", name))
         .map_err(CameraFailureKind::Retry)?;
 
-    let tags = streaming.shared.get_tags();
-    let rtsp_thread = streaming.get_rtsp();
-
-    let mut waiter = tokio::time::interval(Duration::from_micros(500));
-    loop {
-        waiter.tick().await;
-        if tags
-            .iter()
-            .map(|tag| rtsp_thread.buffer_ready(tag))
-            .collect::<FuturesUnordered<_>>()
-            .all(|f| f.unwrap_or(false))
-            .await
-        {
-            break;
+    if !buffers_prepared {
+        // Wait for buffers to be prepared
+        let mut waiter = tokio::time::interval(Duration::from_micros(500));
+        loop {
+            waiter.tick().await;
+            if tags
+                .iter()
+                .map(|tag| rtsp_thread.buffer_ready(tag))
+                .collect::<FuturesUnordered<_>>()
+                .all(|f| f.unwrap_or(false))
+                .await
+            {
+                break;
+            }
         }
-    }
-    // Clear all current media and force a reconnect
-    //   This shoudld stop them from watching the "Stream Not Ready Thing"
-    tags.iter()
-        .map(|tag| rtsp_thread.clear_session(tag))
-        .collect::<FuturesUnordered<_>>()
-        .collect::<Vec<_>>()
-        .await;
-    log::info!("{}: Buffers prepared", name);
 
-    // tokio::task::spawn(async move {
-    //     let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
-    //     loop {
-    //         inter.tick().await;
-    //         log::info!(
-    //             "Users: {:?}, {}",
-    //             rtsp_thread.get_number_of_clients("Cammy01::Main").await,
-    //             rtsp_thread.num_path_users(&["/Cammy01/mainStream"])
-    //         );
-    //     }
-    // });
+        // Clear all current media and force a reconnect
+        //   This shoudld stop them from watching the "Stream Not Ready Thing"
+        tags.iter()
+            .map(|tag| rtsp_thread.clear_session(tag))
+            .collect::<FuturesUnordered<_>>()
+            .collect::<Vec<_>>()
+            .await;
+        log::info!("{}: Buffers prepared", name);
+    }
 
     loop {
         // Wait for error or reason to pause

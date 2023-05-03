@@ -174,9 +174,15 @@ impl NeoMediaSenders {
     }
 
     async fn handle_new_client(&mut self, mut client: NeoMediaSender) -> AnyResult<()> {
-        client.initialise(&self.buffer).await?;
-        self.client_data
-            .insert(self.uid.fetch_add(1, Ordering::Relaxed), client);
+        if client.vid.is_some() || client.aud.is_some() {
+            // Must have at least one type of source
+            //
+            // If not this is the dummy stream
+            // we don't keep a reference to that
+            client.initialise(&self.buffer).await?;
+            self.client_data
+                .insert(self.uid.fetch_add(1, Ordering::Relaxed), client);
+        }
         Ok(())
     }
 
@@ -347,6 +353,12 @@ pub(super) struct NeoMediaSender {
     prebuffered: FrameTime,
 }
 
+#[allow(dead_code)]
+enum JumpMethod {
+    MiddleIFrame,
+    BufferPerunit(f32),
+}
+
 impl NeoMediaSender {
     pub(super) fn new() -> Self {
         let (tx, rx) = channel(30);
@@ -380,18 +392,33 @@ impl NeoMediaSender {
             let runtime = self.get_runtime().unwrap_or(0);
             let (fronts, backs) = buffer.buf.as_slices();
             let frames = fronts.iter().chain(backs.iter()).collect::<Vec<_>>();
-            let target_time = {
-                // Middle iframe
-                let idx = frames.len().saturating_div(2);
-                frames.get(idx).and_then(|f| f.first()).and_then(|f| {
-                    if let BcMedia::Iframe(data) = f {
-                        Some(data.microseconds as FrameTime)
+            let jump_method = JumpMethod::BufferPerunit(0.75);
+            let target_time = match jump_method {
+                JumpMethod::MiddleIFrame => {
+                    let idx = frames.len().saturating_div(2);
+                    frames.get(idx).and_then(|f| f.first()).and_then(|f| {
+                        if let BcMedia::Iframe(data) = f {
+                            Some(data.microseconds as FrameTime)
+                        } else {
+                            None
+                        }
+                    })
+                }
+                JumpMethod::BufferPerunit(perunit) => {
+                    if let (Some(st), Some(et)) = (buffer.start_time(), buffer.end_time()) {
+                        Some(((et - st) as f32 * perunit) as FrameTime + st)
                     } else {
                         None
                     }
-                })
+                }
             };
             if let Some(target_time) = target_time {
+                if let Some(et) = buffer.end_time() {
+                    if let Ok(delta) = TryInto::<u64>::try_into(et - target_time) {
+                        debug!("Expected latency: {:?}", Duration::from_micros(delta));
+                    }
+                }
+
                 self.start_time = target_time - runtime;
                 self.last_sent_time = target_time;
                 debug!(
@@ -516,6 +543,15 @@ impl NeoMediaSender {
                         _ => last_sent_time,
                     };
                     if frame_time > min_time && frame_time <= max_time {
+                        if let (Some(start_time), Some(end_time)) =
+                            (buf.start_time(), buf.end_time())
+                        {
+                            debug!(
+                                "Buffer Run Position: {}",
+                                (frame_time - start_time) as f32 / (end_time - start_time) as f32
+                            );
+                        }
+
                         self.send_buffer(frame).await?;
                         last_sent_time = frame_time;
                     } else if frame_time > max_time {
@@ -590,7 +626,7 @@ impl NeoMediaSender {
 
             if let (Some(buf), Some(appsrc)) = (buf, appsrc) {
                 debug!(
-                    "DTS: {:?}, Expected: {:?}",
+                    "DTS: {:?}, Expected: {:?}, Position in Buffer",
                     Duration::from_micros(runtime.try_into().unwrap_or(0)),
                     self.get_runtime()
                         .map(|t| Duration::from_micros(t.try_into().unwrap_or(0)))

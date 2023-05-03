@@ -230,6 +230,13 @@ fn make_queue(name: &str) -> AnyResult<Element> {
 fn make_queue2(name: &str) -> AnyResult<Element> {
     let queue = make_element("queue2", name)?;
     queue.set_property("use-buffering", true);
+    queue.set_property("max-size-bytes", 0u32);
+    queue.set_property("max-size-buffers", 0u32);
+    queue.set_property(
+        "max-size-time",
+        std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
+            .unwrap_or(0),
+    );
     Ok(queue)
 }
 
@@ -449,7 +456,7 @@ impl NeoMediaFactoryImpl {
                     .map_err(|_| anyhow!("Cannot cast back"))?;
 
                 let queue = make_queue("audqueue")?;
-                let queue2 = make_queue2("queue2")?;
+                let queue2 = make_queue2("audqueue2")?;
                 let parser = make_element("aacparse", "audparser")?;
                 let decoder = make_element("decodebin", "auddecoder")?;
                 let encoder = make_element("audioconvert", "audencoder")?;
