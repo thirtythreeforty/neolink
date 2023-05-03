@@ -48,19 +48,23 @@ impl Decoder for BcCodex {
     type Error = Error;
 
     fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>> {
+        // match self.decode(buf)? {
+        //     Some(frame) => Ok(Some(frame)),
+        //     None => {
+        //         if buf.is_empty() {
+        //             Ok(None)
+        //         } else {
+        //             Err(io::Error::new(
+        //                 io::ErrorKind::Other,
+        //                 format!("bytes remaining on BC stream: {:X?}", buf),
+        //             )
+        //             .into())
+        //         }
+        //     }
+        // }
         match self.decode(buf)? {
             Some(frame) => Ok(Some(frame)),
-            None => {
-                if buf.is_empty() {
-                    Ok(None)
-                } else {
-                    Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!("bytes remaining on BC stream: {:X?}", buf),
-                    )
-                    .into())
-                }
-            }
+            None => Ok(None),
         }
     }
 
