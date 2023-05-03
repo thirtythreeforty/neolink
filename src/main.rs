@@ -58,7 +58,6 @@ fn tokio_console_enable() {
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-    tokio_console_enable();
 
     info!(
         "Neolink {} {}",
@@ -78,6 +77,10 @@ async fn main() -> Result<()> {
     config
         .validate()
         .with_context(|| format!("Failed to validate the {:?} config file", conf_path))?;
+
+    if config.tokio_console {
+        tokio_console_enable();
+    }
 
     match opt.cmd {
         None => {

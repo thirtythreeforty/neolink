@@ -27,6 +27,9 @@ pub(crate) struct Config {
     #[serde(default = "default_bind_port")]
     pub(crate) bind_port: u16,
 
+    #[serde(default = "default_tokio_console")]
+    pub(crate) tokio_console: bool,
+
     #[serde(default = "default_certificate")]
     pub(crate) certificate: Option<String>,
 
@@ -190,6 +193,10 @@ fn default_certificate() -> Option<String> {
 
 fn default_tls_client_auth() -> String {
     "none".to_string()
+}
+
+fn default_tokio_console() -> bool {
+    false
 }
 
 fn default_channel_id() -> u8 {
