@@ -78,7 +78,7 @@ jobs:
           echo "PATH=${PATH}"
           echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=${GSTREAMER_1_0_ROOT_MSVC_X86_64}"
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"
-          pkg-config --variable pc_path pkg-config
+          # pkg-config --variable pc_path pkg-config
           cargo  build --release --all-features
       - uses: actions/upload-artifact@v3
         with:
@@ -202,25 +202,29 @@ jobs:
         id: tags
         shell: bash
         run: |
-          tags=""
+          tags=( )
           gittag="$(git tag --points-at HEAD)"
           branch="$(git rev-parse --abbrev-ref HEAD)"
 
           if [[ -n "${gittag}" ]]; then
-            tags="${REPO_NAME}:${gittag}"
+            tags=( "${tags[@]}" "${REPO_NAME}:${gittag}" )
           fi
           if [[ -n "${branch}" ]]; then
             branch="$(echo "${branch}" | sed -E 's|[/]|-|g')"
-            if [[ -z "${tags}" ]]; then
-              tags="${REPO_NAME}:${branch}"
-            else
-              tags="${tags},${REPO_NAME}:${branch}"
-            fi
+            tags=( "${tags[@]}" "${REPO_NAME}:${branch}" )
             if [ "${branch}" == "master" ]; then
-              tags="${tags},${REPO_NAME}:latest"
+              tags=( "${tags[@]}" "${tags},${REPO_NAME}:latest" )
             fi
           fi
-          echo "TAGS=${tags}"  >> "${GITHUB_OUTPUT}"
+          function join_by {
+            local d=${1-} f=${2-}
+            if shift 2; then
+              printf %s "$f" "${@/#/$d}"
+            fi
+          }
+          tagstr="$(join_by "," "${tags[@]}")"
+          echo "TAGS=${tagstr}"
+          echo "TAGS=${tagstr}"  >> "${GITHUB_OUTPUT}"
         env:
           REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
       - name: Install latest rust
