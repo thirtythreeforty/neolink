@@ -136,6 +136,7 @@ jobs:
       - name: Install rustup
         run: |
           curl https://sh.rustup.rs -sSf | sh -s -- --no-modify-path --quiet -y
+          rustup toolchain install nightly
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
       - name: Install ${{ matrix.arch }} Rust toolchain
         run: |
@@ -144,12 +145,13 @@ jobs:
           TARGET: ${{ matrix.target }}
       - name: Build
         run: |
-          RUSTFLAGS="--cfg tokio_unstable" cargo build --release --all-features --target=${TARGET}
+          cargo +nightly build --verbose --release --all-features --target=${TARGET}
         env:
           # Retarget pkg-config as described in https://www.freedesktop.org/wiki/Software/pkg-config/CrossCompileProposal/
           PKG_CONFIG_ALLOW_CROSS: 1
           PKG_CONFIG_LIBDIR: /usr/lib/${{ matrix.pkgconfig }}/pkgconfig
           TARGET: ${{ matrix.target }}
+          RUSTFLAGS: "--cfg tokio_unstable"
       - uses: actions/upload-artifact@v3
         with:
           name: release-${{ matrix.arch }}-bullseye
