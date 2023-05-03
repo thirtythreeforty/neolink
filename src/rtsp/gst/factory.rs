@@ -215,6 +215,19 @@ fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
 }
 
 fn make_queue(name: &str) -> AnyResult<Element> {
+    let queue = make_element("queue", name)?;
+    queue.set_property_from_str("leaky", "downstream");
+    queue.set_property("max-size-bytes", 0u32);
+    queue.set_property("max-size-buffers", 0u32);
+    queue.set_property(
+        "max-size-time",
+        std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
+            .unwrap_or(0),
+    );
+    Ok(queue)
+}
+
+fn make_queue2(name: &str) -> AnyResult<Element> {
     let queue = make_element("queue2", name)?;
     queue.set_property("use-buffering", true);
     Ok(queue)
@@ -250,6 +263,7 @@ impl NeoMediaFactoryImpl {
                 let source = make_element("videotestsrc", "vidsrc")?;
                 source.set_property_from_str("pattern", "snow");
                 let queue = make_queue("queue0")?;
+                let queue2 = make_queue2("queue2")?;
                 let overlay = make_element("textoverlay", "overlay")?;
                 overlay.set_property("text", "Stream not Ready");
                 overlay.set_property_from_str("valignment", "top");
@@ -258,7 +272,7 @@ impl NeoMediaFactoryImpl {
                 let encoder = make_element("jpegenc", "encoder")?;
                 let payload = make_element("rtpjpegpay", "pay0")?;
 
-                bin.add_many(&[&source, &queue, &overlay, &encoder, &payload])?;
+                bin.add_many(&[&source, &queue, &queue2, &overlay, &encoder, &payload])?;
                 source.link_filtered(
                     &queue,
                     &Caps::builder("video/x-raw")
@@ -269,7 +283,7 @@ impl NeoMediaFactoryImpl {
                         .build(),
                 )?;
                 // source.link(&queue)?;
-                Element::link_many(&[&queue, &overlay, &encoder, &payload])?;
+                Element::link_many(&[&queue, &queue2, &overlay, &encoder, &payload])?;
             }
             (VidFormats::H265, true) => {
                 debug!("Building H265 Pipeline");
@@ -309,11 +323,12 @@ impl NeoMediaFactoryImpl {
                     .dynamic_cast::<Element>()
                     .map_err(|_| anyhow!("Cannot cast back"))?;
                 let queue = make_queue("source_queue")?;
+                let queue2 = make_queue2("queue2")?;
                 let parser = make_element("h265parse", "parser")?;
                 // parser.set_property("config-interval", 5i32);
                 let payload = make_element("rtph265pay", "pay0")?;
-                bin.add_many(&[&source, &queue, &parser, &payload])?;
-                Element::link_many(&[&source, &queue, &parser, &payload])?;
+                bin.add_many(&[&source, &queue, &queue2, &parser, &payload])?;
+                Element::link_many(&[&source, &queue, &queue2, &parser, &payload])?;
 
                 let source = source
                     .dynamic_cast::<AppSrc>()
@@ -363,6 +378,7 @@ impl NeoMediaFactoryImpl {
                     .dynamic_cast::<Element>()
                     .map_err(|_| anyhow!("Cannot cast back"))?;
                 let queue = make_queue("source_queue")?;
+                let queue2 = make_queue2("queue2")?;
                 let parser = make_element("h264parse", "parser")?;
                 // parser.set_property("update-timecode", true);
                 let payload = make_element("rtph264pay", "pay0")?;
@@ -374,13 +390,13 @@ impl NeoMediaFactoryImpl {
 
                 // payload.set_property("config-interval", 5i32);
                 bin.add_many(&[
-                    &source, &queue, &parser,
+                    &source, &queue, &queue2, &parser,
                     &payload,
                     // &storage,
                     // &jitter,
                 ])?;
                 Element::link_many(&[
-                    &source, &queue, &parser,
+                    &source, &queue, &queue2, &parser,
                     &payload,
                     // &storage,
                     // &jitter,
@@ -433,13 +449,16 @@ impl NeoMediaFactoryImpl {
                     .map_err(|_| anyhow!("Cannot cast back"))?;
 
                 let queue = make_queue("audqueue")?;
+                let queue2 = make_queue2("queue2")?;
                 let parser = make_element("aacparse", "audparser")?;
                 let decoder = make_element("decodebin", "auddecoder")?;
                 let encoder = make_element("audioconvert", "audencoder")?;
                 let payload = make_element("rtpL16pay", "pay1")?;
 
-                bin.add_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
-                Element::link_many(&[&source, &queue, &parser, &decoder])?;
+                bin.add_many(&[
+                    &source, &queue, &queue2, &parser, &decoder, &encoder, &payload,
+                ])?;
+                Element::link_many(&[&source, &queue, &queue2, &parser, &decoder])?;
                 Element::link_many(&[&encoder, &payload])?;
                 decoder.connect_pad_added(move |_element, pad| {
                     debug!("Linking encoder to decoder: {:?}", pad.caps());
@@ -502,12 +521,13 @@ impl NeoMediaFactoryImpl {
                     .map_err(|_| anyhow!("Cannot cast back"))?;
 
                 let queue = make_queue("audqueue")?;
+                let queue2 = make_queue2("audqueue2")?;
                 let decoder = make_element("decodebin", "auddecoder")?;
                 let encoder = make_element("audioconvert", "audencoder")?;
                 let payload = make_element("rtpL16pay", "pay1")?;
 
-                bin.add_many(&[&source, &queue, &decoder, &encoder, &payload])?;
-                Element::link_many(&[&source, &queue, &decoder])?;
+                bin.add_many(&[&source, &queue, &queue2, &decoder, &encoder, &payload])?;
+                Element::link_many(&[&source, &queue, &queue2, &decoder])?;
                 Element::link_many(&[&encoder, &payload])?;
                 decoder.connect_pad_added(move |_element, pad| {
                     debug!("Linking encoder to decoder: {:?}", pad.caps());

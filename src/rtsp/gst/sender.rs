@@ -562,9 +562,9 @@ impl NeoMediaSender {
         None
     }
 
-    fn get_buftime(&self) -> Option<FrameTime> {
-        self.get_runtime().map(|time| self.runtime_to_buftime(time))
-    }
+    // fn get_buftime(&self) -> Option<FrameTime> {
+    //     self.get_runtime().map(|time| self.runtime_to_buftime(time))
+    // }
 
     async fn send_buffer(&mut self, media: &BcMedia) -> AnyResult<bool> {
         if self.inited && self.playing {
