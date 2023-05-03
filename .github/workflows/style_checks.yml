@@ -3,7 +3,23 @@ name: Style
 on: [push, pull_request]
 
 jobs:
+  pre_job:
+    # continue-on-error: true # Uncomment once integration is finished
+    runs-on: ubuntu-latest
+    # Map a step output to a job output
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          # All of these options are optional, so you can remove them if you are happy with the defaults
+          concurrent_skipping: 'same_content_newer'
+          skip_after_successful_duplicate: 'false'
+
   check_clippy:
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
     name: Clippy
     runs-on: ubuntu-22.04
     steps:
@@ -21,6 +37,8 @@ jobs:
       run: cargo +nightly clippy --workspace --all-targets --all-features
 
   check_fmt:
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
     name: Rust-fmt
     runs-on: ubuntu-latest
     steps:
@@ -34,6 +52,8 @@ jobs:
         cargo +nightly fmt --all -- --check
 
   check_lua:
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
     name: Luacheck
     runs-on: ubuntu-latest
     steps:
