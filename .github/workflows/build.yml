@@ -136,6 +136,7 @@ jobs:
       - name: Install rustup
         run: |
           curl https://sh.rustup.rs -sSf | sh -s -- --no-modify-path --quiet -y
+          source "$HOME/.cargo/env"
           rustup toolchain install nightly
           echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
       - name: Install ${{ matrix.arch }} Rust toolchain

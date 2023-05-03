@@ -1,5 +1,5 @@
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+rustflags = ["-C", "target-feature=+crt-static", "--cfg", "tokio_unstable"]
 
 # TODO not good as a default
 [target.armv7-unknown-linux-gnueabihf]
@@ -10,3 +10,6 @@ linker = "aarch64-linux-gnu-gcc"
 
 [target.i686-unknown-linux-gnu]
 linker = "i686-linux-gnu-gcc"
+
+[build]
+rustflags = ["--cfg", "tokio_unstable"]
