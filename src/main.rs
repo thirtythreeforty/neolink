@@ -38,10 +38,12 @@ mod reboot;
 mod rtsp;
 mod statusled;
 mod talk;
+mod timed_poll;
 mod utils;
 
 use cmdline::{Command, Opt};
 use config::Config;
+pub(crate) use timed_poll::TimedPoll;
 
 #[tokio::main]
 async fn main() -> Result<()> {

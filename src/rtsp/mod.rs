@@ -92,7 +92,7 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
     let mut set = tokio::task::JoinSet::new();
     for mut camera in cameras.drain(..) {
         // Spawn each camera controller in it's own thread
-        set.spawn(async move {
+        set.spawn(crate::TimedPoll::new("CameraMain", async move {
             let shared = camera.shared.clone();
             let name = camera.get_name();
             let mut backoff = Duration::from_micros(125);
@@ -122,7 +122,7 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
                 }
             }
             Ok(())
-        });
+        }));
     }
     info!(
         "Starting RTSP Server at {}:{}",
@@ -133,7 +133,9 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
     let bind_port = config.bind_port;
     rtsp.run(&bind_addr, bind_port).await?;
     let thread_rtsp = rtsp.clone();
-    set.spawn(async move { thread_rtsp.join().await });
+    set.spawn(crate::TimedPoll::new("RTSP Join", async move {
+        thread_rtsp.join().await
+    }));
 
     while let Some(joined) = set.join_next().await {
         match &joined {

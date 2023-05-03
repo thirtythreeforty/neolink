@@ -314,13 +314,13 @@ impl NeoMediaSenders {
     }
 
     pub(super) async fn run(&mut self) -> AnyResult<()> {
-        let mut interval = tokio::time::interval(Duration::from_micros(LATENCY as u64 / 3));
+        // let mut interval = tokio::time::interval(Duration::from_micros(LATENCY as u64 / 3));
         loop {
             tokio::task::yield_now().await;
             tokio::select! {
-                _ = interval.tick() => {
-                    self.handle_buffer().await
-                },
+                // _ = interval.tick() => {
+                //     self.handle_buffer().await
+                // },
                 Some(v) = self.data_source.next() => {
                     self.handle_new_data(v).await
                 },
@@ -643,12 +643,15 @@ impl NeoMediaSender {
                 }
                 // debug!("Buffer pushed");
                 let thread_appsrc = appsrc.clone(); // GObjects are refcounted
-                let res = tokio::task::spawn_blocking(move || {
-                    thread_appsrc
-                        .push_buffer(gst_buf.copy())
-                        .map(|_| ())
-                        .map_err(|_| anyhow!("Could not push buffer to appsrc"))
-                })
+                let res = crate::TimedPoll::new(
+                    "SendBuffer",
+                    tokio::task::spawn_blocking(move || {
+                        thread_appsrc
+                            .push_buffer(gst_buf.copy())
+                            .map(|_| ())
+                            .map_err(|_| anyhow!("Could not push buffer to appsrc"))
+                    }),
+                )
                 .await;
                 match &res {
                     Err(e) => {
