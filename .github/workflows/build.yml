@@ -204,13 +204,18 @@ jobs:
         run: |
           tags=""
           gittag="$(git tag --points-at HEAD)"
-          branch="$)git rev-parse --abbrev-ref HEAD)"
+          branch="$(git rev-parse --abbrev-ref HEAD)"
 
           if [[ -n "${gittag}" ]]; then
             tags="${REPO_NAME}:${gittag}"
-          elif [[ -n "${branch}" ]]; then
+          fi
+          if [[ -n "${branch}" ]]; then
             branch="$(echo "${branch}" | sed -E 's|[/]|-|g')"
-            tags="${REPO_NAME}:${branch}"
+            if [[ -z "${tags}" ]]; then
+              tags="${REPO_NAME}:${branch}"
+            else
+              tags="${tags},${REPO_NAME}:${branch}"
+            fi
             if [ "${branch}" == "master" ]; then
               tags="${tags},${REPO_NAME}:latest"
             fi
