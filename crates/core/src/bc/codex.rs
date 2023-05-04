@@ -7,7 +7,7 @@ use crate::bc::model::*;
 use crate::bc::xml::*;
 use crate::{Credentials, Error, Result};
 use bytes::BytesMut;
-use std::io;
+use nom::AsBytes;
 use tokio_util::codec::{Decoder, Encoder};
 
 pub(crate) struct BcCodex {
@@ -48,24 +48,24 @@ impl Decoder for BcCodex {
     type Error = Error;
 
     fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>> {
-        // match self.decode(buf)? {
-        //     Some(frame) => Ok(Some(frame)),
-        //     None => {
-        //         if buf.is_empty() {
-        //             Ok(None)
-        //         } else {
-        //             Err(io::Error::new(
-        //                 io::ErrorKind::Other,
-        //                 format!("bytes remaining on BC stream: {:X?}", buf),
-        //             )
-        //             .into())
-        //         }
-        //     }
-        // }
         match self.decode(buf)? {
             Some(frame) => Ok(Some(frame)),
-            None => Ok(None),
+            None => {
+                if buf.is_empty() {
+                    Ok(None)
+                } else {
+                    log::debug!("bytes remaining on BC stream: {:X?}", buf.as_bytes());
+                    // Right after this we seem to get an issue with the camera dropping us
+                    // Needs probing
+                    // \xf0\xde\xbc\n\x03\0\0\0@\x9c\0\0\0\x01\x04\0\xc8\0\0\0\0\0\0\0\t\x11\xc6\xa0\x12\xdb\xf7:E\x96*
+                    Ok(None)
+                }
+            }
         }
+        // match self.decode(buf)? {
+        //     Some(frame) => Ok(Some(frame)),
+        //     None => Ok(None),
+        // }
     }
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>> {

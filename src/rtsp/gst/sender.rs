@@ -296,11 +296,11 @@ impl NeoMediaSenders {
                         occ.remove();
                         continue;
                     }
-                    // if let Err(e) = occ.get_mut().process_jump_to_live(&self.buffer).await {
-                    //     debug!("Could not handle jump to live: {:?}", e);
-                    //     occ.remove();
-                    //     continue;
-                    // }
+                    if let Err(e) = occ.get_mut().process_jump_to_live(&self.buffer).await {
+                        debug!("Could not handle jump to live: {:?}", e);
+                        occ.remove();
+                        continue;
+                    }
                     if let Err(e) = occ.get_mut().process_buffer(&self.buffer).await {
                         debug!("Could not send client data: {:?}", e);
                         occ.remove();
@@ -563,26 +563,26 @@ impl NeoMediaSender {
         Ok(last_sent_time)
     }
 
-    // async fn process_jump_to_live(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
-    //     if self.inited {
-    //         if let (Some(buffer_start), Some(buffer_end)) = (buffer.start_time(), buffer.end_time())
-    //         {
-    //             let runtime = self.get_buftime().unwrap_or(self.last_sent_time);
-    //             if runtime < buffer_start.saturating_sub(LATENCY * 2)
-    //                 || runtime > buffer_end.saturating_add(LATENCY * 2)
-    //             {
-    //                 debug!(
-    //                     "Outside buffer jumping to live: {:?} < {:?} < {:?}",
-    //                     Duration::from_micros(buffer_start.try_into().unwrap_or(0)),
-    //                     Duration::from_micros(runtime.try_into().unwrap_or(0)),
-    //                     Duration::from_micros(buffer_end.try_into().unwrap_or(0))
-    //                 );
-    //                 self.jump_to_live(buffer).await?;
-    //             }
-    //         }
-    //     }
-    //     Ok(())
-    // }
+    async fn process_jump_to_live(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
+        if self.inited {
+            if let (Some(buffer_start), Some(buffer_end)) = (buffer.start_time(), buffer.end_time())
+            {
+                let runtime = self.get_buftime().unwrap_or(self.last_sent_time);
+                if runtime < buffer_start.saturating_sub(15 * SECS)
+                    || runtime > buffer_end.saturating_add(15 * SECS)
+                {
+                    debug!(
+                        "Outside buffer jumping to live: {:?} < {:?} < {:?}",
+                        Duration::from_micros(buffer_start.try_into().unwrap_or(0)),
+                        Duration::from_micros(runtime.try_into().unwrap_or(0)),
+                        Duration::from_micros(buffer_end.try_into().unwrap_or(0))
+                    );
+                    self.jump_to_live(buffer).await?;
+                }
+            }
+        }
+        Ok(())
+    }
 
     fn get_runtime(&self) -> Option<FrameTime> {
         if let Some(appsrc) = self.vid.as_ref() {
@@ -598,9 +598,9 @@ impl NeoMediaSender {
         None
     }
 
-    // fn get_buftime(&self) -> Option<FrameTime> {
-    //     self.get_runtime().map(|time| self.runtime_to_buftime(time))
-    // }
+    fn get_buftime(&self) -> Option<FrameTime> {
+        self.get_runtime().map(|time| self.runtime_to_buftime(time))
+    }
 
     async fn send_buffer(&mut self, media: &BcMedia) -> AnyResult<bool> {
         if self.inited && self.playing {
