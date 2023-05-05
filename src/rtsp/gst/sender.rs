@@ -20,7 +20,7 @@ use std::{
 };
 use tokio::{
     sync::mpsc::{channel, Receiver, Sender},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -301,6 +301,11 @@ impl NeoMediaSenders {
                         occ.remove();
                         continue;
                     }
+                    if let Err(e) = occ.get_mut().stretch_live(&self.buffer).await {
+                        debug!("Could not sretch live: {:?}", e);
+                        occ.remove();
+                        continue;
+                    }
                     if let Err(e) = occ.get_mut().process_buffer(&self.buffer).await {
                         debug!("Could not send client data: {:?}", e);
                         occ.remove();
@@ -343,6 +348,9 @@ pub(super) enum NeoMediaSenderCommand {
 #[derive(Debug)]
 pub(super) struct NeoMediaSender {
     start_time: FrameTime,
+    target_start_time: FrameTime,
+    start_time_v: f32,
+    start_time_update: Instant,
     last_sent_time: FrameTime,
     vid: Option<AppSrc>,
     aud: Option<AppSrc>,
@@ -364,6 +372,9 @@ impl NeoMediaSender {
         let (tx, rx) = channel(30);
         Self {
             start_time: 0,
+            target_start_time: 0,
+            start_time_v: 0.0,
+            start_time_update: Instant::now(),
             last_sent_time: 0,
             vid: None,
             aud: None,
@@ -387,31 +398,35 @@ impl NeoMediaSender {
         self.command_sender.clone()
     }
 
-    async fn jump_to_live(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
-        if self.inited {
-            let runtime = self.get_runtime().unwrap_or(0);
-            let (fronts, backs) = buffer.buf.as_slices();
-            let frames = fronts.iter().chain(backs.iter()).collect::<Vec<_>>();
-            let jump_method = JumpMethod::BufferPerunit(0.75);
-            let target_time = match jump_method {
-                JumpMethod::MiddleIFrame => {
-                    let idx = frames.len().saturating_div(2);
-                    frames.get(idx).and_then(|f| f.first()).and_then(|f| {
-                        if let BcMedia::Iframe(data) = f {
-                            Some(data.microseconds as FrameTime)
-                        } else {
-                            None
-                        }
-                    })
-                }
-                JumpMethod::BufferPerunit(perunit) => {
-                    if let (Some(st), Some(et)) = (buffer.start_time(), buffer.end_time()) {
-                        Some(((et - st) as f32 * perunit) as FrameTime + st)
+    async fn target_live_time(&self, buffer: &NeoBuffer) -> AnyResult<Option<FrameTime>> {
+        let (fronts, backs) = buffer.buf.as_slices();
+        let frames = fronts.iter().chain(backs.iter()).collect::<Vec<_>>();
+        let jump_method = JumpMethod::BufferPerunit(0.75);
+        Ok(match jump_method {
+            JumpMethod::MiddleIFrame => {
+                let idx = frames.len().saturating_div(2);
+                frames.get(idx).and_then(|f| f.first()).and_then(|f| {
+                    if let BcMedia::Iframe(data) = f {
+                        Some(data.microseconds as FrameTime)
                     } else {
                         None
                     }
+                })
+            }
+            JumpMethod::BufferPerunit(perunit) => {
+                if let (Some(st), Some(et)) = (buffer.start_time(), buffer.end_time()) {
+                    Some(((et - st) as f32 * perunit) as FrameTime + st)
+                } else {
+                    None
                 }
-            };
+            }
+        })
+    }
+
+    async fn jump_to_live(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
+        if self.inited {
+            let runtime = self.get_runtime().unwrap_or(0);
+            let target_time = self.target_live_time(buffer).await?;
             if let Some(target_time) = target_time {
                 if let Some(et) = buffer.end_time() {
                     if let Ok(delta) = TryInto::<u64>::try_into(et - target_time) {
@@ -420,6 +435,8 @@ impl NeoMediaSender {
                 }
 
                 self.start_time = target_time - runtime;
+                self.target_start_time = self.start_time;
+                self.start_time_v = 0.0;
                 self.last_sent_time = target_time;
                 debug!(
                     "Target time: {:?}, New start time: {:?}, New Runtime: {:?}, Actual Runtime: {:?}",
@@ -428,6 +445,37 @@ impl NeoMediaSender {
             }
         }
 
+        Ok(())
+    }
+
+    async fn stretch_live(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
+        // Desired live time
+        let target_time = self.target_live_time(buffer).await?;
+        // Actual live time
+        let actual_time = self.get_buftime();
+        let st = buffer.start_time();
+        let et = buffer.end_time();
+        if let (Some(target_time), Some(actual_time), Some(st), Some(et)) =
+            (target_time, actual_time, st, et)
+        {
+            if actual_time > st && actual_time < et {
+                // Only do this while inside the buffer
+                self.target_start_time += target_time - actual_time; // Adjust
+
+                // Now for the spring
+                let dt = (Instant::now() - self.start_time_update).as_secs_f32();
+                let mut new_start_time = self.start_time as f32;
+                spring_update(
+                    &mut new_start_time,
+                    self.target_start_time as f32,
+                    &mut self.start_time_v,
+                    0.5,
+                    dt,
+                );
+                self.start_time = new_start_time as FrameTime;
+            }
+        }
+        self.start_time_update = Instant::now();
         Ok(())
     }
 
@@ -664,4 +712,26 @@ impl NeoMediaSender {
         }
         Ok(true)
     }
+}
+
+const EPS: f32 = 1e-5f32;
+fn halflife_to_damping(halflife: f32) -> f32 {
+    (4.0f32 * std::f32::consts::LN_2) / (halflife + EPS)
+}
+
+// fn damping_to_halflife(damping: f32) -> f32 {
+//     (4.0f32 * std::f32::consts::LN_2) / (damping + EPS)
+// }
+fn fast_negexp(x: f32) -> f32 {
+    1.0f32 / (1.0f32 + x + 0.48f32 * x * x + 0.235f32 * x * x * x)
+}
+
+fn spring_update(value: &mut f32, target: f32, velocity: &mut f32, halflife: f32, dt: f32) {
+    let y = halflife_to_damping(halflife) / 2.0;
+    let j0 = *value - target;
+    let j1 = *velocity + j0 * y;
+    let eydt = fast_negexp(y * dt);
+
+    *value = eydt * (j0 + j1 * dt) + target;
+    *velocity = eydt * (*velocity - j1 * y * dt);
 }

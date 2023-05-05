@@ -54,10 +54,17 @@ impl Decoder for BcCodex {
                 if buf.is_empty() {
                     Ok(None)
                 } else {
-                    log::debug!("bytes remaining on BC stream: {:X?}", buf.as_bytes());
+                    log::debug!(
+                        "bytes remaining on BC stream: {:X?}",
+                        buf.as_bytes().chunks(25).next()
+                    );
                     // Right after this we seem to get an issue with the camera dropping us
                     // Needs probing
-                    // \xf0\xde\xbc\n\x03\0\0\0@\x9c\0\0\0\x01\x04\0\xc8\0\0\0\0\0\0\0\t\x11\xc6\xa0\x12\xdb\xf7:E\x96*
+                    // F0, DE, BC, A, 3, 0, 0, 0, 88, 6, 0, 0, 0, 1, 4, 0, C8, 0, 0, 0, 0, 0, 0, 0, 30, 31, 64, 63, 48,
+                    // 32, 36, 34, 6A, 6, 0, 0, 0, 0, 0, 0, D8, F5, C7, 86, 56, 0, 0, 0, 0, 0, 0, 1, 21, 9A, FC, 22, 7F, 6, AE, F6, 15, FF, E5, 71, 4, 2F, 24, 61, 15, 96, F0, BF, 83, DE, 10, BE, B4, 2E, 3
+                    // 9, 76, 56, 92, 7E, 48, 79, 20, 9A, DC, 1B, BB, AC, 22, 60, 5C, 72, B5, 3D, 8, E0, 34, 43, 3F, 2E, A7, 81, A8, 11, 75, 7F, 58, 3E, 8, 54, 91, 43, 21, EC, 6B, D6, 1A, D5, CB, D5, 6C,
+                    // 8C, 2E, 6E, A3, 51, C3, A4, F0, CF, 2B, 61, 81, D0, 1C, A1, 76, EE, BF, 7A, D5, D8, D1, C4, D, B0, 45, EE, 3E, 93, 9A, CE, 5F, AB, 75, 55, AC, 9D, 66, DE, 23, 6D, 5F, 25, 57, DA, F5
+                    //, E, 7F, 8D, 30, A7, 66, C4, 60, 76, 41, D0, 6A, 23, E, A9, C5, 51, EE, F6, DD, 19, E7, A8, 96, 9F, 2B, AF, 31, 90, 9D, FC, BE
                     Ok(None)
                 }
             }

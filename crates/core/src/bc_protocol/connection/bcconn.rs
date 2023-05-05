@@ -5,10 +5,10 @@ use futures::stream::{Stream, StreamExt};
 use log::*;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
-use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::task::yield_now;
 use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::sync::PollSender;
 
 use tokio::{sync::RwLock, task::JoinSet};
 
@@ -16,9 +16,9 @@ type MsgHandler = Box<dyn Fn(&Bc) -> Option<Bc> + Send + Sync>;
 #[derive(Default)]
 struct Subscriber {
     /// Subscribers based on their Num
-    num: RwLock<BTreeMap<u16, Sender<Result<Bc>>>>,
+    num: BTreeMap<u16, Sender<Result<Bc>>>,
     /// Subscribers based on their ID
-    id: RwLock<BTreeMap<u32, MsgHandler>>,
+    id: BTreeMap<u32, MsgHandler>,
 }
 
 pub(crate) type BcConnSink = Box<dyn Sink<Bc, Error = Error> + Send + Sync + Unpin>;
@@ -31,35 +31,41 @@ pub(crate) type BcConnSource = Box<dyn Stream<Item = Result<Bc>> + Send + Sync +
 /// There can be only one subscriber per kind of message at a time.
 pub struct BcConnection {
     sink: Sender<Result<Bc>>,
-    subscribers: Arc<Subscriber>,
-    #[allow(dead_code)] // Not dead we just need to hold a reference to keep it alive
+    poll_commander: Sender<PollCommand>,
     rx_thread: RwLock<JoinSet<Result<()>>>,
 }
 
 impl BcConnection {
-    pub async fn new(mut sink: BcConnSink, mut source: BcConnSource) -> Result<BcConnection> {
-        let subscribers: Arc<Subscriber> = Default::default();
-        let subs = subscribers.clone();
+    pub async fn new(mut sink: BcConnSink, source: BcConnSource) -> Result<BcConnection> {
         let (sinker, sinker_rx) = channel::<Result<Bc>>(100);
-        let mut rx_thread = JoinSet::new();
-        let sink_thread = sinker.clone();
+
+        let (poll_commander, poll_commanded) = channel(200);
+        let mut poller = Poller {
+            subscribers: Default::default(),
+            sink: sinker.clone(),
+            reciever: ReceiverStream::new(poll_commanded),
+        };
+
+        let mut rx_thread = JoinSet::<Result<()>>::new();
+        let thread_poll_commander = poll_commander.clone();
         rx_thread.spawn(async move {
-            loop {
-                yield_now().await; // Give other tasks a chance to run before pulling next packet
-                let packet = source.next().await;
-                let bc = match packet {
-                    Some(res) => res,
-                    None => continue,
-                };
-                Self::poll(bc, &subs, &sink_thread).await?
-            }
+            PollSender::new(thread_poll_commander)
+                .send_all(&mut source.map(|bc| Ok(PollCommand::Bc(Box::new(bc)))))
+                .await?;
+            Ok(())
         });
 
         rx_thread.spawn(async move { sink.send_all(&mut ReceiverStream::new(sinker_rx)).await });
 
+        rx_thread.spawn(async move {
+            loop {
+                poller.run().await?;
+            }
+        });
+
         Ok(BcConnection {
             sink: sinker,
-            subscribers,
+            poll_commander,
             rx_thread: RwLock::new(rx_thread),
         })
     }
@@ -71,18 +77,9 @@ impl BcConnection {
 
     pub async fn subscribe(&self, msg_num: u16) -> Result<BcSubscription> {
         let (tx, rx) = channel(100);
-        match self.subscribers.num.write().await.entry(msg_num) {
-            Entry::Vacant(vac_entry) => {
-                vac_entry.insert(tx);
-            }
-            Entry::Occupied(mut occ_entry) => {
-                if occ_entry.get().is_closed() {
-                    occ_entry.insert(tx);
-                } else {
-                    return Err(Error::SimultaneousSubscription { msg_num });
-                }
-            }
-        };
+        self.poll_commander
+            .send(PollCommand::AddSubscriber(msg_num, tx))
+            .await?;
         Ok(BcSubscription::new(rx, msg_num as u32, self))
     }
 
@@ -93,90 +90,18 @@ impl BcConnection {
     where
         T: Fn(&Bc) -> Option<Bc> + Send + Sync + 'static,
     {
-        match self.subscribers.id.write().await.entry(msg_id) {
-            Entry::Vacant(vac_entry) => {
-                vac_entry.insert(Box::new(handler));
-            }
-            Entry::Occupied(_) => {
-                return Err(Error::SimultaneousSubscriptionId { msg_id });
-            }
-        };
+        self.poll_commander
+            .send(PollCommand::AddHandler(msg_id, Box::new(handler)))
+            .await?;
         Ok(())
     }
 
     /// Stop a message handler created using [`handle_msg`]
     #[allow(dead_code)] // Currently unused but added for future use
     pub async fn unhandle_msg(&self, msg_id: u32) -> Result<()> {
-        self.subscribers.id.write().await.remove(&msg_id);
-        Ok(())
-    }
-
-    async fn poll(
-        response: Result<Bc>,
-        subscribers: &Subscriber,
-        sink: &Sender<Result<Bc>>,
-    ) -> Result<()> {
-        match response {
-            Ok(response) => {
-                let msg_num = response.meta.msg_num;
-                let msg_id = response.meta.msg_id;
-
-                let mut remove_it_num = false;
-                match (
-                    subscribers.id.read().await.get(&msg_id),
-                    subscribers.num.read().await.get(&msg_num),
-                ) {
-                    (Some(occ), _) => {
-                        if let Some(reply) = occ(&response) {
-                            assert!(reply.meta.msg_num == response.meta.msg_num);
-                            sink.send(Ok(reply)).await?;
-                        }
-                    }
-                    (None, Some(occ)) => {
-                        if occ.capacity() == 0 {
-                            warn!("Reaching limit of channel");
-                            warn!(
-                                "Remaining: {} of {} message space for {} (ID: {})",
-                                occ.capacity(),
-                                occ.max_capacity(),
-                                &msg_num,
-                                &msg_id
-                            );
-                        } else {
-                            trace!(
-                                "Remaining: {} of {} message space for {} (ID: {})",
-                                occ.capacity(),
-                                occ.max_capacity(),
-                                &msg_num,
-                                &msg_id
-                            );
-                        }
-                        if occ.send(Ok(response)).await.is_err() {
-                            remove_it_num = true;
-                        }
-                    }
-                    (None, None) => {
-                        debug!(
-                            "Ignoring uninteresting message id {} (number: {})",
-                            msg_id, msg_num
-                        );
-                        trace!("Contents: {:?}", response);
-                    }
-                }
-                if remove_it_num {
-                    subscribers.num.write().await.remove(&msg_num);
-                }
-            }
-            Err(e) => {
-                for sub in subscribers.num.read().await.values() {
-                    let _ = sub.send(Err(e.clone())).await;
-                }
-                subscribers.num.write().await.clear();
-                subscribers.id.write().await.clear();
-                return Err(e);
-            }
-        }
-
+        self.poll_commander
+            .send(PollCommand::RemoveHandler(msg_id))
+            .await?;
         Ok(())
     }
 
@@ -193,6 +118,119 @@ impl BcConnection {
                     return Err(e);
                 }
                 Ok(Ok(())) => {}
+            }
+        }
+        Ok(())
+    }
+}
+
+enum PollCommand {
+    Bc(Box<Result<Bc>>),
+    AddHandler(u32, MsgHandler),
+    RemoveHandler(u32),
+    AddSubscriber(u16, Sender<Result<Bc>>),
+}
+
+struct Poller {
+    subscribers: Subscriber,
+    sink: Sender<Result<Bc>>,
+    reciever: ReceiverStream<PollCommand>,
+}
+
+impl Poller {
+    async fn run(&mut self) -> Result<()> {
+        while let Some(command) = self.reciever.next().await {
+            yield_now().await;
+            match command {
+                PollCommand::Bc(boxed_response) => match *boxed_response {
+                    Ok(response) => {
+                        let msg_num = response.meta.msg_num;
+                        let msg_id = response.meta.msg_id;
+
+                        let mut remove_it_num = false;
+                        match (
+                            self.subscribers.id.get(&msg_id),
+                            self.subscribers.num.get(&msg_num),
+                        ) {
+                            (Some(occ), _) => {
+                                if let Some(reply) = occ(&response) {
+                                    assert!(reply.meta.msg_num == response.meta.msg_num);
+                                    self.sink.send(Ok(reply)).await?;
+                                }
+                            }
+                            (None, Some(occ)) => {
+                                if occ.capacity() == 0 {
+                                    warn!("Reaching limit of channel");
+                                    warn!(
+                                        "Remaining: {} of {} message space for {} (ID: {})",
+                                        occ.capacity(),
+                                        occ.max_capacity(),
+                                        &msg_num,
+                                        &msg_id
+                                    );
+                                } else {
+                                    trace!(
+                                        "Remaining: {} of {} message space for {} (ID: {})",
+                                        occ.capacity(),
+                                        occ.max_capacity(),
+                                        &msg_num,
+                                        &msg_id
+                                    );
+                                }
+                                if occ.send(Ok(response)).await.is_err() {
+                                    remove_it_num = true;
+                                }
+                            }
+                            (None, None) => {
+                                debug!(
+                                    "Ignoring uninteresting message id {} (number: {})",
+                                    msg_id, msg_num
+                                );
+                                trace!("Contents: {:?}", response);
+                            }
+                        }
+                        if remove_it_num {
+                            self.subscribers.num.remove(&msg_num);
+                        }
+                    }
+                    Err(e) => {
+                        for sub in self.subscribers.num.values() {
+                            let _ = sub.send(Err(e.clone())).await;
+                        }
+                        self.subscribers.num.clear();
+                        self.subscribers.id.clear();
+                        return Err(e);
+                    }
+                },
+                PollCommand::AddHandler(msg_id, handler) => {
+                    match self.subscribers.id.entry(msg_id) {
+                        Entry::Vacant(vac_entry) => {
+                            vac_entry.insert(handler);
+                        }
+                        Entry::Occupied(_) => {
+                            return Err(Error::SimultaneousSubscriptionId { msg_id });
+                        }
+                    };
+                }
+                PollCommand::RemoveHandler(msg_id) => {
+                    self.subscribers.id.remove(&msg_id);
+                }
+                PollCommand::AddSubscriber(msg_num, tx) => {
+                    match self.subscribers.num.entry(msg_num) {
+                        Entry::Vacant(vac_entry) => {
+                            vac_entry.insert(tx);
+                        }
+                        Entry::Occupied(mut occ_entry) => {
+                            if occ_entry.get().is_closed() {
+                                occ_entry.insert(tx);
+                            } else {
+                                let _ = tx
+                                    .send(Err(Error::SimultaneousSubscription { msg_num }))
+                                    .await;
+                            }
+                        }
+                    };
+                }
             }
         }
         Ok(())
