@@ -238,7 +238,6 @@ impl NeoMediaSenders {
     async fn handle_new_data(&mut self, data: BcMedia) -> AnyResult<()> {
         // debug!("Handle new data");
         self.update_mediatypes(&data).await;
-        self.handle_buffer().await?;
         match &data {
             BcMedia::Iframe(data) => {
                 let frame_ms = data.microseconds as FrameTime;
@@ -319,13 +318,13 @@ impl NeoMediaSenders {
     }
 
     pub(super) async fn run(&mut self) -> AnyResult<()> {
-        // let mut interval = tokio::time::interval(Duration::from_micros(LATENCY as u64 / 3));
+        let mut interval = tokio::time::interval(Duration::from_millis(20)); // 50 FPS
         loop {
             tokio::task::yield_now().await;
             tokio::select! {
-                // _ = interval.tick() => {
-                //     self.handle_buffer().await
-                // },
+                _ = interval.tick() => {
+                    self.handle_buffer().await
+                },
                 Some(v) = self.data_source.next() => {
                     self.handle_new_data(v).await
                 },
@@ -555,7 +554,7 @@ impl NeoMediaSender {
             if let Some(runtime) = runtime {
                 // We are live only send the buffer up to the runtime
                 let min_time = self.last_sent_time;
-                let max_time = self.runtime_to_buftime(runtime).saturating_add(LATENCY);
+                let max_time = self.runtime_to_buftime(runtime);
                 self.last_sent_time = self.send_buffer_between(buf, min_time, max_time).await?;
             } else {
                 // We are not playing send pre buffers so that the elements can init themselves
@@ -573,6 +572,14 @@ impl NeoMediaSender {
         min_time: FrameTime,
         max_time: FrameTime,
     ) -> AnyResult<FrameTime> {
+        if let (Some(buftime), Some(start_time), Some(end_time)) =
+            (self.get_buftime(), buf.start_time(), buf.end_time())
+        {
+            debug!(
+                "Buffer Run Position: {}",
+                (buftime - start_time) as f32 / (end_time - start_time) as f32
+            );
+        }
         let mut last_sent_time = min_time;
         let mut found_start = false;
         let mut buf_it = buf.buf.iter().peekable();
@@ -604,11 +611,10 @@ impl NeoMediaSender {
                             (buf.start_time(), buf.end_time())
                         {
                             debug!(
-                                "Buffer Run Position: {}",
+                                "Frame Run Position: {}",
                                 (frame_time - start_time) as f32 / (end_time - start_time) as f32
                             );
                         }
-
                         self.send_buffer(frame).await?;
                         last_sent_time = frame_time;
                     } else if frame_time > max_time {
