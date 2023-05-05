@@ -25,6 +25,7 @@ use std::{
 use tokio::{
     sync::{mpsc::Sender, RwLock},
     task::JoinSet,
+    time::{timeout, Duration},
 };
 
 glib::wrapper! {
@@ -96,12 +97,14 @@ impl NeoRtspServer {
             main_loop_thread.run();
             AnyResult::Ok(())
         });
-        self.imp()
-            .threads
-            .write()
+        timeout(Duration::from_secs(5), self.imp().threads.write())
             .await
+            .with_context(|| "Timeout waiting to lock Server threads")?
             .spawn(async move { handle.await? });
-        self.imp().main_loop.write().await.replace(main_loop);
+        timeout(Duration::from_secs(5), self.imp().main_loop.write())
+            .await
+            .with_context(|| "Timeout waiting to lock Server main_loop")?
+            .replace(main_loop);
         Ok(())
     }
 

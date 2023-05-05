@@ -349,7 +349,8 @@ pub(super) enum NeoMediaSenderCommand {
 pub(super) struct NeoMediaSender {
     start_time: FrameTime,
     target_start_time: FrameTime,
-    start_time_v: f32,
+    smoothed_start_time: f64,
+    start_time_v: f64,
     start_time_update: Instant,
     last_sent_time: FrameTime,
     vid: Option<AppSrc>,
@@ -373,6 +374,7 @@ impl NeoMediaSender {
         Self {
             start_time: 0,
             target_start_time: 0,
+            smoothed_start_time: 0.0,
             start_time_v: 0.0,
             start_time_update: Instant::now(),
             last_sent_time: 0,
@@ -436,6 +438,7 @@ impl NeoMediaSender {
 
                 self.start_time = target_time - runtime;
                 self.target_start_time = self.start_time;
+                self.smoothed_start_time = self.start_time as f64;
                 self.start_time_v = 0.0;
                 self.last_sent_time = target_time;
                 debug!(
@@ -458,21 +461,27 @@ impl NeoMediaSender {
         if let (Some(target_time), Some(actual_time), Some(st), Some(et)) =
             (target_time, actual_time, st, et)
         {
-            if actual_time > st && actual_time < et {
+            if actual_time > st.saturating_sub(LATENCY * 2)
+                && actual_time < et.saturating_add(LATENCY * 2)
+            {
                 // Only do this while inside the buffer
-                self.target_start_time += target_time - actual_time; // Adjust
+                self.target_start_time = self.start_time + (target_time - actual_time); // Adjust
 
                 // Now for the spring
-                let dt = (Instant::now() - self.start_time_update).as_secs_f32();
-                let mut new_start_time = self.start_time as f32;
+                let dt = (Instant::now() - self.start_time_update)
+                    .min(Duration::from_millis(200))
+                    .as_secs_f64();
                 spring_update(
-                    &mut new_start_time,
-                    self.target_start_time as f32,
+                    &mut self.smoothed_start_time,
+                    self.target_start_time as f64,
                     &mut self.start_time_v,
-                    0.5,
+                    2.5,
                     dt,
                 );
-                self.start_time = new_start_time as FrameTime;
+                if let Some(new_actual_time) = self.get_buftime() {
+                    let expected_position = (new_actual_time - st) as f32 / (et - st) as f32;
+                    debug!("expected_position: {}", expected_position);
+                }
             }
         }
         self.start_time_update = Instant::now();
@@ -714,19 +723,19 @@ impl NeoMediaSender {
     }
 }
 
-const EPS: f32 = 1e-5f32;
-fn halflife_to_damping(halflife: f32) -> f32 {
-    (4.0f32 * std::f32::consts::LN_2) / (halflife + EPS)
+const EPS: f64 = 1e-5;
+fn halflife_to_damping(halflife: f64) -> f64 {
+    (4.0 * std::f64::consts::LN_2) / (halflife + EPS)
 }
 
 // fn damping_to_halflife(damping: f32) -> f32 {
 //     (4.0f32 * std::f32::consts::LN_2) / (damping + EPS)
 // }
-fn fast_negexp(x: f32) -> f32 {
-    1.0f32 / (1.0f32 + x + 0.48f32 * x * x + 0.235f32 * x * x * x)
+fn fast_negexp(x: f64) -> f64 {
+    1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x)
 }
 
-fn spring_update(value: &mut f32, target: f32, velocity: &mut f32, halflife: f32, dt: f32) {
+fn spring_update(value: &mut f64, target: f64, velocity: &mut f64, halflife: f64, dt: f64) {
     let y = halflife_to_damping(halflife) / 2.0;
     let j0 = *value - target;
     let j1 = *velocity + j0 * y;

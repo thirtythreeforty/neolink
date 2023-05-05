@@ -2,7 +2,7 @@
 //
 // Data is streamed into a gstreamer source
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use log::*;
 use neolink_core::bcmedia::model::BcMedia;
 use tokio::time::{timeout, Duration};
@@ -54,7 +54,9 @@ impl Camera<Streaming> {
                 loop {
                     tokio::task::yield_now().await;
                     // debug!("Straming: Get");
-                    let data = timeout(Duration::from_secs(15), stream_data.get_data()).await??;
+                    let data = timeout(Duration::from_secs(15), stream_data.get_data())
+                        .await
+                        .with_context(|| "Timed out waiting for new Media Frame")??;
                     // debug!("Straming: Got");
                     match &data {
                         Ok(BcMedia::InfoV1(_)) => trace!("{}:  - InfoV1", &tag_thread),
@@ -66,7 +68,9 @@ impl Camera<Streaming> {
                         Err(_) => trace!("  - Error"),
                     }
                     // debug!("Straming: Send");
-                    sender.send(data?).await?;
+                    timeout(Duration::from_secs(15), sender.send(data?))
+                        .await
+                        .with_context(|| "Timed out waiting to send Media Frame")??;
                     // debug!("Straming: Sent");
                 }
             });
