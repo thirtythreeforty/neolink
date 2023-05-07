@@ -11,6 +11,7 @@ use tokio::{sync::RwLock, task::JoinSet};
 use neolink_core::bc_protocol::{BcCamera, StreamKind as Stream};
 
 use super::{camera::Camera, LoggedIn};
+use crate::rtsp::gst::FactoryCommand;
 
 pub(crate) struct Streaming {
     pub(crate) camera: BcCamera,
@@ -68,9 +69,12 @@ impl Camera<Streaming> {
                         Err(_) => trace!("  - Error"),
                     }
                     // debug!("Straming: Send");
-                    timeout(Duration::from_secs(15), sender.send(data?))
-                        .await
-                        .with_context(|| "Timed out waiting to send Media Frame")??;
+                    timeout(
+                        Duration::from_secs(15),
+                        sender.send(FactoryCommand::BcMedia(data?)),
+                    )
+                    .await
+                    .with_context(|| "Timed out waiting to send Media Frame")??;
                     // debug!("Straming: Sent");
                 }
             });

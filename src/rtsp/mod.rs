@@ -61,11 +61,13 @@ use tokio_stream::StreamExt;
 
 mod cmdline;
 mod gst;
+mod spring;
 mod states;
 
 use super::config::Config;
 pub(crate) use cmdline::Opt;
 use gst::NeoRtspServer;
+pub(crate) use spring::*;
 use states::*;
 
 /// Entry point for the rtsp subcommand
@@ -182,13 +184,20 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
     let tags = loggedin.shared.get_tags();
     let rtsp_thread = loggedin.get_rtsp();
 
-    // Check if buffers are already perpared (from say previous connection)
+    // Check if buffers were prepared before we clear
     let buffers_prepared = tags
         .iter()
         .map(|tag| rtsp_thread.buffer_ready(tag))
         .collect::<FuturesUnordered<_>>()
         .filter_map(|a| a)
         .all(|a| a)
+        .await;
+
+    // Clear all buffers present
+    tags.iter()
+        .map(|tag| rtsp_thread.clear_buffer(tag))
+        .collect::<FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
         .await;
 
     // Start pulling data from the camera
@@ -198,22 +207,28 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         .with_context(|| format!("{}: Could not start stream", name))
         .map_err(CameraFailureKind::Retry)?;
 
-    if !buffers_prepared {
-        // Wait for buffers to be prepared
-        let mut waiter = tokio::time::interval(Duration::from_micros(500));
-        loop {
-            waiter.tick().await;
-            if tags
-                .iter()
-                .map(|tag| rtsp_thread.buffer_ready(tag))
-                .collect::<FuturesUnordered<_>>()
-                .all(|f| f.unwrap_or(false))
-                .await
-            {
-                break;
-            }
+    // Wait for buffers to be prepared
+    let mut waiter = tokio::time::interval(Duration::from_micros(500));
+    loop {
+        waiter.tick().await;
+        if tags
+            .iter()
+            .map(|tag| rtsp_thread.buffer_ready(tag))
+            .collect::<FuturesUnordered<_>>()
+            .all(|f| f.unwrap_or(false))
+            .await
+        {
+            break;
         }
+    }
 
+    tags.iter()
+        .map(|tag| rtsp_thread.jump_to_live(tag))
+        .collect::<FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
+
+    if !buffers_prepared {
         // Clear all current media and force a reconnect
         //   This shoudld stop them from watching the "Stream Not Ready Thing"
         tags.iter()
@@ -221,8 +236,8 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
             .collect::<FuturesUnordered<_>>()
             .collect::<Vec<_>>()
             .await;
-        log::info!("{}: Buffers prepared", name);
     }
+    log::info!("{}: Buffers prepared", name);
 
     loop {
         // Wait for error or reason to pause
@@ -301,6 +316,12 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         }
         .with_context(|| format!("{}: Error while paused", name))
         .map_err(CameraFailureKind::Retry)?;
+
+        tags.iter()
+            .map(|tag| rtsp_thread.jump_to_live(tag))
+            .collect::<FuturesUnordered<_>>()
+            .collect::<Vec<_>>()
+            .await;
 
         streaming = paused
             .stream()

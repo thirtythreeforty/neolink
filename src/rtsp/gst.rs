@@ -6,7 +6,7 @@ mod sender;
 mod server;
 mod shared;
 
-use factory::*;
+pub(crate) use factory::*;
 
 pub(crate) use self::server::NeoRtspServer;
 

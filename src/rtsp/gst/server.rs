@@ -16,7 +16,6 @@ use gstreamer_rtsp_server::{
     RTSPAuth, RTSPFilterResult, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
-use neolink_core::bcmedia::model::*;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     fs,
@@ -46,7 +45,10 @@ impl NeoRtspServer {
         Ok(factory)
     }
 
-    pub(crate) async fn get_sender<T: Into<String>>(&self, tag: T) -> Option<Sender<BcMedia>> {
+    pub(crate) async fn get_sender<T: Into<String>>(
+        &self,
+        tag: T,
+    ) -> Option<Sender<FactoryCommand>> {
         self.imp().get_sender(tag).await
     }
 
@@ -216,6 +218,26 @@ impl NeoRtspServer {
             }
         }));
     }
+
+    // Clear buffers on all senders of a tag
+    pub(crate) async fn clear_buffer<T: Into<String>>(&self, tag: T) -> AnyResult<()> {
+        if let Some(sender) = self.imp().get_sender(tag).await {
+            sender.send(FactoryCommand::ClearBuffer).await?;
+            Ok(())
+        } else {
+            Err(anyhow!("No such tag"))
+        }
+    }
+
+    // Jump to live on all senders of a tag
+    pub(crate) async fn jump_to_live<T: Into<String>>(&self, tag: T) -> AnyResult<()> {
+        if let Some(sender) = self.imp().get_sender(tag).await {
+            sender.send(FactoryCommand::JumpToLive).await?;
+            Ok(())
+        } else {
+            Err(anyhow!("No such tag"))
+        }
+    }
 }
 
 unsafe impl Send for NeoRtspServer {}
@@ -264,7 +286,10 @@ impl NeoRtspServerImpl {
         Ok(())
     }
 
-    pub(crate) async fn get_sender<T: Into<String>>(&self, tag: T) -> Option<Sender<BcMedia>> {
+    pub(crate) async fn get_sender<T: Into<String>>(
+        &self,
+        tag: T,
+    ) -> Option<Sender<FactoryCommand>> {
         let key = tag.into();
         self.medias
             .read()

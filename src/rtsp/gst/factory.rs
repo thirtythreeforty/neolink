@@ -56,7 +56,7 @@ impl NeoMediaFactory {
         factory
     }
 
-    pub(crate) fn get_sender(&self) -> Sender<BcMedia> {
+    pub(crate) fn get_sender(&self) -> Sender<FactoryCommand> {
         self.imp().sender.clone()
     }
 
@@ -115,8 +115,15 @@ impl NeoMediaFactory {
 unsafe impl Send for NeoMediaFactory {}
 unsafe impl Sync for NeoMediaFactory {}
 
+#[derive(Debug)]
+pub(crate) enum FactoryCommand {
+    BcMedia(BcMedia),
+    ClearBuffer,
+    JumpToLive,
+}
+
 pub(crate) struct NeoMediaFactoryImpl {
-    sender: Sender<BcMedia>,
+    sender: Sender<FactoryCommand>,
     clientsender: Sender<NeoMediaSender>,
     shared: Arc<NeoMediaShared>,
     #[allow(dead_code)] // Not dead just need a handle to keep it alive and drop with this obj
