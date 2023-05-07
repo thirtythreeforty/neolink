@@ -331,10 +331,14 @@ impl NeoMediaSenders {
     }
 
     pub(super) async fn run(&mut self) -> AnyResult<()> {
-        let mut interval = tokio::time::interval(Duration::from_millis(20)); // 50 FPS
+        let mut interval = tokio::time::interval(Duration::from_millis(40)); // 25 FPS
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::task::yield_now().await;
             self.update_springs().await?;
+            self.shared
+                .number_of_clients
+                .store(self.client_data.len(), Ordering::Relaxed);
             tokio::select! {
                 _ = interval.tick() => {
                     self.handle_buffer().await
@@ -571,7 +575,7 @@ impl NeoMediaSender {
             if let Some(runtime) = runtime {
                 // We are live only send the buffer up to the runtime
                 let min_time = self.last_sent_time;
-                let max_time = self.runtime_to_buftime(runtime);
+                let max_time = self.runtime_to_buftime(runtime).saturating_add(LATENCY);
                 self.last_sent_time = self.send_buffer_between(buf, min_time, max_time).await?;
             } else {
                 // We are not playing send pre buffers so that the elements can init themselves
