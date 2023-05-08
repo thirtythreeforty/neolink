@@ -285,12 +285,28 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         // Wait for reason to restart
         tokio::select! {
             v = async {
+                // Wait for motion start and client for start
+                let mut motion = paused.get_camera().listen_on_motion().await?;
+                let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
+                loop {
+                    motion.await_start(Duration::ZERO).await?;
+                    let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;
+                    if total_clients > 0 {
+                        return Result::<()>::Ok(());
+                    }
+                    inter.tick().await;
+                }
+            }, if paused.get_config().pause.on_motion && paused.get_config().pause.on_disconnect => {
+                info!("Motion and Client Resume");
+                v.with_context(|| "Error while processing motion/client messages")
+            },
+            v = async {
                 // Wait for motion start
                 let mut motion = paused.get_camera().listen_on_motion().await?;
                 motion.await_start(Duration::ZERO).await
-            }, if paused.get_config().pause.on_motion => {
+            }, if paused.get_config().pause.on_motion && !paused.get_config().pause.on_disconnect => {
                 info!("Motion Resume");
-                v.map_err(|e| anyhow!("Error while processing motion messages: {:?}", e))
+                v.with_context(|| "Error while processing motion messages")
             },
             v = async {
                 // Wait for client to connect
@@ -303,7 +319,7 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
                         return Ok(())
                     }
                 }
-            }, if paused.get_config().pause.on_disconnect => {
+            }, if paused.get_config().pause.on_disconnect && !paused.get_config().pause.on_motion => {
                 info!("Client Resume");
                 v
             },

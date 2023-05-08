@@ -44,17 +44,6 @@ struct NeoBuffer {
 
 impl NeoBuffer {
     fn push(&mut self, item: Arc<Stamped>) {
-        let end_time = self.end_time();
-        let frame_time = item.time;
-        if let Some(end_time) = end_time {
-            let delta_time = end_time - frame_time;
-            let delta_duration = Duration::from_micros(delta_time.unsigned_abs());
-            if delta_duration > Duration::from_secs(1) {
-                debug!("Clearing buffer due to jump");
-                self.buf.clear();
-            }
-        }
-
         self.buf.push_back(item);
         while self.buf.len() > BUFFER_SIZE {
             if self.buf.pop_front().is_none() {
@@ -243,6 +232,18 @@ impl NeoMediaSenders {
         for client_data in self.client_data.values_mut() {
             client_data.add_data(data.clone()).await?;
         }
+
+        let end_time = self.buffer.end_time();
+        let frame_time = data.time;
+        if let Some(end_time) = end_time {
+            let delta_time = end_time - frame_time;
+            let delta_duration = Duration::from_micros(delta_time.unsigned_abs());
+            if delta_duration > Duration::from_secs(1) {
+                debug!("Clearing buffer due to jump");
+                self.clear_buffer().await?;
+            }
+        }
+
         self.buffer.push(data);
 
         self.shared
@@ -310,6 +311,7 @@ impl NeoMediaSenders {
             // Set them into the non init state
             // This will make them wait for the
             // buffer to be enough then jump to live
+            client.buffer.buf.clear();
             client.inited = false;
         }
         Ok(())
@@ -495,6 +497,10 @@ impl NeoMediaSender {
                 self.buffer.push(frame.clone());
             }
             debug!("Buffer filled");
+
+            self.jump_to_live().await?;
+        } else if !self.inited {
+            debug!("Buffer not ready to init: {}", buffer.buf.len());
         }
         Ok(())
     }
@@ -537,6 +543,14 @@ impl NeoMediaSender {
 
     async fn update(&mut self) -> AnyResult<()> {
         self.update_starttime().await?;
+        if !self
+            .vid
+            .as_ref()
+            .map(|x| x.pads().iter().all(|pad| pad.is_linked()))
+            .unwrap_or(false)
+        {
+            return Err(anyhow!("Vid src is closed"));
+        }
         if let Some(buftime) = self.get_buftime() {
             // debug!("Update: buftime: {}", buftime);
             while self
