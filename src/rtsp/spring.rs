@@ -58,6 +58,11 @@ impl Spring {
         self.target = target;
     }
 
+    #[allow(dead_code)] // Used in debug print
+    pub(crate) fn get_target(&self) -> f64 {
+        self.target
+    }
+
     pub(crate) fn reset_to(&mut self, target: f64) {
         self.target = target;
         self.value = target;
