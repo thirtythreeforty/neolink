@@ -1,17 +1,17 @@
 //! The component that handles passing BcMedia into
 //! gstreamer media stream
 use anyhow::anyhow;
-use futures::stream::StreamExt;
+use futures::{
+    future::TryFutureExt,
+    stream::{FuturesUnordered, StreamExt},
+};
 use gstreamer::{prelude::*, ClockTime};
 use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
 use log::*;
 use neolink_core::bcmedia::model::*;
 use std::{
-    collections::{
-        VecDeque,
-        {hash_map::Entry, HashMap},
-    },
+    collections::{HashMap, VecDeque},
     convert::TryInto,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -271,52 +271,70 @@ impl NeoMediaSenders {
     }
 
     async fn init_clients(&mut self) -> AnyResult<()> {
-        for key in self.client_data.keys().copied().collect::<Vec<_>>() {
-            tokio::task::yield_now().await;
-            match self.client_data.entry(key) {
-                Entry::Occupied(mut occ) => {
-                    if let Err(e) = occ.get_mut().initialise(&self.buffer).await {
+        let (client_data, buffer) = (&mut self.client_data, &self.buffer);
+        let keys_to_remove = client_data
+            .iter_mut()
+            .map(|(&key, client)| {
+                client
+                    .initialise(buffer)
+                    .map_ok(|e| {
                         debug!("Could not init client: {:?}", e);
-                        occ.remove();
-                        continue;
-                    }
-                }
-                Entry::Vacant(_) => {}
-            }
+                        None
+                    })
+                    .unwrap_or_else(move |_| Some(key))
+            })
+            .collect::<FuturesUnordered<_>>()
+            .filter_map(|a| async move { a })
+            .collect::<Vec<_>>()
+            .await;
+        for key in keys_to_remove.iter() {
+            client_data.remove(key);
         }
         Ok(())
     }
 
     async fn process_client_commands(&mut self) -> AnyResult<()> {
-        for key in self.client_data.keys().copied().collect::<Vec<_>>() {
-            tokio::task::yield_now().await;
-            match self.client_data.entry(key) {
-                Entry::Occupied(mut occ) => {
-                    if let Err(e) = occ.get_mut().process_commands(&self.buffer).await {
+        let (client_data, buffer) = (&mut self.client_data, &self.buffer);
+        let keys_to_remove = client_data
+            .iter_mut()
+            .map(|(&key, client)| {
+                client
+                    .process_commands(buffer)
+                    .map_ok(|e| {
                         debug!("Could not process client command: {:?}", e);
-                        occ.remove();
-                        continue;
-                    }
-                }
-                Entry::Vacant(_) => {}
-            }
+                        None
+                    })
+                    .unwrap_or_else(move |_| Some(key))
+            })
+            .collect::<FuturesUnordered<_>>()
+            .filter_map(|a| async move { a })
+            .collect::<Vec<_>>()
+            .await;
+        for key in keys_to_remove.iter() {
+            client_data.remove(key);
         }
         Ok(())
     }
 
     async fn process_client_update(&mut self) -> AnyResult<()> {
-        for key in self.client_data.keys().copied().collect::<Vec<_>>() {
-            tokio::task::yield_now().await;
-            match self.client_data.entry(key) {
-                Entry::Occupied(mut occ) => {
-                    if let Err(e) = occ.get_mut().update().await {
+        let client_data = &mut self.client_data;
+        let keys_to_remove = client_data
+            .iter_mut()
+            .map(|(&key, client)| {
+                client
+                    .update()
+                    .map_ok(|e| {
                         debug!("Could not update client: {:?}", e);
-                        occ.remove();
-                        continue;
-                    }
-                }
-                Entry::Vacant(_) => {}
-            }
+                        None
+                    })
+                    .unwrap_or_else(move |_| Some(key))
+            })
+            .collect::<FuturesUnordered<_>>()
+            .filter_map(|a| async move { a })
+            .collect::<Vec<_>>()
+            .await;
+        for key in keys_to_remove.iter() {
+            client_data.remove(key);
         }
         Ok(())
     }
@@ -624,6 +642,7 @@ impl NeoMediaSender {
                 .map(|data| data.time <= buftime)
                 .unwrap_or(false)
             {
+                tokio::task::yield_now().await;
                 match self.buffer.buf.pop_front() {
                     Some(frame) => {
                         buffers.push(frame);
@@ -649,6 +668,7 @@ impl NeoMediaSender {
             let mut vid_buffers: Vec<(FrameTime, Vec<u8>)> = vec![];
             let mut aud_buffers: Vec<(FrameTime, Vec<u8>)> = vec![];
             for media in medias.iter().map(|t| t.as_ref()) {
+                tokio::task::yield_now().await;
                 let buffer = match &media.data {
                     BcMedia::Iframe(_) | BcMedia::Pframe(_) => Some(&mut vid_buffers),
                     BcMedia::Aac(_) | BcMedia::Adpcm(_) => Some(&mut aud_buffers),
