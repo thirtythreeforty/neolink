@@ -274,8 +274,9 @@ impl NeoMediaFactoryImpl {
         ) {
             (VidFormats::Unknown, true) | (_, false) => {
                 debug!("Building Unknown Pipeline");
-                let source = make_element("videotestsrc", "vidsrc")?;
+                let source = make_element("videotestsrc", "testvidsrc")?;
                 source.set_property_from_str("pattern", "snow");
+                source.set_property("num-buffers", 500i32); // Send buffers then EOS
                 let queue = make_queue("queue0")?;
                 let queue2 = make_queue2("queue2")?;
                 let overlay = make_element("textoverlay", "overlay")?;

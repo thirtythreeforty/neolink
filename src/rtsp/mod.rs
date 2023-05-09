@@ -184,15 +184,6 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
     let tags = loggedin.shared.get_tags();
     let rtsp_thread = loggedin.get_rtsp();
 
-    // Check if buffers were prepared before we clear
-    let buffers_prepared = tags
-        .iter()
-        .map(|tag| rtsp_thread.buffer_ready(tag))
-        .collect::<FuturesUnordered<_>>()
-        .filter_map(|a| a)
-        .all(|a| a)
-        .await;
-
     // Clear all buffers present
     tags.iter()
         .map(|tag| rtsp_thread.clear_buffer(tag))
@@ -228,15 +219,14 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         .collect::<Vec<_>>()
         .await;
 
-    if !buffers_prepared {
-        // Clear all current media and force a reconnect
-        //   This shoudld stop them from watching the "Stream Not Ready Thing"
-        tags.iter()
-            .map(|tag| rtsp_thread.clear_session(tag))
-            .collect::<FuturesUnordered<_>>()
-            .collect::<Vec<_>>()
-            .await;
-    }
+    // Clear "stream not ready" media to try and force a reconnect
+    //   This shoud stop them from watching the "Stream Not Ready" thing
+    debug!("Clearing not ready clients");
+    tags.iter()
+        .map(|tag| rtsp_thread.clear_session_notready(tag))
+        .collect::<FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
     log::info!("{}: Buffers prepared", name);
 
     loop {
@@ -261,7 +251,6 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
                 // Wait for client to disconnect
                 let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
 
-                info!("Await Client Pause");
                 loop {
                     inter.tick().await;
                     let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;

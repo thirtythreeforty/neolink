@@ -174,6 +174,8 @@ impl NeoRtspServer {
         self.imp().buffer_ready(tag).await
     }
 
+    #[allow(dead_code)]
+    /// Clear all sessions on a given path
     pub(crate) async fn clear_session<T: Into<String>>(&self, tag: T) {
         let tag: String = tag.into();
         if let Some(media) = self.imp().medias.read().await.get(&tag) {
@@ -198,6 +200,67 @@ impl NeoRtspServer {
                         info!("Removing Session Media");
                         clean_up = true;
                         RTSPFilterResult::Remove
+                    } else {
+                        RTSPFilterResult::Keep
+                    }
+                }));
+
+                if clean_up {
+                    close_client = true;
+                    RTSPFilterResult::Remove
+                } else {
+                    RTSPFilterResult::Keep
+                }
+            }));
+            if close_client {
+                client.close();
+                RTSPFilterResult::Remove
+            } else {
+                RTSPFilterResult::Keep
+            }
+        }));
+    }
+
+    /// Clear all sessions on the rtsp server that are using the not ready stream
+    pub(crate) async fn clear_session_notready<T: Into<String>>(&self, tag: T) {
+        let tag: String = tag.into();
+        if let Some(media) = self.imp().medias.read().await.get(&tag) {
+            self.clear_session_paths_notready(media.paths.iter());
+        }
+    }
+
+    fn clear_session_paths_notready<T: AsRef<str>>(&self, paths: impl Iterator<Item = T>) {
+        let paths: Vec<_> = paths.collect();
+        self.client_filter(Some(&mut |_server, client| {
+            let mut close_client = false;
+            client.session_filter(Some(&mut |_client, session| {
+                let mut clean_up = false;
+                session.filter(Some(&mut |_session, session_media| {
+                    if paths.iter().any(|p| {
+                        let s = p.as_ref();
+                        session_media
+                            .matches(s)
+                            .map(|amt| amt == s.len() as i32)
+                            .unwrap_or(false)
+                    }) {
+                        // Path is correct now check for no vidsrc
+                        let element = session_media
+                            .media()
+                            .expect("Media should exist")
+                            .element()
+                            .dynamic_cast::<gstreamer::Bin>()
+                            .expect("Media element should be a bin");
+                        // debug!("Searching for testvidsrc on {:?}", element.name());
+                        // for child in element.children().iter() {
+                        //     debug!(" - Child: {:?}", child.name());
+                        // }
+                        if element.child_by_name("testvidsrc").is_some() {
+                            info!("Removing Session Media");
+                            clean_up = true;
+                            RTSPFilterResult::Remove
+                        } else {
+                            RTSPFilterResult::Keep
+                        }
                     } else {
                         RTSPFilterResult::Keep
                     }
