@@ -199,19 +199,28 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         .map_err(CameraFailureKind::Retry)?;
 
     // Wait for buffers to be prepared
-    let mut waiter = tokio::time::interval(Duration::from_micros(500));
-    loop {
-        waiter.tick().await;
-        if tags
-            .iter()
-            .map(|tag| rtsp_thread.buffer_ready(tag))
-            .collect::<FuturesUnordered<_>>()
-            .all(|f| f.unwrap_or(false))
-            .await
-        {
-            break;
-        }
+    tokio::select! {
+        v = async {
+            let mut waiter = tokio::time::interval(Duration::from_micros(500));
+            loop {
+                waiter.tick().await;
+                if tags
+                    .iter()
+                    .map(|tag| rtsp_thread.buffer_ready(tag))
+                    .collect::<FuturesUnordered<_>>()
+                    .all(|f| f.unwrap_or(false))
+                    .await
+                {
+                    break;
+                }
+            }
+            Ok(())
+        } => v,
+        // Or for stream to error
+        v = streaming.join() => {v},
     }
+    .with_context(|| format!("{}: Error while waiting for buffers", name))
+    .map_err(CameraFailureKind::Retry)?;
 
     tags.iter()
         .map(|tag| rtsp_thread.jump_to_live(tag))

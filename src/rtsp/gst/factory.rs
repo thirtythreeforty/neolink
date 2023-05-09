@@ -323,11 +323,20 @@ impl NeoMediaFactoryImpl {
                         .enough_data(move |_appsrc| {
                             let _ = enough_command.blocking_send(NeoMediaSenderCommand::Pause);
                         })
-                        .seek_data(move |_appsrc, seek_pos| {
+                        .seek_data(move |appsrc, seek_pos| {
                             debug!("Send seek H265");
-                            let _ =
-                                seek_command.blocking_send(NeoMediaSenderCommand::Seek(seek_pos));
-                            true
+                            let runtime = appsrc.clock().and_then(|clock| {
+                                clock.time().and_then(|time| {
+                                    appsrc.base_time().map(|base_time| {
+                                        time.saturating_sub(base_time).useconds() as i64
+                                    })
+                                })
+                            });
+                            let res = seek_command
+                                .blocking_send(NeoMediaSenderCommand::Seek(runtime, seek_pos))
+                                .is_ok();
+                            debug!("Sent seek H265: {}", res);
+                            res
                         })
                         .build(),
                 );
@@ -371,15 +380,22 @@ impl NeoMediaFactoryImpl {
                 source.set_callbacks(
                     AppSrcCallbacks::builder()
                         .need_data(move |_appsrc, _amt| {
-                            let _ = need_command.try_send(NeoMediaSenderCommand::Resume);
+                            let _ = need_command.blocking_send(NeoMediaSenderCommand::Resume);
                         })
                         .enough_data(move |_appsrc| {
-                            let _ = enough_command.try_send(NeoMediaSenderCommand::Pause);
+                            let _ = enough_command.blocking_send(NeoMediaSenderCommand::Pause);
                         })
-                        .seek_data(move |_appsrc, seek_pos| {
+                        .seek_data(move |appsrc, seek_pos| {
                             debug!("Send seek H264: {}", seek_pos);
+                            let runtime = appsrc.clock().and_then(|clock| {
+                                clock.time().and_then(|time| {
+                                    appsrc.base_time().map(|base_time| {
+                                        time.saturating_sub(base_time).useconds() as i64
+                                    })
+                                })
+                            });
                             let result = seek_command
-                                .try_send(NeoMediaSenderCommand::Seek(seek_pos))
+                                .blocking_send(NeoMediaSenderCommand::Seek(runtime, seek_pos))
                                 .is_ok();
                             debug!("  - Sent seek H264: {}", result);
                             result
