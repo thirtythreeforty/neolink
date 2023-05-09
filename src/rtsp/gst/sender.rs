@@ -420,7 +420,7 @@ impl NeoMediaSender {
     pub(super) fn new() -> Self {
         let (tx, rx) = channel(30);
         Self {
-            start_time: Spring::new(0.0, 0.0, 5.5),
+            start_time: Spring::new(0.0, 0.0, 1.5),
             buffer: NeoBuffer::default(),
             vid: None,
             aud: None,
@@ -448,10 +448,25 @@ impl NeoMediaSender {
         self.command_sender.clone()
     }
 
+    fn target_live(&self) -> Option<FrameTime> {
+        let target_idx = BUFFER_SIZE / 3;
+        if self.buffer.buf.len() >= target_idx {
+            let target_frame = self.buffer.buf.len().saturating_sub(target_idx);
+            self.buffer.buf.get(target_frame).map(|frame| frame.time)
+        } else {
+            // Approximate it's location
+            let fraction = target_idx as f64 / self.buffer.buf.len() as f64;
+            if let (Some(st), Some(et)) = (self.buffer.start_time(), self.buffer.end_time()) {
+                Some(et - ((et - st) as f64 * fraction) as FrameTime)
+            } else {
+                None
+            }
+        }
+    }
+
     async fn jump_to_live(&mut self) -> AnyResult<()> {
         if self.inited {
-            let target_frame = self.buffer.buf.len().saturating_sub(BUFFER_SIZE / 3);
-            let target_time = self.buffer.buf.get(target_frame).map(|frame| frame.time);
+            let target_time = self.target_live();
 
             if let Some(target_time) = target_time {
                 let runtime = self.get_runtime().unwrap_or(0);
@@ -469,35 +484,8 @@ impl NeoMediaSender {
 
     async fn update_starttime(&mut self) -> AnyResult<()> {
         self.start_time.update().await;
-        let target_idx = BUFFER_SIZE / 3;
-        let target_time_target_frame = if self.buffer.buf.len() >= target_idx {
-            let target_frame = self.buffer.buf.len().saturating_sub(target_idx);
-            self.buffer
-                .buf
-                .get(target_frame)
-                .map(|frame| (frame.time, target_frame as i64))
-        } else {
-            // Approximate it's location
-            let fraction = target_idx as f64 / self.buffer.buf.len() as f64;
-            if let (Some(st), Some(et)) = (self.buffer.start_time(), self.buffer.end_time()) {
-                Some((
-                    et - ((et - st) as f64 * fraction) as FrameTime,
-                    -((target_idx - self.buffer.buf.len()) as i64),
-                ))
-            } else {
-                None
-            }
-        };
-        if let (Some(runtime), Some((target_time, _target_frame))) =
-            (self.get_runtime(), target_time_target_frame)
-        {
-            // debug!(
-            //     "Target frame: {}, Target time: {}, Target start time: {}, Current start time: {}",
-            //     target_frame,
-            //     target_time,
-            //     target_time - runtime,
-            //     self.start_time.value_i64(),
-            // );
+
+        if let (Some(runtime), Some(target_time)) = (self.get_runtime(), self.target_live()) {
             self.start_time.set_target((target_time - runtime) as f64);
         }
         Ok(())
@@ -509,7 +497,7 @@ impl NeoMediaSender {
         _target_runtime: FrameTime,
         _master_buffer: &NeoBuffer,
     ) -> AnyResult<()> {
-        self.jump_to_live().await;
+        self.jump_to_live().await?;
         Ok(())
     }
 
@@ -609,7 +597,8 @@ impl NeoMediaSender {
         {
             return Err(anyhow!("Vid src is closed"));
         }
-        if let Some(buftime) = self.get_buftime() {
+        const LATENCY: FrameTime = Duration::from_millis(250).as_micros() as FrameTime;
+        if let Some(buftime) = self.get_buftime().map(|i| i.saturating_add(LATENCY)) {
             // debug!("Update: buftime: {}", buftime);
             while self
                 .buffer
