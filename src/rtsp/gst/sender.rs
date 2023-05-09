@@ -277,11 +277,11 @@ impl NeoMediaSenders {
             .map(|(&key, client)| {
                 client
                     .initialise(buffer)
-                    .map_ok(|e| {
+                    .map_ok(|_| None)
+                    .unwrap_or_else(move |e| {
                         debug!("Could not init client: {:?}", e);
-                        None
+                        Some(key)
                     })
-                    .unwrap_or_else(move |_| Some(key))
             })
             .collect::<FuturesUnordered<_>>()
             .filter_map(|a| async move { a })
@@ -300,11 +300,11 @@ impl NeoMediaSenders {
             .map(|(&key, client)| {
                 client
                     .process_commands(buffer)
-                    .map_ok(|e| {
+                    .map_ok(|_| None)
+                    .unwrap_or_else(move |e| {
                         debug!("Could not process client command: {:?}", e);
-                        None
+                        Some(key)
                     })
-                    .unwrap_or_else(move |_| Some(key))
             })
             .collect::<FuturesUnordered<_>>()
             .filter_map(|a| async move { a })
@@ -321,13 +321,10 @@ impl NeoMediaSenders {
         let keys_to_remove = client_data
             .iter_mut()
             .map(|(&key, client)| {
-                client
-                    .update()
-                    .map_ok(|e| {
-                        debug!("Could not update client: {:?}", e);
-                        None
-                    })
-                    .unwrap_or_else(move |_| Some(key))
+                client.update().map_ok(|_| None).unwrap_or_else(move |e| {
+                    debug!("Could not update client: {:?}", e);
+                    Some(key)
+                })
             })
             .collect::<FuturesUnordered<_>>()
             .filter_map(|a| async move { a })
@@ -491,16 +488,16 @@ impl NeoMediaSender {
                 None
             }
         };
-        if let (Some(runtime), Some((target_time, target_frame))) =
+        if let (Some(runtime), Some((target_time, _target_frame))) =
             (self.get_runtime(), target_time_target_frame)
         {
-            debug!(
-                "Target frame: {}, Target time: {}, Target start time: {}, Current start time: {}",
-                target_frame,
-                target_time,
-                target_time - runtime,
-                self.start_time.value_i64(),
-            );
+            // debug!(
+            //     "Target frame: {}, Target time: {}, Target start time: {}, Current start time: {}",
+            //     target_frame,
+            //     target_time,
+            //     target_time - runtime,
+            //     self.start_time.value_i64(),
+            // );
             self.start_time.set_target((target_time - runtime) as f64);
         }
         Ok(())
@@ -509,31 +506,10 @@ impl NeoMediaSender {
     async fn seek(
         &mut self,
         _original_runtime: Option<FrameTime>,
-        target_runtime: FrameTime,
+        _target_runtime: FrameTime,
         _master_buffer: &NeoBuffer,
     ) -> AnyResult<()> {
-        if let Some(appsrc) = self.vid.as_ref() {
-            if let Some(clock) = appsrc.clock() {
-                if let Some(time) = clock.time() {
-                    if appsrc.base_time().is_some() {
-                        // let current_runtime = time.saturating_sub(base_time);
-                        let target_runtime = ClockTime::from_useconds(target_runtime as u64);
-                        appsrc.set_base_time(time.saturating_sub(target_runtime));
-                    }
-                }
-            }
-        }
-        if let Some(appsrc) = self.aud.as_ref() {
-            if let Some(clock) = appsrc.clock() {
-                if let Some(time) = clock.time() {
-                    if appsrc.base_time().is_some() {
-                        let target_runtime = ClockTime::from_useconds(target_runtime as u64);
-                        appsrc.set_base_time(time.saturating_sub(target_runtime));
-                    }
-                }
-            }
-        }
-        self.jump_to_live().await?;
+        self.jump_to_live().await;
         Ok(())
     }
 
@@ -699,7 +675,7 @@ impl NeoMediaSender {
             tokio::try_join!(
                 async {
                     if !vid_buffers.is_empty() {
-                        debug!("Sending video buffers: {}", vid_buffers.len());
+                        // debug!("Sending video buffers: {}", vid_buffers.len());
                         if let Some(appsrc) = self.vid.clone() {
                             let buffers = {
                                 let mut buffers =
@@ -709,15 +685,15 @@ impl NeoMediaSender {
                                     for (time, buf) in vid_buffers.drain(..) {
                                         tokio::task::yield_now().await;
                                         let runtime = self.buftime_to_runtime(time);
-                                        let actual_runtime = self
+                                        let _actual_runtime = self
                                             .get_runtime()
                                             .map(|i| Duration::from_micros(i as u64));
-                                        debug!(
-                                            "  - Sending vid frame at time {} ({:?} Expect: {:?})",
-                                            time,
-                                            Duration::from_micros(runtime as u64),
-                                            actual_runtime
-                                        );
+                                        // debug!(
+                                        //     "  - Sending vid frame at time {} ({:?} Expect: {:?})",
+                                        //     time,
+                                        //     Duration::from_micros(runtime as u64),
+                                        //     actual_runtime
+                                        // );
 
                                         let gst_buf = {
                                             let mut gst_buf =
@@ -742,7 +718,7 @@ impl NeoMediaSender {
                             };
 
                             let res = tokio::task::spawn_blocking(move || {
-                                debug!("  - Pushing buffer: {}", buffers.len());
+                                // debug!("  - Pushing buffer: {}", buffers.len());
                                 appsrc
                                     .push_buffer_list(buffers.copy())
                                     .map(|_| ())
