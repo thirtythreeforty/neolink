@@ -99,6 +99,9 @@ pub(crate) struct CameraConfig {
 
     #[serde(default = "default_print", alias = "print")]
     pub(crate) print_format: PrintFormat,
+
+    #[serde(default = "default_update_time", alias = "time")]
+    pub(crate) update_time: bool,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -201,6 +204,10 @@ fn default_tokio_console() -> bool {
 
 fn default_channel_id() -> u8 {
     0
+}
+
+fn default_update_time() -> bool {
+    false
 }
 
 fn default_motion_timeout() -> f64 {

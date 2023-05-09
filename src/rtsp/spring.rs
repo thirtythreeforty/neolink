@@ -34,9 +34,9 @@ impl Spring {
         );
     }
 
-    pub(crate) fn value(&self) -> f64 {
-        self.value
-    }
+    // pub(crate) fn value(&self) -> f64 {
+    //     self.value
+    // }
 
     // pub(crate) fn value_u32(&self) -> u32 {
     //     self.value.max(std::u32::MIN as f64).floor().min(std::u32::MAX as f64) as u32
