@@ -185,11 +185,15 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
     let rtsp_thread = loggedin.get_rtsp();
 
     // Clear all buffers present
-    tags.iter()
-        .map(|tag| rtsp_thread.clear_buffer(tag))
-        .collect::<FuturesUnordered<_>>()
-        .collect::<Vec<_>>()
-        .await;
+    // Uncomment to clear buffers. This is now handlled in the buffer itself,
+    // instead of clearing it restamps it whenever there is a jump in the
+    // timestamps of >1s
+    //
+    // tags.iter()
+    //     .map(|tag| rtsp_thread.clear_buffer(tag))
+    //     .collect::<FuturesUnordered<_>>()
+    //     .collect::<Vec<_>>()
+    //     .await;
 
     // Start pulling data from the camera
     let mut streaming = loggedin

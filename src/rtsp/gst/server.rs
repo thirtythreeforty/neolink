@@ -283,6 +283,7 @@ impl NeoRtspServer {
     }
 
     // Clear buffers on all senders of a tag
+    #[allow(dead_code)] // Old function, was used to clear buffer on reconnect
     pub(crate) async fn clear_buffer<T: Into<String>>(&self, tag: T) -> AnyResult<()> {
         if let Some(sender) = self.imp().get_sender(tag).await {
             sender.send(FactoryCommand::ClearBuffer).await?;
