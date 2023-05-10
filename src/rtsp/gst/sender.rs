@@ -255,10 +255,10 @@ impl NeoMediaSenders {
 
         let end_time = self.buffer.end_time();
         let frame_time = data.time;
-        // Ocassionally the camera will make a jump in timestamps of about 15s
-        // This could mean that it runs on some 15s buffer
+        // Ocassionally the camera will make a jump in timestamps of about 15s (on sub 9s on main)
+        // This could mean that it runs on some fixed sized buffer
         if let Some(end_time) = end_time {
-            let delta_time = end_time - frame_time - 1;
+            let delta_time = frame_time - end_time - -1;
             let delta_duration = Duration::from_micros(delta_time.unsigned_abs());
             if delta_duration > Duration::from_secs(1) {
                 debug!(
