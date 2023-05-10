@@ -222,6 +222,7 @@ impl Discoverer {
     where
         F: Fn(UdpDiscovery, SocketAddr) -> Option<T>,
     {
+        trace!("Retrying send");
         disc.tid = 0; // Must be random to avoid simulatenous subscription errors
         let mut set = FuturesUnordered::new();
         for dest in dests.iter() {
@@ -230,6 +231,7 @@ impl Discoverer {
 
         // Get what ever completes first
         while let Some(result) = set.next().await {
+            trace!("Result: {}", result.is_ok());
             if let Ok(ret) = result {
                 return Ok(ret);
             }
@@ -361,15 +363,20 @@ impl Discoverer {
     /// On success it returns the M2cQr that the p2p relay
     /// server has about the UID
     async fn uid_loopup(&self, uid: &str) -> Result<UidLookupResults> {
-        let mut addrs = vec![];
-        for p2p_relay in P2P_RELAY_HOSTNAMES.iter() {
-            addrs.append(
-                &mut format!("{}:9999", p2p_relay)
-                    .to_socket_addrs()
-                    .map(|i| i.collect::<Vec<SocketAddr>>())
-                    .unwrap_or_else(|_| vec![]),
-            );
-        }
+        let task = tokio::task::spawn_blocking(move || {
+            let mut addrs = vec![];
+            for p2p_relay in P2P_RELAY_HOSTNAMES.iter() {
+                addrs.append(
+                    &mut format!("{}:9999", p2p_relay)
+                        .to_socket_addrs()
+                        .map(|i| i.collect::<Vec<SocketAddr>>())
+                        .unwrap_or_else(|_| vec![]),
+                );
+            }
+            addrs
+        });
+        let addrs = timeout(*MAXIMUM_WAIT, task).await??;
+        trace!("Uid lookup to: {:?}", addrs);
         let msg = UdpDiscovery {
             tid: 0,
             payload: UdpXml {
@@ -380,6 +387,7 @@ impl Discoverer {
                 ..Default::default()
             },
         };
+        trace!("Sending look up {:?}", msg);
         let (packet, _) = self
             .retry_send_multi(msg, addrs.as_slice(), |bc, addr| match bc {
                 UdpDiscovery {
@@ -393,7 +401,7 @@ impl Discoverer {
                 _ => None,
             })
             .await?;
-
+        trace!("Look up complete");
         Ok(UidLookupResults {
             reg: SocketAddr::new(packet.reg.ip.parse()?, packet.reg.port),
             relay: SocketAddr::new(packet.relay.ip.parse()?, packet.relay.port),
@@ -1009,20 +1017,25 @@ impl Discovery {
     // directly
     #[allow(unused)]
     pub(crate) async fn remote(uid: &str) -> Result<DiscoveryResult> {
+        trace!("Start remote");
         let mut discoverer = Discoverer::new().await?;
 
         let client_id = generate_cid();
+        trace!("client_id: {}", client_id);
 
         let lookup = discoverer.uid_loopup(uid).await?;
+        trace!("lookup: {:?}", lookup);
         let reg_addr = lookup.reg;
         let relay_addr = lookup.relay;
 
         let reg_result = discoverer.register_address(uid, client_id, &lookup).await?;
+        trace!("reg_result: {:?}", reg_result);
 
         let connect_result = tokio::select! {
             v = discoverer.client_initiated_dev(&reg_result) => {v},
             v = discoverer.device_initiated_dev(&reg_result) => {v},
         }?;
+        trace!("connect_result: {:?}", connect_result);
 
         let (socket, keep_alive_tasks) = discoverer.into_socket().await;
         Ok(DiscoveryResult {
