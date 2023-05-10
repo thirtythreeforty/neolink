@@ -48,10 +48,17 @@ impl BcConnection {
 
         let mut rx_thread = JoinSet::<Result<()>>::new();
         let thread_poll_commander = poll_commander.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap();
+            runtime.block_on(
+                PollSender::new(thread_poll_commander)
+                    .send_all(&mut source.map(|bc| Ok(PollCommand::Bc(Box::new(bc))))),
+            )
+        });
         rx_thread.spawn(async move {
-            PollSender::new(thread_poll_commander)
-                .send_all(&mut source.map(|bc| Ok(PollCommand::Bc(Box::new(bc)))))
-                .await?;
+            handle.await??;
             Ok(())
         });
 
