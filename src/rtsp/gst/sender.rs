@@ -490,7 +490,7 @@ impl NeoMediaSender {
             if let Some(target_time) = target_time {
                 if let Some(et) = self.buffer.end_time() {
                     debug!(
-                        "Expected Latency: {:?}",
+                        "Minimum Latency: {:?}",
                         Duration::from_micros(et.saturating_sub(target_time).max(0) as u64)
                     );
                 }
@@ -526,10 +526,10 @@ impl NeoMediaSender {
             self.live_offset = self
                 .live_offset
                 .saturating_add(target_runtime.saturating_sub(current_runtime));
-            debug!("Old runtime: {}", current_runtime);
-            debug!("Target runtime: {}", target_runtime);
-            debug!("Offset: {}", self.live_offset);
-            debug!("New runtime: {:?}", self.get_runtime());
+            trace!("Old runtime: {}", current_runtime);
+            trace!("Target runtime: {}", target_runtime);
+            trace!("Offset: {}", self.live_offset);
+            trace!("New runtime: {:?}", self.get_runtime());
             if let Some(new_buftime) = self.get_buftime() {
                 self.buffer.buf.clear();
                 for frame in master_buffer.buf.iter().filter(|f| f.time >= new_buftime) {
@@ -611,9 +611,11 @@ impl NeoMediaSender {
                                 .saturating_add(self.live_offset)
                                 .max(0),
                         );
-                        debug!(
+                        trace!(
                             "Runtime: {:?}, Offset: {:?}, Offseted Runtime: {:?}",
-                            runtime, self.live_offset, res
+                            runtime,
+                            self.live_offset,
+                            res
                         );
                         return res;
                     }
