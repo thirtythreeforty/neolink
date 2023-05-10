@@ -31,19 +31,19 @@ type FrameTime = i64;
 
 const BUFFER_SIZE: usize = 100;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Stamped {
     time: FrameTime,
-    data: BcMedia,
+    data: Arc<BcMedia>,
 }
 
 #[derive(Default, Debug)]
 struct NeoBuffer {
-    buf: VecDeque<Arc<Stamped>>,
+    buf: VecDeque<Stamped>,
 }
 
 impl NeoBuffer {
-    fn push(&mut self, item: Arc<Stamped>) {
+    fn push(&mut self, item: Stamped) {
         // Sort time
         // debug!("sorting");
         let mut sorting_vec = vec![];
@@ -245,19 +245,36 @@ impl NeoMediaSenders {
             _ => self.buffer.end_time().unwrap_or(0),
         };
 
-        let data = Arc::new(Stamped { time, data });
+        let data = Stamped {
+            time,
+            data: Arc::new(data),
+        };
         for client_data in self.client_data.values_mut() {
             client_data.add_data(data.clone()).await?;
         }
 
         let end_time = self.buffer.end_time();
         let frame_time = data.time;
+        // Ocassionally the camera will make a jump in timestamps of about 15s
+        // This could mean that it runs on some 15s buffer
         if let Some(end_time) = end_time {
-            let delta_time = end_time - frame_time;
+            let delta_time = end_time - frame_time - 1;
             let delta_duration = Duration::from_micros(delta_time.unsigned_abs());
             if delta_duration > Duration::from_secs(1) {
-                debug!("Clearing buffer due to jump");
-                self.clear_buffer().await?;
+                debug!(
+                    "Reschedule buffer due to jump: {:?}, Prev: {}, New: {}",
+                    delta_duration, end_time, frame_time
+                );
+                for frame in self.buffer.buf.iter_mut() {
+                    frame.time = frame.time.saturating_add(delta_time);
+                }
+
+                for (_, client) in self.client_data.iter_mut() {
+                    for frame in client.buffer.buf.iter_mut() {
+                        frame.time = frame.time.saturating_add(delta_time);
+                    }
+                    client.jump_to_live().await?;
+                }
             }
         }
 
@@ -407,6 +424,7 @@ pub(super) enum NeoMediaSenderCommand {
 #[derive(Debug)]
 pub(super) struct NeoMediaSender {
     start_time: Spring,
+    live_offset: FrameTime,
     buffer: NeoBuffer,
     vid: Option<AppSrc>,
     aud: Option<AppSrc>,
@@ -420,7 +438,8 @@ impl NeoMediaSender {
     pub(super) fn new() -> Self {
         let (tx, rx) = channel(30);
         Self {
-            start_time: Spring::new(0.0, 0.0, 1.5),
+            start_time: Spring::new(0.0, 0.0, 10.0),
+            live_offset: 0,
             buffer: NeoBuffer::default(),
             vid: None,
             aud: None,
@@ -431,7 +450,7 @@ impl NeoMediaSender {
         }
     }
 
-    async fn add_data(&mut self, data: Arc<Stamped>) -> AnyResult<()> {
+    async fn add_data(&mut self, data: Stamped) -> AnyResult<()> {
         self.buffer.push(data);
         Ok(())
     }
@@ -469,6 +488,12 @@ impl NeoMediaSender {
             let target_time = self.target_live();
 
             if let Some(target_time) = target_time {
+                if let Some(et) = self.buffer.end_time() {
+                    debug!(
+                        "Expected Latency: {:?}",
+                        Duration::from_micros(et.saturating_sub(target_time).max(0) as u64)
+                    );
+                }
                 let runtime = self.get_runtime().unwrap_or(0);
 
                 self.start_time.reset_to((target_time - runtime) as f64);
@@ -494,9 +519,24 @@ impl NeoMediaSender {
     async fn seek(
         &mut self,
         _original_runtime: Option<FrameTime>,
-        _target_runtime: FrameTime,
-        _master_buffer: &NeoBuffer,
+        target_runtime: FrameTime,
+        master_buffer: &NeoBuffer,
     ) -> AnyResult<()> {
+        if let Some(current_runtime) = self.get_runtime() {
+            self.live_offset = self
+                .live_offset
+                .saturating_add(target_runtime.saturating_sub(current_runtime));
+            debug!("Old runtime: {}", current_runtime);
+            debug!("Target runtime: {}", target_runtime);
+            debug!("Offset: {}", self.live_offset);
+            debug!("New runtime: {:?}", self.get_runtime());
+            if let Some(new_buftime) = self.get_buftime() {
+                self.buffer.buf.clear();
+                for frame in master_buffer.buf.iter().filter(|f| f.time >= new_buftime) {
+                    self.buffer.buf.push_back(frame.clone());
+                }
+            }
+        }
         self.jump_to_live().await?;
         Ok(())
     }
@@ -536,8 +576,8 @@ impl NeoMediaSender {
             // Split buffer into 2/3 of preprocess
             // and one third for the future buffer
             let split_idx = buffer.buf.len() * 2 / 3;
-            let cloned = buffer.buf.iter().cloned().collect::<Vec<_>>();
-            let (preprocess, buffer) = cloned.split_at(split_idx);
+            let rebuf = buffer.buf.iter().cloned().collect::<Vec<_>>();
+            let (preprocess, buffer) = rebuf.split_at(split_idx);
             let start_ms = buffer
                 .first()
                 .map(|data| data.time as f64)
@@ -566,7 +606,16 @@ impl NeoMediaSender {
                 if let Some(time) = clock.time() {
                     if let Some(base_time) = appsrc.base_time() {
                         let runtime = time.saturating_sub(base_time);
-                        return Some(runtime.useconds() as FrameTime);
+                        let res = Some(
+                            (runtime.useconds() as FrameTime)
+                                .saturating_add(self.live_offset)
+                                .max(0),
+                        );
+                        debug!(
+                            "Runtime: {:?}, Offset: {:?}, Offseted Runtime: {:?}",
+                            runtime, self.live_offset, res
+                        );
+                        return res;
                     }
                 }
             }
@@ -624,7 +673,7 @@ impl NeoMediaSender {
         Ok(())
     }
 
-    async fn send_buffers<T: AsRef<Stamped>>(&mut self, medias: &[T]) -> AnyResult<()> {
+    async fn send_buffers(&mut self, medias: &[Stamped]) -> AnyResult<()> {
         if medias.is_empty() {
             return Ok(());
         }
@@ -632,14 +681,14 @@ impl NeoMediaSender {
             tokio::task::yield_now().await;
             let mut vid_buffers: Vec<(FrameTime, Vec<u8>)> = vec![];
             let mut aud_buffers: Vec<(FrameTime, Vec<u8>)> = vec![];
-            for media in medias.iter().map(|t| t.as_ref()) {
+            for media in medias.iter() {
                 tokio::task::yield_now().await;
-                let buffer = match &media.data {
+                let buffer = match media.data.as_ref() {
                     BcMedia::Iframe(_) | BcMedia::Pframe(_) => Some(&mut vid_buffers),
                     BcMedia::Aac(_) | BcMedia::Adpcm(_) => Some(&mut aud_buffers),
                     _ => None,
                 };
-                let data = match &media.data {
+                let data = match media.data.as_ref() {
                     BcMedia::Iframe(data) => Some(&data.data),
                     BcMedia::Pframe(data) => Some(&data.data),
                     BcMedia::Aac(data) => Some(&data.data),

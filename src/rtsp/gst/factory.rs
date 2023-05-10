@@ -310,7 +310,7 @@ impl NeoMediaFactoryImpl {
                 source.set_property("emit-signals", false);
                 source.set_max_bytes(52428800);
                 source.set_do_timestamp(false);
-                source.set_stream_type(AppStreamType::RandomAccess);
+                source.set_stream_type(AppStreamType::Seekable);
 
                 let need_command = client_data.get_commader();
                 let enough_command = client_data.get_commader();
@@ -372,7 +372,7 @@ impl NeoMediaFactoryImpl {
                                                    // source.set_property("max-buffers", 0u32); // v1.20
                                                    // source.set_property("max-time", Duration::from_secs_f32(2.25).as_nanos() as u64);
                 source.set_do_timestamp(false);
-                source.set_stream_type(AppStreamType::RandomAccess);
+                source.set_stream_type(AppStreamType::Seekable);
 
                 let need_command = client_data.get_commader();
                 let enough_command = client_data.get_commader();
@@ -522,7 +522,7 @@ impl NeoMediaFactoryImpl {
                 source.set_property("emit-signals", false);
                 source.set_max_bytes(52428800);
                 source.set_do_timestamp(false);
-                source.set_stream_type(AppStreamType::RandomAccess);
+                source.set_stream_type(AppStreamType::Seekable);
                 source.set_caps(Some(
                     &Caps::builder("audio/x-adpcm")
                         .field("layout", "div")
