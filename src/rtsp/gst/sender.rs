@@ -438,7 +438,7 @@ impl NeoMediaSender {
     pub(super) fn new() -> Self {
         let (tx, rx) = channel(30);
         Self {
-            start_time: Spring::new(0.0, 0.0, 10.0),
+            start_time: Spring::new(0.0, 0.0, 0.0),
             live_offset: 0,
             buffer: NeoBuffer::default(),
             vid: None,
@@ -510,9 +510,9 @@ impl NeoMediaSender {
     async fn update_starttime(&mut self) -> AnyResult<()> {
         self.start_time.update().await;
 
-        if let (Some(runtime), Some(target_time)) = (self.get_runtime(), self.target_live()) {
-            self.start_time.set_target((target_time - runtime) as f64);
-        }
+        // if let (Some(runtime), Some(target_time)) = (self.get_runtime(), self.target_live()) {
+        //     self.start_time.set_target((target_time - runtime) as f64);
+        // }
         Ok(())
     }
 

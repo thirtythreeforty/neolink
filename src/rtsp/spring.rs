@@ -54,6 +54,7 @@ impl Spring {
             .min(std::u64::MAX as f64) as u64
     }
 
+    #[allow(dead_code)]
     pub(crate) fn set_target(&mut self, target: f64) {
         self.target = target;
     }
@@ -83,11 +84,16 @@ fn fast_negexp(x: f64) -> f64 {
 }
 
 fn spring_update(value: &mut f64, target: f64, velocity: &mut f64, halflife: f64, dt: f64) {
-    let y = halflife_to_damping(halflife) / 2.0;
-    let j0 = *value - target;
-    let j1 = *velocity + j0 * y;
-    let eydt = fast_negexp(y * dt);
+    if halflife.abs() < 1e-3 {
+        *value = target;
+        *velocity = 0.0;
+    } else {
+        let y = halflife_to_damping(halflife) / 2.0;
+        let j0 = *value - target;
+        let j1 = *velocity + j0 * y;
+        let eydt = fast_negexp(y * dt);
 
-    *value = eydt * (j0 + j1 * dt) + target;
-    *velocity = eydt * (*velocity - j1 * y * dt);
+        *value = eydt * (j0 + j1 * dt) + target;
+        *velocity = eydt * (*velocity - j1 * y * dt);
+    }
 }
