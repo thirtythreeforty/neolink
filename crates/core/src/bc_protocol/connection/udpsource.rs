@@ -198,6 +198,7 @@ impl Sink<(BcUdp, SocketAddr)> for BcUdpSource {
     }
 }
 
+#[allow(dead_code)]
 enum State {
     Normal,   // Normal recieve
     Flushing, // Used to send ack packets and things in the buffer
@@ -298,15 +299,15 @@ impl Stream for UdpPayloadSource {
         let mut this = self.get_mut();
         match this.state {
             State::Normal => {
-                this.state = State::YieldNow;
+                // this.state = State::YieldNow;
+                // Handle resend events
+                this.maintanence(cx);
                 // Data ready to go
                 if let Some(payload) = this.recieved.remove(&this.packets_want) {
                     this.packets_want += 1;
                     // error!("packets_want: {}", this.packets_want);
                     return Poll::Ready(Some(Ok(payload)));
                 }
-                // Handle resend events
-                this.maintanence(cx);
                 // Normal behaviors
                 match this.inner.poll_next_unpin(cx) {
                     Poll::Ready(Some(Ok((

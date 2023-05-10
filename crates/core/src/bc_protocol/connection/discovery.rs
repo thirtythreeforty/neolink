@@ -189,11 +189,16 @@ impl Discoverer {
         F: Fn(UdpDiscovery, SocketAddr) -> Option<T>,
     {
         let mut reply = ReceiverStream::new(self.subscribe(0).await?);
-        loop {
-            let (reply, addr) = reply.next().await.ok_or(Error::ConnectionUnavaliable)??;
-            if let Some(result) = map(reply, addr) {
-                return Ok(result);
-            }
+        tokio::select! {
+            v = async {
+                loop {
+                    let (reply, addr) = reply.next().await.ok_or(Error::ConnectionUnavaliable)??;
+                    if let Some(result) = map(reply, addr) {
+                        return Ok(result);
+                    }
+                }
+            } => v,
+            _ = tokio::time::sleep(*MAXIMUM_WAIT) => Err::<T, Error>(Error::DiscoveryTimeout),
         }
     }
 
