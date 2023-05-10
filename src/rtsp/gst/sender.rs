@@ -648,6 +648,11 @@ impl NeoMediaSender {
         {
             return Err(anyhow!("Vid src is closed"));
         }
+        if self.buffer.buf.len() < 4 {
+            error!("Buffer exhausted. Not enough data from Camera.");
+        } else {
+            debug!("Buffer size: {}", self.buffer.buf.len());
+        }
         const LATENCY: FrameTime = Duration::from_millis(250).as_micros() as FrameTime;
         if let Some(buftime) = self.get_buftime().map(|i| i.saturating_add(LATENCY)) {
             // debug!("Update: buftime: {}", buftime);
