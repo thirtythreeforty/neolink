@@ -265,15 +265,15 @@ impl NeoMediaSenders {
                     "Reschedule buffer due to jump: {:?}, Prev: {}, New: {}",
                     delta_duration, end_time, frame_time
                 );
+                debug!("Adjusting master: {}", self.buffer.buf.len());
                 for frame in self.buffer.buf.iter_mut() {
                     frame.time = frame.time.saturating_add(delta_time);
+                    debug!("  - New frame time: {} -> {}", frame.time, frame_time);
                 }
 
                 for (_, client) in self.client_data.iter_mut() {
-                    for frame in client.buffer.buf.iter_mut() {
-                        frame.time = frame.time.saturating_add(delta_time);
-                    }
-                    client.jump_to_live().await?;
+                    client.buffer.buf.clear();
+                    client.inited = false;
                 }
             }
         }
