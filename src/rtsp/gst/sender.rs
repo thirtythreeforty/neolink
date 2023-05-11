@@ -29,7 +29,7 @@ use crate::rtsp::Spring;
 
 type FrameTime = i64;
 
-const BUFFER_SIZE: usize = 100;
+const BUFFER_SIZE: usize = 300;
 
 #[derive(Debug, Clone)]
 struct Stamped {
@@ -438,7 +438,7 @@ impl NeoMediaSender {
     pub(super) fn new() -> Self {
         let (tx, rx) = channel(30);
         Self {
-            start_time: Spring::new(0.0, 0.0, 0.0),
+            start_time: Spring::new(0.0, 0.0, 10.0),
             live_offset: 0,
             buffer: NeoBuffer::default(),
             vid: None,
@@ -510,9 +510,9 @@ impl NeoMediaSender {
     async fn update_starttime(&mut self) -> AnyResult<()> {
         self.start_time.update().await;
 
-        // if let (Some(runtime), Some(target_time)) = (self.get_runtime(), self.target_live()) {
-        //     self.start_time.set_target((target_time - runtime) as f64);
-        // }
+        if let (Some(runtime), Some(target_time)) = (self.get_runtime(), self.target_live()) {
+            self.start_time.set_target((target_time - runtime) as f64);
+        }
         Ok(())
     }
 
@@ -651,7 +651,7 @@ impl NeoMediaSender {
         if self.buffer.buf.len() < 4 {
             error!("Buffer exhausted. Not enough data from Camera.");
         } else {
-            debug!("Buffer size: {}", self.buffer.buf.len());
+            trace!("Buffer size: {}", self.buffer.buf.len());
         }
         const LATENCY: FrameTime = Duration::from_millis(250).as_micros() as FrameTime;
         if let Some(buftime) = self.get_buftime().map(|i| i.saturating_add(LATENCY)) {
