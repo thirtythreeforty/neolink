@@ -12,11 +12,15 @@ pub struct BcMediaCodex {
     /// If true we will not search for the start of the next packet
     /// in the event that the stream appears to be corrupted
     strict: bool,
+    amount_skipped: usize,
 }
 
 impl BcMediaCodex {
     pub(crate) fn new(strict: bool) -> Self {
-        Self { strict }
+        Self {
+            strict,
+            amount_skipped: 0,
+        }
     }
 }
 
@@ -46,18 +50,19 @@ impl Decoder for BcMediaCodex {
     }
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>> {
-        let mut amount_skipped: usize = 0;
         loop {
             match { BcMedia::deserialize(src) } {
                 Ok(bc) => {
-                    if amount_skipped > 0 {
-                        debug!("Amount skipped to restore stream: {}", amount_skipped);
+                    if self.amount_skipped > 0 {
+                        debug!("Amount skipped to restore stream: {}", self.amount_skipped);
+                        self.amount_skipped = 0;
                     }
                     return Ok(Some(bc));
                 }
                 Err(Error::NomIncomplete(_)) => {
-                    if amount_skipped > 0 {
-                        debug!("Amount skipped to restore stream: {}", amount_skipped);
+                    if self.amount_skipped > 0 {
+                        debug!("Amount skipped to restore stream: {}", self.amount_skipped);
+                        self.amount_skipped = 0;
                     }
                     return Ok(None);
                 }
@@ -67,12 +72,12 @@ impl Decoder for BcMediaCodex {
                     } else if src.is_empty() {
                         return Ok(None);
                     } else {
-                        if amount_skipped == 0 {
+                        if self.amount_skipped == 0 {
                             debug!("Error in stream attempting to restore");
                             trace!("   Stream Error: {:?}", e);
                         }
                         // Drop the whole packet and wait for a packet that starts with magic
-                        amount_skipped += src.len();
+                        self.amount_skipped += src.len();
                         src.clear();
                         continue;
                     }

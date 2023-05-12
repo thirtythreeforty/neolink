@@ -61,11 +61,13 @@ use tokio_stream::StreamExt;
 
 mod cmdline;
 mod gst;
+mod spring;
 mod states;
 
 use super::config::Config;
 pub(crate) use cmdline::Opt;
 use gst::NeoRtspServer;
+pub(crate) use spring::*;
 use states::*;
 
 /// Entry point for the rtsp subcommand
@@ -131,14 +133,15 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
 
     let bind_addr = config.bind_addr.clone();
     let bind_port = config.bind_port;
-    let (handle, main_loop) = rtsp.run(&bind_addr, bind_port).await?;
-    set.spawn(async move { handle.await? });
+    rtsp.run(&bind_addr, bind_port).await?;
+    let thread_rtsp = rtsp.clone();
+    set.spawn(async move { thread_rtsp.join().await });
 
     while let Some(joined) = set.join_next().await {
         match &joined {
             Err(_) | Ok(Err(_)) => {
                 // Panicked or error in task
-                main_loop.quit();
+                rtsp.quit().await?;
             }
             Ok(Ok(_)) => {
                 // All good
@@ -178,43 +181,66 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
 
     let _ = loggedin.manage().await;
 
+    let tags = loggedin.shared.get_tags();
+    let rtsp_thread = loggedin.get_rtsp();
+
+    // Clear all buffers present
+    // Uncomment to clear buffers. This is now handlled in the buffer itself,
+    // instead of clearing it restamps it whenever there is a jump in the
+    // timestamps of >1s
+    //
+    // tags.iter()
+    //     .map(|tag| rtsp_thread.clear_buffer(tag))
+    //     .collect::<FuturesUnordered<_>>()
+    //     .collect::<Vec<_>>()
+    //     .await;
+
+    // Start pulling data from the camera
     let mut streaming = loggedin
         .stream()
         .await
         .with_context(|| format!("{}: Could not start stream", name))
         .map_err(CameraFailureKind::Retry)?;
 
-    let tags = streaming.shared.get_tags();
-    let rtsp_thread = streaming.get_rtsp();
-
-    let mut waiter = tokio::time::interval(Duration::from_micros(500));
-    loop {
-        waiter.tick().await;
-        if tags
-            .iter()
-            .map(|tag| rtsp_thread.buffer_ready(tag))
-            .collect::<FuturesUnordered<_>>()
-            .all(|f| f.unwrap_or(false))
-            .await
-        {
-            break;
-        }
+    // Wait for buffers to be prepared
+    tokio::select! {
+        v = async {
+            let mut waiter = tokio::time::interval(Duration::from_micros(500));
+            loop {
+                waiter.tick().await;
+                if tags
+                    .iter()
+                    .map(|tag| rtsp_thread.buffer_ready(tag))
+                    .collect::<FuturesUnordered<_>>()
+                    .all(|f| f.unwrap_or(false))
+                    .await
+                {
+                    break;
+                }
+            }
+            Ok(())
+        } => v,
+        // Or for stream to error
+        v = streaming.join() => {v},
     }
-    if streaming.get_config().pause.on_motion || streaming.get_config().pause.on_disconnect {
-        log::info!("Pause buffer prepared");
-    }
+    .with_context(|| format!("{}: Error while waiting for buffers", name))
+    .map_err(CameraFailureKind::Retry)?;
 
-    // tokio::task::spawn(async move {
-    //     let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
-    //     loop {
-    //         inter.tick().await;
-    //         log::info!(
-    //             "Users: {:?}, {}",
-    //             rtsp_thread.get_number_of_clients("Cammy01::Main").await,
-    //             rtsp_thread.num_path_users(&["/Cammy01/mainStream"])
-    //         );
-    //     }
-    // });
+    tags.iter()
+        .map(|tag| rtsp_thread.jump_to_live(tag))
+        .collect::<FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
+
+    // Clear "stream not ready" media to try and force a reconnect
+    //   This shoud stop them from watching the "Stream Not Ready" thing
+    debug!("Clearing not ready clients");
+    tags.iter()
+        .map(|tag| rtsp_thread.clear_session_notready(tag))
+        .collect::<FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
+    log::info!("{}: Buffers prepared", name);
 
     loop {
         // Wait for error or reason to pause
@@ -238,7 +264,6 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
                 // Wait for client to disconnect
                 let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
 
-                info!("Await Client Pause");
                 loop {
                     inter.tick().await;
                     let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;
@@ -262,12 +287,28 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         // Wait for reason to restart
         tokio::select! {
             v = async {
+                // Wait for motion start and client for start
+                let mut motion = paused.get_camera().listen_on_motion().await?;
+                let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
+                loop {
+                    motion.await_start(Duration::ZERO).await?;
+                    let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;
+                    if total_clients > 0 {
+                        return Result::<()>::Ok(());
+                    }
+                    inter.tick().await;
+                }
+            }, if paused.get_config().pause.on_motion && paused.get_config().pause.on_disconnect => {
+                info!("Motion and Client Resume");
+                v.with_context(|| "Error while processing motion/client messages")
+            },
+            v = async {
                 // Wait for motion start
                 let mut motion = paused.get_camera().listen_on_motion().await?;
                 motion.await_start(Duration::ZERO).await
-            }, if paused.get_config().pause.on_motion => {
+            }, if paused.get_config().pause.on_motion && !paused.get_config().pause.on_disconnect => {
                 info!("Motion Resume");
-                v.map_err(|e| anyhow!("Error while processing motion messages: {:?}", e))
+                v.with_context(|| "Error while processing motion messages")
             },
             v = async {
                 // Wait for client to connect
@@ -280,7 +321,7 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
                         return Ok(())
                     }
                 }
-            }, if paused.get_config().pause.on_disconnect => {
+            }, if paused.get_config().pause.on_disconnect && !paused.get_config().pause.on_motion => {
                 info!("Client Resume");
                 v
             },
@@ -293,6 +334,12 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         }
         .with_context(|| format!("{}: Error while paused", name))
         .map_err(CameraFailureKind::Retry)?;
+
+        tags.iter()
+            .map(|tag| rtsp_thread.jump_to_live(tag))
+            .collect::<FuturesUnordered<_>>()
+            .collect::<Vec<_>>()
+            .await;
 
         streaming = paused
             .stream()

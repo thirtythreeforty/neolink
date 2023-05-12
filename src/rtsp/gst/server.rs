@@ -13,10 +13,9 @@ use gstreamer_rtsp_server::{
     gio::{TlsAuthenticationMode, TlsCertificate},
     prelude::*,
     subclass::prelude::*,
-    RTSPAuth, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
+    RTSPAuth, RTSPFilterResult, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
-use neolink_core::bcmedia::model::*;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     fs,
@@ -24,7 +23,8 @@ use std::{
 };
 use tokio::{
     sync::{mpsc::Sender, RwLock},
-    task::JoinHandle,
+    task::JoinSet,
+    time::{timeout, Duration},
 };
 
 glib::wrapper! {
@@ -45,7 +45,10 @@ impl NeoRtspServer {
         Ok(factory)
     }
 
-    pub(crate) async fn get_sender<T: Into<String>>(&self, tag: T) -> Option<Sender<BcMedia>> {
+    pub(crate) async fn get_sender<T: Into<String>>(
+        &self,
+        tag: T,
+    ) -> Option<Sender<FactoryCommand>> {
         self.imp().get_sender(tag).await
     }
 
@@ -83,11 +86,7 @@ impl NeoRtspServer {
         self.imp().add_permitted_roles(tag, permitted_users).await
     }
 
-    pub(crate) async fn run(
-        &self,
-        bind_addr: &str,
-        bind_port: u16,
-    ) -> AnyResult<(JoinHandle<AnyResult<()>>, Arc<MainLoop>)> {
+    pub(crate) async fn run(&self, bind_addr: &str, bind_port: u16) -> AnyResult<()> {
         let server = self;
         server.set_address(bind_addr);
         server.set_service(&format!("{}", bind_port));
@@ -96,10 +95,34 @@ impl NeoRtspServer {
         let main_loop = Arc::new(MainLoop::new(None, false));
         // Run the Glib main loop.
         let main_loop_thread = main_loop.clone();
-        #[allow(clippy::unit_arg)]
-        let handle = tokio::task::spawn_blocking(move || Ok(main_loop_thread.run()));
+        let handle = tokio::task::spawn_blocking(move || {
+            main_loop_thread.run();
+            AnyResult::Ok(())
+        });
+        timeout(Duration::from_secs(5), self.imp().threads.write())
+            .await
+            .with_context(|| "Timeout waiting to lock Server threads")?
+            .spawn(async move { handle.await? });
+        timeout(Duration::from_secs(5), self.imp().main_loop.write())
+            .await
+            .with_context(|| "Timeout waiting to lock Server main_loop")?
+            .replace(main_loop);
+        Ok(())
+    }
 
-        Ok((handle, main_loop))
+    pub(crate) async fn quit(&self) -> AnyResult<()> {
+        if let Some(main_loop) = self.imp().main_loop.read().await.as_ref() {
+            main_loop.quit();
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn join(&self) -> AnyResult<()> {
+        let mut threads = self.imp().threads.write().await;
+        while let Some(thread) = threads.join_next().await {
+            thread??;
+        }
+        Ok(())
     }
 
     pub(crate) fn set_up_tls(&self, config: &Config) {
@@ -150,6 +173,135 @@ impl NeoRtspServer {
     pub(crate) async fn buffer_ready<T: Into<String>>(&self, tag: T) -> Option<bool> {
         self.imp().buffer_ready(tag).await
     }
+
+    #[allow(dead_code)]
+    /// Clear all sessions on a given path
+    pub(crate) async fn clear_session<T: Into<String>>(&self, tag: T) {
+        let tag: String = tag.into();
+        if let Some(media) = self.imp().medias.read().await.get(&tag) {
+            self.clear_session_paths(media.paths.iter());
+        }
+    }
+
+    fn clear_session_paths<T: AsRef<str>>(&self, paths: impl Iterator<Item = T>) {
+        let paths: Vec<_> = paths.collect();
+        self.client_filter(Some(&mut |_server, client| {
+            let mut close_client = false;
+            client.session_filter(Some(&mut |_client, session| {
+                let mut clean_up = false;
+                session.filter(Some(&mut |_session, session_media| {
+                    if paths.iter().any(|p| {
+                        let s = p.as_ref();
+                        session_media
+                            .matches(s)
+                            .map(|amt| amt == s.len() as i32)
+                            .unwrap_or(false)
+                    }) {
+                        info!("Removing Session Media");
+                        clean_up = true;
+                        RTSPFilterResult::Remove
+                    } else {
+                        RTSPFilterResult::Keep
+                    }
+                }));
+
+                if clean_up {
+                    close_client = true;
+                    RTSPFilterResult::Remove
+                } else {
+                    RTSPFilterResult::Keep
+                }
+            }));
+            if close_client {
+                client.close();
+                RTSPFilterResult::Remove
+            } else {
+                RTSPFilterResult::Keep
+            }
+        }));
+    }
+
+    /// Clear all sessions on the rtsp server that are using the not ready stream
+    pub(crate) async fn clear_session_notready<T: Into<String>>(&self, tag: T) {
+        let tag: String = tag.into();
+        if let Some(media) = self.imp().medias.read().await.get(&tag) {
+            self.clear_session_paths_notready(media.paths.iter());
+        }
+    }
+
+    fn clear_session_paths_notready<T: AsRef<str>>(&self, paths: impl Iterator<Item = T>) {
+        let paths: Vec<_> = paths.collect();
+        self.client_filter(Some(&mut |_server, client| {
+            let mut close_client = false;
+            client.session_filter(Some(&mut |_client, session| {
+                let mut clean_up = false;
+                session.filter(Some(&mut |_session, session_media| {
+                    if paths.iter().any(|p| {
+                        let s = p.as_ref();
+                        session_media
+                            .matches(s)
+                            .map(|amt| amt == s.len() as i32)
+                            .unwrap_or(false)
+                    }) {
+                        // Path is correct now check for no vidsrc
+                        let element = session_media
+                            .media()
+                            .expect("Media should exist")
+                            .element()
+                            .dynamic_cast::<gstreamer::Bin>()
+                            .expect("Media element should be a bin");
+                        // debug!("Searching for testvidsrc on {:?}", element.name());
+                        // for child in element.children().iter() {
+                        //     debug!(" - Child: {:?}", child.name());
+                        // }
+                        if element.child_by_name("testvidsrc").is_some() {
+                            info!("Removing Session Media");
+                            clean_up = true;
+                            RTSPFilterResult::Remove
+                        } else {
+                            RTSPFilterResult::Keep
+                        }
+                    } else {
+                        RTSPFilterResult::Keep
+                    }
+                }));
+
+                if clean_up {
+                    close_client = true;
+                    RTSPFilterResult::Remove
+                } else {
+                    RTSPFilterResult::Keep
+                }
+            }));
+            if close_client {
+                client.close();
+                RTSPFilterResult::Remove
+            } else {
+                RTSPFilterResult::Keep
+            }
+        }));
+    }
+
+    // Clear buffers on all senders of a tag
+    #[allow(dead_code)] // Old function, was used to clear buffer on reconnect
+    pub(crate) async fn clear_buffer<T: Into<String>>(&self, tag: T) -> AnyResult<()> {
+        if let Some(sender) = self.imp().get_sender(tag).await {
+            sender.send(FactoryCommand::ClearBuffer).await?;
+            Ok(())
+        } else {
+            Err(anyhow!("No such tag"))
+        }
+    }
+
+    // Jump to live on all senders of a tag
+    pub(crate) async fn jump_to_live<T: Into<String>>(&self, tag: T) -> AnyResult<()> {
+        if let Some(sender) = self.imp().get_sender(tag).await {
+            sender.send(FactoryCommand::JumpToLive).await?;
+            Ok(())
+        } else {
+            Err(anyhow!("No such tag"))
+        }
+    }
 }
 
 unsafe impl Send for NeoRtspServer {}
@@ -163,6 +315,8 @@ struct FactoryData {
 #[derive(Default)]
 pub(crate) struct NeoRtspServerImpl {
     medias: RwLock<HashMap<String, FactoryData>>,
+    threads: RwLock<JoinSet<AnyResult<()>>>,
+    main_loop: RwLock<Option<Arc<MainLoop>>>,
 }
 
 impl ObjectImpl for NeoRtspServerImpl {}
@@ -182,6 +336,11 @@ impl NeoRtspServerImpl {
             Entry::Occupied(_occ) => {}
             Entry::Vacant(vac) => {
                 let media = NeoMediaFactory::new();
+                let thread_media = media.clone();
+                self.threads
+                    .write()
+                    .await
+                    .spawn(async move { thread_media.join().await });
                 vac.insert(FactoryData {
                     factory: media,
                     paths: Default::default(),
@@ -191,7 +350,10 @@ impl NeoRtspServerImpl {
         Ok(())
     }
 
-    pub(crate) async fn get_sender<T: Into<String>>(&self, tag: T) -> Option<Sender<BcMedia>> {
+    pub(crate) async fn get_sender<T: Into<String>>(
+        &self,
+        tag: T,
+    ) -> Option<Sender<FactoryCommand>> {
         let key = tag.into();
         self.medias
             .read()
