@@ -88,6 +88,7 @@ local message_types = {
   [15]="<FileInfoList>",
   [16]="<FileInfoList>",
   [18]="<PtzControl>",
+  [19]="<PtzPreset>",
   [23]="Reboot",
   [25]="<VideoInput> (write)",
   [26]="<VideoInput>", -- <InputAdvanceCfg>

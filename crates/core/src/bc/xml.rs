@@ -76,6 +76,9 @@ pub struct BcXml {
     /// Sent to move the camera
     #[yaserde(rename = "PtzControl")]
     pub ptz_control: Option<PtzControl>,
+    /// Sent or received for the PTZ preset functionality
+    #[yaserde(rename = "PtzPreset")]
+    pub ptz_preset: Option<PtzPreset>,
     /// Recieved on login/low battery events
     #[yaserde(rename = "BatteryList")]
     pub battery_list: Option<BatteryList>,
@@ -519,8 +522,41 @@ pub struct PtzControl {
     pub channel_id: u8,
     /// The amount of movement to perform
     pub speed: f32,
-    /// The direction to transverse. Known directions: "right"
+    /// The direction to transverse. Known values are `"left"`, `"right"`, `"up"`, `"down"`,
+    /// `"leftUp"`, `"leftDown"`, `"rightUp"`, `"rightDown"` and `"stop"`
     pub command: String,
+}
+
+/// An XML that describes a list of available PTZ presets
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct PtzPreset {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// The channel ID. Usually zero unless from an NVR
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// List of presets
+    #[yaserde(rename = "presetList")]
+    pub preset_list: Option<PresetList>,
+}
+
+/// A preset list
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct PresetList {
+    /// List of Presets
+    pub preset: Vec<Preset>,
+}
+
+/// A preset. Either contains the ID and the name or the ID and the command
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct Preset {
+    /// The ID of the preset
+    pub id: i8,
+    /// The preset name
+    pub name: Option<String>,
+    /// Command: Known values: `"toPos"` and `"setPos"`
+    pub command: Option<String>,
 }
 
 /// A list of battery infos. This message is sent from the camera as
