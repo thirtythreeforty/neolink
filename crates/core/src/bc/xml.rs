@@ -72,6 +72,12 @@ pub struct BcXml {
     /// Received when motion is detected
     #[yaserde(rename = "AlarmEventList")]
     pub alarm_event_list: Option<AlarmEventList>,
+    /// Sent or received for the PTZ preset functionality
+    #[yaserde(rename = "PtzPreset")]
+    pub ptz_preset: Option<PtzPreset>,
+    /// Sent when performing PTZ movement
+    #[yaserde(rename = "PtzControl")]
+    pub ptz_control: Option<PtzControl>,
 }
 
 impl BcXml {
@@ -424,6 +430,54 @@ pub struct AlarmEventList {
     /// List of events
     #[yaserde(rename = "AlarmEvent")]
     pub alarm_events: Vec<AlarmEvent>,
+}
+
+/// An XML that describes a list of available PTZ presets
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct PtzPreset {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// The channel ID. Usually zero unless from an NVR
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// List of presets
+    #[yaserde(rename = "presetList")]
+    pub preset_list: Option<PresetList>
+}
+
+/// A preset list
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct PresetList {
+    /// List of Presets
+    pub preset: Vec<Preset>
+}
+
+/// A preset. Either contains the ID and the name or the ID and the command
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct Preset {
+    /// The ID of the preset
+    pub id: i8,
+    /// The preset name
+    pub name: Option<String>,
+    /// Command: Known values: `"toPos"` and `"setPos"`
+    pub command: Option<String>
+}
+
+/// A PTZ control message containing speed and direction of the movement
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct PtzControl {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// The channel the event occurred on. Usually zero unless from an NVR
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// Motion speed. Only known values are `0` (stop command) and `32`
+    pub speed: i8,
+    /// Motion command. Known values are `"left"`, `"right"`, `"up"`, `"down"`, `"leftUp"`,
+    /// `"leftDown"`, `"rightUp"`, `"rightDown"` and `"stop"`
+    pub command: String
 }
 
 /// An alarm event. Camera can send multiple per message as an array in AlarmEventList.

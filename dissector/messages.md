@@ -354,6 +354,10 @@ Message have zero to two payloads.
     </PtzControl>
     </body>
     ```
+    
+    - **Notes** : The only known values for speed are `32` for any movement and `0` for stop. The known movement
+                  commands are `"left"`, `"right"`, `"up"`, `"down"`, `"leftUp"`, `"leftDown"`, `"rightUp"`, 
+                  `"rightDown"` and `"stop"` although the diagonal movement does not seem to work.
 
   - Camera
 
@@ -362,6 +366,45 @@ Message have zero to two payloads.
         |    Magic     |  Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 12  |  00 00 00 00   |    1e 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
+
+- 19: `<PtzPreset>`
+
+  - Client
+
+    - Header
+
+        |    Magic     | Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
+        |--------------|-------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 13 | 00 00 01 44    |    1e 00 00 00    |       00 00       |     64 14     |  00 00 00 00  |
+
+    - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <PtzPreset version="1.1">
+    <channelId>0</channelId>
+    <presetList>
+    <preset>
+    <id>0</id>
+    <command>setPos</command>
+    <name>Test</name>
+    </preset>
+    </presetList>
+    </PtzPreset>
+    </body>
+    ```
+    
+    - **Notes** : The known values for command are `"setPos"` and `"toPos"`
+
+  - Camera
+
+    - Header
+
+        |    Magic     | Message ID  | Message Length | Encryption Offset |    Status Code    | Message Class | Payload Offset |
+        |--------------|-------------|----------------|-------------------|-------------------|---------------|---------------|
+        | 0a bc de f0  | 00 00 00 13 |  00 00 00 00   |    1e 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
+
 
 - 23: `Reboot`
 
@@ -1987,7 +2030,12 @@ Message have zero to two payloads.
     <body>
     <PtzPreset version="1.1">
     <channelId>0</channelId>
-    <presetList />
+    <presetList>
+    <preset>
+    <id>0</id>
+    <name>Test</name>
+    </preset>
+    </presetList>
     </PtzPreset>
     </body>
     ```

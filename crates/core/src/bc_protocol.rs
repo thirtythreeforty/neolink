@@ -14,6 +14,7 @@ mod logout;
 mod motion;
 mod ping;
 mod pirstate;
+mod ptz;
 mod reboot;
 mod resolution;
 mod stream;
