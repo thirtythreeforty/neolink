@@ -27,6 +27,9 @@ pub(crate) struct Config {
     #[serde(default = "default_bind_port")]
     pub(crate) bind_port: u16,
 
+    #[serde(default = "default_tokio_console")]
+    pub(crate) tokio_console: bool,
+
     #[serde(default = "default_certificate")]
     pub(crate) certificate: Option<String>,
 
@@ -96,6 +99,9 @@ pub(crate) struct CameraConfig {
 
     #[serde(default = "default_print", alias = "print")]
     pub(crate) print_format: PrintFormat,
+
+    #[serde(default = "default_update_time", alias = "time")]
+    pub(crate) update_time: bool,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -192,8 +198,16 @@ fn default_tls_client_auth() -> String {
     "none".to_string()
 }
 
+fn default_tokio_console() -> bool {
+    false
+}
+
 fn default_channel_id() -> u8 {
     0
+}
+
+fn default_update_time() -> bool {
+    false
 }
 
 fn default_motion_timeout() -> f64 {

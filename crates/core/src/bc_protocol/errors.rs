@@ -208,6 +208,12 @@ impl<T> From<tokio::sync::mpsc::error::SendError<T>> for Error {
     }
 }
 
+impl<T> From<tokio_util::sync::PollSendError<T>> for Error {
+    fn from(_: tokio_util::sync::PollSendError<T>) -> Self {
+        Error::TokioBcSendError
+    }
+}
+
 impl From<cookie_factory::GenError> for Error {
     fn from(k: cookie_factory::GenError) -> Self {
         Error::GenError(std::sync::Arc::new(k))

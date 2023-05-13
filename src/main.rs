@@ -42,6 +42,18 @@ mod utils;
 
 use cmdline::{Command, Opt};
 use config::Config;
+use console_subscriber as _;
+
+#[cfg(tokio_unstable)]
+fn tokio_console_enable() {
+    info!("Tokio Console Enabled");
+    console_subscriber::init();
+}
+
+#[cfg(not(tokio_unstable))]
+fn tokio_console_enable() {
+    debug!("Tokio Console Disabled");
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -65,6 +77,10 @@ async fn main() -> Result<()> {
     config
         .validate()
         .with_context(|| format!("Failed to validate the {:?} config file", conf_path))?;
+
+    if config.tokio_console {
+        tokio_console_enable();
+    }
 
     match opt.cmd {
         None => {

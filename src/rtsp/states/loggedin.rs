@@ -32,22 +32,28 @@ impl Camera<LoggedIn> {
 
     pub(crate) async fn manage(&self) -> Result<()> {
         let cam_time = self.state.camera.get_time().await?;
+        let mut update = false;
         if let Some(time) = cam_time {
             info!(
                 "{}: Camera time is already set: {}",
                 self.shared.config.name, time
             );
+            if self.shared.config.update_time {
+                update = true;
+            }
         } else {
+            update = true;
+            warn!(
+                "{}: Camera has no time set, Updating",
+                self.shared.config.name
+            );
+        }
+        if update {
             use time::OffsetDateTime;
-            // We'd like now_local() but it's deprecated - try to get the local time, but if no
-            // time zone, fall back to UTC.
             let new_time =
                 OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-            warn!(
-                "{}: Camera has no time set, setting to {}",
-                self.shared.config.name, new_time
-            );
+            info!("{}: Setting time to {}", self.shared.config.name, new_time);
             match self.state.camera.set_time(new_time).await {
                 Ok(_) => {
                     let cam_time = self.state.camera.get_time().await?;
