@@ -1402,7 +1402,7 @@ dependencies = [
 
 [[package]]
 name = "neolink"
-version = "0.5.9"
+version = "0.5.10"
 dependencies = [
  "anyhow",
  "byte-slice-cast",
@@ -1432,7 +1432,7 @@ dependencies = [
 
 [[package]]
 name = "neolink_core"
-version = "0.5.9"
+version = "0.5.10"
 dependencies = [
  "aes",
  "assert_matches",
