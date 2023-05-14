@@ -9,7 +9,10 @@ use std::sync::Arc;
 use tokio::{
     sync::mpsc::{channel, Receiver, Sender},
     task::JoinSet,
+    time::sleep,
 };
+
+use core::time::Duration;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum Messages {
@@ -31,12 +34,12 @@ pub(crate) enum Messages {
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum Direction {
-    Up(f32),
-    Down(f32),
-    Left(f32),
-    Right(f32),
-    In(f32),
-    Out(f32),
+    Up(f32, f32),
+    Down(f32, f32),
+    Left(f32, f32),
+    Right(f32, f32),
+    In(f32, f32),
+    Out(f32, f32),
 }
 
 #[derive(Debug)]
@@ -408,19 +411,42 @@ impl<'a> MessageHandler<'a> {
                             }
                         }
                         Messages::Ptz(direction) => {
-                            let (bc_direction, amount) = match direction {
-                                Direction::Up(amount) => (BcDirection::Up, amount),
-                                Direction::Down(amount) => (BcDirection::Down, amount),
-                                Direction::Left(amount) => (BcDirection::Left, amount),
-                                Direction::Right(amount) => (BcDirection::Right, amount),
-                                Direction::In(amount) => (BcDirection::In, amount),
-                                Direction::Out(amount) => (BcDirection::Out, amount),
+                            let (bc_direction, amount, seconds) = match direction {
+                                Direction::Up(amount, seconds) => {
+                                    (BcDirection::Up, amount, seconds)
+                                }
+                                Direction::Down(amount, seconds) => {
+                                    (BcDirection::Down, amount, seconds)
+                                }
+                                Direction::Left(amount, seconds) => {
+                                    (BcDirection::Left, amount, seconds)
+                                }
+                                Direction::Right(amount, seconds) => {
+                                    (BcDirection::Right, amount, seconds)
+                                }
+                                Direction::In(amount, seconds) => {
+                                    (BcDirection::In, amount, seconds)
+                                }
+                                Direction::Out(amount, seconds) => {
+                                    (BcDirection::Out, amount, seconds)
+                                }
                             };
                             if let Err(e) = self.camera.send_ptz(bc_direction, amount).await {
                                 error = Some(format!("Failed to send PTZ: {:?}", e));
                                 "FAIL".to_string()
                             } else {
-                                "OK".to_string()
+                                // sleep for the designated seconds
+                                sleep(Duration::from_secs_f32(seconds)).await;
+
+                                // note that amount is not used in the stop command
+                                if let Err(e) =
+                                    self.camera.send_ptz(BcDirection::Stop, amount).await
+                                {
+                                    error = Some(format!("Failed to send PTZ: {:?}", e));
+                                    "FAIL".to_string()
+                                } else {
+                                    "OK".to_string()
+                                }
                             }
                         }
                         _ => "UNKNOWN COMMAND".to_string(),
