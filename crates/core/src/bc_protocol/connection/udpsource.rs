@@ -296,7 +296,7 @@ impl Stream for UdpPayloadSource {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let camera_addr = self.inner.addr;
-        let mut this = self.get_mut();
+        let this = self.get_mut();
         match this.state {
             State::Normal => {
                 // this.state = State::YieldNow;
@@ -417,7 +417,7 @@ impl Sink<Vec<u8>> for UdpPayloadSource {
         }
     }
     fn start_send(self: Pin<&mut Self>, item: Vec<u8>) -> std::result::Result<(), Self::Error> {
-        let mut this = self.get_mut();
+        let this = self.get_mut();
         for chunk in item.chunks(MTU - UDPDATA_HEADER_SIZE) {
             let udp_data = UdpData {
                 connection_id: this.camera_id,
@@ -487,7 +487,7 @@ impl Sink<Vec<u8>> for UdpPayloadSource {
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), Self::Error>> {
-        let mut this = self.get_mut();
+        let this = self.get_mut();
         if let State::Closed = this.state {
             return Poll::Ready(Ok(()));
         }

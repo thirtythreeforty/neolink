@@ -43,6 +43,7 @@ struct MqttReciever {
     name: String,
 }
 
+#[derive(Clone)]
 pub(crate) struct MqttSender {
     client: Arc<AsyncClient>,
     name: String,
