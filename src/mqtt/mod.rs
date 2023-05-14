@@ -205,6 +205,16 @@ async fn handle_mqtt_message(
     let mut reply_topic = None;
     match msg.as_ref() {
         MqttReplyRef {
+            topic: _,
+            message: "OK",
+        }
+        | MqttReplyRef {
+            topic: _,
+            message: "FAIL",
+        } => {
+            // Do nothing for the success/fail replies
+        }
+        MqttReplyRef {
             topic: "control/led",
             message: "on",
         } => {
@@ -297,9 +307,6 @@ async fn handle_mqtt_message(
                         "right" => Direction::Right(amount, seconds),
                         "in" => Direction::In(amount, seconds),
                         "out" => Direction::Out(amount, seconds),
-                        "ok" | "fail" => {
-                            return Ok(());
-                        }
                         _ => {
                             error!("Unrecognized PTZ direction \"{}\"", direction_txt);
                             return Ok(());
