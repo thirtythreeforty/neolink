@@ -16,7 +16,7 @@ pub enum Direction {
     /// To zoom the camera Out (may be done with cropping depending on camera model)
     Out,
     /// To stop currently active PTZ command
-    Stop
+    Stop,
 }
 
 impl BcCamera {
@@ -34,11 +34,11 @@ impl BcCamera {
             Direction::Right => "right",
             Direction::In => {
                 todo!()
-            },
+            }
             Direction::Out => {
                 todo!()
-            },
-            Direction::Stop => "stop"
+            }
+            Direction::Stop => "stop",
         }
         .to_string();
         let send = Bc {
