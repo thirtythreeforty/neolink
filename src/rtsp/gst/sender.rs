@@ -100,14 +100,14 @@ impl NeoBuffer {
     //         .map(|i| i as FrameTime)
     // }
 
-    fn start_time(&self) -> Option<FrameTime> {
-        let (fronts, backs) = self.buf.as_slices();
-        fronts
-            .iter()
-            .chain(&mut backs.iter())
-            .map(|frame| frame.time)
-            .next()
-    }
+    // fn start_time(&self) -> Option<FrameTime> {
+    //     let (fronts, backs) = self.buf.as_slices();
+    //     fronts
+    //         .iter()
+    //         .chain(&mut backs.iter())
+    //         .map(|frame| frame.time)
+    //         .next()
+    // }
 
     fn end_time(&self) -> Option<FrameTime> {
         let (fronts, backs) = self.buf.as_slices();
@@ -480,13 +480,28 @@ impl NeoMediaSender {
 
     fn target_live(&self) -> Option<FrameTime> {
         let target_idx = BUFFER_SIZE / 3;
-        if self.buffer.buf.len() >= target_idx {
-            let target_frame = self.buffer.buf.len().saturating_sub(target_idx);
-            self.buffer.buf.get(target_frame).map(|frame| frame.time)
+        let unique_stamps =
+            self.buffer
+                .buf
+                .iter()
+                .fold(Vec::<FrameTime>::new(), |mut acc, item| {
+                    if let Some(last) = acc.last() {
+                        if *last < item.time {
+                            acc.push(item.time);
+                        }
+                    } else {
+                        acc.push(item.time);
+                    }
+                    acc
+                });
+
+        if unique_stamps.len() >= target_idx {
+            let target_frame = unique_stamps.len().saturating_sub(target_idx);
+            unique_stamps.get(target_frame).copied()
         } else {
             // Approximate it's location
-            let fraction = target_idx as f64 / self.buffer.buf.len() as f64;
-            if let (Some(st), Some(et)) = (self.buffer.start_time(), self.buffer.end_time()) {
+            let fraction = target_idx as f64 / unique_stamps.len() as f64;
+            if let (Some(st), Some(et)) = (unique_stamps.first(), unique_stamps.last()) {
                 Some(et - ((et - st) as f64 * fraction) as FrameTime)
             } else {
                 None
@@ -495,24 +510,22 @@ impl NeoMediaSender {
     }
 
     async fn jump_to_live(&mut self) -> AnyResult<()> {
-        if self.inited {
-            let target_time = self.target_live();
+        let target_time = self.target_live();
 
-            if let Some(target_time) = target_time {
-                if let Some(et) = self.buffer.end_time() {
-                    debug!(
-                        "Minimum Latency: {:?}",
-                        Duration::from_micros(et.saturating_sub(target_time).max(0) as u64)
-                    );
-                }
-                let runtime = self.get_runtime().unwrap_or(0);
-
-                self.start_time.reset_to((target_time - runtime) as f64);
+        if let Some(target_time) = target_time {
+            if let Some(et) = self.buffer.end_time() {
                 debug!(
-                    "Jumped to live: New start time: {:?}",
-                    Duration::from_micros(self.start_time.value_u64()),
+                    "Minimum Latency: {:?}",
+                    Duration::from_micros(et.saturating_sub(target_time).max(0) as u64)
                 );
             }
+            let runtime = self.get_runtime().unwrap_or(0);
+
+            self.start_time.reset_to((target_time - runtime) as f64);
+            debug!(
+                "Jumped to live: New start time: {:?}",
+                Duration::from_micros(self.start_time.value_u64()),
+            );
         }
 
         Ok(())
@@ -649,7 +662,7 @@ impl NeoMediaSender {
     }
 
     async fn update(&mut self) -> AnyResult<()> {
-        if self.playing {
+        if self.inited && self.playing {
             self.update_starttime().await?;
             let mut buffers = vec![];
             if !self
@@ -661,7 +674,10 @@ impl NeoMediaSender {
                 return Err(anyhow!("Vid src is closed"));
             }
             if self.buffer.buf.len() < 4 {
-                error!("Buffer exhausted. Not enough data from Camera.");
+                warn!(
+                    "Buffer exhausted. Not enough data from Camera. Pausing RTSP until refilled."
+                );
+                self.inited = false;
             } else {
                 trace!("Buffer size: {}", self.buffer.buf.len());
             }
@@ -697,163 +713,158 @@ impl NeoMediaSender {
         if medias.is_empty() {
             return Ok(());
         }
-        if self.inited && self.playing {
+        tokio::task::yield_now().await;
+        let mut vid_buffers: Vec<(FrameTime, Vec<u8>)> = vec![];
+        let mut aud_buffers: Vec<(FrameTime, Vec<u8>)> = vec![];
+        for media in medias.iter() {
             tokio::task::yield_now().await;
-            let mut vid_buffers: Vec<(FrameTime, Vec<u8>)> = vec![];
-            let mut aud_buffers: Vec<(FrameTime, Vec<u8>)> = vec![];
-            for media in medias.iter() {
-                tokio::task::yield_now().await;
-                let buffer = match media.data.as_ref() {
-                    BcMedia::Iframe(_) | BcMedia::Pframe(_) => Some(&mut vid_buffers),
-                    BcMedia::Aac(_) | BcMedia::Adpcm(_) => Some(&mut aud_buffers),
-                    _ => None,
-                };
-                let data = match media.data.as_ref() {
-                    BcMedia::Iframe(data) => Some(&data.data),
-                    BcMedia::Pframe(data) => Some(&data.data),
-                    BcMedia::Aac(data) => Some(&data.data),
-                    BcMedia::Adpcm(data) => Some(&data.data),
-                    _ => None,
-                };
-                if let (Some(data), Some(buffer)) = (data, buffer) {
-                    let next_time = media.time;
-                    if let Some(last) = buffer.last_mut() {
-                        let last_time = last.0;
-                        if next_time == last_time {
-                            last.1.extend(data.iter().copied());
-                        } else {
-                            buffer.push((next_time, data.clone()))
-                        }
+            let buffer = match media.data.as_ref() {
+                BcMedia::Iframe(_) | BcMedia::Pframe(_) => Some(&mut vid_buffers),
+                BcMedia::Aac(_) | BcMedia::Adpcm(_) => Some(&mut aud_buffers),
+                _ => None,
+            };
+            let data = match media.data.as_ref() {
+                BcMedia::Iframe(data) => Some(&data.data),
+                BcMedia::Pframe(data) => Some(&data.data),
+                BcMedia::Aac(data) => Some(&data.data),
+                BcMedia::Adpcm(data) => Some(&data.data),
+                _ => None,
+            };
+            if let (Some(data), Some(buffer)) = (data, buffer) {
+                let next_time = media.time;
+                if let Some(last) = buffer.last_mut() {
+                    let last_time = last.0;
+                    if next_time == last_time {
+                        last.1.extend(data.iter().copied());
                     } else {
                         buffer.push((next_time, data.clone()))
                     }
+                } else {
+                    buffer.push((next_time, data.clone()))
                 }
             }
-            tokio::task::yield_now().await;
-            tokio::try_join!(
-                async {
-                    if !vid_buffers.is_empty() {
-                        // debug!("Sending video buffers: {}", vid_buffers.len());
-                        if let Some(appsrc) = self.vid.clone() {
-                            let buffers = {
-                                let mut buffers =
-                                    gstreamer::BufferList::new_sized(vid_buffers.len());
-                                {
-                                    let buffers_ref = buffers.get_mut().unwrap();
-                                    for (time, buf) in vid_buffers.drain(..) {
-                                        tokio::task::yield_now().await;
-                                        let runtime = self.buftime_to_runtime(time);
-                                        let _actual_runtime = self
-                                            .get_runtime()
-                                            .map(|i| Duration::from_micros(i as u64));
-                                        // debug!(
-                                        //     "  - Sending vid frame at time {} ({:?} Expect: {:?})",
-                                        //     time,
-                                        //     Duration::from_micros(runtime as u64),
-                                        //     actual_runtime
-                                        // );
-
-                                        let gst_buf = {
-                                            let mut gst_buf =
-                                                gstreamer::Buffer::with_size(buf.len()).unwrap();
-                                            {
-                                                let gst_buf_mut = gst_buf.get_mut().unwrap();
-
-                                                let time = ClockTime::from_useconds(
-                                                    runtime.try_into().unwrap(),
-                                                );
-                                                gst_buf_mut.set_dts(time);
-                                                let mut gst_buf_data =
-                                                    gst_buf_mut.map_writable().unwrap();
-                                                gst_buf_data.copy_from_slice(buf.as_slice());
-                                            }
-                                            gst_buf
-                                        };
-                                        buffers_ref.add(gst_buf);
-                                    }
-                                }
-                                buffers
-                            };
-
-                            let res = tokio::task::spawn_blocking(move || {
-                                // debug!("  - Pushing buffer: {}", buffers.len());
-                                appsrc
-                                    .push_buffer_list(buffers.copy())
-                                    .map(|_| ())
-                                    .map_err(|_| anyhow!("Could not push buffer to appsrc"))
-                            })
-                            .await;
-                            match &res {
-                                Err(e) => {
-                                    debug!("Paniced on send buffer list: {:?}", e);
-                                }
-                                Ok(Err(e)) => {
-                                    debug!("Failed to send buffer list: {:?}", e);
-                                }
-                                Ok(Ok(_)) => {}
-                            };
-                            res??;
-                        }
-                    }
-                    AnyResult::Ok(())
-                },
-                async {
-                    if !aud_buffers.is_empty() {
-                        if let Some(appsrc) = self.aud.clone() {
-                            let buffers = {
-                                let mut buffers =
-                                    gstreamer::BufferList::new_sized(aud_buffers.len());
-                                {
-                                    let buffers_ref = buffers.get_mut().unwrap();
-                                    for (time, buf) in aud_buffers.drain(..) {
-                                        tokio::task::yield_now().await;
-                                        let runtime = self.buftime_to_runtime(time);
-
-                                        let gst_buf = {
-                                            let mut gst_buf =
-                                                gstreamer::Buffer::with_size(buf.len()).unwrap();
-                                            {
-                                                let gst_buf_mut = gst_buf.get_mut().unwrap();
-
-                                                let time = ClockTime::from_useconds(
-                                                    runtime.try_into().unwrap(),
-                                                );
-                                                gst_buf_mut.set_dts(time);
-                                                let mut gst_buf_data =
-                                                    gst_buf_mut.map_writable().unwrap();
-                                                gst_buf_data.copy_from_slice(buf.as_slice());
-                                            }
-                                            gst_buf
-                                        };
-                                        buffers_ref.add(gst_buf);
-                                    }
-                                }
-                                buffers
-                            };
-
-                            let res = tokio::task::spawn_blocking(move || {
-                                appsrc
-                                    .push_buffer_list(buffers.copy())
-                                    .map(|_| ())
-                                    .map_err(|_| anyhow!("Could not push buffer to appsrc"))
-                            })
-                            .await;
-                            match &res {
-                                Err(e) => {
-                                    debug!("Paniced on send buffer list: {:?}", e);
-                                }
-                                Ok(Err(e)) => {
-                                    debug!("Failed to send buffer list: {:?}", e);
-                                }
-                                Ok(Ok(_)) => {}
-                            };
-                            res??;
-                        }
-                    }
-                    AnyResult::Ok(())
-                }
-            )?;
         }
+        tokio::task::yield_now().await;
+        tokio::try_join!(
+            async {
+                if !vid_buffers.is_empty() {
+                    // debug!("Sending video buffers: {}", vid_buffers.len());
+                    if let Some(appsrc) = self.vid.clone() {
+                        let buffers = {
+                            let mut buffers = gstreamer::BufferList::new_sized(vid_buffers.len());
+                            {
+                                let buffers_ref = buffers.get_mut().unwrap();
+                                for (time, buf) in vid_buffers.drain(..) {
+                                    tokio::task::yield_now().await;
+                                    let runtime = self.buftime_to_runtime(time);
+                                    let _actual_runtime =
+                                        self.get_runtime().map(|i| Duration::from_micros(i as u64));
+                                    // debug!(
+                                    //     "  - Sending vid frame at time {} ({:?} Expect: {:?})",
+                                    //     time,
+                                    //     Duration::from_micros(runtime as u64),
+                                    //     actual_runtime
+                                    // );
+
+                                    let gst_buf = {
+                                        let mut gst_buf =
+                                            gstreamer::Buffer::with_size(buf.len()).unwrap();
+                                        {
+                                            let gst_buf_mut = gst_buf.get_mut().unwrap();
+
+                                            let time = ClockTime::from_useconds(
+                                                runtime.try_into().unwrap(),
+                                            );
+                                            gst_buf_mut.set_dts(time);
+                                            let mut gst_buf_data =
+                                                gst_buf_mut.map_writable().unwrap();
+                                            gst_buf_data.copy_from_slice(buf.as_slice());
+                                        }
+                                        gst_buf
+                                    };
+                                    buffers_ref.add(gst_buf);
+                                }
+                            }
+                            buffers
+                        };
+
+                        let res = tokio::task::spawn_blocking(move || {
+                            // debug!("  - Pushing buffer: {}", buffers.len());
+                            appsrc
+                                .push_buffer_list(buffers.copy())
+                                .map(|_| ())
+                                .map_err(|_| anyhow!("Could not push buffer to appsrc"))
+                        })
+                        .await;
+                        match &res {
+                            Err(e) => {
+                                debug!("Paniced on send buffer list: {:?}", e);
+                            }
+                            Ok(Err(e)) => {
+                                debug!("Failed to send buffer list: {:?}", e);
+                            }
+                            Ok(Ok(_)) => {}
+                        };
+                        res??;
+                    }
+                }
+                AnyResult::Ok(())
+            },
+            async {
+                if !aud_buffers.is_empty() {
+                    if let Some(appsrc) = self.aud.clone() {
+                        let buffers = {
+                            let mut buffers = gstreamer::BufferList::new_sized(aud_buffers.len());
+                            {
+                                let buffers_ref = buffers.get_mut().unwrap();
+                                for (time, buf) in aud_buffers.drain(..) {
+                                    tokio::task::yield_now().await;
+                                    let runtime = self.buftime_to_runtime(time);
+
+                                    let gst_buf = {
+                                        let mut gst_buf =
+                                            gstreamer::Buffer::with_size(buf.len()).unwrap();
+                                        {
+                                            let gst_buf_mut = gst_buf.get_mut().unwrap();
+
+                                            let time = ClockTime::from_useconds(
+                                                runtime.try_into().unwrap(),
+                                            );
+                                            gst_buf_mut.set_dts(time);
+                                            let mut gst_buf_data =
+                                                gst_buf_mut.map_writable().unwrap();
+                                            gst_buf_data.copy_from_slice(buf.as_slice());
+                                        }
+                                        gst_buf
+                                    };
+                                    buffers_ref.add(gst_buf);
+                                }
+                            }
+                            buffers
+                        };
+
+                        let res = tokio::task::spawn_blocking(move || {
+                            appsrc
+                                .push_buffer_list(buffers.copy())
+                                .map(|_| ())
+                                .map_err(|_| anyhow!("Could not push buffer to appsrc"))
+                        })
+                        .await;
+                        match &res {
+                            Err(e) => {
+                                debug!("Paniced on send buffer list: {:?}", e);
+                            }
+                            Ok(Err(e)) => {
+                                debug!("Failed to send buffer list: {:?}", e);
+                            }
+                            Ok(Ok(_)) => {}
+                        };
+                        res??;
+                    }
+                }
+                AnyResult::Ok(())
+            }
+        )?;
         Ok(())
     }
 }
