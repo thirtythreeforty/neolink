@@ -8,6 +8,7 @@ use futures::{
 use gstreamer::{prelude::*, ClockTime};
 use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
+use itertools::Itertools;
 use log::*;
 use neolink_core::bcmedia::model::*;
 use std::{
@@ -594,30 +595,30 @@ impl NeoMediaSender {
 
     async fn initialise(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
         if !self.inited && buffer.ready() {
-            // Minimum buffer
-            self.inited = true;
+            if let Some(target_time) = self.target_live() {
+                // Minimum buffer
+                self.inited = true;
 
-            // Split buffer into 2/3 of preprocess
-            // and one third for the future buffer
-            let split_idx = buffer.buf.len() * 2 / 3;
-            let rebuf = buffer.buf.iter().cloned().collect::<Vec<_>>();
-            let (preprocess, buffer) = rebuf.split_at(split_idx);
-            let start_ms = buffer
-                .first()
-                .map(|data| data.time as f64)
-                .expect("Buffer should have a start time");
-            self.start_time.reset_to(start_ms);
+                let mut buffer_iter = buffer.buf.iter().cloned();
+                let preprocess = buffer_iter
+                    .take_while_ref(|item| item.time < target_time)
+                    .collect::<Vec<_>>();
+                let mut buffer = buffer_iter.collect::<Vec<_>>();
+                self.start_time.reset_to(target_time as f64);
 
-            // Send preprocess now
-            self.send_buffers(preprocess).await?;
-            debug!("Preprocessed");
-            // Send these later
-            for frame in buffer.iter() {
-                self.buffer.push(frame.clone());
+                // Send preprocess now
+                self.send_buffers(preprocess.as_slice()).await?;
+                debug!("Preprocessed");
+                // Send these later
+                for frame in buffer.drain(..) {
+                    self.buffer.push(frame);
+                }
+                debug!("Buffer filled");
+
+                self.jump_to_live().await?;
+            } else {
+                debug!("Buffer not ready to init: {}", buffer.buf.len());
             }
-            debug!("Buffer filled");
-
-            self.jump_to_live().await?;
         } else if !self.inited {
             debug!("Buffer not ready to init: {}", buffer.buf.len());
         }

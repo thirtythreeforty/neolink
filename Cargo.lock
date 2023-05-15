@@ -1415,6 +1415,7 @@ dependencies = [
  "gstreamer-app",
  "gstreamer-rtsp",
  "gstreamer-rtsp-server",
+ "itertools",
  "lazy_static",
  "log",
  "neolink_core",
