@@ -479,22 +479,21 @@ impl NeoMediaSender {
         self.command_sender.clone()
     }
 
-    fn target_live(&self) -> Option<FrameTime> {
+    fn target_live_for(buffer: &NeoBuffer) -> Option<FrameTime> {
         let target_idx = BUFFER_SIZE / 3;
-        let unique_stamps =
-            self.buffer
-                .buf
-                .iter()
-                .fold(Vec::<FrameTime>::new(), |mut acc, item| {
-                    if let Some(last) = acc.last() {
-                        if *last < item.time {
-                            acc.push(item.time);
-                        }
-                    } else {
+        let unique_stamps = buffer
+            .buf
+            .iter()
+            .fold(Vec::<FrameTime>::new(), |mut acc, item| {
+                if let Some(last) = acc.last() {
+                    if *last < item.time {
                         acc.push(item.time);
                     }
-                    acc
-                });
+                } else {
+                    acc.push(item.time);
+                }
+                acc
+            });
 
         if unique_stamps.len() >= target_idx {
             let target_frame = unique_stamps.len().saturating_sub(target_idx);
@@ -508,6 +507,10 @@ impl NeoMediaSender {
                 None
             }
         }
+    }
+
+    fn target_live(&self) -> Option<FrameTime> {
+        Self::target_live_for(&self.buffer)
     }
 
     async fn jump_to_live(&mut self) -> AnyResult<()> {
@@ -595,7 +598,7 @@ impl NeoMediaSender {
 
     async fn initialise(&mut self, buffer: &NeoBuffer) -> AnyResult<()> {
         if !self.inited && buffer.ready() {
-            if let Some(target_time) = self.target_live() {
+            if let Some(target_time) = Self::target_live_for(buffer) {
                 // Minimum buffer
                 self.inited = true;
 
