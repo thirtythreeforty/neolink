@@ -29,7 +29,7 @@ use crate::rtsp::Spring;
 
 type FrameTime = i64;
 
-const BUFFER_SIZE: usize = 300;
+const BUFFER_SIZE: usize = 100;
 
 #[derive(Debug, Clone)]
 struct Stamped {
@@ -679,11 +679,11 @@ impl NeoMediaSender {
                 );
                 self.inited = false;
             } else {
-                trace!("Buffer size: {}", self.buffer.buf.len());
+                debug!("Buffer size: {}", self.buffer.buf.len());
             }
             const LATENCY: FrameTime = Duration::from_millis(250).as_micros() as FrameTime;
             if let Some(buftime) = self.get_buftime().map(|i| i.saturating_add(LATENCY)) {
-                // debug!("Update: buftime: {}", buftime);
+                // debug!("Update: buftime: {}", buf time);
                 while self
                     .buffer
                     .buf
