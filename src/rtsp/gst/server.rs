@@ -302,6 +302,26 @@ impl NeoRtspServer {
             Err(anyhow!("No such tag"))
         }
     }
+
+    // Pause on all senders of a tag
+    pub(crate) async fn pause<T: Into<String>>(&self, tag: T) -> AnyResult<()> {
+        if let Some(sender) = self.imp().get_sender(tag).await {
+            sender.send(FactoryCommand::Pause).await?;
+            Ok(())
+        } else {
+            Err(anyhow!("No such tag"))
+        }
+    }
+
+    // Resume on all senders of a tag
+    pub(crate) async fn resume<T: Into<String>>(&self, tag: T) -> AnyResult<()> {
+        if let Some(sender) = self.imp().get_sender(tag).await {
+            sender.send(FactoryCommand::Resume).await?;
+            Ok(())
+        } else {
+            Err(anyhow!("No such tag"))
+        }
+    }
 }
 
 unsafe impl Send for NeoRtspServer {}

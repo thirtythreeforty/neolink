@@ -279,6 +279,12 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         }.with_context(|| format!("{}: Error while streaming", name))
         .map_err(CameraFailureKind::Retry)?;
 
+        tags.iter()
+            .map(|tag| rtsp_thread.pause(tag))
+            .collect::<FuturesUnordered<_>>()
+            .collect::<Vec<_>>()
+            .await;
+
         let paused = streaming
             .stop()
             .await
@@ -346,5 +352,11 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
             .await
             .with_context(|| format!("{}: Could not start stream", name))
             .map_err(CameraFailureKind::Retry)?;
+
+        tags.iter()
+            .map(|tag| rtsp_thread.resume(tag))
+            .collect::<FuturesUnordered<_>>()
+            .collect::<Vec<_>>()
+            .await;
     }
 }

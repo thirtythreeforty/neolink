@@ -120,6 +120,8 @@ pub(crate) enum FactoryCommand {
     BcMedia(BcMedia),
     ClearBuffer,
     JumpToLive,
+    Pause,
+    Resume,
 }
 
 pub(crate) struct NeoMediaFactoryImpl {

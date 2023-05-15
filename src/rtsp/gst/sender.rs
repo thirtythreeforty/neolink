@@ -402,6 +402,17 @@ impl NeoMediaSenders {
                                 client.inited = false;
                             }
                         },
+                        FactoryCommand::Pause => {
+                            for client in self.client_data.values_mut() {
+                                client.playing = false;
+                            }
+                        },
+                        FactoryCommand::Resume => {
+                            for client in self.client_data.values_mut() {
+                                client.playing = true;
+                                let _ = client.jump_to_live().await;
+                            }
+                        },
                     }
                     Ok(())
                 },
@@ -638,44 +649,46 @@ impl NeoMediaSender {
     }
 
     async fn update(&mut self) -> AnyResult<()> {
-        self.update_starttime().await?;
-        let mut buffers = vec![];
-        if !self
-            .vid
-            .as_ref()
-            .map(|x| x.pads().iter().all(|pad| pad.is_linked()))
-            .unwrap_or(false)
-        {
-            return Err(anyhow!("Vid src is closed"));
-        }
-        if self.buffer.buf.len() < 4 {
-            error!("Buffer exhausted. Not enough data from Camera.");
-        } else {
-            trace!("Buffer size: {}", self.buffer.buf.len());
-        }
-        const LATENCY: FrameTime = Duration::from_millis(250).as_micros() as FrameTime;
-        if let Some(buftime) = self.get_buftime().map(|i| i.saturating_add(LATENCY)) {
-            // debug!("Update: buftime: {}", buftime);
-            while self
-                .buffer
-                .buf
-                .front()
-                .map(|data| data.time <= buftime)
+        if self.playing {
+            self.update_starttime().await?;
+            let mut buffers = vec![];
+            if !self
+                .vid
+                .as_ref()
+                .map(|x| x.pads().iter().all(|pad| pad.is_linked()))
                 .unwrap_or(false)
             {
-                tokio::task::yield_now().await;
-                match self.buffer.buf.pop_front() {
-                    Some(frame) => {
-                        buffers.push(frame);
+                return Err(anyhow!("Vid src is closed"));
+            }
+            if self.buffer.buf.len() < 4 {
+                error!("Buffer exhausted. Not enough data from Camera.");
+            } else {
+                trace!("Buffer size: {}", self.buffer.buf.len());
+            }
+            const LATENCY: FrameTime = Duration::from_millis(250).as_micros() as FrameTime;
+            if let Some(buftime) = self.get_buftime().map(|i| i.saturating_add(LATENCY)) {
+                // debug!("Update: buftime: {}", buftime);
+                while self
+                    .buffer
+                    .buf
+                    .front()
+                    .map(|data| data.time <= buftime)
+                    .unwrap_or(false)
+                {
+                    tokio::task::yield_now().await;
+                    match self.buffer.buf.pop_front() {
+                        Some(frame) => {
+                            buffers.push(frame);
+                        }
+                        None => break,
                     }
-                    None => break,
                 }
             }
-        }
 
-        tokio::task::yield_now().await;
-        // collect certain frames
-        self.send_buffers(&buffers).await?;
+            tokio::task::yield_now().await;
+            // collect certain frames
+            self.send_buffers(&buffers).await?;
+        }
 
         Ok(())
     }
