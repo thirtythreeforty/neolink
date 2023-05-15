@@ -30,7 +30,7 @@ use crate::rtsp::Spring;
 
 type FrameTime = i64;
 
-const BUFFER_SIZE: usize = 100;
+const BUFFER_SIZE: usize = 300;
 
 #[derive(Debug, Clone)]
 struct Stamped {
@@ -390,6 +390,15 @@ impl NeoMediaSenders {
                 Some(v) = self.data_source.next() => {
                     match v {
                         FactoryCommand::BcMedia(media) => {
+                            let frame_time = match &media {
+                                BcMedia::Iframe(data) => Some(Duration::from_micros(data.microseconds as u64)),
+                                BcMedia::Pframe(data) => Some(Duration::from_micros(data.microseconds as u64)),
+                                _ => None,
+                            };
+                            if let Some(frame_time) = frame_time {
+                                debug!("Got frame at {:?}", frame_time);
+                            }
+
                             self.handle_new_data(media).await?;
                         },
                         FactoryCommand::ClearBuffer => {
@@ -444,6 +453,7 @@ pub(super) struct NeoMediaSender {
     command_sender: Sender<NeoMediaSenderCommand>,
     inited: bool,
     playing: bool,
+    refilling: bool,
 }
 
 impl NeoMediaSender {
@@ -459,6 +469,7 @@ impl NeoMediaSender {
             command_sender: tx,
             inited: false,
             playing: true,
+            refilling: false,
         }
     }
 
@@ -538,9 +549,9 @@ impl NeoMediaSender {
     async fn update_starttime(&mut self) -> AnyResult<()> {
         self.start_time.update().await;
 
-        if let (Some(runtime), Some(target_time)) = (self.get_runtime(), self.target_live()) {
-            self.start_time.set_target((target_time - runtime) as f64);
-        }
+        // if let (Some(runtime), Some(target_time)) = (self.get_runtime(), self.target_live()) {
+        //     self.start_time.set_target((target_time - runtime) as f64);
+        // }
         Ok(())
     }
 
@@ -666,7 +677,17 @@ impl NeoMediaSender {
     }
 
     async fn update(&mut self) -> AnyResult<()> {
-        if self.inited && self.playing {
+        if self.refilling && self.buffer.ready() {
+            self.refilling = false;
+            self.jump_to_live().await?;
+        } else if self.refilling {
+            debug!(
+                "Refilling: {}/{} ({:.2}%)",
+                self.buffer.buf.len(),
+                BUFFER_SIZE * 2 / 3,
+                self.buffer.buf.len() as f32 / (BUFFER_SIZE * 2 / 3) as f32 * 100.0
+            );
+        } else if !self.refilling && self.inited && self.playing {
             self.update_starttime().await?;
             let mut buffers = vec![];
             if !self
@@ -681,7 +702,7 @@ impl NeoMediaSender {
                 warn!(
                     "Buffer exhausted. Not enough data from Camera. Pausing RTSP until refilled."
                 );
-                self.inited = false;
+                self.refilling = true;
             } else {
                 debug!("Buffer size: {}", self.buffer.buf.len());
             }

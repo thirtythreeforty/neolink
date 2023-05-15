@@ -100,20 +100,26 @@ impl Camera<Streaming> {
     }
 
     pub(crate) async fn join(&self) -> Result<()> {
-        let mut locked_threads = self.state.set.write().await;
-        while let Some(res) = locked_threads.join_next().await {
-            match res {
-                Err(e) => {
-                    locked_threads.abort_all();
-                    return Err(e.into());
+        tokio::select! {
+            v = async {
+                let mut locked_threads = self.state.set.write().await;
+                while let Some(res) = locked_threads.join_next().await {
+                    match res {
+                        Err(e) => {
+                            locked_threads.abort_all();
+                            return Err(e.into());
+                        }
+                        Ok(Err(e)) => {
+                            locked_threads.abort_all();
+                            return Err(e);
+                        }
+                        Ok(Ok(())) => {}
+                    }
                 }
-                Ok(Err(e)) => {
-                    locked_threads.abort_all();
-                    return Err(e);
-                }
-                Ok(Ok(())) => {}
-            }
-        }
+                Ok(())
+            } => v,
+            v = self.state.camera.join() => v.map_err(|e| anyhow!("Camera join error: {:?}", e)),
+        }?;
         Ok(())
     }
 
