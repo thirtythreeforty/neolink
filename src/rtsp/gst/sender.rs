@@ -268,13 +268,18 @@ impl NeoMediaSenders {
                 );
                 debug!("Adjusting master: {}", self.buffer.buf.len());
                 for frame in self.buffer.buf.iter_mut() {
+                    let old_frame_time = frame.time;
                     frame.time = frame.time.saturating_add(delta_time);
-                    debug!("  - New frame time: {} -> {}", frame.time, frame_time);
+                    debug!(
+                        "  - New frame time: {} -> {} (target {})",
+                        old_frame_time, frame.time, frame_time
+                    );
                 }
 
                 for (_, client) in self.client_data.iter_mut() {
-                    client.buffer.buf.clear();
-                    client.inited = false;
+                    for frame in client.buffer.buf.iter_mut() {
+                        frame.time = frame.time.saturating_add(delta_time);
+                    }
                 }
             }
         }
