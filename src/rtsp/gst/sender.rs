@@ -528,7 +528,12 @@ impl NeoMediaSender {
             }
         } else {
             debug!("Not enough timestamps for target live: {:?}", unique_stamps);
-            None
+            if let Some(st) = unique_stamps.first() {
+                debug!("Setting to 1s behind first frame in buffer");
+                Some(st - Duration::from_secs(1).as_micros() as FrameTime)
+            } else {
+                None
+            }
         }
     }
 
