@@ -731,8 +731,8 @@ impl NeoMediaSender {
             debug!(
                 "Refilling: {}/{} ({:.2}%)",
                 self.buffer.buf.len(),
-                BUFFER_SIZE * 2 / 3,
-                self.buffer.buf.len() as f32 / (BUFFER_SIZE * 2 / 3) as f32 * 100.0
+                BUFFER_SIZE / 3,
+                self.buffer.buf.len() as f32 / (BUFFER_SIZE / 3) as f32 * 100.0
             );
         } else if !self.refilling && self.inited && self.playing {
             self.update_starttime().await?;
