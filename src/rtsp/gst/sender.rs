@@ -259,7 +259,10 @@ impl NeoMediaSenders {
         // Ocassionally the camera will make a jump in timestamps of about 15s (on sub 9s on main)
         // This could mean that it runs on some fixed sized buffer
         if let Some(end_time) = end_time {
-            let delta_time = frame_time - end_time - -1;
+            let delta_frame = (self.buffer.buf.back().unwrap().time
+                - self.buffer.buf.front().unwrap().time)
+                / self.buffer.buf.len() as i64;
+            let delta_time = frame_time - end_time + delta_frame;
             let delta_duration = Duration::from_micros(delta_time.unsigned_abs());
             if delta_duration > Duration::from_secs(1) {
                 debug!(
@@ -280,6 +283,7 @@ impl NeoMediaSenders {
                     for frame in client.buffer.buf.iter_mut() {
                         frame.time = frame.time.saturating_add(delta_time);
                     }
+                    client.start_time.mod_value(delta_time as f64);
                 }
             }
         }
@@ -682,6 +686,10 @@ impl NeoMediaSender {
     }
 
     async fn update(&mut self) -> AnyResult<()> {
+        if self.buffer.buf.len() > BUFFER_SIZE - 5 {
+            debug!("Buffer overfull");
+            self.jump_to_live().await?;
+        }
         if self.refilling && self.buffer.ready() {
             self.refilling = false;
             self.jump_to_live().await?;
