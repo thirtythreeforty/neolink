@@ -740,7 +740,7 @@ impl NeoMediaSender {
     }
 
     async fn update(&mut self) -> AnyResult<()> {
-        if self.buffer.buf.len() > self.buffer.max_size - 5 {
+        if self.buffer.buf.len() >= self.buffer.max_size * 9 / 10 {
             debug!("Buffer overfull");
             self.jump_to_live().await?;
         }
@@ -767,7 +767,7 @@ impl NeoMediaSender {
             }
 
             // Check if buffers are ok
-            if self.buffer.buf.len() < 4 {
+            if self.buffer.buf.len() <= self.buffer.max_size / 10 {
                 warn!(
                     "Buffer exhausted. Not enough data from Camera. Pausing RTSP until refilled."
                 );
