@@ -597,24 +597,9 @@ impl NeoMediaSender {
     async fn seek(
         &mut self,
         _original_runtime: Option<FrameTime>,
-        target_runtime: FrameTime,
-        master_buffer: &NeoBuffer,
+        _target_runtime: FrameTime,
+        _master_buffer: &NeoBuffer,
     ) -> AnyResult<()> {
-        if let Some(current_runtime) = self.get_runtime() {
-            self.live_offset = self
-                .live_offset
-                .saturating_add(target_runtime.saturating_sub(current_runtime));
-            trace!("Old runtime: {}", current_runtime);
-            trace!("Target runtime: {}", target_runtime);
-            trace!("Offset: {}", self.live_offset);
-            trace!("New runtime: {:?}", self.get_runtime());
-            if let Some(new_buftime) = self.get_buftime() {
-                self.buffer.buf.clear();
-                for frame in master_buffer.buf.iter().filter(|f| f.time >= new_buftime) {
-                    self.buffer.buf.push_back(frame.clone());
-                }
-            }
-        }
         self.jump_to_live().await?;
         Ok(())
     }
@@ -689,6 +674,10 @@ impl NeoMediaSender {
                                 .saturating_add(self.live_offset)
                                 .max(0),
                         );
+                        // debug!("base_time: {:?}", base_time);
+                        // debug!("time: {:?}", time);
+                        // debug!("runtime: {:?}", runtime);
+                        // debug!("Final runtime: {:?}", res);
                         trace!(
                             "Runtime: {:?}, Offset: {:?}, Offseted Runtime: {:?}",
                             runtime,
