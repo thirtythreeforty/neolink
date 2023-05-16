@@ -518,7 +518,7 @@ impl NeoMediaSender {
         if unique_stamps.len() >= target_idx {
             let target_frame = unique_stamps.len().saturating_sub(target_idx);
             unique_stamps.get(target_frame).copied()
-        } else {
+        } else if unique_stamps.len() > 5 {
             // Approximate it's location
             let fraction = target_idx as f64 / unique_stamps.len() as f64;
             if let (Some(st), Some(et)) = (unique_stamps.first(), unique_stamps.last()) {
@@ -526,6 +526,9 @@ impl NeoMediaSender {
             } else {
                 None
             }
+        } else {
+            debug!("Not enough timestamps for target live: {:?}", unique_stamps);
+            None
         }
     }
 
@@ -539,8 +542,26 @@ impl NeoMediaSender {
         if let Some(target_time) = target_time {
             if let Some(et) = self.buffer.end_time() {
                 debug!(
-                    "Minimum Latency: {:?}",
-                    Duration::from_micros(et.saturating_sub(target_time).max(0) as u64)
+                    "Buffer stamps: {:?}",
+                    self.buffer
+                        .buf
+                        .iter()
+                        .fold(Vec::<FrameTime>::new(), |mut acc, item| {
+                            if let Some(last) = acc.last() {
+                                if *last < item.time {
+                                    acc.push(item.time);
+                                }
+                            } else {
+                                acc.push(item.time);
+                            }
+                            acc
+                        })
+                );
+                debug!(
+                    "Minimum Latency: {:?} ({:?} - {:?})",
+                    Duration::from_micros(et.saturating_sub(target_time).max(0) as u64),
+                    Duration::from_micros(et.max(0) as u64),
+                    Duration::from_micros(target_time.max(0) as u64),
                 );
             }
             let runtime = self.get_runtime().unwrap_or(0);
