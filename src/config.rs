@@ -102,6 +102,22 @@ pub(crate) struct CameraConfig {
 
     #[serde(default = "default_update_time", alias = "time")]
     pub(crate) update_time: bool,
+
+    #[validate(range(
+        min = 10,
+        max = 500,
+        message = "Invalid buffer size",
+        code = "buffer_size"
+    ))]
+    #[serde(default = "default_buffer_size", alias = "size", alias = "buffer")]
+    pub(crate) buffer_size: usize,
+
+    #[serde(
+        default = "default_smoothing",
+        alias = "smoothing",
+        alias = "stretching"
+    )]
+    pub(crate) use_smoothing: bool,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -237,6 +253,14 @@ fn default_pause() -> PauseConfig {
         motion_timeout: default_motion_timeout(),
         mode: default_pause_mode(),
     }
+}
+
+fn default_smoothing() -> bool {
+    true
+}
+
+fn default_buffer_size() -> usize {
+    100
 }
 
 pub(crate) static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];

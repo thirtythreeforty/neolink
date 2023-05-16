@@ -31,20 +31,26 @@ use crate::rtsp::Spring;
 
 type FrameTime = i64;
 
-const BUFFER_SIZE: usize = 100;
-
 #[derive(Debug, Clone)]
 struct Stamped {
     time: FrameTime,
     data: Vec<Arc<BcMedia>>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct NeoBuffer {
     buf: VecDeque<Stamped>,
+    max_size: usize,
 }
 
 impl NeoBuffer {
+    fn new(max_size: usize) -> Self {
+        Self {
+            buf: Default::default(),
+            max_size,
+        }
+    }
+
     fn push(&mut self, media: Arc<BcMedia>) {
         let frame_time = match media.as_ref() {
             BcMedia::Iframe(data) => Some(data.microseconds as FrameTime),
@@ -92,19 +98,27 @@ impl NeoBuffer {
             last.data.push(media);
         }
 
-        while self.buf.len() > BUFFER_SIZE {
+        while self.buf.len() > self.max_size {
             if self.buf.pop_front().is_none() {
                 break;
             }
         }
     }
 
+    fn prep_size(&self) -> usize {
+        self.max_size * 2 / 3
+    }
+
+    fn live_size(&self) -> usize {
+        self.max_size / 3
+    }
+
     pub(crate) fn ready(&self) -> bool {
-        self.buf.len() > BUFFER_SIZE * 2 / 3
+        self.buf.len() > self.prep_size()
     }
 
     pub(crate) fn ready_play(&self) -> bool {
-        self.buf.len() > BUFFER_SIZE / 3
+        self.buf.len() > self.live_size()
     }
 
     // fn last_iframe_time(&self) -> Option<FrameTime> {
@@ -197,6 +211,7 @@ impl NeoMediaSenders {
         shared: Arc<NeoMediaShared>,
         data_source: ReceiverStream<FactoryCommand>,
         client_source: ReceiverStream<NeoMediaSender>,
+        buffer_size: usize,
     ) -> Self {
         Self {
             data_source,
@@ -204,7 +219,7 @@ impl NeoMediaSenders {
             shared,
             uid: Default::default(),
             client_data: Default::default(),
-            buffer: Default::default(),
+            buffer: NeoBuffer::new(buffer_size),
         }
     }
 
@@ -407,6 +422,7 @@ impl NeoMediaSenders {
     }
 
     async fn update(&mut self) -> AnyResult<()> {
+        self.buffer.max_size = self.shared.get_buffer_size();
         self.init_clients().await?;
         self.process_client_commands().await?;
         self.process_client_update().await?;
@@ -493,15 +509,16 @@ pub(super) struct NeoMediaSender {
     inited: bool,
     playing: bool,
     refilling: bool,
+    use_smoothing: bool,
 }
 
 impl NeoMediaSender {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(buffer_size: usize, use_smoothing: bool) -> Self {
         let (tx, rx) = channel(30);
         Self {
             start_time: Spring::new(0.0, 0.0, 10.0),
             live_offset: 0,
-            buffer: NeoBuffer::default(),
+            buffer: NeoBuffer::new(buffer_size),
             vid: None,
             aud: None,
             command_reciever: rx,
@@ -509,6 +526,7 @@ impl NeoMediaSender {
             inited: false,
             playing: true,
             refilling: false,
+            use_smoothing,
         }
     }
 
@@ -530,7 +548,7 @@ impl NeoMediaSender {
     }
 
     fn target_live_for(buffer: &NeoBuffer) -> Option<FrameTime> {
-        let target_idx = BUFFER_SIZE / 3;
+        let target_idx = buffer.live_size();
         let stamps = buffer.buf.iter().map(|item| item.time).collect::<Vec<_>>();
 
         if stamps.len() >= target_idx {
@@ -602,8 +620,10 @@ impl NeoMediaSender {
     async fn update_starttime(&mut self) -> AnyResult<()> {
         self.start_time.update().await;
 
-        if let (Some(runtime), Some(target_time)) = (self.get_runtime(), self.target_live()) {
-            self.start_time.set_target((target_time - runtime) as f64);
+        if self.use_smoothing {
+            if let (Some(runtime), Some(target_time)) = (self.get_runtime(), self.target_live()) {
+                self.start_time.set_target((target_time - runtime) as f64);
+            }
         }
         Ok(())
     }
@@ -720,7 +740,7 @@ impl NeoMediaSender {
     }
 
     async fn update(&mut self) -> AnyResult<()> {
-        if self.buffer.buf.len() > BUFFER_SIZE - 5 {
+        if self.buffer.buf.len() > self.buffer.max_size - 5 {
             debug!("Buffer overfull");
             self.jump_to_live().await?;
         }
@@ -731,8 +751,8 @@ impl NeoMediaSender {
             debug!(
                 "Refilling: {}/{} ({:.2}%)",
                 self.buffer.buf.len(),
-                BUFFER_SIZE / 3,
-                self.buffer.buf.len() as f32 / (BUFFER_SIZE / 3) as f32 * 100.0
+                self.buffer.live_size(),
+                self.buffer.buf.len() as f32 / (self.buffer.live_size()) as f32 * 100.0
             );
         } else if !self.refilling && self.inited && self.playing {
             self.update_starttime().await?;

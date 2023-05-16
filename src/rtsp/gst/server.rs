@@ -52,8 +52,12 @@ impl NeoRtspServer {
         self.imp().get_sender(tag).await
     }
 
-    pub(crate) async fn create_stream<U: Into<String>>(&self, tag: U) -> AnyResult<()> {
-        self.imp().create_stream(tag).await
+    pub(crate) async fn create_stream<U: Into<String>>(
+        &self,
+        tag: U,
+        config: &CameraConfig,
+    ) -> AnyResult<()> {
+        self.imp().create_stream(tag, config).await
     }
 
     #[allow(dead_code)]
@@ -350,12 +354,16 @@ impl ObjectSubclass for NeoRtspServerImpl {
 }
 
 impl NeoRtspServerImpl {
-    pub(crate) async fn create_stream<U: Into<String>>(&self, tag: U) -> AnyResult<()> {
+    pub(crate) async fn create_stream<U: Into<String>>(
+        &self,
+        tag: U,
+        config: &CameraConfig,
+    ) -> AnyResult<()> {
         let key = tag.into();
         match self.medias.write().await.entry(key.clone()) {
             Entry::Occupied(_occ) => {}
             Entry::Vacant(vac) => {
-                let media = NeoMediaFactory::new();
+                let media = NeoMediaFactory::new(config.buffer_size, config.use_smoothing);
                 let thread_media = media.clone();
                 self.threads
                     .write()

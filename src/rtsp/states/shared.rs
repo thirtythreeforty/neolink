@@ -85,7 +85,7 @@ impl Shared {
     pub(crate) async fn setup_streams(&self) -> Result<()> {
         for stream in self.streams.iter() {
             let tag = self.get_tag_for_stream(stream);
-            self.rtsp.create_stream(&tag).await?;
+            self.rtsp.create_stream(&tag, &self.config).await?;
             self.rtsp
                 .add_permitted_roles(&tag, &self.permitted_users)
                 .await?;
