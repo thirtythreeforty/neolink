@@ -30,12 +30,12 @@ use crate::rtsp::Spring;
 
 type FrameTime = i64;
 
-const BUFFER_SIZE: usize = 300;
+const BUFFER_SIZE: usize = 100;
 
 #[derive(Debug, Clone)]
 struct Stamped {
     time: FrameTime,
-    data: Arc<BcMedia>,
+    data: Vec<Arc<BcMedia>>,
 }
 
 #[derive(Default, Debug)]
@@ -44,25 +44,44 @@ struct NeoBuffer {
 }
 
 impl NeoBuffer {
-    fn push(&mut self, item: Stamped) {
-        // Sort time
-        // debug!("sorting");
-        let mut sorting_vec = vec![];
-        let time = item.time;
-        while self
-            .buf
-            .back()
-            .map(|back| back.time > time)
-            .unwrap_or(false)
-        {
-            sorting_vec.push(self.buf.pop_back().unwrap());
-        }
-        sorting_vec.push(item);
+    fn push(&mut self, media: Arc<BcMedia>) {
+        let frame_time = match media.as_ref() {
+            BcMedia::Iframe(data) => Some(data.microseconds as FrameTime),
+            BcMedia::Pframe(data) => Some(data.microseconds as FrameTime),
+            _ => None,
+        };
+        if let Some(frame_time) = frame_time {
+            let mut sorting_vec = vec![];
+            let time = frame_time;
+            while self
+                .buf
+                .back()
+                .map(|back| back.time >= time)
+                .unwrap_or(false)
+            {
+                sorting_vec.push(self.buf.pop_back().unwrap());
+            }
+            if sorting_vec
+                .last()
+                .map(|last| last.time == frame_time)
+                .unwrap_or(false)
+            {
+                sorting_vec.last_mut().unwrap().data.push(media);
+            } else {
+                sorting_vec.push(Stamped {
+                    time,
+                    data: vec![media],
+                });
+            }
 
-        for sorted_item in sorting_vec.drain(..) {
-            // debug!("Pushing frame with time: {}", sorted_item.time);
-            self.buf.push_back(sorted_item);
+            for sorted_item in sorting_vec.drain(..) {
+                // debug!("Pushing frame with time: {}", sorted_item.time);
+                self.buf.push_back(sorted_item);
+            }
+        } else if let Some(last) = self.buf.back_mut() {
+            last.data.push(media);
         }
+
         while self.buf.len() > BUFFER_SIZE {
             if self.buf.pop_front().is_none() {
                 break;
@@ -246,16 +265,10 @@ impl NeoMediaSenders {
             _ => self.buffer.end_time().unwrap_or(0),
         };
 
-        let data = Stamped {
-            time,
-            data: Arc::new(data),
-        };
-        for client_data in self.client_data.values_mut() {
-            client_data.add_data(data.clone()).await?;
-        }
+        let data = Arc::new(data);
 
         let end_time = self.buffer.end_time();
-        let frame_time = data.time;
+        let frame_time = time;
         // Ocassionally the camera will make a jump in timestamps of about 15s (on sub 9s on main)
         // This could mean that it runs on some fixed sized buffer
         if let Some(end_time) = end_time {
@@ -288,6 +301,9 @@ impl NeoMediaSenders {
             }
         }
 
+        for client_data in self.client_data.values_mut() {
+            client_data.add_data(data.clone()).await?;
+        }
         self.buffer.push(data);
 
         self.shared
@@ -482,7 +498,7 @@ impl NeoMediaSender {
         }
     }
 
-    async fn add_data(&mut self, data: Stamped) -> AnyResult<()> {
+    async fn add_data(&mut self, data: Arc<BcMedia>) -> AnyResult<()> {
         self.buffer.push(data);
         Ok(())
     }
@@ -501,34 +517,22 @@ impl NeoMediaSender {
 
     fn target_live_for(buffer: &NeoBuffer) -> Option<FrameTime> {
         let target_idx = BUFFER_SIZE / 3;
-        let unique_stamps = buffer
-            .buf
-            .iter()
-            .fold(Vec::<FrameTime>::new(), |mut acc, item| {
-                if let Some(last) = acc.last() {
-                    if *last < item.time {
-                        acc.push(item.time);
-                    }
-                } else {
-                    acc.push(item.time);
-                }
-                acc
-            });
+        let stamps = buffer.buf.iter().map(|item| item.time).collect::<Vec<_>>();
 
-        if unique_stamps.len() >= target_idx {
-            let target_frame = unique_stamps.len().saturating_sub(target_idx);
-            unique_stamps.get(target_frame).copied()
-        } else if unique_stamps.len() > 5 {
+        if stamps.len() >= target_idx {
+            let target_frame = stamps.len().saturating_sub(target_idx);
+            stamps.get(target_frame).copied()
+        } else if stamps.len() > 5 {
             // Approximate it's location
-            let fraction = target_idx as f64 / unique_stamps.len() as f64;
-            if let (Some(st), Some(et)) = (unique_stamps.first(), unique_stamps.last()) {
+            let fraction = target_idx as f64 / stamps.len() as f64;
+            if let (Some(st), Some(et)) = (stamps.first(), stamps.last()) {
                 Some(et - ((et - st) as f64 * fraction) as FrameTime)
             } else {
                 None
             }
         } else {
-            debug!("Not enough timestamps for target live: {:?}", unique_stamps);
-            if let Some(st) = unique_stamps.first() {
+            debug!("Not enough timestamps for target live: {:?}", stamps);
+            if let Some(st) = stamps.first() {
                 debug!("Setting to 1s behind first frame in buffer");
                 Some(st - Duration::from_secs(1).as_micros() as FrameTime)
             } else {
@@ -660,7 +664,7 @@ impl NeoMediaSender {
                 debug!("Preprocessed");
                 // Send these later
                 for frame in buffer.drain(..) {
-                    self.buffer.push(frame);
+                    self.buffer.buf.push_back(frame);
                 }
                 debug!("Buffer filled");
 
@@ -728,7 +732,7 @@ impl NeoMediaSender {
             );
         } else if !self.refilling && self.inited && self.playing {
             self.update_starttime().await?;
-            let mut buffers = vec![];
+            // Check app src is live
             if !self
                 .vid
                 .as_ref()
@@ -737,6 +741,8 @@ impl NeoMediaSender {
             {
                 return Err(anyhow!("Vid src is closed"));
             }
+
+            // Check if buffers are ok
             if self.buffer.buf.len() < 4 {
                 warn!(
                     "Buffer exhausted. Not enough data from Camera. Pausing RTSP until refilled."
@@ -745,6 +751,9 @@ impl NeoMediaSender {
             } else {
                 debug!("Buffer size: {}", self.buffer.buf.len());
             }
+
+            // Send buffers
+            let mut buffers = vec![];
             const LATENCY: FrameTime = Duration::from_millis(250).as_micros() as FrameTime;
             if let Some(buftime) = self.get_buftime().map(|i| i.saturating_add(LATENCY)) {
                 // debug!("Update: buftime: {}", buf time);
@@ -780,31 +789,33 @@ impl NeoMediaSender {
         tokio::task::yield_now().await;
         let mut vid_buffers: Vec<(FrameTime, Vec<u8>)> = vec![];
         let mut aud_buffers: Vec<(FrameTime, Vec<u8>)> = vec![];
-        for media in medias.iter() {
+        for media_sets in medias.iter() {
             tokio::task::yield_now().await;
-            let buffer = match media.data.as_ref() {
-                BcMedia::Iframe(_) | BcMedia::Pframe(_) => Some(&mut vid_buffers),
-                BcMedia::Aac(_) | BcMedia::Adpcm(_) => Some(&mut aud_buffers),
-                _ => None,
-            };
-            let data = match media.data.as_ref() {
-                BcMedia::Iframe(data) => Some(&data.data),
-                BcMedia::Pframe(data) => Some(&data.data),
-                BcMedia::Aac(data) => Some(&data.data),
-                BcMedia::Adpcm(data) => Some(&data.data),
-                _ => None,
-            };
-            if let (Some(data), Some(buffer)) = (data, buffer) {
-                let next_time = media.time;
-                if let Some(last) = buffer.last_mut() {
-                    let last_time = last.0;
-                    if next_time == last_time {
-                        last.1.extend(data.iter().copied());
+            for media in media_sets.data.iter() {
+                let buffer = match media.as_ref() {
+                    BcMedia::Iframe(_) | BcMedia::Pframe(_) => Some(&mut vid_buffers),
+                    BcMedia::Aac(_) | BcMedia::Adpcm(_) => Some(&mut aud_buffers),
+                    _ => None,
+                };
+                let data = match media.as_ref() {
+                    BcMedia::Iframe(data) => Some(&data.data),
+                    BcMedia::Pframe(data) => Some(&data.data),
+                    BcMedia::Aac(data) => Some(&data.data),
+                    BcMedia::Adpcm(data) => Some(&data.data),
+                    _ => None,
+                };
+                if let (Some(data), Some(buffer)) = (data, buffer) {
+                    let next_time = media_sets.time;
+                    if let Some(last) = buffer.last_mut() {
+                        let last_time = last.0;
+                        if next_time == last_time {
+                            last.1.extend(data.iter().copied());
+                        } else {
+                            buffer.push((next_time, data.clone()))
+                        }
                     } else {
                         buffer.push((next_time, data.clone()))
                     }
-                } else {
-                    buffer.push((next_time, data.clone()))
                 }
             }
         }
