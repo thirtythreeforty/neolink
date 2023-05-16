@@ -8,6 +8,7 @@ use futures::{
 use gstreamer::{prelude::*, ClockTime};
 use gstreamer_app::AppSrc;
 pub use gstreamer_rtsp_server::gio::{TlsAuthenticationMode, TlsCertificate};
+use is_sorted::IsSorted;
 use itertools::Itertools;
 use log::*;
 use neolink_core::bcmedia::model::*;
@@ -74,10 +75,19 @@ impl NeoBuffer {
                 });
             }
 
-            for sorted_item in sorting_vec.drain(..) {
-                // debug!("Pushing frame with time: {}", sorted_item.time);
+            while let Some(sorted_item) = sorting_vec.pop() {
+                debug!("Pushing frame with time: {}", sorted_item.time);
                 self.buf.push_back(sorted_item);
             }
+
+            debug_assert!(
+                IsSorted::is_sorted(&mut self.buf.iter().map(|stamped| stamped.time)),
+                "{:?}",
+                self.buf
+                    .iter()
+                    .map(|stamped| stamped.time)
+                    .collect::<Vec<_>>()
+            );
         } else if let Some(last) = self.buf.back_mut() {
             last.data.push(media);
         }
@@ -91,6 +101,10 @@ impl NeoBuffer {
 
     pub(crate) fn ready(&self) -> bool {
         self.buf.len() > BUFFER_SIZE * 2 / 3
+    }
+
+    pub(crate) fn ready_play(&self) -> bool {
+        self.buf.len() > BUFFER_SIZE / 3
     }
 
     // fn last_iframe_time(&self) -> Option<FrameTime> {
@@ -434,7 +448,7 @@ impl NeoMediaSenders {
                                 // Set them into the non init state
                                 // This will make them wait for the
                                 // buffer to be enough then jump to live
-                                client.inited = false;
+                                let _ = client.jump_to_live().await;
                             }
                         },
                         FactoryCommand::Pause => {
@@ -636,6 +650,7 @@ impl NeoMediaSender {
             if let Some(target_time) = Self::target_live_for(buffer) {
                 // Minimum buffer
                 self.inited = true;
+                self.buffer.buf.clear();
 
                 let mut buffer_iter = buffer.buf.iter().cloned();
                 let preprocess = buffer_iter
@@ -709,7 +724,7 @@ impl NeoMediaSender {
             debug!("Buffer overfull");
             self.jump_to_live().await?;
         }
-        if self.refilling && self.buffer.ready() {
+        if self.refilling && self.buffer.ready_play() {
             self.refilling = false;
             self.jump_to_live().await?;
         } else if self.refilling {
@@ -743,8 +758,7 @@ impl NeoMediaSender {
 
             // Send buffers
             let mut buffers = vec![];
-            const LATENCY: FrameTime = Duration::from_millis(250).as_micros() as FrameTime;
-            if let Some(buftime) = self.get_buftime().map(|i| i.saturating_add(LATENCY)) {
+            if let Some(buftime) = self.get_buftime() {
                 // debug!("Update: buftime: {}", buf time);
                 while self
                     .buffer
@@ -821,14 +835,12 @@ impl NeoMediaSender {
                                 for (time, buf) in vid_buffers.drain(..) {
                                     tokio::task::yield_now().await;
                                     let runtime = self.buftime_to_runtime(time);
-                                    let _actual_runtime =
-                                        self.get_runtime().map(|i| Duration::from_micros(i as u64));
-                                    // debug!(
-                                    //     "  - Sending vid frame at time {} ({:?} Expect: {:?})",
-                                    //     time,
-                                    //     Duration::from_micros(runtime as u64),
-                                    //     actual_runtime
-                                    // );
+                                    debug!(
+                                        "  - Sending vid frame at time {} ({:?} Expect: {:?})",
+                                        time,
+                                        Duration::from_micros(runtime as u64),
+                                        self.get_runtime().map(|i| Duration::from_micros(i as u64))
+                                    );
 
                                     let gst_buf = {
                                         let mut gst_buf =
