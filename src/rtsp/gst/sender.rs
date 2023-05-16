@@ -262,7 +262,7 @@ impl NeoMediaSenders {
             let delta_frame = (self.buffer.buf.back().unwrap().time
                 - self.buffer.buf.front().unwrap().time)
                 / self.buffer.buf.len() as i64;
-            let delta_time = frame_time - end_time + delta_frame;
+            let delta_time = frame_time - end_time - delta_frame;
             let delta_duration = Duration::from_micros(delta_time.unsigned_abs());
             if delta_duration > Duration::from_secs(1) {
                 debug!(
