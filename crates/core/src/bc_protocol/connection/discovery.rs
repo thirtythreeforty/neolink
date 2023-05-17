@@ -58,7 +58,7 @@ struct UidLookupResults {
 
 pub(crate) struct Discovery {}
 
-const MTU: u32 = 1030;
+const MTU: u32 = 1350;
 lazy_static! {
     static ref P2P_RELAY_HOSTNAMES: [&'static str; 10] = [
         "p2p.reolink.com",
