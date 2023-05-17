@@ -1803,6 +1803,37 @@ Message have zero to two payloads.
     </body>
     ```
 
+- 124: `<PushInfo>`
+
+    - Client
+        - Payload:
+
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <PushInfo version="1.1">
+        <token>A_PUSH_NOTIFICATION_TOKEN</token>
+        <phoneType>reo_iphone</phoneType>
+        <clientID>A_PUSH_NOTIFICATION_CLIENTID</clientID>
+        </PushInfo>
+        </body>
+        ```
+
+    - Camera
+        - Payload
+
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <PushRspInfo version="1.1">
+        <registerHandle>-1</registerHandle>
+        <uid>CAMERA_UID</uid>
+        <uidKey>A_4_CHAR_STRING</uidKey>
+        </PushRspInfo>
+        </body>
+        ```
+
+
 - 133: `<RfAlarm>`
 
   - Client
@@ -2372,6 +2403,39 @@ Message have zero to two payloads.
     </audioCfg>
     </body>
     ```
+
+- 268: `CloudBindInfo`
+    - Client:
+        Usual header only packet
+
+    - Camera
+
+        - Payload
+
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <CloudBindInfo version="1.1">
+        <binded>1</binded>
+        </CloudBindInfo>
+        </body>
+        ```
+
+- 282: `CloudLoginKey`
+
+    - Client:
+        Usual header only packet
+
+    - Camera
+        - Payload
+
+        ```xml
+        <body>
+        <CloudLoginKey version="1.1">
+        <enable>0</enable>
+        </CloudLoginKey>
+        </body>
+        ```
 
 - 288: `<FloodlightManual>` (write)
 
