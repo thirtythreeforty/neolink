@@ -771,6 +771,7 @@ impl NeoMediaSender {
                 warn!(
                     "Buffer exhausted. Not enough data from Camera. Pausing RTSP until refilled."
                 );
+                info!("Try reducing your Max Bitrate using the offical app");
                 self.refilling = true;
             } else {
                 debug!("Buffer size: {}", self.buffer.buf.len());
