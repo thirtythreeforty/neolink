@@ -28,7 +28,7 @@ use tokio_util::{
     udp::UdpFramed,
 };
 
-const MTU: usize = 1030;
+const MTU: usize = 1350;
 const UDPDATA_HEADER_SIZE: usize = 20;
 
 pub(crate) struct UdpSource {

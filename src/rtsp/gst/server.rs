@@ -52,8 +52,12 @@ impl NeoRtspServer {
         self.imp().get_sender(tag).await
     }
 
-    pub(crate) async fn create_stream<U: Into<String>>(&self, tag: U) -> AnyResult<()> {
-        self.imp().create_stream(tag).await
+    pub(crate) async fn create_stream<U: Into<String>>(
+        &self,
+        tag: U,
+        config: &CameraConfig,
+    ) -> AnyResult<()> {
+        self.imp().create_stream(tag, config).await
     }
 
     #[allow(dead_code)]
@@ -302,6 +306,26 @@ impl NeoRtspServer {
             Err(anyhow!("No such tag"))
         }
     }
+
+    // Pause on all senders of a tag
+    pub(crate) async fn pause<T: Into<String>>(&self, tag: T) -> AnyResult<()> {
+        if let Some(sender) = self.imp().get_sender(tag).await {
+            sender.send(FactoryCommand::Pause).await?;
+            Ok(())
+        } else {
+            Err(anyhow!("No such tag"))
+        }
+    }
+
+    // Resume on all senders of a tag
+    pub(crate) async fn resume<T: Into<String>>(&self, tag: T) -> AnyResult<()> {
+        if let Some(sender) = self.imp().get_sender(tag).await {
+            sender.send(FactoryCommand::Resume).await?;
+            Ok(())
+        } else {
+            Err(anyhow!("No such tag"))
+        }
+    }
 }
 
 unsafe impl Send for NeoRtspServer {}
@@ -330,12 +354,16 @@ impl ObjectSubclass for NeoRtspServerImpl {
 }
 
 impl NeoRtspServerImpl {
-    pub(crate) async fn create_stream<U: Into<String>>(&self, tag: U) -> AnyResult<()> {
+    pub(crate) async fn create_stream<U: Into<String>>(
+        &self,
+        tag: U,
+        config: &CameraConfig,
+    ) -> AnyResult<()> {
         let key = tag.into();
         match self.medias.write().await.entry(key.clone()) {
             Entry::Occupied(_occ) => {}
             Entry::Vacant(vac) => {
-                let media = NeoMediaFactory::new();
+                let media = NeoMediaFactory::new(config.buffer_size, config.use_smoothing);
                 let thread_media = media.clone();
                 self.threads
                     .write()

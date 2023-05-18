@@ -41,14 +41,16 @@ glib::wrapper! {
 
 impl Default for NeoMediaFactory {
     fn default() -> Self {
-        Self::new()
+        Self::new(100, true)
     }
 }
 
 impl NeoMediaFactory {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(buffer_size: usize, use_smoothing: bool) -> Self {
         let factory = Object::new::<NeoMediaFactory>();
         factory.set_shared(false);
+        factory.imp().shared.set_buffer_size(buffer_size);
+        factory.imp().shared.set_use_smoothing(use_smoothing);
         // factory.set_do_retransmission(false); // Can't use as the method is missing on the 32bit docker gst dll
         factory.set_launch("videotestsrc pattern=\"snow\" ! video/x-raw,width=896,height=512,framerate=25/1 ! textoverlay name=\"inittextoverlay\" text=\"Stream not Ready\" valignment=top halignment=left font-desc=\"Sans, 32\" ! jpegenc ! rtpjpegpay name=pay0");
         factory.set_suspend_mode(RTSPSuspendMode::None);
@@ -120,6 +122,8 @@ pub(crate) enum FactoryCommand {
     BcMedia(BcMedia),
     ClearBuffer,
     JumpToLive,
+    Pause,
+    Resume,
 }
 
 pub(crate) struct NeoMediaFactoryImpl {
@@ -149,6 +153,7 @@ impl Default for NeoMediaFactoryImpl {
             shared.clone(),
             ReceiverStream::new(datarx),
             ReceiverStream::new(rx_clientsender),
+            100,
         );
         threads.spawn(async move {
             loop {
@@ -265,7 +270,10 @@ impl NeoMediaFactoryImpl {
             bin.remove(&element)?;
         }
 
-        let mut client_data = NeoMediaSender::new();
+        let mut client_data = NeoMediaSender::new(
+            self.shared.get_buffer_size(),
+            self.shared.get_use_smoothing(),
+        );
 
         // Now contruct the actual ones
         match (

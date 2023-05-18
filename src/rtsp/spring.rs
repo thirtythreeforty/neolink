@@ -64,6 +64,12 @@ impl Spring {
         self.target
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn mod_value(&mut self, delta: f64) {
+        self.target += delta;
+        self.value += delta;
+    }
+
     pub(crate) fn reset_to(&mut self, target: f64) {
         self.target = target;
         self.value = target;

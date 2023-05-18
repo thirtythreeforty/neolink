@@ -36,4 +36,13 @@ impl Camera<Connected> {
             },
         })
     }
+
+    #[allow(unused)]
+    pub(crate) async fn join(&self) -> Result<()> {
+        self.state
+            .camera
+            .join()
+            .await
+            .map_err(|e| anyhow::anyhow!("Camera join error: {:?}", e))
+    }
 }
