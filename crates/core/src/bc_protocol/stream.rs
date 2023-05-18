@@ -222,6 +222,28 @@ impl BcCamera {
             sub_video.send(stop_video).await?;
             // debug!("Stream: Sent Stop");
 
+            tokio::select! {
+                v = async {
+                    loop {
+                        let msg = sub_video.recv().await?;
+                        if let BcMeta {
+                            response_code: 200,
+                            msg_id: MSG_ID_VIDEO_STOP,
+                            ..
+                        } = msg.meta {
+                            return Ok(());
+                        }
+                        else if let BcMeta {
+                            msg_id: MSG_ID_VIDEO_STOP,
+                            ..
+                        }   = msg.meta {
+                            return Err(Error::CameraServiceUnavaliable);
+                        }
+                    }
+                } => v,
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(2)) => {Ok(())},
+            }?;
+
             Ok(())
         });
 

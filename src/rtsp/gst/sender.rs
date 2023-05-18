@@ -82,7 +82,7 @@ impl NeoBuffer {
             }
 
             while let Some(sorted_item) = sorting_vec.pop() {
-                debug!("Pushing frame with time: {}", sorted_item.time);
+                trace!("Pushing frame with time: {}", sorted_item.time);
                 self.buf.push_back(sorted_item);
             }
 
@@ -286,7 +286,7 @@ impl NeoMediaSenders {
     }
 
     async fn handle_new_data(&mut self, data: BcMedia) -> AnyResult<()> {
-        // debug!("Handle new data");
+        // trace!("Handle new data");
         self.update_mediatypes(&data).await;
         let time = match &data {
             BcMedia::Iframe(BcMediaIframe { microseconds, .. }) => *microseconds as FrameTime,
@@ -307,17 +307,21 @@ impl NeoMediaSenders {
             let delta_time = frame_time - end_time - delta_frame;
             let delta_duration = Duration::from_micros(delta_time.unsigned_abs());
             if delta_duration > Duration::from_secs(1) {
-                debug!(
+                trace!(
                     "Reschedule buffer due to jump: {:?}, Prev: {}, New: {}",
-                    delta_duration, end_time, frame_time
+                    delta_duration,
+                    end_time,
+                    frame_time
                 );
-                debug!("Adjusting master: {}", self.buffer.buf.len());
+                trace!("Adjusting master: {}", self.buffer.buf.len());
                 for frame in self.buffer.buf.iter_mut() {
                     let old_frame_time = frame.time;
                     frame.time = frame.time.saturating_add(delta_time);
-                    debug!(
+                    trace!(
                         "  - New frame time: {} -> {} (target {})",
-                        old_frame_time, frame.time, frame_time
+                        old_frame_time,
+                        frame.time,
+                        frame_time
                     );
                 }
 
@@ -351,7 +355,7 @@ impl NeoMediaSenders {
                     .initialise(buffer)
                     .map_ok(|_| None)
                     .unwrap_or_else(move |e| {
-                        debug!("Could not init client: {:?}", e);
+                        trace!("Could not init client: {:?}", e);
                         Some(key)
                     })
             })
@@ -374,7 +378,7 @@ impl NeoMediaSenders {
                     .process_commands(buffer)
                     .map_ok(|_| None)
                     .unwrap_or_else(move |e| {
-                        debug!("Could not process client command: {:?}", e);
+                        trace!("Could not process client command: {:?}", e);
                         Some(key)
                     })
             })
@@ -394,7 +398,7 @@ impl NeoMediaSenders {
             .iter_mut()
             .map(|(&key, client)| {
                 client.update().map_ok(|_| None).unwrap_or_else(move |e| {
-                    debug!("Could not update client: {:?}", e);
+                    trace!("Could not update client: {:?}", e);
                     Some(key)
                 })
             })
@@ -451,7 +455,7 @@ impl NeoMediaSenders {
                                 _ => None,
                             };
                             if let Some(frame_time) = frame_time {
-                                debug!("Got frame at {:?}", frame_time);
+                                trace!("Got frame at {:?}", frame_time);
                             }
 
                             self.handle_new_data(media).await?;
@@ -563,9 +567,9 @@ impl NeoMediaSender {
                 None
             }
         } else {
-            debug!("Not enough timestamps for target live: {:?}", stamps);
+            trace!("Not enough timestamps for target live: {:?}", stamps);
             if let Some(st) = stamps.first() {
-                debug!("Setting to 1s behind first frame in buffer");
+                trace!("Setting to 1s behind first frame in buffer");
                 Some(st - Duration::from_secs(1).as_micros() as FrameTime)
             } else {
                 None
@@ -582,7 +586,7 @@ impl NeoMediaSender {
 
         if let Some(target_time) = target_time {
             if let Some(et) = self.buffer.end_time() {
-                debug!(
+                trace!(
                     "Buffer stamps: {:?}",
                     self.buffer
                         .buf
@@ -608,7 +612,7 @@ impl NeoMediaSender {
             let runtime = self.get_runtime().unwrap_or(0);
 
             self.start_time.reset_to((target_time - runtime) as f64);
-            debug!(
+            trace!(
                 "Jumped to live: New start time: {:?}",
                 Duration::from_micros(self.start_time.value_u64()),
             );
@@ -681,12 +685,12 @@ impl NeoMediaSender {
 
                 // Send preprocess now
                 self.send_buffers(preprocess.as_slice()).await?;
-                debug!("Preprocessed");
+                trace!("Preprocessed");
                 // Send these later
                 for frame in buffer.drain(..) {
                     self.buffer.buf.push_back(frame);
                 }
-                debug!("Buffer filled");
+                trace!("Buffer filled");
 
                 self.jump_to_live().await?;
             } else {
@@ -748,7 +752,7 @@ impl NeoMediaSender {
             self.refilling = false;
             self.jump_to_live().await?;
         } else if self.refilling {
-            debug!(
+            trace!(
                 "Refilling: {}/{} ({:.2}%)",
                 self.buffer.buf.len(),
                 self.buffer.live_size(),
@@ -774,7 +778,7 @@ impl NeoMediaSender {
                 info!("Try reducing your Max Bitrate using the offical app");
                 self.refilling = true;
             } else {
-                debug!("Buffer size: {}", self.buffer.buf.len());
+                trace!("Buffer size: {}", self.buffer.buf.len());
             }
 
             // Send buffers
@@ -856,7 +860,7 @@ impl NeoMediaSender {
                                 for (time, buf) in vid_buffers.drain(..) {
                                     tokio::task::yield_now().await;
                                     let runtime = self.buftime_to_runtime(time);
-                                    debug!(
+                                    trace!(
                                         "  - Sending vid frame at time {} ({:?} Expect: {:?})",
                                         time,
                                         Duration::from_micros(runtime as u64),
