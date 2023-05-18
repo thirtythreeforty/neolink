@@ -246,7 +246,7 @@ branch gets it's own tag.
 ```bash
 docker pull quantumentangledandy/neolink
 
-# remove `-e "RUST_LOG=trace"` to run in production mode
+# remove `-e "RUST_LOG=debug"` to run in production mode
 docker run --name neolink --network host --restart=unless-stopped -d -e "RUST_LOG=trace" --volume=$PWD/config.toml:/etc/neolink.toml quantumentangledandy/neolink
 ```
 
