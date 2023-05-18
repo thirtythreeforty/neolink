@@ -1749,6 +1749,35 @@ Message have zero to two payloads.
     </body>
     ```
 
+- 116: `<Wifi>`
+
+    - Client:
+        Usual header
+
+    - Camera:
+        Payload:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <Wifi version="1.1">
+        <mode>station</mode>
+        <authMode>wpa2psk</authMode>
+        <encryptType>aes</encryptType>
+        <udidList>
+            <udid>
+            <name>WIFINAME</name>
+            <signal>NUMBER</signal>
+            <encrypt>ONE_OR_ZERO</encrypt>
+            </udid>
+            # Repeats for ALL wifi in range
+        </udidList>
+        <ssid>YOUR_CURRENT_WIFI</ssid>
+        <key>YOUR_CURRENT_WIFI_PASSWORD_UNENCRYPTED</key>
+        <channel>YOUR_CURRENT_WIFI_CHANNEL</channel>
+        </Wifi>
+        </body>
+        ```
+
 - 132: `<VideoInput>`
 
   - Client
@@ -2427,6 +2456,154 @@ Message have zero to two payloads.
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 d1  |  00 00 00 00   |    85 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
+- 219: `<PushTask>`
+    - Client
+        Usual header
+
+        - Meta:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <Extension version="1.1">
+        <channelId>0</channelId>
+        </Extension>
+        ```
+    - Camera
+        Usual header
+
+        - Payload:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <PushTask version="1.1">
+        <channelId>0</channelId>
+        <enable>1</enable>
+        <ScheduleList>
+        <Schedule>
+        <alarmType>MD</alarmType>
+        <timeBlockList>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Sunday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Monday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Tuesday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Wednesday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Thursday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Friday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Saturday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        </timeBlockList>
+        </Schedule>
+        </ScheduleList>
+        </PushTask>
+        </body>
+        ```
+
+
+- 232: `<AudioTask>`
+    - Client
+        Usual header
+
+        - Meta:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <Extension version="1.1">
+        <channelId>0</channelId>
+        </Extension>
+        ```
+    - Camera
+        Usual header
+
+        - Payload:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <AudioTask version="1.1">
+        <channelId>0</channelId>
+        <enable>0</enable>
+        <ScheduleList>
+        <Schedule>
+        <alarmType>MD</alarmType>
+        <timeBlockList>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Sunday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Monday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Tuesday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Wednesday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Thursday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Friday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Saturday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        </timeBlockList>
+        </Schedule>
+        </ScheduleList>
+        </AudioTask>
+        </body>
+        ```
 
 - 264: `<audioCfg>` (write)
 
@@ -2494,6 +2671,22 @@ Message have zero to two payloads.
         </CloudLoginKey>
         </body>
         ```
+
+- 287: `<TimeCfg>`
+    - Client:
+        - Payload
+
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <TimeCfg version="1.1">
+        <realTime>1684393362</realTime>
+        </TimeCfg>
+        </body>
+        ```
+
+    - Camera
+        Header only 200 Ok reply
 
 - 288: `<FloodlightManual>` (write)
 
