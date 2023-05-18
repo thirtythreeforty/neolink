@@ -1662,6 +1662,64 @@ Message have zero to two payloads.
     </body>
     ```
 
+- 109: `<Snap>`
+
+  - Client:
+    Usual header
+
+    - Meta:
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Main:
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Snap version="1.1">
+    <channelId>0</channelId>
+    <logicChannel>0</logicChannel>
+    <time>0</time>
+    <fullFrame>0</fullFrame>
+    <streamType>main</streamType>
+    </Snap>
+    </body>
+    ```
+
+    - Camera:
+
+    **Notes:** XML & Binary reply over mutliple packets:
+    - Reply 1:
+        - Main:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <Snap version="1.1">
+        <channelId>0</channelId>
+        <fileName>01_20230518140240.jpg</fileName>
+        <time>0</time>
+        <pictureSize>23644</pictureSize>
+        </Snap>
+        </body>
+        ```
+
+    - Reply 2:
+        - Meta:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <Extension version="1.1">
+        <binaryData>1</binaryData>
+        </Extension>
+        ```
+        - Main:
+        **Binary data containing the file may be broken over multiple packets**
+
+
 - 115: `<WifiSignal>`
 
   - Client

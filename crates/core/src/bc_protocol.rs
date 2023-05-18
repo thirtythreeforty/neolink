@@ -24,6 +24,7 @@ mod motion;
 mod ping;
 mod pirstate;
 mod ptz;
+mod pushinfo;
 mod reboot;
 mod resolution;
 mod stream;
