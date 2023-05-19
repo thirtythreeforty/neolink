@@ -635,9 +635,12 @@ impl NeoMediaSender {
     async fn seek(
         &mut self,
         _original_runtime: Option<FrameTime>,
-        _target_runtime: FrameTime,
+        target_runtime: FrameTime,
         _master_buffer: &NeoBuffer,
     ) -> AnyResult<()> {
+        if let Some(runtime) = self.get_raw_runtime() {
+            self.live_offset = target_runtime - runtime;
+        }
         self.jump_to_live().await?;
         Ok(())
     }
@@ -702,33 +705,23 @@ impl NeoMediaSender {
         Ok(())
     }
 
-    fn get_runtime(&self) -> Option<FrameTime> {
+    fn get_raw_runtime(&self) -> Option<FrameTime> {
         if let Some(appsrc) = self.vid.as_ref() {
             if let Some(clock) = appsrc.clock() {
                 if let Some(time) = clock.time() {
                     if let Some(base_time) = appsrc.base_time() {
                         let runtime = time.saturating_sub(base_time);
-                        let res = Some(
-                            (runtime.useconds() as FrameTime)
-                                .saturating_add(self.live_offset)
-                                .max(0),
-                        );
-                        // debug!("base_time: {:?}", base_time);
-                        // debug!("time: {:?}", time);
-                        // debug!("runtime: {:?}", runtime);
-                        // debug!("Final runtime: {:?}", res);
-                        trace!(
-                            "Runtime: {:?}, Offset: {:?}, Offseted Runtime: {:?}",
-                            runtime,
-                            self.live_offset,
-                            res
-                        );
-                        return res;
+                        return Some(runtime.useconds() as FrameTime);
                     }
                 }
             }
         }
         None
+    }
+
+    fn get_runtime(&self) -> Option<FrameTime> {
+        self.get_raw_runtime()
+            .map(|runtime| runtime.saturating_add(self.live_offset).max(0))
     }
 
     fn get_buftime(&self) -> Option<FrameTime> {

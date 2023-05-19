@@ -139,14 +139,16 @@ impl BcCamera {
                     }
                 }
             }
-            info!("{}: Trying TCP discovery", options.name);
-            for socket in sockets.drain(..) {
-                let channel_id: u8 = options.channel_id;
-                if let Ok(addr) = Discovery::check_tcp(socket, channel_id).await.map(|_| {
-                    info!("{}: TCP Discovery success at {:?}", options.name, &socket);
-                    socket
-                }) {
-                    return Ok(CameraLocation::Tcp(addr));
+            if !sockets.is_empty() {
+                info!("{}: Trying TCP discovery", options.name);
+                for socket in sockets.drain(..) {
+                    let channel_id: u8 = options.channel_id;
+                    if let Ok(addr) = Discovery::check_tcp(socket, channel_id).await.map(|_| {
+                        info!("{}: TCP Discovery success at {:?}", options.name, &socket);
+                        socket
+                    }) {
+                        return Ok(CameraLocation::Tcp(addr));
+                    }
                 }
             }
         }
@@ -176,6 +178,7 @@ impl BcCamera {
                 DiscoveryMethods::Remote => (true, true, false, false),
                 DiscoveryMethods::Map => (true, true, true, false),
                 DiscoveryMethods::Relay => (true, true, true, true),
+                DiscoveryMethods::Cellular => (false, false, true, true),
                 DiscoveryMethods::Debug => (false, false, false, true),
             };
 
