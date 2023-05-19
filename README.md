@@ -246,8 +246,13 @@ branch gets it's own tag.
 ```bash
 docker pull quantumentangledandy/neolink
 
-# remove `-e "RUST_LOG=debug"` to run in production mode
-docker run --name neolink --network host --restart=unless-stopped -d -e "RUST_LOG=trace" --volume=$PWD/config.toml:/etc/neolink.toml quantumentangledandy/neolink
+# Add `-e "RUST_LOG=debug"` to run with debug logs
+#
+# --network host is only needed if you require to connect
+# via local broadcasts. If you can connect via any other
+# method then normal bridge mode should work fine
+# and you can ommit this option
+docker run --network host --volume=$PWD/config.toml:/etc/neolink.toml quantumentangledandy/neolink
 ```
 
 ### Image
@@ -258,11 +263,10 @@ You can write an image from the stream to disk using:
 neolink image --config=config.toml --file-path=filepath CameraName
 ```
 
-Where filepath is the path to save the image to and CameraName is the name o
+Where filepath is the path to save the image to and CameraName is the name of
 the camera from the config to save the image from.
 
 File is always jpeg and the extension given in filepath will be added or changed
-
 to reflect this.
 
 ## License
