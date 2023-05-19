@@ -75,7 +75,7 @@ extract that.
 
 ---
 
-On andriod the details are little harder for me to extract (ios here). By
+On android the details are little harder for me to extract (ios here). By
 extracting the apk with apktook I found the following:
 
 ```xml
@@ -119,10 +119,10 @@ This is the data of the `PushInfo` command that is sent to the camera:
 </body>
 ```
 
-For ios the phonetype is `reo_iphone` which I observed live but for andriod
+For ios the phonetype is `reo_iphone` which I observed live but for android
 no such luck.
 
-First I just tried `reo_andriod` but the camera replied with an error code.
+First I just tried `reo_android` but the camera replied with an error code.
 Which at least told me that I can test other string quickly and see if it
 returns the error code.
 
