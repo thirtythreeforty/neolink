@@ -18,42 +18,53 @@ does has been reverse engineered.
 
 ## This Fork
 
-This fork is an extension of [thirtythreeforty's](https://github.com/thirtythreeforty/neolink)
-with additional features not yet in upstream master.
+This fork is an extension of
+[thirtythreeforty's](https://github.com/thirtythreeforty/neolink) with additional
+features not yet in upstream master.
 
 **Major Features**:
 
 - MQTT
 - Motion Detection
 - Paused Streams (when no rtsp client or no motion detected)
+- Save a still image to disk
 
 **Minor Features**:
 
 - Improved error messages when your missing gstreamer plugins
 - Protocol more closely follows offical reolink format
   - Possibly can handle more simulatenous connections
+- More ways to connect to the camera. Including Relaying through reolink
+servers
+- Camera battery levels can be displayed in the log
 
 ## Installation
 
-Download from the [release page](https://github.com/QuantumEntangledAndy/neolink/releases)
+Download from the
+[release page](https://github.com/QuantumEntangledAndy/neolink/releases)
 
 Extract the zip
 
-Install the latest [gstreamer](https://gstreamer.freedesktop.org/download/) (1.20.5 as of writing this).
+Install the latest [gstreamer](https://gstreamer.freedesktop.org/download/)
+(1.20.5 as of writing this).
+
 - **Windows**: ensure you install `full` when prompted in the MSI options.
-- **Mac**: Install the dpkg version on the offical gstreamer website over the brew version
+- **Mac**: Install the dpkg version on the offical gstreamer website over
+  the brew version
 - **Ubuntu/Debian**: These packages should work
+
 ```bash
 sudo apt install \
   libgstrtspserver-1.0-0 \
   libgstreamer1.0-0 \
   libgstreamer-plugins-bad1.0-0 \
+  gstreamer1.0-x \
+  gstreamer1.0-plugins-base \
   gstreamer1.0-plugins-good \
   gstreamer1.0-plugins-bad
 ```
 
 Make a config file see below.
-
 
 ## Config/Usage
 
@@ -61,7 +72,8 @@ Make a config file see below.
 
 To use `neolink` you need a config file.
 
-There's a more complete example [here](https://github.com/QuantumEntangledAndy/neolink/blob/master/sample_config.toml),
+There's a more complete example
+[here](https://github.com/QuantumEntangledAndy/neolink/blob/master/sample_config.toml),
 but the following should work as a minimal example.
 
 ```toml
@@ -78,9 +90,11 @@ name = "Camera02"
 username = "admin"
 password = "password"
 uid = "BCDEF0123456789A"
+address = "192.168.1.10"
 ```
 
-Create a text file with called `neolink.toml` in the same folder as the neolink binary. With your config options.
+Create a text file with called `neolink.toml` in the same folder as the
+neolink binary. With your config options.
 
 When ready start `neolink` with the following command
 using the terminal in the same folder the neolink binary is in.
@@ -89,6 +103,47 @@ using the terminal in the same folder the neolink binary is in.
 ./neolink rtsp --config=neolink.toml
 ```
 
+### Discovery
+
+To connect to a camera using a UID we need to find the IP address of the camera
+ with that UID
+
+The IP is discovered with four methods
+
+1. Local discovery: Here we send a broadcast on all visible networks asking
+   the local network if there is a camera with this UID. This only works if
+   the network supports broadcasts
+
+   If you know the ip address you can put it into the  `address` field of the
+   config and attempt a direct connection without broadcasts. This requires a
+   route from neolink to the camera.
+
+2. Remote discovery: Here a ask the reolink servers what the IP address is.
+   This requires that we contact reolink and provide some basic information
+   like the UID. Once we have this information we connect directly to the
+   local IP address. This requires a route from neolink to the camera and
+   for the camera to be able to contact the reolink IPs.
+
+3. Map discovery: In this case we register our IP address with reolink and ask
+   the camera to connect to us. Once the camera either polls/recives a connect
+   request from the reolink servers the camera will then initiate a connect
+   to neolink. This requires that our IP and the reolink IPs are reacable from
+   the camera.
+
+4. Relay: In this case we request that reolink relay our connection. Neolink
+   nor the camera need to be able to direcly contact each other. But both
+   neolink and the camera need to be able to contact reolink.
+
+This can be controlled with the config
+
+```toml
+discovery = "local"
+```
+
+In the `[[cameras]]` section of the toml.
+
+Possible values are `local`, `remote`, `map`, `relay` later values implictly
+enable prior methods.
 
 ### MQTT
 
@@ -119,18 +174,29 @@ Neolink will publish these messages:
 Messages are prefixed with `neolink/{CAMERANAME}`
 
 Control messages:
+
 - `/control/led [on|off]` Turns status LED on/off
-- `/control/ir [on|off|auto]` Turn IR lights on/off or automatically via light detection
+- `/control/ir [on|off|auto]` Turn IR lights on/off or automatically via light
+  detection
 - `/control/reboot` Reboot the camera
-- `/control/ptz` [up|down|left|right|in|out] (amount) Control the PTZ movements, amount defaults to 32.0
+- `/control/ptz [up|down|left|right|in|out]` (amount) Control the PTZ
+  movements, amount defaults to 32.0
+- `/control/pir [on|off]`
 
 Status Messages:
-`/status offline` Sent when the neolink goes offline this is a LastWill message
-`/status disconnected` Sent when the camera goes offline
-`/status/battery` Sent in reply to a `/query/battery`
+
+- `/status offline` Sent when the neolink goes offline this is a LastWill
+  message
+- `/status disconnected` Sent when the camera goes offline
+- `/status/battery` Sent in reply to a `/query/battery` an XML encoded version
+  of the battery status
+- `/status/pir` Sent in reply to a `/query/pir` an XML encoded version of the
+  pir status
 
 Query Messages:
-`/query/battery` Request that the camera reports its battery level (Not Yet Implemented)
+
+- `/query/battery` Request that the camera reports its battery level
+- `/query/pir` Request that the camera reports its pir status
 
 ### Pause
 
@@ -147,7 +213,6 @@ uid = "ABCDEF0123456789"
   [cameras.pause]
   on_motion = true # Should pause when no motion
   on_client = true # Should pause when no rtsp client
-  mode = "none"  # What to do when paused values are: none, black, still, test
   timeout = 2.1 # How long to wait after motion stops before pausing
 ```
 
@@ -157,15 +222,52 @@ Then start the rtsp server as usual:
 ./neolink rtsp --config=neolink.toml
 ```
 
+### Battery Levels
+
+If you have a battery camera and would like to see the battery messages in th
+log  add the following to your config
+
+```toml
+[[cameras]]
+# Usual camera options like uid etc
+print_format = "Human"
+```
+
+You can also print into xml format with `print_format = "Xml"` which can then b
+passed by a script for processing.
 
 ### Docker
 
-[Docker](https://hub.docker.com/r/quantumentangledandy/neolink) builds are also provided
-in multiple architectures. The latest tag tracks master while each branch gets it's own tag.
+[Docker](https://hub.docker.com/r/quantumentangledandy/neolink) builds are also
+provided in multiple architectures. The latest tag tracks master while each
+
+branch gets it's own tag.
 
 ```bash
 docker pull quantumentangledandy/neolink
+
+# Add `-e "RUST_LOG=debug"` to run with debug logs
+#
+# --network host is only needed if you require to connect
+# via local broadcasts. If you can connect via any other
+# method then normal bridge mode should work fine
+# and you can ommit this option
+docker run --network host --volume=$PWD/config.toml:/etc/neolink.toml quantumentangledandy/neolink
 ```
+
+### Image
+
+You can write an image from the stream to disk using:
+
+```bash
+neolink image --config=config.toml --file-path=filepath CameraName
+```
+
+Where filepath is the path to save the image to and CameraName is the name of
+the camera from the config to save the image from.
+
+File is always jpeg and the extension given in filepath will be added or changed
+to reflect this.
 
 ## License
 

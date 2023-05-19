@@ -1,18 +1,19 @@
-use super::{BcCamera, BinarySubscriber, Error, Result, RX_TIMEOUT};
+use super::{BcCamera, Error, Result};
 use crate::{
     bc::{model::*, xml::*},
     bcmedia::model::*,
 };
-use crossbeam_channel::{bounded, unbounded, Receiver, TryRecvError};
+use futures::stream::StreamExt;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use std::thread::{self, JoinHandle};
+use tokio::sync::mpsc::{channel, Receiver};
+use tokio::task::{self, JoinHandle};
 
 /// The stream names supported by BC
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Stream {
+pub enum StreamKind {
     /// This is the HD stream
     Main,
     /// This is the SD stream
@@ -29,35 +30,44 @@ pub enum Stream {
 /// The data can be pulled using `get_data` which returns raw BcMedia packets
 ///
 /// When this object is dropped the streaming is stopped
-pub struct StreamData<'a> {
-    camera: &'a BcCamera,
+pub struct StreamData {
     handle: Option<JoinHandle<Result<()>>>,
     rx: Receiver<Result<BcMedia>>,
     abort_handle: Arc<AtomicBool>,
-    stream: Stream,
 }
 
-impl<'a> StreamData<'a> {
+impl StreamData {
     /// Pull data from the camera's buffer
     /// This returns raw BcMedia packets
-    pub fn get_data(&self) -> Result<Vec<Result<BcMedia>>> {
-        let mut results: Vec<_> = vec![];
-        loop {
-            match self.rx.try_recv() {
-                Ok(data) => results.push(data),
-                Err(TryRecvError::Empty) => break,
-                Err(e) => return Err(Error::from(e)),
+    pub async fn get_data(&mut self) -> Result<Result<BcMedia>> {
+        if let Some(handle) = self.handle.as_mut() {
+            if handle.is_finished() {
+                self.abort_handle.store(true, Ordering::Relaxed);
+                handle.await??;
+                return Err(Error::DroppedConnection);
+            }
+        } else {
+            self.abort_handle.store(true, Ordering::Relaxed);
+            return Err(Error::DroppedConnection);
+        }
+        // debug!("StreamData: Get");
+        match self.rx.recv().await {
+            Some(data) => {
+                // debug!("StreamData: Got");
+                Ok(data)
+            }
+            None => {
+                // debug!("StreamData: Drop");
+                self.abort_handle.store(true, Ordering::Relaxed);
+                Err(Error::DroppedConnection)
             }
         }
-        Ok(results)
     }
 }
 
-impl<'a> Drop for StreamData<'a> {
+impl Drop for StreamData {
     fn drop(&mut self) {
         self.abort_handle.store(true, Ordering::Relaxed);
-        self.handle.take().map(|h| h.join());
-        let _ = self.camera.stop_video(self.stream);
     }
 }
 
@@ -70,24 +80,33 @@ impl BcCamera {
     ///
     /// To pull frames from the camera's buffer use `recv_data` on the returned object
     ///
-    /// The buffer represents number of compete messages so 1 would be one complete message
-    /// which may be a single audio frame or a whole video key frame
-    /// A value of 0 means unlimited buffer size
+    /// The buffer_size represents number of compete messages so 1 would be one complete message
+    /// which may be a single audio frame or a whole video key frame. If 0 a default of 100 is used
     ///
-    pub fn start_video(&self, stream: Stream, buffer_size: usize) -> Result<StreamData<'_>> {
+    /// A value of scrict=true will mean that the stream will error if the underlying stream is not
+    /// as expected
+    pub async fn start_video(
+        &self,
+        stream: StreamKind,
+        mut buffer_size: usize,
+        strict: bool,
+    ) -> Result<StreamData> {
+        self.has_ability_rw("preview").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let channel_id = self.channel_id;
 
         let abort_handle = Arc::new(AtomicBool::new(false));
-        let (tx, rx) = match buffer_size {
-            0 => unbounded(),
-            n => bounded(n),
-        };
-
         let abort_handle_thread = abort_handle.clone();
-        let handle = thread::spawn(move || {
-            let sub_video = connection.subscribe(msg_num)?;
+
+        if buffer_size == 0 {
+            buffer_size = 100;
+        }
+        let (tx, rx) = channel(buffer_size);
+        let channel_id = self.channel_id;
+
+        let handle = task::spawn(async move {
+            tokio::task::yield_now().await;
+            let mut sub_video = connection.subscribe(msg_num).await?;
 
             // On an E1 and swann cameras:
             //  - mainStream always has a value of 0
@@ -98,9 +117,9 @@ impl BcCamera {
             //  - subStream is 0
             //  - externStream is 0
             let stream_code = match stream {
-                Stream::Main => 0,
-                Stream::Sub => 1,
-                Stream::Extern => 0,
+                StreamKind::Main => 0,
+                StreamKind::Sub => 1,
+                StreamKind::Extern => 0,
             };
 
             // Theses are the numbers used with the offical client
@@ -113,15 +132,15 @@ impl BcCamera {
             //  - subStream is 256
             //  - externStram is 1024
             let handle = match stream {
-                Stream::Main => 0,
-                Stream::Sub => 256,
-                Stream::Extern => 1024,
+                StreamKind::Main => 0,
+                StreamKind::Sub => 256,
+                StreamKind::Extern => 1024,
             };
 
             let stream_name = match stream {
-                Stream::Main => "mainStream",
-                Stream::Sub => "subStream",
-                Stream::Extern => "externStream",
+                StreamKind::Main => "mainStream",
+                StreamKind::Sub => "subStream",
+                StreamKind::Extern => "externStream",
             }
             .to_string();
 
@@ -145,46 +164,102 @@ impl BcCamera {
                 },
             );
 
-            sub_video.send(start_video)?;
+            sub_video.send(start_video).await?;
 
-            let msg = sub_video.rx.recv_timeout(RX_TIMEOUT)?;
+            let msg = sub_video.recv().await?;
             if let BcMeta {
                 response_code: 200, ..
             } = msg.meta
             {
             } else {
                 return Err(Error::UnintelligibleReply {
-                    reply: Box::new(msg),
+                    reply: std::sync::Arc::new(Box::new(msg)),
                     why: "The camera did not accept the stream start command.",
                 });
             }
 
-            let mut media_sub = BinarySubscriber::from_bc_sub(&sub_video);
+            {
+                let mut media_sub = sub_video.bcmedia_stream(strict);
 
-            while !abort_handle_thread.load(Ordering::Relaxed) {
-                let bc_media = BcMedia::deserialize(&mut media_sub).map_err(Error::from);
-                // We now have a complete interesting packet. Send it to on the callback
-                if tx.send(bc_media).is_err() {
-                    break; // Connection dropped
+                while !abort_handle_thread.load(Ordering::Relaxed) {
+                    // debug!("Stream: Get");
+                    if let Some(bc_media) = media_sub.next().await {
+                        // debug!("Stream: Got");
+                        // We now have a complete interesting packet. Send it to on the callback
+                        // debug!("Stream: Send");
+                        if tx.send(bc_media).await.is_err() {
+                            // debug!("Stream: Dropped");
+                            break; // Connection dropped
+                        }
+                        // debug!("Stream: Sent");
+                    } else {
+                        break;
+                    }
                 }
             }
+
+            // debug!("Stream: Stopping");
+            let stop_video = Bc::new_from_xml(
+                BcMeta {
+                    msg_id: MSG_ID_VIDEO_STOP,
+                    channel_id,
+                    msg_num,
+                    stream_type: stream_code,
+                    response_code: 0,
+                    class: 0x6414, // IDK why
+                },
+                BcXml {
+                    preview: Some(Preview {
+                        version: xml_ver(),
+                        channel_id,
+                        handle,
+                        stream_type: None,
+                    }),
+                    ..Default::default()
+                },
+            );
+            // debug!("Stream: Send Stop");
+            sub_video.send(stop_video).await?;
+            // debug!("Stream: Sent Stop");
+
+            tokio::select! {
+                v = async {
+                    loop {
+                        let msg = sub_video.recv().await?;
+                        if let BcMeta {
+                            response_code: 200,
+                            msg_id: MSG_ID_VIDEO_STOP,
+                            ..
+                        } = msg.meta {
+                            return Ok(());
+                        }
+                        else if let BcMeta {
+                            msg_id: MSG_ID_VIDEO_STOP,
+                            ..
+                        }   = msg.meta {
+                            return Err(Error::CameraServiceUnavaliable);
+                        }
+                    }
+                } => v,
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(2)) => {Ok(())},
+            }?;
+
             Ok(())
         });
 
         Ok(StreamData {
-            camera: self,
             handle: Some(handle),
             rx,
-            stream,
             abort_handle,
         })
     }
 
     /// Stop a camera from sending more stream data.
-    pub fn stop_video(&self, stream: Stream) -> Result<()> {
+    pub async fn stop_video(&self, stream: StreamKind) -> Result<()> {
+        self.has_ability_rw("preview").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_video = connection.subscribe(msg_num)?;
+        let mut sub_video = connection.subscribe(msg_num).await?;
 
         // On an E1 and swann cameras:
         //  - mainStream always has a value of 0
@@ -195,9 +270,9 @@ impl BcCamera {
         //  - subStream is 0
         //  - externStream is 0
         let stream_code = match stream {
-            Stream::Main => 0,
-            Stream::Sub => 1,
-            Stream::Extern => 0,
+            StreamKind::Main => 0,
+            StreamKind::Sub => 1,
+            StreamKind::Extern => 0,
         };
 
         // Theses are the numbers used with the offical client
@@ -210,9 +285,9 @@ impl BcCamera {
         //  - subStream is 256
         //  - externStram is 1024
         let handle = match stream {
-            Stream::Main => 0,
-            Stream::Sub => 256,
-            Stream::Extern => 1024,
+            StreamKind::Main => 0,
+            StreamKind::Sub => 256,
+            StreamKind::Extern => 1024,
         };
 
         let stop_video = Bc::new_from_xml(
@@ -235,9 +310,9 @@ impl BcCamera {
             },
         );
 
-        sub_video.send(stop_video)?;
+        sub_video.send(stop_video).await?;
 
-        let reply = sub_video.rx.recv_timeout(crate::RX_TIMEOUT)?;
+        let reply = sub_video.recv().await?;
         if reply.meta.response_code != 200 {
             return Err(super::Error::CameraServiceUnavaliable);
         }

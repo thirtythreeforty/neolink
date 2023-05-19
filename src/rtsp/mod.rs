@@ -53,77 +53,103 @@
 //   - `"none"`: Resends the last iframe the camera. This does not reencode at all.  **Most use cases should use this one as it has the least effort on the cpu and gives what you would expect**
 //
 use anyhow::{anyhow, Context, Result};
-use crossbeam::utils::Backoff;
+use futures::stream::FuturesUnordered;
 use log::*;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio_stream::StreamExt;
 
-mod abort;
 mod cmdline;
 mod gst;
+mod spring;
 mod states;
 
-use abort::AbortHandle;
-use states::{RtspCamera, StateInfo};
-
-use super::config::{CameraConfig, Config, UserConfig};
+use super::config::Config;
 pub(crate) use cmdline::Opt;
-use gst::{RtspServer, TlsAuthenticationMode};
+use gst::NeoRtspServer;
+pub(crate) use spring::*;
+use states::*;
 
 /// Entry point for the rtsp subcommand
 ///
 /// Opt is the command line options
-pub(crate) fn main(_opt: Opt, mut config: Config) -> Result<()> {
-    let rtsp = Arc::new(RtspServer::new()?);
+pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
+    let rtsp = Arc::new(NeoRtspServer::new()?);
 
-    set_up_tls(&config, &rtsp);
+    rtsp.set_up_tls(&config);
 
-    set_up_users(&config.users, &rtsp);
+    rtsp.set_up_users(&config.users);
 
     if config.certificate.is_none() && !config.users.is_empty() {
         warn!(
             "Without a server certificate, usernames and passwords will be exchanged in plaintext!"
         )
     }
-    crossbeam::scope(|s| {
-        let abort = AbortHandle::new();
+    let mut cameras = vec![];
+    for camera_config in config.cameras.drain(..) {
+        cameras
+            .push(Camera::<Disconnected>::new(camera_config, &config.users, rtsp.clone()).await?);
+    }
 
-        let arc_user_config = Arc::new(config.users);
-        for camera_config in config.cameras.drain(..) {
-            // Spawn each camera controller in it's own thread
-            let user_config = arc_user_config.clone();
-            let arc_rtsp = rtsp.clone();
-            let abort_handle = abort.clone();
-            s.spawn(move |_| {
-                let backoff = Backoff::new();
-
-                while abort_handle.is_live() {
-                    let failure =
-                        camera_main(&camera_config, user_config.as_slice(), arc_rtsp.clone());
-                    match failure {
-                        Err(CameraFailureKind::Fatal(e)) => {
-                            error!("{}: Fatal error: {:?}", camera_config.name, e);
-                            break;
+    let mut set = tokio::task::JoinSet::new();
+    for mut camera in cameras.drain(..) {
+        // Spawn each camera controller in it's own thread
+        set.spawn(async move {
+            let shared = camera.shared.clone();
+            let name = camera.get_name();
+            let mut backoff = Duration::from_micros(125);
+            loop {
+                tokio::task::yield_now().await;
+                let failure = camera_main(camera).await;
+                match failure {
+                    Err(CameraFailureKind::Fatal(e)) => {
+                        error!("{}: Fatal error: {:?}", name, e);
+                        return Err(e);
+                    }
+                    Err(CameraFailureKind::Retry(e)) => {
+                        warn!("{}: Retryable error: {:X?}", name, e);
+                        tokio::time::sleep(backoff).await;
+                        if backoff < Duration::from_secs(5) {
+                            backoff *= 2;
                         }
-                        Err(CameraFailureKind::Retry(e)) => {
-                            warn!("{}: Retryable error: {:?}", camera_config.name, e);
-                            backoff.spin();
-                        }
-                        Ok(()) => {
-                            info!("{}: Shutting down", camera_config.name);
-                            break;
-                        }
+                        camera = Camera {
+                            shared: shared.clone(),
+                            state: Disconnected {},
+                        };
+                    }
+                    Ok(()) => {
+                        info!("{}: Shutting down", name);
+                        break;
                     }
                 }
-            });
+            }
+            Ok(())
+        });
+    }
+    info!(
+        "Starting RTSP Server at {}:{}",
+        &config.bind_addr, config.bind_port,
+    );
+
+    let bind_addr = config.bind_addr.clone();
+    let bind_port = config.bind_port;
+    rtsp.run(&bind_addr, bind_port).await?;
+    let thread_rtsp = rtsp.clone();
+    set.spawn(async move { thread_rtsp.join().await });
+
+    while let Some(joined) = set.join_next().await {
+        match &joined {
+            Err(_) | Ok(Err(_)) => {
+                // Panicked or error in task
+                rtsp.quit().await?;
+            }
+            Ok(Ok(_)) => {
+                // All good
+            }
         }
-        info!(
-            "Starting RTSP Server at {}:{}",
-            &config.bind_addr, config.bind_port,
-        );
-        rtsp.run(&config.bind_addr, config.bind_port);
-    })
-    .map_err(|e| anyhow::anyhow!("Thread panicked: {:?}", e))?;
+        joined??
+    }
+
     Ok(())
 }
 
@@ -132,147 +158,205 @@ enum CameraFailureKind {
     Retry(anyhow::Error),
 }
 
-fn camera_main(
-    config: &CameraConfig,
-    user_config: &[UserConfig],
-    rtsp: Arc<RtspServer>,
-) -> Result<(), CameraFailureKind> {
+async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKind> {
     // Connect
-    let mut camera = RtspCamera::new(config, user_config, rtsp)
-        .with_context(|| format!("{}: Could not connect camera", config.name))
+    let name = camera.get_name();
+    let connected = camera
+        .connect()
+        .await
+        .with_context(|| format!("{}: Could not connect to camera", name))
         .map_err(CameraFailureKind::Retry)?;
-    camera
+
+    let loggedin = connected
         .login()
-        .with_context(|| format!("{}: Could not login to camera", config.name))
-        .map_err(CameraFailureKind::Fatal)?;
+        .await
+        .with_context(|| format!("{}: Could not login to camera", name))
+        .map_err(|e| {
+            let e_inner = e.downcast_ref::<neolink_core::Error>().unwrap();
+            match e_inner {
+                neolink_core::Error::CameraLoginFail => CameraFailureKind::Fatal(e),
+                _ => CameraFailureKind::Retry(e),
+            }
+        })?;
 
-    let _ = camera.manage();
+    let _ = loggedin.manage().await;
 
-    camera
+    let tags = loggedin.shared.get_tags();
+    let rtsp_thread = loggedin.get_rtsp();
+
+    // Clear all buffers present
+    // Uncomment to clear buffers. This is now handlled in the buffer itself,
+    // instead of clearing it restamps it whenever there is a jump in the
+    // timestamps of >1s
+    //
+    // tags.iter()
+    //     .map(|tag| rtsp_thread.clear_buffer(tag))
+    //     .collect::<FuturesUnordered<_>>()
+    //     .collect::<Vec<_>>()
+    //     .await;
+
+    // Start pulling data from the camera
+    let mut streaming = loggedin
         .stream()
-        .with_context(|| format!("{}: Could not start stream", config.name))
+        .await
+        .with_context(|| format!("{}: Could not start stream", name))
         .map_err(CameraFailureKind::Retry)?;
 
-    let backoff = Backoff::new();
-    let mut motion = if config.pause.on_motion {
-        Some(
-            camera
-                .motion_data()
-                .with_context(|| {
-                    "Could not initialise motion detection. Is it supported with this camera?"
-                })
-                .map_err(CameraFailureKind::Retry)?,
-        )
-    } else {
-        None
-    };
+    // Wait for buffers to be prepared
+    tokio::select! {
+        v = async {
+            let mut waiter = tokio::time::interval(Duration::from_micros(500));
+            loop {
+                waiter.tick().await;
+                if tags
+                    .iter()
+                    .map(|tag| rtsp_thread.buffer_ready(tag))
+                    .collect::<FuturesUnordered<_>>()
+                    .all(|f| f.unwrap_or(false))
+                    .await
+                {
+                    break;
+                }
+            }
+            Ok(())
+        } => v,
+        // Or for stream to error
+        v = streaming.join() => {v},
+    }
+    .with_context(|| format!("{}: Error while waiting for buffers", name))
+    .map_err(CameraFailureKind::Retry)?;
 
-    let motion_timeout: Duration = Duration::from_secs_f64(config.pause.motion_timeout);
-    let mut ready_to_pause_print = false;
+    tags.iter()
+        .map(|tag| rtsp_thread.jump_to_live(tag))
+        .collect::<FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
+
+    // Clear "stream not ready" media to try and force a reconnect
+    //   This shoud stop them from watching the "Stream Not Ready" thing
+    debug!("Clearing not ready clients");
+    tags.iter()
+        .map(|tag| rtsp_thread.clear_session_notready(tag))
+        .collect::<FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
+    log::info!("{}: Buffers prepared", name);
+
     loop {
-        match camera.get_state() {
-            StateInfo::Streaming => {
-                let can_pause = camera.can_pause();
-                if config.pause.on_disconnect {
-                    if let Some(false) = camera.client_connected() {
-                        if can_pause {
-                            info!("Pause on disconnect");
-                            camera.pause().map_err(CameraFailureKind::Retry)?;
-                        } else if !ready_to_pause_print {
-                            ready_to_pause_print = true;
-                            warn!("Not ready to pause");
-                        }
+        // Wait for error or reason to pause
+        tokio::select! {
+            v = async {
+                // Wait for error
+                streaming.join().await
+            } => {
+                info!("Join Pause");
+                v
+            },
+            v = async {
+                // Wait for motion stop
+                let mut motion = streaming.get_camera().listen_on_motion().await?;
+                motion.await_stop(Duration::from_secs_f64(streaming.get_config().pause.motion_timeout)).await
+            }, if streaming.get_config().pause.on_motion => {
+                info!("Motion Pause");
+                v.map_err(|e| anyhow!("Error while processing motion messages: {:?}", e))
+            },
+            v = async {
+                // Wait for client to disconnect
+                let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
+
+                loop {
+                    inter.tick().await;
+                    let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;
+                    // info!("Num clients: {}", total_clients);
+                    if total_clients == 0 {
+                        return Ok(())
                     }
                 }
-                if config.pause.on_motion {
-                    if let Some(motion) = motion.as_mut() {
-                        match motion
-                            .motion_detected_within(motion_timeout)
-                            .with_context(|| "Motion detection unexpectedly stopped")
-                            .map_err(CameraFailureKind::Retry)?
-                        {
-                            Some(false) => {
-                                if can_pause {
-                                    info!("Pause on motion");
-                                    camera.pause().map_err(CameraFailureKind::Retry)?;
-                                } else if !ready_to_pause_print {
-                                    ready_to_pause_print = true;
-                                    warn!("Not ready to pause");
-                                }
-                            }
-                            None => {
-                                if can_pause {
-                                    info!("Pause on motion (start)");
-                                    camera.pause().map_err(CameraFailureKind::Retry)?;
-                                } else if !ready_to_pause_print {
-                                    ready_to_pause_print = true;
-                                    warn!("Not ready to pause");
-                                }
-                            }
-                            _ => {}
-                        }
+            }, if streaming.get_config().pause.on_disconnect => {
+                info!("Client Pause");
+                v
+            },
+        }.with_context(|| format!("{}: Error while streaming", name))
+        .map_err(CameraFailureKind::Retry)?;
+
+        tags.iter()
+            .map(|tag| rtsp_thread.pause(tag))
+            .collect::<FuturesUnordered<_>>()
+            .collect::<Vec<_>>()
+            .await;
+
+        let paused = streaming
+            .stop()
+            .await
+            .with_context(|| format!("{}: Could not stop stream", name))
+            .map_err(CameraFailureKind::Retry)?;
+        // Wait for reason to restart
+        tokio::select! {
+            v = async {
+                // Wait for motion start and client for start
+                let mut motion = paused.get_camera().listen_on_motion().await?;
+                let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
+                loop {
+                    motion.await_start(Duration::ZERO).await?;
+                    let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;
+                    if total_clients > 0 {
+                        return Result::<()>::Ok(());
+                    }
+                    inter.tick().await;
+                }
+            }, if paused.get_config().pause.on_motion && paused.get_config().pause.on_disconnect => {
+                info!("Motion and Client Resume");
+                v.with_context(|| "Error while processing motion/client messages")
+            },
+            v = async {
+                // Wait for motion start
+                let mut motion = paused.get_camera().listen_on_motion().await?;
+                motion.await_start(Duration::ZERO).await
+            }, if paused.get_config().pause.on_motion && !paused.get_config().pause.on_disconnect => {
+                info!("Motion Resume");
+                v.with_context(|| "Error while processing motion messages")
+            },
+            v = async {
+                // Wait for client to connect
+                let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
+
+                loop {
+                    inter.tick().await;
+                    let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;
+                    if total_clients > 0 {
+                        return Ok(())
                     }
                 }
-                if !camera.is_running() {
-                    return Err(CameraFailureKind::Retry(anyhow!(
-                        "Camera has unexpectanely stopped the paused state"
-                    )));
-                }
-            }
-            StateInfo::Paused => {
-                if config.pause.on_disconnect {
-                    if let Some(true) = camera.client_connected() {
-                        info!("Resume on disconnect");
-                        camera.stream().map_err(CameraFailureKind::Retry)?;
-                    }
-                }
-                if config.pause.on_motion {
-                    if let Some(motion) = motion.as_mut() {
-                        if let Some(true) = motion
-                            .motion_detected_within(motion_timeout)
-                            .with_context(|| "Motion detection unexpectedly stopped")
-                            .map_err(CameraFailureKind::Retry)?
-                        {
-                            info!("Resume on motion");
-                            camera.stream().map_err(CameraFailureKind::Retry)?;
-                        }
-                    }
-                }
-                if !camera.is_running() {
-                    return Err(CameraFailureKind::Retry(anyhow!(
-                        "Camera has unexpectanely stopped the paused state"
-                    )));
-                }
-            }
-            _ => {
-                return Err(CameraFailureKind::Retry(anyhow!(
-                    "Camera has unexpectanely stopped the paused state"
-                )));
+            }, if paused.get_config().pause.on_disconnect && !paused.get_config().pause.on_motion => {
+                info!("Client Resume");
+                v
+            },
+            else => {
+                // No pause. This means that the stream stopped for some reason
+                // but not because of an error
+                info!("Generic Resume");
+                Ok(())
             }
         }
-        backoff.spin();
-    }
-}
+        .with_context(|| format!("{}: Error while paused", name))
+        .map_err(CameraFailureKind::Retry)?;
 
-fn set_up_tls(config: &Config, rtsp: &RtspServer) {
-    let tls_client_auth = match &config.tls_client_auth as &str {
-        "request" => TlsAuthenticationMode::Requested,
-        "require" => TlsAuthenticationMode::Required,
-        "none" => TlsAuthenticationMode::None,
-        _ => unreachable!(),
-    };
-    if let Some(cert_path) = &config.certificate {
-        rtsp.set_tls(cert_path, tls_client_auth)
-            .expect("Failed to set up TLS");
-    }
-}
+        tags.iter()
+            .map(|tag| rtsp_thread.jump_to_live(tag))
+            .collect::<FuturesUnordered<_>>()
+            .collect::<Vec<_>>()
+            .await;
 
-fn set_up_users(users: &[UserConfig], rtsp: &RtspServer) {
-    // Setting up users
-    let credentials: Vec<_> = users
-        .iter()
-        .map(|user| (&*user.name, &*user.pass))
-        .collect();
-    rtsp.set_credentials(&credentials)
-        .expect("Failed to set up users");
+        streaming = paused
+            .stream()
+            .await
+            .with_context(|| format!("{}: Could not start stream", name))
+            .map_err(CameraFailureKind::Retry)?;
+
+        tags.iter()
+            .map(|tag| rtsp_thread.resume(tag))
+            .collect::<FuturesUnordered<_>>()
+            .collect::<Vec<_>>()
+            .await;
+    }
 }

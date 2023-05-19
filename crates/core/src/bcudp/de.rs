@@ -1,14 +1,15 @@
 use super::{crc::calc_crc, model::*, xml::*, xml_crypto::decrypt};
-use crate::RX_TIMEOUT;
-use err_derive::Error;
+use crate::Error;
+use bytes::{Buf, BytesMut};
 use nom::{
+    bytes::streaming::take,
     combinator::*,
     error::{context as error_context, ContextError, ErrorKind, ParseError},
     number::streaming::*,
-    take, Err,
+    Err,
 };
-use std::io::Read;
-use time::OffsetDateTime;
+
+type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), nom::Err<E>>;
 
 fn make_error<I, E: ParseError<I>>(input: I, ctx: &'static str, kind: ErrorKind) -> E
 where
@@ -18,82 +19,16 @@ where
     E::add_context(input, ctx, E::from_error_kind(input, kind))
 }
 
-type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), nom::Err<E>>;
-
-/// The error types used during deserialisation
-#[derive(Debug, Error)]
-pub enum Error {
-    /// A Nom parsing error usually a malformed packet
-    #[error(display = "Parsing error: {}", _0)]
-    NomError(String),
-    /// An IO error such as the stream being dropped
-    #[error(display = "I/O error")]
-    IoError(#[error(source)] std::io::Error),
-}
-type NomErrorType<'a> = nom::error::VerboseError<&'a [u8]>;
-
-impl<'a> From<nom::Err<NomErrorType<'a>>> for Error {
-    fn from(k: nom::Err<NomErrorType<'a>>) -> Self {
-        let reason = match k {
-            nom::Err::Error(e) => format!("Nom Error: {:?}", e),
-            nom::Err::Failure(e) => format!("Nom Error: {:?}", e),
-            _ => "Unknown Nom error".to_string(),
-        };
-        Error::NomError(reason)
-    }
-}
-
-fn read_from_reader<P, O, E, R>(mut parser: P, mut rdr: R) -> Result<O, E>
-where
-    R: Read,
-    E: for<'a> From<nom::Err<NomErrorType<'a>>> + From<std::io::Error>,
-    P: FnMut(&[u8]) -> IResult<&[u8], O>,
-{
-    let mut input: Vec<u8> = Vec::new();
-    loop {
-        let to_read = match parser(&input) {
-            Ok((_, parsed)) => return Ok(parsed),
-            Err(nom::Err::Incomplete(needed)) => {
-                match needed {
-                    nom::Needed::Unknown => std::num::NonZeroUsize::new(1).unwrap(), // read one byte
-                    nom::Needed::Size(len) => len,
-                }
-            }
-            Err(e) => return Err(e.into()),
-        };
-
-        let start_time = OffsetDateTime::now_utc();
-        loop {
-            match (&mut rdr)
-                .take(to_read.get() as u64)
-                .read_to_end(&mut input)
-            {
-                Ok(0) => {
-                    if (OffsetDateTime::now_utc() - start_time) > RX_TIMEOUT {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::UnexpectedEof,
-                            "Read returned 0 bytes",
-                        )
-                        .into());
-                    }
-                }
-                Ok(_) => break,
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // This is a temporaily unavaliable resource
-                    // We should just wait and try again
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-        }
-    }
-}
-
 impl BcUdp {
-    pub(crate) fn deserialize<R: Read>(r: R) -> Result<BcUdp, Error> {
-        // Throw away the nom-specific return types
-        read_from_reader(bcudp, r)
+    pub(crate) fn deserialize(buf: &mut BytesMut) -> Result<BcUdp, Error> {
+        const TYPICAL_HEADER: usize = 20;
+        let (result, len) = match consumed(bcudp)(buf) {
+            Ok((_, (parsed_buff, result))) => Ok((result, parsed_buff.len())),
+            Err(e) => Err(e),
+        }?;
+        buf.advance(len);
+        buf.reserve(len + TYPICAL_HEADER); // Preallocate for future buffer calls
+        Ok(result)
     }
 }
 
@@ -133,7 +68,7 @@ fn udp_disc(buf: &[u8]) -> IResult<&[u8], UdpDiscovery> {
     )(buf)?;
     let (buf, tid) = error_context("DISC: Missing TID", le_u32)(buf)?;
     let (buf, checksum) = error_context("DISC: Missing checksum", le_u32)(buf)?;
-    let (buf, enc_data_slice) = take!(buf, payload_size)?;
+    let (buf, enc_data_slice) = take(payload_size)(buf)?;
 
     let actual_checksum = calc_crc(enc_data_slice);
     assert_eq!(checksum, actual_checksum);
@@ -155,18 +90,20 @@ fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
     let (buf, connection_id) = error_context("ACK: Missing connect ID", le_i32)(buf)?;
     let (buf, _unknown_a) =
         error_context("ACK: Unable to verify UnknowA", verify(le_u32, |&x| x == 0))(buf)?;
-    let (buf, _unknown_b) =
-        error_context("ACK: Unable to verify UnknowB", verify(le_u32, |&x| x == 0))(buf)?;
+    let (buf, group_id) = error_context(
+        "ACK: Unable to verify UnknowB",
+        verify(le_u32, |&x| x == 0 || x == 0xffffffff),
+    )(buf)?;
     let (buf, packet_id) = error_context("Missing packet_id", le_u32)(buf)?; // This is the point at which the camera has contigious
                                                                              // packets to
     let (buf, _unknown) = error_context("ACK: Missing unknown", le_u32)(buf)?;
     let (buf, payload_size) = error_context("ACK: Missing payload_size", le_u32)(buf)?;
     let (buf, payload) = if payload_size > 0 {
-        let (buf, t_payload) = take!(buf, payload_size)?; // It is a binary payload of
-                                                          // `00 01 01 01 01 00 01`
-                                                          // This is a truth map of missing packets
-                                                          // since last contigious packet_id up
-                                                          // to the last packet we sent and it recieved
+        let (buf, t_payload) = take(payload_size)(buf)?; // It is a binary payload of
+                                                         // `00 01 01 01 01 00 01`
+                                                         // This is a truth map of missing packets
+                                                         // since last contigious packet_id up
+                                                         // to the last packet we sent and it recieved
         (buf, t_payload.to_vec())
     } else {
         (buf, vec![])
@@ -175,6 +112,7 @@ fn udp_ack(buf: &[u8]) -> IResult<&[u8], UdpAck> {
     let data = UdpAck {
         connection_id,
         packet_id,
+        group_id,
         payload,
     };
     Ok((buf, data))
@@ -186,7 +124,7 @@ fn udp_data(buf: &[u8]) -> IResult<&[u8], UdpData> {
         error_context("DATA: Unable to verify UnownA", verify(le_u32, |&x| x == 0))(buf)?;
     let (buf, packet_id) = error_context("DATA: Missing packet_id", le_u32)(buf)?;
     let (buf, payload_size) = error_context("DATA: Missing payload_size", le_u32)(buf)?;
-    let (buf, payload) = take!(buf, payload_size)?;
+    let (buf, payload) = take(payload_size)(buf)?;
 
     let data = UdpData {
         connection_id,
@@ -199,14 +137,13 @@ fn udp_data(buf: &[u8]) -> IResult<&[u8], UdpData> {
 #[cfg(test)]
 mod tests {
     use super::Error;
-    use crate::bc_protocol::FileSubscriber;
     use crate::bcudp::model::*;
     use crate::bcudp::xml::*;
     use assert_matches::assert_matches;
+    use bytes::BytesMut;
     use env_logger::Env;
     use log::*;
     use std::io::ErrorKind;
-    use std::path::PathBuf;
 
     fn init() {
         let _ = env_logger::Builder::from_env(Env::default().default_filter_or("info"))
@@ -214,19 +151,14 @@ mod tests {
             .try_init();
     }
 
-    fn sample(name: &str) -> PathBuf {
-        let dir = std::env::current_dir().unwrap(); // This is crate root during cargo test
-        dir.join("src").join("bcudp").join("samples").join(name)
-    }
-
     #[test]
     // Tests the decoding of a UdpDiscovery with a discovery xml
     fn test_nego_disconnect() {
         init();
 
-        let mut subsciber = FileSubscriber::from_files(vec![sample("udp_negotiate_disc.bin")]);
+        let sample = include_bytes!("samples/udp_negotiate_disc.bin");
 
-        let e = BcUdp::deserialize(&mut subsciber);
+        let e = BcUdp::deserialize(&mut BytesMut::from(&sample[..]));
         assert_matches!(
             e,
             Ok(BcUdp::Discovery(UdpDiscovery {
@@ -247,9 +179,9 @@ mod tests {
     fn test_nego_cam_transmission() {
         init();
 
-        let mut subsciber = FileSubscriber::from_files(vec![sample("udp_negotiate_camt.bin")]);
+        let sample = include_bytes!("samples/udp_negotiate_camt.bin");
 
-        let e = BcUdp::deserialize(&mut subsciber);
+        let e = BcUdp::deserialize(&mut BytesMut::from(&sample[..]));
         assert_matches!(
             e,
             Ok(BcUdp::Discovery(UdpDiscovery {
@@ -272,9 +204,9 @@ mod tests {
     fn test_nego_client_transmission() {
         init();
 
-        let mut subsciber = FileSubscriber::from_files(vec![sample("udp_negotiate_clientt.bin")]);
+        let sample = include_bytes!("samples/udp_negotiate_clientt.bin");
 
-        let e = BcUdp::deserialize(&mut subsciber);
+        let e = BcUdp::deserialize(&mut BytesMut::from(&sample[..]));
         assert_matches!(
             e,
             Ok(BcUdp::Discovery(UdpDiscovery {
@@ -297,9 +229,9 @@ mod tests {
     fn test_nego_cfm() {
         init();
 
-        let mut subsciber = FileSubscriber::from_files(vec![sample("udp_negotiate_camcfm.bin")]);
+        let sample = include_bytes!("samples/udp_negotiate_camcfm.bin");
 
-        let e = BcUdp::deserialize(&mut subsciber);
+        let e = BcUdp::deserialize(&mut BytesMut::from(&sample[..]));
         assert_matches!(
             e,
             Ok(BcUdp::Discovery(UdpDiscovery {
@@ -324,9 +256,9 @@ mod tests {
     fn test_ack() {
         init();
 
-        let mut subsciber = FileSubscriber::from_files(vec![sample("udp_ack.bin")]);
+        let sample = include_bytes!("samples/udp_ack.bin");
 
-        let e = BcUdp::deserialize(&mut subsciber);
+        let e = BcUdp::deserialize(&mut BytesMut::from(&sample[..]));
         assert_matches!(
             e,
             Ok(BcUdp::Ack(UdpAck {
@@ -342,9 +274,9 @@ mod tests {
     fn test_data() {
         init();
 
-        let mut subsciber = FileSubscriber::from_files(vec![sample("udp_data.bin")]);
+        let sample = include_bytes!("samples/udp_data.bin");
 
-        let e = BcUdp::deserialize(&mut subsciber);
+        let e = BcUdp::deserialize(&mut BytesMut::from(&sample[..]));
         assert_matches!(
             e,
             Ok(BcUdp::Data(UdpData {
@@ -360,24 +292,29 @@ mod tests {
     fn test_multi_packets() {
         init();
 
-        let mut subsciber = FileSubscriber::from_files(vec![
-            sample("udp_multi_0.bin"),
-            sample("udp_multi_1.bin"),
-            sample("udp_multi_2.bin"),
-            sample("udp_multi_3.bin"),
-            sample("udp_multi_4.bin"),
-            sample("udp_multi_5.bin"),
-            sample("udp_multi_6.bin"),
-            sample("udp_multi_7.bin"),
-            sample("udp_multi_8.bin"),
-            sample("udp_multi_9.bin"),
-        ]);
+        let sample = [
+            include_bytes!("samples/udp_multi_0.bin").as_ref(),
+            include_bytes!("samples/udp_multi_1.bin").as_ref(),
+            include_bytes!("samples/udp_multi_2.bin").as_ref(),
+            include_bytes!("samples/udp_multi_3.bin").as_ref(),
+            include_bytes!("samples/udp_multi_4.bin").as_ref(),
+            include_bytes!("samples/udp_multi_5.bin").as_ref(),
+            include_bytes!("samples/udp_multi_6.bin").as_ref(),
+            include_bytes!("samples/udp_multi_7.bin").as_ref(),
+            include_bytes!("samples/udp_multi_8.bin").as_ref(),
+            include_bytes!("samples/udp_multi_9.bin").as_ref(),
+        ]
+        .concat();
 
         // Should derealise all of this
         loop {
-            let e = BcUdp::deserialize(&mut subsciber);
+            let e = BcUdp::deserialize(&mut BytesMut::from(&sample[..]));
             match e {
-                Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                Err(Error::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                    // Reach end of files
+                    break;
+                }
+                Err(Error::NomIncomplete(_)) => {
                     // Reach end of files
                     break;
                 }

@@ -21,6 +21,7 @@
 //! be split accross multiple UDP Data packets
 //!
 
+pub(crate) mod codex;
 mod crc;
 /// Functions to deserialize udp packets
 pub mod de;
@@ -30,5 +31,5 @@ pub mod model;
 pub mod ser;
 /// Contains the udp related xml payloads
 pub mod xml;
-// Constains routines to de/encrypt udp xml
+/// Constains routines to de/encrypt udp xml
 mod xml_crypto;

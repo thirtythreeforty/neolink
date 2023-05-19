@@ -3,10 +3,27 @@ name: CI
 on: [push, pull_request, workflow_dispatch]
 
 jobs:
+  pre_job:
+    # continue-on-error: true # Uncomment once integration is finished
+    runs-on: ubuntu-latest
+    # Map a step output to a job output
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }} && ! (startsWith(github.ref, 'refs/tags/') && github.event_name == 'push')
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          # All of these options are optional, so you can remove them if you are happy with the defaults
+          concurrent_skipping: 'same_content_newer'
+          skip_after_successful_duplicate: 'false'
+
   native:
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
     name: native
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-22.04, windows-2022, macos-12]
     steps:
@@ -37,6 +54,8 @@ jobs:
           PKG_CONFIG_GSTREAMER_1_0_PREFIX="/Library/Frameworks/GStreamer.framework/Versions/1.0"
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "${GITHUB_ENV}"
           echo "PKG_CONFIG_GSTREAMER_1_0_PREFIX=${PKG_CONFIG_GSTREAMER_1_0_PREFIX}" >> "${GITHUB_ENV}"
+          echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"
+          brew install pkg-config
       - name: Cache cargo registry
         uses: actions/cache@v3
         with:
@@ -58,15 +77,19 @@ jobs:
         run: |
           echo "PATH=${PATH}"
           echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=${GSTREAMER_1_0_ROOT_MSVC_X86_64}"
+          echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"
+          # pkg-config --variable pc_path pkg-config
           cargo  build --release --all-features
       - uses: actions/upload-artifact@v3
         with:
           name: release-${{ matrix.os }}
           path: "target/release/neolink*"
   cross:
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
     name: cross
     runs-on: ubuntu-latest
-    container: "node:current-buster-slim"
+    container: "node:current-bullseye-slim"
     strategy:
       fail-fast: false
       matrix:
@@ -121,7 +144,7 @@ jobs:
           TARGET: ${{ matrix.target }}
       - name: Build
         run: |
-          cargo build --release --all-features --target=${TARGET}
+          cargo build --verbose --release --all-features --target=${TARGET}
         env:
           # Retarget pkg-config as described in https://www.freedesktop.org/wiki/Software/pkg-config/CrossCompileProposal/
           PKG_CONFIG_ALLOW_CROSS: 1
@@ -129,16 +152,15 @@ jobs:
           TARGET: ${{ matrix.target }}
       - uses: actions/upload-artifact@v3
         with:
-          name: release-${{ matrix.arch }}-buster
+          name: release-${{ matrix.arch }}-bullseye
           path: "target/${{ matrix.target }}/release/neolink*"
 
   push_to_registry:
     name: Build Docker image
-    if: startsWith(github.ref, 'refs/tags/') == false && github.event_name == 'push'
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
     runs-on: ubuntu-latest
     needs:
       - "cross"
-      - "native"
     steps:
       - name: Check token is set
         id: vars
@@ -178,13 +200,31 @@ jobs:
       - name: Get tag name
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         id: tags
+        shell: bash
         run: |
-          branch="${GITHUB_REF#refs/heads/}"
-          tags="${REPO_NAME}:${branch}"
-          if [ "${branch}" == "master" ]; then
-            tags="${tags},${REPO_NAME}:latest"
+          tags=( )
+          gittag="$(git tag --points-at HEAD)"
+          branch="$(git rev-parse --abbrev-ref HEAD)"
+
+          if [[ -n "${gittag}" ]]; then
+            tags=( "${tags[@]}" "${REPO_NAME}:${gittag}" )
           fi
-          echo "TAGS=${tags}"  >> $GITHUB_OUTPUT
+          if [[ -n "${branch}" ]]; then
+            branch="$(echo "${branch}" | sed -E 's|[/]|-|g')"
+            tags=( "${tags[@]}" "${REPO_NAME}:${branch}" )
+            if [ "${branch}" == "master" ]; then
+              tags=( "${tags[@]}" "${tags},${REPO_NAME}:latest" )
+            fi
+          fi
+          function join_by {
+            local d=${1-} f=${2-}
+            if shift 2; then
+              printf %s "$f" "${@/#/$d}"
+            fi
+          }
+          tagstr="$(join_by "," "${tags[@]}")"
+          echo "TAGS=${tagstr}"
+          echo "TAGS=${tagstr}"  >> "${GITHUB_OUTPUT}"
         env:
           REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
       - name: Install latest rust
@@ -206,22 +246,22 @@ jobs:
       - name: Download Linux x86_64
         uses: actions/download-artifact@v3
         with:
-          name: release-amd64-buster
+          name: release-amd64-bullseye
           path: linux/amd64
       - name: Download Linux armv7
         uses: actions/download-artifact@v3
         with:
-          name: release-armhf-buster
+          name: release-armhf-bullseye
           path: linux/arm/v7
       - name: Download Linux arm64
         uses: actions/download-artifact@v3
         with:
-          name: release-arm64-buster
+          name: release-arm64-bullseye
           path: linux/arm64
       - name: Download Linux i386
         uses: actions/download-artifact@v3
         with:
-          name: release-i386-buster
+          name: release-i386-bullseye
           path: linux/386
       - name: Push to Docker Hub
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
@@ -275,22 +315,22 @@ jobs:
       - name: Download Linux x86_64
         uses: actions/download-artifact@v3
         with:
-          name: release-amd64-buster
-          path: neolink_linux_x86_64_buster
+          name: release-amd64-bullseye
+          path: neolink_linux_x86_64_bullseye
       - name: Download Linux armhf
         uses: actions/download-artifact@v3
         with:
-          name: release-armhf-buster
+          name: release-armhf-bullseye
           path: neolink_linux_armhf
       - name: Download Linux arm64
         uses: actions/download-artifact@v3
         with:
-          name: release-arm64-buster
+          name: release-arm64-bullseye
           path: neolink_linux_arm64
       - name: Download Linux i386
         uses: actions/download-artifact@v3
         with:
-          name: release-i386-buster
+          name: release-i386-bullseye
           path: neolink_linux_i386
       - name: Prepare Releases
         run: |
@@ -298,7 +338,7 @@ jobs:
             neolink_windows
             neolink_macos
             neolink_linux_x86_64_ubuntu
-            neolink_linux_x86_64_buster
+            neolink_linux_x86_64_bullseye
             neolink_linux_armhf
             neolink_linux_arm64
             neolink_linux_i386
@@ -315,10 +355,11 @@ jobs:
             neolink_windows.zip
             neolink_macos.zip
             neolink_linux_x86_64_ubuntu.zip
-            neolink_linux_x86_64_buster.zip
+            neolink_linux_x86_64_bullseye.zip
             neolink_linux_armhf.zip
             neolink_linux_arm64.zip
             neolink_linux_i386.zip
           body: |
             Neolink Release ${{steps.toml.outputs.version}}
           draft: true
+          prerelease: ${{ contains(github.ref_name,  'rc') }}

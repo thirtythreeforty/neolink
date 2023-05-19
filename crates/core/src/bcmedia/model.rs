@@ -1,5 +1,5 @@
 /// Video streams encapsulate a stream of BcMedia
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BcMedia {
     /// Holds info on the stream
     InfoV1(BcMediaInfoV1),
@@ -19,7 +19,7 @@ pub(super) const MAGIC_HEADER_BCMEDIA_INFO_V1: u32 = 0x31303031;
 
 /// The start of a BcMedia stream contains this message
 /// which describes the data to follow
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BcMediaInfoV1 {
     // This is the size of the header so it's actually a fixed value
     // The other messages have body size here so maybe that's why
@@ -63,7 +63,7 @@ pub(super) const MAGIC_HEADER_BCMEDIA_INFO_V2: u32 = 0x32303031;
 
 /// The start of a BcMedia stream contains this message
 /// which describes the data to follow
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BcMediaInfoV2 {
     // This is the size of the header so it's actually a fixed value
     // The other messages have body size here so maybe that's why
@@ -108,7 +108,7 @@ pub(super) const MAGIC_HEADER_BCMEDIA_IFRAME: u32 = 0x63643030;
 pub(super) const MAGIC_HEADER_BCMEDIA_IFRAME_LAST: u32 = 0x63643039;
 
 /// Video Types for I/PFrame
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum VideoType {
     /// H264 video data
     H264,
@@ -117,7 +117,7 @@ pub enum VideoType {
 }
 
 /// This is a BcMedia video IFrame.
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct BcMediaIframe {
     /// "H264", or "H265"
     pub video_type: VideoType,
@@ -134,12 +134,32 @@ pub struct BcMediaIframe {
     pub data: Vec<u8>,
 }
 
+impl std::fmt::Debug for BcMediaIframe {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map()
+            .entry(&"video_type", &self.video_type)
+            // .entry(&"payload_size", &self.payload_size)
+            .entry(&"microseconds", &self.microseconds)
+            .entry(&"time", &self.time)
+            .entry(
+                &"data[0..10]",
+                &self.data[0..std::cmp::min(20, self.data.len())].to_vec(),
+            )
+            .entry(
+                &"data[-10..-1]",
+                &self.data[std::cmp::max(0, self.data.len() - 20)..self.data.len()].to_vec(),
+            )
+            .entry(&"data.len()", &self.data.len())
+            .finish()
+    }
+}
+
 // PFrame magics include the channel number in them
 pub(super) const MAGIC_HEADER_BCMEDIA_PFRAME: u32 = 0x63643130;
 pub(super) const MAGIC_HEADER_BCMEDIA_PFRAME_LAST: u32 = 0x63643139;
 
 /// This is a BcMedia video PFrame.
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct BcMediaPframe {
     /// "H264", or "H265"
     pub video_type: VideoType,
@@ -153,10 +173,29 @@ pub struct BcMediaPframe {
     pub data: Vec<u8>,
 }
 
+impl std::fmt::Debug for BcMediaPframe {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map()
+            .entry(&"video_type", &self.video_type)
+            // .entry(&"payload_size", &self.payload_size)
+            .entry(&"microseconds", &self.microseconds)
+            .entry(
+                &"data[0..20]",
+                &self.data[0..std::cmp::min(20, self.data.len())].to_vec(),
+            )
+            .entry(
+                &"data[-20..-1]",
+                &self.data[std::cmp::max(0, self.data.len() - 20)..self.data.len()].to_vec(),
+            )
+            .entry(&"data.len()", &self.data.len())
+            .finish()
+    }
+}
+
 pub(super) const MAGIC_HEADER_BCMEDIA_AAC: u32 = 0x62773530;
 
 /// This contains BcMedia audio data in AAC format
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BcMediaAac {
     // Size of payload after header in bytes
     // pub payload_size: u16,
@@ -171,7 +210,7 @@ pub(super) const MAGIC_HEADER_BCMEDIA_ADPCM: u32 = 0x62773130;
 pub(super) const MAGIC_HEADER_BCMEDIA_ADPCM_DATA: u16 = 0x0100;
 
 /// This contains BcMedia audio data in ADPCM format
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BcMediaAdpcm {
     // Size of payload after header in bytes
     // pub payload_size: u16,

@@ -39,3 +39,5 @@ pub mod ser;
 pub mod xml;
 
 mod xml_crypto;
+
+pub(crate) mod codex;

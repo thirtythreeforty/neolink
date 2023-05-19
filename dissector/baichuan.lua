@@ -2,6 +2,20 @@
 -- Copy/symlink it into ~/.local/lib/wireshark/plugins/ and restart Wireshark; it should
 -- automatically attempt to decode TCP connections on port 9000.
 
+-- Copyright (c) the Neolink contributors
+--
+-- This program is free software: you can redistribute it and/or modify it
+-- under the terms of the GNU Affero General Public License, version 3, as
+-- published by the Free Software Foundation.
+--
+-- This program is distributed in the hope that it will be useful, but WITHOUT
+-- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+-- FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+-- more details.
+--
+-- You should have received a copy of the GNU General Public License along with
+-- this program. If not, see <https://www.gnu.org/licenses/>.
+
 local bc_protocol = Proto("Baichuan",  "Baichuan/Reolink IP Camera Protocol")
 
 local magic_bytes = ProtoField.int32("baichuan.magic", "magic", base.DEC)
@@ -151,6 +165,8 @@ local message_types = {
   [209]="<LedState> (write)",
   [210]="<PTOP>",
   [211]="<PTOP> (write)",
+  [212]="<rfAlarmCfg>",
+  [213]="<rfAlarmCfg> (write)",
   [216]="<EmailTask> (write)",
   [217]="<EmailTask>",
   [218]="<PushTask> (write)",
@@ -158,9 +174,14 @@ local message_types = {
   [228]="<Crop>",
   [229]="<Crop> (write)",
   [230]="<cropSnap>",
+  [234]="UDP Keep Alive",
+  [252]="<BatteryInfoList>",
+  [253]="<BatteryInfo>",
   [272]="<findAlarmVideo>",
   [273]="<alarmVideoInfo>",
   [274]="<findAlarmVideo>",
+  [319]="<timelapseCfg>",
+  [342]="<AiDetectCfg>",
 }
 
 local message_classes = {

@@ -47,23 +47,23 @@ The config file tells Neolink how to connect to your camera and serve the video 
 1. Create a simple text file (i.g. `config.toml`) in the same directory you have unpacked Neolink with the following format:
 
         bind = "0.0.0.0"
-        
+
         [[cameras]]
         name = "cameraname"
         username = "admin"
         password = "password"
         address = "192.168.1.10:9000"
         stream = "both"
-    
+
 2. Change `cameraname` to a legible, phonetic name that describes your camera. Leave the quotes around the name.
 
 3. The default username is `admin`; leave this unless you've created another user.
 
 4. Replace `password` with the password you set on the camera. If you chose to not use a password, remove this line from the config file. Again, leave the quotes.
 
-5. Replace `192.168.1.10:9000` with the IP address you set for your camera. 
+5. Replace `192.168.1.10:9000` with the IP address you set for your camera.
     Note: The port, `:9000`, should remain at the end of your IP address. This is the proprietary "media port" that Reolink uses.
-    
+
 6. The `stream` line allows you to choose which stream type to use. Neolink supports streaming two streams, the main-stream, and the sub-stream. It can stream either one, or both. If you wish to stream both streams, leave this line as is. If you wish to stream _only_ the main-stream, change `both` to `mainStream`. If you wish to stream only the sub-stream, change `both` to `subStream`.
 
     Note: Reolink D400/B400 Cameras **_do not support serving both streams at once_**, so you must manually choose which stream type to use. For best quality, choose the main stream.
@@ -190,7 +190,7 @@ _The best way to have Neolink run at startup is create a Scheduled Task that sta
 
    12. Check "If the task fails, restart every:"
 
-   13. For redundancy, enter `999` into the number of restart tries. 
+   13. For redundancy, enter `999` into the number of restart tries.
 
        _The Settings tab should look something like this:_
 

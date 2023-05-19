@@ -4,7 +4,7 @@
 #                    Miroslav Šedivý
 # SPDX-License-Identifier: AGPL-3.0-only
 
-FROM docker.io/rust:slim-buster AS build
+FROM docker.io/rust:slim-bullseye AS build
 ARG TARGETPLATFORM
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -34,7 +34,7 @@ RUN  echo "TARGETPLATFORM: ${TARGETPLATFORM}"; \
   fi
 
 # Create the release container. Match the base OS used to build
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 ARG TARGETPLATFORM
 ARG REPO
 ARG VERSION
@@ -50,6 +50,9 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libgstrtspserver-1.0-0 \
         libgstreamer1.0-0 \
+        gstreamer1.0-tools \
+        gstreamer1.0-x \
+        gstreamer1.0-plugins-base \
         gstreamer1.0-plugins-good \
         gstreamer1.0-plugins-bad && \
     apt-get clean -y && rm -rf /var/lib/apt/lists/*
@@ -59,7 +62,8 @@ COPY --from=build \
   /usr/local/bin/neolink
 COPY docker/entrypoint.sh /entrypoint.sh
 
-RUN chmod +x "/usr/local/bin/neolink" && \
+RUN gst-inspect-1.0; \
+    chmod +x "/usr/local/bin/neolink" && \
     "/usr/local/bin/neolink" --version
 
 CMD ["/usr/local/bin/neolink", "rtsp", "--config", "/etc/neolink.toml"]

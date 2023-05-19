@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use structopt::StructOpt;
+use clap::Parser;
 
 fn onoff_parse(src: &str) -> Result<bool> {
     match src {
@@ -13,11 +13,11 @@ fn onoff_parse(src: &str) -> Result<bool> {
 }
 
 /// The pir command will control the PIR status of the camera
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct Opt {
     /// The name of the camera. Must be a name in the config
     pub camera: String,
     /// Whether to turn the PIR ON or OFF
-    #[structopt(parse(try_from_str = onoff_parse), name = "on|off")]
-    pub on: bool,
+    #[arg(value_parser = onoff_parse, name = "on|off")]
+    pub on: Option<bool>,
 }

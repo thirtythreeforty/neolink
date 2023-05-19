@@ -1,95 +1,44 @@
 use super::model::*;
 use super::xml::{BcPayloads, BcXml};
 use super::xml_crypto;
-use crate::RX_TIMEOUT;
-use err_derive::Error;
+use crate::Error;
+use bytes::{Buf, BytesMut};
+use log::*;
 use nom::{
     bytes::streaming::take, combinator::*, error::context as error_context, number::streaming::*,
-    sequence::*,
+    sequence::*, Parser,
 };
-use std::io::Read;
-use time::OffsetDateTime;
 
 type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), nom::Err<E>>;
 
-/// The error types used during deserialisation
-#[derive(Debug, Error)]
-pub enum Error {
-    /// A Nom parsing error usually a malformed packet
-    #[error(display = "Parsing error: {}", _0)]
-    NomError(String),
-    /// An IO error such as the stream being dropped
-    #[error(display = "I/O error")]
-    IoError(#[error(source)] std::io::Error),
-}
-type NomErrorType<'a> = nom::error::VerboseError<&'a [u8]>;
-
-impl<'a> From<nom::Err<NomErrorType<'a>>> for Error {
-    fn from(k: nom::Err<NomErrorType<'a>>) -> Self {
-        let reason = match k {
-            nom::Err::Error(e) => format!("Nom Error: {:?}", e),
-            nom::Err::Failure(e) => format!("Nom Error: {:?}", e),
-            _ => "Unknown Nom error".to_string(),
-        };
-        Error::NomError(reason)
-    }
-}
-
-fn read_from_reader<P, O, E, R>(mut parser: P, mut rdr: R) -> Result<O, E>
-where
-    R: Read,
-    E: for<'a> From<nom::Err<NomErrorType<'a>>> + From<std::io::Error>,
-    P: FnMut(&[u8]) -> IResult<&[u8], O>,
-{
-    let mut input: Vec<u8> = Vec::new();
-    loop {
-        let to_read = match parser(&input) {
-            Ok((_, parsed)) => return Ok(parsed),
-            Err(nom::Err::Incomplete(needed)) => {
-                match needed {
-                    nom::Needed::Unknown => std::num::NonZeroUsize::new(1).unwrap(), // read one byte
-                    nom::Needed::Size(len) => len,
-                }
-            }
-            Err(e) => return Err(e.into()),
-        };
-
-        let start_time = OffsetDateTime::now_utc();
-        loop {
-            match (&mut rdr)
-                .take(to_read.get() as u64)
-                .read_to_end(&mut input)
-            {
-                Ok(0) => {
-                    if (OffsetDateTime::now_utc() - start_time) > RX_TIMEOUT {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::UnexpectedEof,
-                            "Read returned 0 bytes",
-                        )
-                        .into());
-                    }
-                }
-                Ok(_) => break,
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // This is a temporaily unavaliable resource
-                    // We should just wait and try again
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-        }
-    }
-}
-
 impl Bc {
-    pub(crate) fn deserialize<R: Read>(context: &mut BcContext, r: R) -> Result<Bc, Error> {
-        // Throw away the nom-specific return types
-        read_from_reader(|reader| bc_msg(context, reader), r)
+    /// Returns Ok(deserialized data, the amount of data consumed)
+    /// Can then use this as the amount that should be remove from a buffer
+    pub(crate) fn deserialize(context: &BcContext, buf: &mut BytesMut) -> Result<Bc, Error> {
+        const TYPICAL_HEADER: usize = 24;
+        let parser = BcParser { context };
+        let (result, amount) = match consumed(parser)(buf) {
+            Ok((_, (parsed_buff, result))) => Ok((result, parsed_buff.len())),
+            Err(e) => Err(Error::from(e)),
+        }?;
+
+        buf.advance(amount);
+        buf.reserve(amount + TYPICAL_HEADER); // Preallocate for future buffer calls
+        Ok(result)
     }
 }
 
-fn bc_msg<'a>(context: &mut BcContext, buf: &'a [u8]) -> IResult<&'a [u8], Bc> {
+struct BcParser<'a> {
+    context: &'a BcContext,
+}
+
+impl<'a> Parser<&'a [u8], Bc, nom::error::VerboseError<&'a [u8]>> for BcParser<'a> {
+    fn parse(&mut self, buf: &'a [u8]) -> IResult<&'a [u8], Bc> {
+        bc_msg(self.context, buf)
+    }
+}
+
+fn bc_msg<'a>(context: &BcContext, buf: &'a [u8]) -> IResult<&'a [u8], Bc> {
     let (buf, header) = bc_header(buf)?;
     let (buf, body) = bc_body(context, &header, buf)?;
 
@@ -101,11 +50,7 @@ fn bc_msg<'a>(context: &mut BcContext, buf: &'a [u8]) -> IResult<&'a [u8], Bc> {
     Ok((buf, bc))
 }
 
-fn bc_body<'a>(
-    context: &mut BcContext,
-    header: &BcHeader,
-    buf: &'a [u8],
-) -> IResult<&'a [u8], BcBody> {
+fn bc_body<'a>(context: &BcContext, header: &BcHeader, buf: &'a [u8]) -> IResult<&'a [u8], BcBody> {
     if header.is_modern() {
         let (buf, body) = bc_modern_msg(context, header, buf)?;
         Ok((buf, BcBody::ModernMsg(body)))
@@ -132,7 +77,7 @@ fn bc_legacy_login_msg(buf: &'_ [u8]) -> IResult<&'_ [u8], LegacyMsg> {
 }
 
 fn bc_modern_msg<'a>(
-    context: &mut BcContext,
+    context: &BcContext,
     header: &BcHeader,
     buf: &'a [u8],
 ) -> IResult<&'a [u8], ModernMsg> {
@@ -154,24 +99,6 @@ fn bc_modern_msg<'a>(
         _ => 0, // If missing payload_offset treat all as payload
     };
 
-    if header.msg_id == 1 && (header.response_code >> 8) == 0xdd {
-        // Login reply has the encryption info
-        // Set that the encryption type now
-        let encryption_protocol_byte = (header.response_code & 0xff) as usize;
-        match encryption_protocol_byte {
-            0x00 => context.set_encrypted(EncryptionProtocol::Unencrypted),
-            0x01 => context.set_encrypted(EncryptionProtocol::BCEncrypt),
-            0x02 => context.set_encrypted(EncryptionProtocol::Aes(None)),
-            _ => {
-                return Err(Err::Error(make_error(
-                    buf,
-                    "Encryption Protocol is Unknown",
-                    ErrorKind::MapRes,
-                )));
-            }
-        }
-    }
-
     let (buf, ext_buf) = take(ext_len)(buf)?;
     let payload_len = header.body_len - ext_len;
     let (buf, payload_buf) = take(payload_len)(buf)?;
@@ -180,12 +107,12 @@ fn bc_modern_msg<'a>(
     let processed_ext_buf = match context.get_encrypted() {
         EncryptionProtocol::Unencrypted => ext_buf,
         encryption_protocol => {
-            decrypted =
-                xml_crypto::decrypt(header.channel_id as u32, ext_buf, &encryption_protocol);
+            decrypted = xml_crypto::decrypt(header.channel_id as u32, ext_buf, encryption_protocol);
             &decrypted
         }
     };
 
+    let mut in_binary = false;
     // Now we'll take the buffer that Nom gave a ref to and parse it.
     let extension = if ext_len > 0 {
         // Apply the XML parse function, but throw away the reference to decrypted in the Ok and
@@ -200,9 +127,10 @@ fn bc_modern_msg<'a>(
         if let Extension {
             binary_data: Some(1),
             ..
-        } = &parsed
+        } = parsed
         {
-            context.in_bin_mode.insert(header.msg_num);
+            // In binary so tell the current context that we need to treat the payload as binary
+            in_binary = true;
         }
         Some(parsed)
     } else {
@@ -216,13 +144,43 @@ fn bc_modern_msg<'a>(
     let payload;
     if payload_len > 0 {
         // Extract remainder of message as binary, if it exists
-        let encryption_protocol = context.get_encrypted();
+        let encryption_protocol = match header {
+            BcHeader {
+                msg_id: 1,
+                response_code,
+                ..
+            } if (response_code & 0xff) == 0x00 => EncryptionProtocol::Unencrypted,
+            BcHeader {
+                msg_id: 1,
+                response_code,
+                ..
+            } if (response_code & 0xff) == 0x01 => EncryptionProtocol::BCEncrypt,
+            BcHeader {
+                msg_id: 1,
+                response_code,
+                ..
+            } if (response_code & 0xff) == 0x02 => EncryptionProtocol::BCEncrypt, // This is AES but the first packet with the NONCE is BCEcrypt, since the NONCE in this packet is required to build the AES key
+            BcHeader { msg_id: 1, .. }
+                if matches!(context.get_encrypted(), EncryptionProtocol::Aes(_)) =>
+            {
+                // Maximum encryption level is BCEncrypt during login... Not sure why Reolink did it like that
+                EncryptionProtocol::BCEncrypt
+            }
+            _ => *context.get_encrypted(),
+        };
+
         let processed_payload_buf =
             xml_crypto::decrypt(header.channel_id as u32, payload_buf, &encryption_protocol);
-        if context.in_bin_mode.contains(&(header.msg_num)) {
+        if context.in_bin_mode.contains(&(header.msg_num)) || in_binary {
             payload = Some(BcPayloads::Binary(payload_buf.to_vec()));
         } else {
             let xml = BcXml::try_parse(processed_payload_buf.as_slice()).map_err(|_| {
+                error!("header.msg_id: {}", header.msg_id);
+                error!(
+                    "processed_payload_buf: {:X?}::{:?}",
+                    processed_payload_buf,
+                    std::str::from_utf8(&processed_payload_buf)
+                );
                 Err::Error(make_error(
                     buf,
                     "Unable to parse Payload XML",
@@ -279,12 +237,10 @@ mod tests {
     fn test_bc_modern_login() {
         let sample = include_bytes!("samples/model_sample_modern_login.bin");
 
-        let encryption_protocol =
-            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-        let mut context = BcContext::new(encryption_protocol);
+        let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
         let (buf, header) = bc_header(&sample[..]).unwrap();
-        let (_, body) = bc_body(&mut context, &header, buf).unwrap();
+        let (_, body) = bc_body(&context, &header, buf).unwrap();
         assert_eq!(header.msg_id, 1);
         assert_eq!(header.body_len, 145);
         assert_eq!(header.channel_id, 0);
@@ -312,12 +268,10 @@ mod tests {
     fn test_03_enc_login() {
         let sample = include_bytes!("samples/battery_enc.bin");
 
-        let encryption_protocol =
-            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-        let mut context = BcContext::new(encryption_protocol);
+        let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
         let (buf, header) = bc_header(&sample[..]).unwrap();
-        assert!(bc_body(&mut context, &header, buf).is_err());
+        assert!(bc_body(&context, &header, buf).is_err());
         // It should error because we don't support it
         //
         // The following would be its contents if we
@@ -350,12 +304,10 @@ mod tests {
     fn test_bc_legacy_login() {
         let sample = include_bytes!("samples/model_sample_legacy_login.bin");
 
-        let encryption_protocol =
-            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-        let mut context = BcContext::new(encryption_protocol);
+        let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
         let (buf, header) = bc_header(&sample[..]).unwrap();
-        let (_, body) = bc_body(&mut context, &header, buf).unwrap();
+        let (_, body) = bc_body(&context, &header, buf).unwrap();
         assert_eq!(header.msg_id, 1);
         assert_eq!(header.body_len, 1836);
         assert_eq!(header.channel_id, 0);
@@ -376,12 +328,10 @@ mod tests {
     fn test_bc_modern_login_failed() {
         let sample = include_bytes!("samples/modern_login_failed.bin");
 
-        let encryption_protocol =
-            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-        let mut context = BcContext::new(encryption_protocol);
+        let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
         let (buf, header) = bc_header(&sample[..]).unwrap();
-        let (_, body) = bc_body(&mut context, &header, buf).unwrap();
+        let (_, body) = bc_body(&context, &header, buf).unwrap();
         assert_eq!(header.msg_id, 1);
         assert_eq!(header.body_len, 0);
         assert_eq!(header.channel_id, 0);
@@ -402,12 +352,10 @@ mod tests {
     fn test_bc_modern_login_success() {
         let sample = include_bytes!("samples/modern_login_success.bin");
 
-        let encryption_protocol =
-            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-        let mut context = BcContext::new(encryption_protocol);
+        let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
         let (buf, header) = bc_header(&sample[..]).unwrap();
-        let (_, body) = bc_body(&mut context, &header, buf).unwrap();
+        let (_, body) = bc_body(&context, &header, buf).unwrap();
         assert_eq!(header.msg_id, 1);
         assert_eq!(header.body_len, 2949);
         assert_eq!(header.channel_id, 0);
@@ -432,11 +380,9 @@ mod tests {
         let sample1 = include_bytes!("samples/modern_video_start1.bin");
         let sample2 = include_bytes!("samples/modern_video_start2.bin");
 
-        let encryption_protocol =
-            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-        let mut context = BcContext::new(encryption_protocol);
+        let mut context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
-        let msg1 = Bc::deserialize(&mut context, &sample1[..]).unwrap();
+        let msg1 = Bc::deserialize(&context, &mut BytesMut::from(&sample1[..])).unwrap();
         match msg1.body {
             BcBody::ModernMsg(ModernMsg {
                 extension:
@@ -452,7 +398,7 @@ mod tests {
         }
 
         context.in_bin_mode.insert(msg1.meta.msg_num);
-        let msg2 = Bc::deserialize(&mut context, &sample2[..]).unwrap();
+        let msg2 = Bc::deserialize(&context, &mut BytesMut::from(&sample2[..])).unwrap();
         match msg2.body {
             BcBody::ModernMsg(ModernMsg {
                 extension: None,
@@ -472,11 +418,9 @@ mod tests {
     fn test_bc_b800_externstream() {
         let sample = include_bytes!("samples/xml_externstream_b800.bin");
 
-        let encryption_protocol =
-            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-        let mut context = BcContext::new(encryption_protocol);
+        let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
-        let e = Bc::deserialize(&mut context, &sample[..]);
+        let e = Bc::deserialize(&context, &mut BytesMut::from(&sample[..]));
         assert_matches!(
             e,
             Ok(Bc {
@@ -516,11 +460,9 @@ mod tests {
     fn test_bc_b800_substream() {
         let sample = include_bytes!("samples/xml_substream_b800.bin");
 
-        let encryption_protocol =
-            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-        let mut context = BcContext::new(encryption_protocol);
+        let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
-        let e = Bc::deserialize(&mut context, &sample[..]);
+        let e = Bc::deserialize(&context, &mut BytesMut::from(&sample[..]));
         assert_matches!(
             e,
             Ok(Bc {
@@ -560,11 +502,9 @@ mod tests {
     fn test_bc_b800_mainstream() {
         let sample = include_bytes!("samples/xml_mainstream_b800.bin");
 
-        let encryption_protocol =
-            std::sync::Arc::new(std::sync::Mutex::new(EncryptionProtocol::BCEncrypt));
-        let mut context = BcContext::new(encryption_protocol);
+        let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
-        let e = Bc::deserialize(&mut context, &sample[..]);
+        let e = Bc::deserialize(&context, &mut BytesMut::from(&sample[..]));
         assert_matches!(
             e,
             Ok(Bc {

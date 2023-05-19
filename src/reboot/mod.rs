@@ -22,11 +22,12 @@ pub(crate) use cmdline::Opt;
 /// Entry point for the reboot subcommand
 ///
 /// Opt is the command line options
-pub(crate) fn main(opt: Opt, config: Config) -> Result<()> {
-    let camera = find_and_connect(&config, &opt.camera)?;
+pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
+    let camera = find_and_connect(&config, &opt.camera).await?;
 
     camera
         .reboot()
+        .await
         .context("Could not send reboot command to the camera")?;
     Ok(())
 }

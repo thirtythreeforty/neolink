@@ -1,16 +1,22 @@
-use crate::{bc, bcmedia};
+use crate::bc;
+use futures::stream::StreamExt;
 use log::*;
-use std::convert::TryInto;
-use std::net::ToSocketAddrs;
-use std::sync::{
-    atomic::{AtomicBool, AtomicU16, Ordering},
-    Mutex,
+use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, SocketAddr};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicBool, AtomicU16, Ordering},
 };
+use tokio::sync::RwLock;
 
 use Md5Trunc::*;
 
+mod abilityinfo;
+mod battery;
 mod connection;
+mod credentials;
 mod errors;
+mod keepalive;
 mod floodlight_status;
 mod ledstate;
 mod login;
@@ -26,27 +32,25 @@ mod talk;
 mod time;
 mod version;
 
-use super::RX_TIMEOUT;
-use bc::model::*;
 pub(crate) use connection::*;
+pub use credentials::*;
 pub use errors::Error;
 pub use ledstate::LightState;
+pub use login::MaxEncryption;
 pub use motion::{MotionData, MotionStatus};
 pub use pirstate::PirState;
 pub use ptz::Direction;
 pub use resolution::*;
 use std::sync::Arc;
-pub use stream::{Stream, StreamData};
+pub use stream::{StreamData, StreamKind};
 
-type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
-impl From<crossbeam_channel::RecvTimeoutError> for Error {
-    fn from(k: crossbeam_channel::RecvTimeoutError) -> Self {
-        match k {
-            crossbeam_channel::RecvTimeoutError::Timeout => Error::Timeout,
-            crossbeam_channel::RecvTimeoutError::Disconnected => Error::TimeoutDisconnected,
-        }
-    }
+#[derive(Clone, Copy)]
+enum ReadKind {
+    ReadOnly,
+    ReadWrite,
+    None,
 }
 
 ///
@@ -58,160 +62,234 @@ pub struct BcCamera {
     logged_in: AtomicBool,
     message_num: AtomicU16,
     // Certain commands such as logout require the username/pass in plain text.... why....???
-    credentials: Mutex<Option<Credentials>>,
+    credentials: Credentials,
+    abilities: RwLock<HashMap<String, ReadKind>>,
 }
 
-// Used for caching the credentials
-#[derive(Clone)]
-struct Credentials {
-    username: String,
-    password: Option<String>,
+/// Options used to construct a camera
+#[derive(Debug)]
+pub struct BcCameraOpt {
+    /// Name, mostly used for message logs
+    pub name: String,
+    /// Channel the camera is on 0 unless using a NVR
+    pub channel_id: u8,
+    /// IPs of the camera
+    pub addrs: Vec<IpAddr>,
+    /// The UID of the camera
+    pub uid: Option<String>,
+    /// Port to try optional. When not given all known BC ports will be tried
+    /// When given all known bc port AND the given port will be tried
+    pub port: Option<u16>,
+    /// Protocol decides if UDP/TCP are used for the camera
+    pub protocol: ConnectionProtocol,
+    /// Discovery method to allow
+    pub discovery: DiscoveryMethods,
+    /// Printing format for auxilaary data such as battery levels
+    pub aux_printing: PrintFormat,
+    /// Credentials for login
+    pub credentials: Credentials,
 }
 
-impl Credentials {
-    fn new(username: String, password: Option<String>) -> Self {
-        Self { username, password }
-    }
+/// Used to choose the print format of various status messages like battery levels
+///
+/// Currently this is just the format of battery levels but if we ever got more status
+/// messages then they will also use this information
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum PrintFormat {
+    /// None, don't print
+    None,
+    /// A human readable output
+    Human,
+    /// Xml formatted
+    Xml,
 }
 
-impl Drop for BcCamera {
-    fn drop(&mut self) {
-        debug!("Dropping camera");
-        self.disconnect();
-    }
+/// Type of connection to try
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum ConnectionProtocol {
+    /// TCP and UDP
+    #[default]
+    TcpUdp,
+    /// TCP only
+    Tcp,
+    /// Udp only
+    Udp,
+}
+
+enum CameraLocation {
+    Tcp(SocketAddr),
+    Udp(DiscoveryResult),
 }
 
 impl BcCamera {
-    ///
-    /// Create a new camera interface with this address and channel ID
-    ///
-    /// # Parameters
-    ///
-    /// * `host` - The address of the camera either ip address or hostname string
-    ///
-    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
-    ///
-    /// # Returns
-    ///
-    /// returns either an error or the camera
-    ///
-    pub fn new_with_addr<T: ToSocketAddrs>(host: T, channel_id: u8) -> Result<Self> {
-        let addr_iter = match host.to_socket_addrs() {
-            Ok(iter) => iter,
-            Err(_) => return Err(Error::AddrResolutionError),
-        };
-        for addr in addr_iter {
-            if let Ok(cam) = Self::new(SocketAddrOrUid::SocketAddr(addr), channel_id) {
-                return Ok(cam);
+    /// Try to connect to the camera via appropaite methods and return
+    /// the location that should be used
+    async fn find_camera(options: &BcCameraOpt) -> Result<CameraLocation> {
+        if let ConnectionProtocol::Tcp | ConnectionProtocol::TcpUdp = options.protocol {
+            let mut sockets = vec![];
+            match options.port {
+                Some(9000) | None => {
+                    for addr in options.addrs.iter() {
+                        sockets.push(SocketAddr::new(*addr, 9000));
+                    }
+                }
+                Some(n) => {
+                    for addr in options.addrs.iter() {
+                        sockets.push(SocketAddr::new(*addr, n));
+                        sockets.push(SocketAddr::new(*addr, 9000));
+                    }
+                }
+            }
+            info!("{}: Trying TCP discovery", options.name);
+            for socket in sockets.drain(..) {
+                let channel_id: u8 = options.channel_id;
+                if let Ok(addr) = Discovery::check_tcp(socket, channel_id).await.map(|_| {
+                    info!("{}: TCP Discovery success at {:?}", options.name, &socket);
+                    socket
+                }) {
+                    return Ok(CameraLocation::Tcp(addr));
+                }
             }
         }
 
-        Err(Error::Timeout)
-    }
+        if let (Some(uid), ConnectionProtocol::Udp | ConnectionProtocol::TcpUdp) =
+            (options.uid.as_ref(), options.protocol)
+        {
+            let mut sockets = vec![];
+            match options.port {
+                None | Some(2015) | Some(2018) => {
+                    for addr in options.addrs.iter() {
+                        sockets.push(SocketAddr::new(*addr, 2018));
+                        sockets.push(SocketAddr::new(*addr, 2015));
+                    }
+                }
+                Some(n) => {
+                    for addr in options.addrs.iter() {
+                        sockets.push(SocketAddr::new(*addr, n));
+                        sockets.push(SocketAddr::new(*addr, 2015));
+                        sockets.push(SocketAddr::new(*addr, 2018));
+                    }
+                }
+            }
+            let (allow_local, allow_remote, allow_map, allow_relay) = match options.discovery {
+                DiscoveryMethods::None => (false, false, false, false),
+                DiscoveryMethods::Local => (true, false, false, false),
+                DiscoveryMethods::Remote => (true, true, false, false),
+                DiscoveryMethods::Map => (true, true, true, false),
+                DiscoveryMethods::Relay => (true, true, true, true),
+                DiscoveryMethods::Debug => (false, false, false, true),
+            };
 
-    ///
-    /// Create a new camera interface with this uid and channel ID
-    ///
-    /// # Parameters
-    ///
-    /// * `uid` - The uid of the camera
-    ///
-    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
-    ///
-    /// # Returns
-    ///
-    /// returns either an error or the camera
-    ///
-    pub fn new_with_uid(uid: &str, channel_id: u8) -> Result<Self> {
-        Self::new(SocketAddrOrUid::Uid(uid.to_string()), channel_id)
-    }
-
-    ///
-    /// Create a new camera interface with this address/uid and channel ID
-    ///
-    /// This method will first perform hostname resolution on the address
-    /// then fallback to uid if that resolution fails.
-    ///
-    /// Be aware that it is possible (although unlikely) that there is
-    /// a dns entry with the same address as the uid. If uncertain use
-    /// one of the other methods.
-    ///
-    /// # Parameters
-    ///
-    /// * `host` - The address of the camera either ip address, hostname string, or uid
-    ///
-    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
-    ///
-    /// # Returns
-    ///
-    /// returns either an error or the camera
-    ///
-    pub fn new_with_addr_or_uid<T: ToSocketAddrsOrUid>(host: T, channel_id: u8) -> Result<Self> {
-        let addr_iter = match host.to_socket_addrs_or_uid() {
-            Ok(iter) => iter,
-            Err(_) => return Err(Error::AddrResolutionError),
-        };
-        for addr_or_uid in addr_iter {
-            if let Ok(cam) = Self::new(addr_or_uid, channel_id) {
-                return Ok(cam);
+            if allow_local {
+                let uid_local = uid.clone();
+                info!("{}: Trying local discovery", options.name);
+                let result = Discovery::local(&uid_local, Some(sockets)).await;
+                if let Ok(disc) = result {
+                    info!(
+                        "{}: Local discovery success {} at {}",
+                        options.name,
+                        uid_local,
+                        disc.get_addr()
+                    );
+                    return Ok(CameraLocation::Udp(disc));
+                }
+            }
+            if allow_remote {
+                let uid_remote = uid.clone();
+                info!("{}: Trying remote discovery", options.name);
+                let result = Discovery::remote(&uid_remote).await;
+                if let Ok(disc) = result {
+                    info!(
+                        "{}: Remote discovery success {} at {}",
+                        options.name,
+                        uid_remote,
+                        disc.get_addr()
+                    );
+                    return Ok(CameraLocation::Udp(disc));
+                }
+            }
+            if allow_map {
+                let uid_map = uid.clone();
+                info!("{}: Trying map discovery", options.name);
+                let result = Discovery::map(&uid_map).await;
+                if let Ok(disc) = result {
+                    info!(
+                        "{}: Map success {} at {}",
+                        options.name,
+                        uid_map,
+                        disc.get_addr()
+                    );
+                    return Ok(CameraLocation::Udp(disc));
+                }
+            }
+            if allow_relay {
+                let uid_relay = uid.clone();
+                info!("{}: Trying relay discovery", options.name);
+                let result = Discovery::relay(&uid_relay).await;
+                if let Ok(disc) = result {
+                    info!(
+                        "{}: Relay success {} at {}",
+                        options.name,
+                        uid_relay,
+                        disc.get_addr()
+                    );
+                    return Ok(CameraLocation::Udp(disc));
+                }
             }
         }
 
-        Err(Error::Timeout)
+        info!("{}: Discovery failed", options.name);
+        // Nothing works
+        Err(Error::CannotInitCamera)
     }
 
     ///
-    /// Create a new camera interface with this address/uid and channel ID
+    /// Create a new camera interface
     ///
     /// # Parameters
     ///
-    /// * `addr` - An enum of [`SocketAddrOrUid`] that contains the address
-    ///
-    /// * `channel_id` - The channel ID this is usually zero unless using a NVR
+    /// * `options` - Camera information see [`BcCameraOpt]
     ///
     /// # Returns
     ///
     /// returns either an error or the camera
     ///
-    pub fn new(addr: SocketAddrOrUid, channel_id: u8) -> Result<Self> {
-        let source = match addr {
-            SocketAddrOrUid::SocketAddr(addr) => {
-                debug!("Trying address {}", addr);
-                BcSource::new_tcp(addr, RX_TIMEOUT)?
-            }
-            SocketAddrOrUid::Uid(uid) => {
-                debug!("Trying uid {}", uid);
-                BcSource::new_udp(&uid, RX_TIMEOUT)?
+    pub async fn new(options: &BcCameraOpt) -> Result<Self> {
+        let username: String = options.credentials.username.clone();
+        let passwd: Option<String> = options.credentials.password.clone();
+
+        let (sink, source): (BcConnSink, BcConnSource) = {
+            match BcCamera::find_camera(options).await? {
+                CameraLocation::Tcp(addr) => {
+                    let (x, r) = TcpSource::new(addr, &username, passwd.as_ref())
+                        .await?
+                        .split();
+                    (Box::new(x), Box::new(r))
+                }
+                CameraLocation::Udp(discovery) => {
+                    let (x, r) =
+                        UdpSource::new_from_discovery(discovery, &username, passwd.as_ref())
+                            .await?
+                            .split();
+                    (Box::new(x), Box::new(r))
+                }
             }
         };
 
-        let conn = BcConnection::new(source)?;
+        let conn = BcConnection::new(sink, source).await?;
 
-        debug!("Success");
+        trace!("Success");
         let me = Self {
             connection: Arc::new(conn),
             message_num: AtomicU16::new(0),
-            channel_id,
+            channel_id: options.channel_id,
             logged_in: AtomicBool::new(false),
-            credentials: Mutex::new(None),
+            credentials: Credentials::new(username, passwd),
+            abilities: Default::default(),
         };
-
-        if me.connection.is_udp() {
-            let keep_alive_msg = Bc {
-                meta: BcMeta {
-                    msg_id: MSG_ID_UDP_KEEP_ALIVE,
-                    channel_id: me.channel_id,
-                    msg_num: me.new_message_num(),
-                    stream_type: 0,
-                    response_code: 0,
-                    class: 0x6414,
-                },
-                body: BcBody::ModernMsg(ModernMsg {
-                    ..Default::default()
-                }),
-            };
-
-            me.connection.set_keep_alive_msg(keep_alive_msg);
+        me.keepalive().await?;
+        if let Err(e) = me.monitor_battery(options.aux_printing).await {
+            warn!("Could not monitor battery: {:?}", e);
         }
         Ok(me)
     }
@@ -225,33 +303,54 @@ impl BcCamera {
         self.connection.clone()
     }
 
-    /// This will drop the connection. It will try to send the logout request to the camera
-    /// first
-    pub fn disconnect(&mut self) {
-        let connection = &self.connection;
-        // Stop polling now. We don't need it for a disconnect
-        //
-        // It will also ensure that when we drop the connection we don't
-        // get an error for read return zero bytes from the polling thread;
-        connection.stop_polling();
-        if let Err(err) = self.logout() {
-            warn!("Could not log out, ignoring: {}", err);
+    // Certains commands like logout need the username and password
+    // this command will return
+    // This will only work after login
+    fn get_credentials(&self) -> &Credentials {
+        &self.credentials
+    }
+
+    async fn has_ability<T: Into<String>>(&self, name: T) -> ReadKind {
+        let abilities = self.abilities.read().await;
+        if let Some(kind) = abilities.get(&name.into()).copied() {
+            kind
+        } else {
+            ReadKind::None
+        }
+    }
+    async fn has_ability_ro<T: Into<String>>(&self, name: T) -> Result<()> {
+        let s: String = name.into();
+        match self.has_ability(&s).await {
+            ReadKind::ReadWrite | ReadKind::ReadOnly => Ok(()),
+            ReadKind::None => Err(Error::MissingAbility {
+                name: s.clone(),
+                requested: "read".to_string(),
+                actual: "none".to_string(),
+            }),
+        }
+    }
+    async fn has_ability_rw<T: Into<String>>(&self, name: T) -> Result<()> {
+        let s: String = name.into();
+        match self.has_ability(&s).await {
+            ReadKind::ReadWrite => Ok(()),
+            ReadKind::ReadOnly => Err(Error::MissingAbility {
+                name: s.clone(),
+                requested: "write".to_string(),
+                actual: "read".to_string(),
+            }),
+            ReadKind::None => Err(Error::MissingAbility {
+                name: s.clone(),
+                requested: "write".to_string(),
+                actual: "none".to_string(),
+            }),
         }
     }
 
-    // Certains commands like logout need the username and password
-    // this command will return it as a tuple of (Username, Option<Password>)
-    // This will only work after login
-    fn get_credentials(&self) -> Option<Credentials> {
-        self.credentials.lock().unwrap().clone()
-    }
-    // This is used to store the credentials it is called during login.
-    fn set_credentials(&self, username: String, password: Option<String>) {
-        *(self.credentials.lock().unwrap()) = Some(Credentials::new(username, password));
-    }
-    // This is used to clear the stored credentials it is called during logout.
-    fn clear_credentials(&self) {
-        *(self.credentials.lock().unwrap()) = None;
+    /// Wait for all thread to finish
+    ///
+    /// If an error is returned in any thread it will return the first error
+    pub async fn join(&self) -> Result<()> {
+        self.connection.join().await
     }
 }
 
@@ -273,16 +372,6 @@ fn md5_string(input: &str, trunc: Md5Trunc) -> String {
     let mut md5 = format!("{:X}\0", md5::compute(input));
     md5.replace_range(31.., if trunc == Truncate { "" } else { "\0" });
     md5
-}
-
-/// This is a convience function to make an AES key from the login password and the NONCE
-/// negotiated during login
-pub fn make_aes_key(nonce: &str, passwd: &str) -> [u8; 16] {
-    let key_phrase = format!("{}-{}", nonce, passwd);
-    let key_phrase_hash = format!("{:X}\0", md5::compute(key_phrase))
-        .to_uppercase()
-        .into_bytes();
-    key_phrase_hash[0..16].try_into().unwrap()
 }
 
 #[test]

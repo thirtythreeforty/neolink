@@ -1,19 +1,10 @@
 use super::{crc::calc_crc, model::*, xml_crypto::encrypt};
+use crate::Error;
 use cookie_factory::bytes::*;
 use cookie_factory::sequence::tuple;
+use cookie_factory::SerializeFn;
 use cookie_factory::{combinator::*, gen};
-use cookie_factory::{GenError, SerializeFn};
-use err_derive::Error;
-use log::error;
 use std::io::Write;
-
-/// The error types used during serialisation
-#[derive(Debug, Error)]
-pub enum Error {
-    /// A Cookie Factor  GenError
-    #[error(display = "Cookie GenError")]
-    GenError(#[error(source)] GenError),
-}
 
 impl BcUdp {
     pub(crate) fn serialize<W: Write>(&self, buf: W) -> Result<W, Error> {
@@ -59,7 +50,7 @@ fn bcudp_ack<'a, W: 'a + Write>(
         le_u32(MAGIC_HEADER_UDP_ACK),
         le_i32(payload.connection_id),
         le_u32(0),
-        le_u32(0),
+        le_u32(payload.group_id),
         le_u32(payload.packet_id),
         le_u32(0),
         le_u32(binary_payload.len() as u32),
@@ -84,6 +75,7 @@ fn bcudp_data<'a, W: 'a + Write>(
 #[cfg(test)]
 mod tests {
     use crate::bcudp::model::*;
+    use bytes::BytesMut;
     use env_logger::Env;
 
     fn init() {
@@ -99,9 +91,9 @@ mod tests {
 
         let sample = include_bytes!("samples/udp_negotiate_disc.bin");
 
-        let msg = BcUdp::deserialize(&sample[..]).unwrap();
-        let ser_buf = msg.serialize(vec![]).unwrap();
-        let msg2 = BcUdp::deserialize::<&[u8]>(ser_buf.as_ref()).unwrap();
+        let msg = BcUdp::deserialize(&mut BytesMut::from(&sample[..])).unwrap();
+        let ser_buf: Vec<u8> = msg.serialize(vec![]).unwrap();
+        let msg2 = BcUdp::deserialize(&mut BytesMut::from(ser_buf.as_slice())).unwrap();
         assert_eq!(msg, msg2);
         // Raw samples don't quite match exactly
         // because the yaserde for xml puts spaces and new lines in different places
@@ -116,9 +108,9 @@ mod tests {
 
         let sample = include_bytes!("samples/udp_negotiate_camt.bin");
 
-        let msg = BcUdp::deserialize(&sample[..]).unwrap();
+        let msg = BcUdp::deserialize(&mut BytesMut::from(&sample[..])).unwrap();
         let ser_buf = msg.serialize(vec![]).unwrap();
-        let msg2 = BcUdp::deserialize::<&[u8]>(ser_buf.as_ref()).unwrap();
+        let msg2 = BcUdp::deserialize(&mut BytesMut::from(ser_buf.as_slice())).unwrap();
         assert_eq!(msg, msg2);
         // Raw samples don't quite match exactly
         // because the yaserde for xml puts spaces and new lines in different places
@@ -133,9 +125,9 @@ mod tests {
 
         let sample = include_bytes!("samples/udp_negotiate_clientt.bin");
 
-        let msg = BcUdp::deserialize(&sample[..]).unwrap();
+        let msg = BcUdp::deserialize(&mut BytesMut::from(&sample[..])).unwrap();
         let ser_buf = msg.serialize(vec![]).unwrap();
-        let msg2 = BcUdp::deserialize::<&[u8]>(ser_buf.as_ref()).unwrap();
+        let msg2 = BcUdp::deserialize(&mut BytesMut::from(ser_buf.as_slice())).unwrap();
         assert_eq!(msg, msg2);
         // Raw samples don't quite match exactly
         // because the yaserde for xml puts spaces and new lines in different places
@@ -150,9 +142,9 @@ mod tests {
 
         let sample = include_bytes!("samples/udp_negotiate_camcfm.bin");
 
-        let msg = BcUdp::deserialize(&sample[..]).unwrap();
+        let msg = BcUdp::deserialize(&mut BytesMut::from(&sample[..])).unwrap();
         let ser_buf = msg.serialize(vec![]).unwrap();
-        let msg2 = BcUdp::deserialize::<&[u8]>(ser_buf.as_ref()).unwrap();
+        let msg2 = BcUdp::deserialize(&mut BytesMut::from(ser_buf.as_slice())).unwrap();
         assert_eq!(msg, msg2);
         // Raw samples don't quite match exactly
         // because the yaserde for xml puts spaces and new lines in different places
@@ -167,9 +159,9 @@ mod tests {
 
         let sample = include_bytes!("samples/udp_ack.bin");
 
-        let msg = BcUdp::deserialize(&sample[..]).unwrap();
+        let msg = BcUdp::deserialize(&mut BytesMut::from(&sample[..])).unwrap();
         let ser_buf = msg.serialize(vec![]).unwrap();
-        let msg2 = BcUdp::deserialize::<&[u8]>(ser_buf.as_ref()).unwrap();
+        let msg2 = BcUdp::deserialize(&mut BytesMut::from(ser_buf.as_slice())).unwrap();
         assert_eq!(msg, msg2);
         assert_eq!(&sample[..], ser_buf.as_slice());
     }
@@ -181,9 +173,9 @@ mod tests {
 
         let sample = include_bytes!("samples/udp_data.bin");
 
-        let msg = BcUdp::deserialize(&sample[..]).unwrap();
+        let msg = BcUdp::deserialize(&mut BytesMut::from(&sample[..])).unwrap();
         let ser_buf = msg.serialize(vec![]).unwrap();
-        let msg2 = BcUdp::deserialize::<&[u8]>(ser_buf.as_ref()).unwrap();
+        let msg2 = BcUdp::deserialize(&mut BytesMut::from(ser_buf.as_slice())).unwrap();
         assert_eq!(msg, msg2);
         assert_eq!(&sample[..], ser_buf.as_slice());
     }

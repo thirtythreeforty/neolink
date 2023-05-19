@@ -3,7 +3,7 @@
 
 use std::io::{Read, Write};
 // YaSerde is currently naming the traits and the derive macros identically
-use yaserde::{ser::Config, YaDeserialize, YaSerialize};
+use yaserde::ser::Config;
 use yaserde_derive::{YaDeserialize, YaSerialize};
 
 #[cfg(test)]
@@ -82,6 +82,15 @@ pub struct BcXml {
     /// Received when the floodlight status is updated
     #[yaserde(rename = "FloodlightStatusList")]
     pub floodlight_status_list: Option<FloodlightStatusList>,
+    /// Recieved on login/low battery events
+    #[yaserde(rename = "BatteryList")]
+    pub battery_list: Option<BatteryList>,
+    /// Recieved on request for battery info
+    #[yaserde(rename = "BatteryInfo")]
+    pub battery_info: Option<BatteryInfo>,
+    /// Recieved on request for a users persmissions/capabilitoes
+    #[yaserde(rename = "AbilityInfo")]
+    pub ability_info: Option<AbilityInfo>,
 }
 
 impl BcXml {
@@ -238,6 +247,9 @@ pub struct Extension {
     /// The channel ID. This is usually `0` unless using an NVR
     #[yaserde(rename = "channelId")]
     pub channel_id: Option<u8>,
+    /// The rfID used in the PIR
+    #[yaserde(rename = "rfId")]
+    pub rf_id: Option<u8>,
 }
 
 impl Default for Extension {
@@ -248,6 +260,7 @@ impl Default for Extension {
             user_name: None,
             token: None,
             channel_id: None,
+            rf_id: None,
         }
     }
 }
@@ -377,7 +390,54 @@ pub struct RfAlarmCfg {
     /// reduce False alarm boolean
     pub reduceFalseAlarm: u8,
     /// XML time block for all week days
-    pub timeBlockList: String,
+    #[yaserde(rename = "timeBlockList")]
+    pub time_block_list: TimeBlockList,
+    /// The alarm handle to attach to this Rf
+    #[yaserde(rename = "alarmHandle")]
+    pub alarm_handle: AlarmHandle,
+}
+
+/// TimeBlockList XML
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[yaserde(rename = "timeBlockList")]
+pub struct TimeBlockList {
+    /// List of time block entries which disable/enable the PIR at a time
+    #[yaserde(rename = "timeBlock")]
+    pub time_block: Vec<TimeBlock>,
+}
+
+/// TimeBlock XML Used to set the time to enable/disable PIR dectection
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[yaserde(rename = "timeBlock")]
+pub struct TimeBlock {
+    /// Whether to enable or disable for this time block
+    pub enable: u8,
+    /// The day of the week for this block
+    pub weekDay: String,
+    /// Time to start this block
+    #[yaserde(rename = "beginHour")]
+    pub begin_hour: u8,
+    /// Time to end this block
+    #[yaserde(rename = "endHour")]
+    pub end_hour: u8,
+}
+
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+/// AlarmHandle Xml
+pub struct AlarmHandle {
+    /// Items in the alarm handle
+    pub item: Vec<AlarmHandleItem>,
+}
+
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+/// An item in the alarm handle
+#[yaserde(rename = "item")]
+pub struct AlarmHandleItem {
+    /// The channel ID
+    pub channel: u8,
+    /// The handle type: Known values, comma seperated list of snap,rec,push
+    #[yaserde(rename = "handleType")]
+    pub handle_type: String,
 }
 
 /// TalkConfig xml
@@ -508,6 +568,97 @@ pub struct PtzControl {
     pub speed: f32,
     /// The direction to transverse. Known directions: "right"
     pub command: String,
+}
+
+/// A list of battery infos. This message is sent from the camera as
+/// an event
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct BatteryList {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Battery info items
+    #[yaserde(rename = "BatteryInfo")]
+    pub battery_info: Vec<BatteryInfo>,
+}
+
+/// The individual battery info
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct BatteryInfo {
+    /// The channel the for the camera usually 0
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// Charge status known values, "chargeComplete", "charging", "none",
+    #[yaserde(rename = "chargeStatus")]
+    pub charge_status: String,
+    /// Status of charging port known values: "solarPanel"
+    #[yaserde(rename = "adapterStatus")]
+    pub adapter_status: String,
+    /// Voltage
+    pub voltage: i32,
+    /// Current
+    pub current: i32,
+    /// Temperture
+    pub temperature: i32,
+    /// % charge from 0-100
+    #[yaserde(rename = "batteryPercent")]
+    pub battery_percent: u32,
+    /// Low power flag. Known values 0, 1 (0=false)
+    #[yaserde(rename = "lowPower")]
+    pub low_power: u32,
+    /// Battery version info: Known values 2
+    #[yaserde(rename = "batteryVersion")]
+    pub battery_version: u32,
+}
+
+/// The ability battery info
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AbilityInfo {
+    /// Username with this ability
+    #[yaserde(rename = "userName")]
+    pub username: String,
+    /// System permissions
+    pub system: Option<AbilityInfoToken>,
+    /// Network permissions
+    pub network: Option<AbilityInfoToken>,
+    /// Alarm permissions
+    pub alarm: Option<AbilityInfoToken>,
+    /// Image permissions
+    pub image: Option<AbilityInfoToken>,
+    /// Video permissions
+    pub video: Option<AbilityInfoToken>,
+    /// Secutiry permissions
+    pub security: Option<AbilityInfoToken>,
+    /// Replay permissions
+    pub replay: Option<AbilityInfoToken>,
+    /// PTZ permissions
+    #[yaserde(rename = "PTZ")]
+    pub ptz: Option<AbilityInfoToken>,
+    /// IO permissions
+    #[yaserde(rename = "IO")]
+    pub io: Option<AbilityInfoToken>,
+    /// Streaming permissions
+    pub streaming: Option<AbilityInfoToken>,
+}
+
+/// Ability info for system token
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AbilityInfoToken {
+    /// Submodule for this ability info token
+    #[yaserde(rename = "subModule")]
+    pub sub_module: Vec<AbilityInfoSubModule>,
+}
+
+/// Token submodule infomation
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[yaserde(rename = "subModule")]
+pub struct AbilityInfoSubModule {
+    /// The channel the for the camera usually 0
+    #[yaserde(rename = "channelId")]
+    pub channel_id: Option<u8>,
+    /// The comma seperated list of permissions like this: `general_rw, norm_rw, version_ro`
+    #[yaserde(rename = "abilityValue")]
+    pub ability_value: String,
 }
 
 /// Convience function to return the xml version used throughout the library

@@ -1,12 +1,13 @@
-use super::{BcCamera, Error, Result, RX_TIMEOUT};
+use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
 
 impl BcCamera {
     /// Get the [LedState] xml which contains the LED status of the camera
-    pub fn get_ledstate(&self) -> Result<LedState> {
+    pub async fn get_ledstate(&self) -> Result<LedState> {
+        self.has_ability_ro("ledState").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_get = connection.subscribe(msg_num)?;
+        let mut sub_get = connection.subscribe(msg_num).await?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_GET_LED_STATUS,
@@ -25,8 +26,8 @@ impl BcCamera {
             }),
         };
 
-        sub_get.send(get)?;
-        let msg = sub_get.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_get.send(get).await?;
+        let msg = sub_get.recv().await?;
         if msg.meta.response_code != 200 {
             return Err(Error::CameraServiceUnavaliable);
         }
@@ -43,18 +44,19 @@ impl BcCamera {
             Ok(ledstate)
         } else {
             Err(Error::UnintelligibleReply {
-                reply: Box::new(msg),
+                reply: std::sync::Arc::new(Box::new(msg)),
                 why: "Expected LEDState xml but it was not recieved",
             })
         }
     }
 
     /// Set the led lights using the [LedState] xml
-    pub fn set_ledstate(&self, mut led_state: LedState) -> Result<()> {
+    pub async fn set_ledstate(&self, mut led_state: LedState) -> Result<()> {
+        self.has_ability_rw("ledState").await?;
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let sub_set = connection.subscribe(msg_num)?;
+        let mut sub_set = connection.subscribe(msg_num).await?;
 
         // led_version is a field recieved from the camera but not sent
         // we set to None to ensure we don't send it to the camera
@@ -80,8 +82,8 @@ impl BcCamera {
             }),
         };
 
-        sub_set.send(get)?;
-        let msg = sub_set.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_set.send(get).await?;
+        let msg = sub_set.recv().await?;
 
         if let BcMeta {
             response_code: 200, ..
@@ -90,7 +92,7 @@ impl BcCamera {
             Ok(())
         } else {
             Err(Error::UnintelligibleReply {
-                reply: Box::new(msg),
+                reply: std::sync::Arc::new(Box::new(msg)),
                 why: "The camera did not except the LEDState xml",
             })
         }
@@ -100,14 +102,14 @@ impl BcCamera {
     ///
     /// This is for the RED IR lights that can come on automaitcally
     /// during low light.
-    pub fn irled_light_set(&self, state: LightState) -> Result<()> {
-        let mut led_state = self.get_ledstate()?;
+    pub async fn irled_light_set(&self, state: LightState) -> Result<()> {
+        let mut led_state = self.get_ledstate().await?;
         led_state.state = match state {
             LightState::On => "open".to_string(),
             LightState::Off => "close".to_string(),
             LightState::Auto => "auto".to_string(),
         };
-        self.set_ledstate(led_state)?;
+        self.set_ledstate(led_state).await?;
         Ok(())
     }
 
@@ -115,13 +117,13 @@ impl BcCamera {
     /// True is on and false is off
     ///
     /// This is for the little blue on light of some camera
-    pub fn led_light_set(&self, state: bool) -> Result<()> {
-        let mut led_state = self.get_ledstate()?;
+    pub async fn led_light_set(&self, state: bool) -> Result<()> {
+        let mut led_state = self.get_ledstate().await?;
         led_state.light_state = match state {
             true => "open".to_string(),
             false => "close".to_string(),
         };
-        self.set_ledstate(led_state)?;
+        self.set_ledstate(led_state).await?;
         Ok(())
     }
 }

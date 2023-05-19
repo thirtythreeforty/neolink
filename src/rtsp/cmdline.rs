@@ -1,5 +1,5 @@
-use structopt::StructOpt;
+use clap::Parser;
 
 /// The rtsp command will serve all cameras in the config over the rtsp protocol
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct Opt {}

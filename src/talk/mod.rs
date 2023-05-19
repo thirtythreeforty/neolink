@@ -24,12 +24,13 @@ pub(crate) use cmdline::Opt;
 /// Entry point for the talk subcommand
 ///
 /// Opt is the command line options
-pub(crate) fn main(opt: Opt, config: Config) -> Result<()> {
+pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
     let camera_config = find_camera_by_name(&config, &opt.camera)?;
-    let camera = connect_and_login(camera_config)?;
+    let camera = connect_and_login(camera_config).await?;
 
     let talk_ability = camera
         .talk_ability()
+        .await
         .with_context(|| format!("Camera {} does not support talk", camera_config.name))?;
     if talk_ability.duplex_list.is_empty()
         || talk_ability.audio_stream_mode_list.is_empty()
@@ -82,6 +83,7 @@ pub(crate) fn main(opt: Opt, config: Config) -> Result<()> {
 
     camera
         .talk_stream(rx, talk_config)
+        .await
         .context("Talk stream ended early")?;
 
     Ok(())

@@ -1,3 +1,4 @@
+#![warn(unused_crate_dependencies)]
 #![warn(missing_docs)]
 //! # Neolink-Core
 //!
@@ -38,4 +39,6 @@ pub mod bcudp;
 /// Most commands will either return their `Ok(result)` or this `Err(Error)`
 pub use bc_protocol::Error;
 
-pub(crate) const RX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+pub(crate) use bc_protocol::{Credentials, Result};
+
+pub(crate) type NomErrorType<'a> = nom::error::VerboseError<&'a [u8]>;

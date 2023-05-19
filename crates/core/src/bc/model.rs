@@ -1,6 +1,7 @@
+use crate::Credentials;
+
 pub use super::xml::{BcPayloads, BcXml, Extension};
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
 
 pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
 
@@ -26,14 +27,12 @@ pub const MSG_ID_MOTION_REQUEST: u32 = 31;
 pub const MSG_ID_MOTION: u32 = 33;
 /// Version messages have this ID
 pub const MSG_ID_VERSION: u32 = 80;
-/// Getting PIR status messages have this ID
-pub const MSG_ID_GET_PIR_ALARM: u32 = 212;
-/// Setting PIR status messages have this ID
-pub const MSG_ID_START_PIR_ALARM: u32 = 213;
 /// Ping messages have this ID
 pub const MSG_ID_PING: u32 = 93;
 /// General system info messages have this ID
 pub const MSG_ID_GET_GENERAL: u32 = 104;
+/// Used to get the abilities of a user
+pub const MSG_ID_ABILITY_INFO: u32 = 151;
 /// Setting general system info (clock mostly) messages have this ID
 pub const MSG_ID_SET_GENERAL: u32 = 105;
 /// Will send the talk config for talk back data to follow this msg
@@ -44,8 +43,16 @@ pub const MSG_ID_TALK: u32 = 202;
 pub const MSG_ID_GET_LED_STATUS: u32 = 208;
 /// Setting the LED status is done with this ID
 pub const MSG_ID_SET_LED_STATUS: u32 = 209;
+/// Getting PIR status messages have this ID
+pub const MSG_ID_GET_PIR_ALARM: u32 = 212;
+/// Setting PIR status messages have this ID
+pub const MSG_ID_START_PIR_ALARM: u32 = 213;
 /// UDP Keep alive
 pub const MSG_ID_UDP_KEEP_ALIVE: u32 = 234;
+/// Battery message initiaed by the camera
+pub const MSG_ID_BATTERY_INFO_LIST: u32 = 252;
+/// Battery message initiaed by the client
+pub const MSG_ID_BATTERY_INFO: u32 = 253;
 /// Manual Floodlight Control
 pub const MSG_ID_FLOODLIGHT_MANUAL: u32 = 288;
 /// Floodlight status report from the camera
@@ -172,7 +179,7 @@ pub(super) struct BcSendInfo {
 /// These are the encyption modes supported by the camera
 ///
 /// The mode is negotiated during login
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum EncryptionProtocol {
     /// Older camera use no encryption
     Unencrypted,
@@ -180,15 +187,14 @@ pub enum EncryptionProtocol {
     BCEncrypt,
     /// Latest cameras/firmwares use Aes with the key derived from
     /// the camera's password and the negotiated NONCE
-    Aes(Option<[u8; 16]>),
+    Aes([u8; 16]),
 }
 
 #[derive(Debug)]
 pub(crate) struct BcContext {
-    pub(super) in_bin_mode: HashSet<u16>,
-    // Arc<Mutex<EncryptionProtocol>> because it is shared between context
-    // and connection for deserialisation and serialistion respectivly
-    pub(super) encryption_protocol: Arc<Mutex<EncryptionProtocol>>,
+    pub(crate) credentials: Credentials,
+    pub(crate) in_bin_mode: HashSet<u16>,
+    pub(crate) encryption_protocol: EncryptionProtocol,
 }
 
 impl Bc {
@@ -225,19 +231,38 @@ impl Bc {
 }
 
 impl BcContext {
-    pub(crate) fn new(encryption_protocol: Arc<Mutex<EncryptionProtocol>>) -> BcContext {
+    pub(crate) fn new(credentials: Credentials) -> BcContext {
         BcContext {
+            credentials,
+            in_bin_mode: HashSet::new(),
+            encryption_protocol: EncryptionProtocol::Unencrypted,
+        }
+    }
+
+    #[allow(unused)] // Used in tests
+    pub(crate) fn new_with_encryption(encryption_protocol: EncryptionProtocol) -> BcContext {
+        BcContext {
+            credentials: Default::default(),
             in_bin_mode: HashSet::new(),
             encryption_protocol,
         }
     }
 
     pub(crate) fn set_encrypted(&mut self, encryption_protocol: EncryptionProtocol) {
-        *(self.encryption_protocol.lock().unwrap()) = encryption_protocol;
+        self.encryption_protocol = encryption_protocol;
     }
 
-    pub(crate) fn get_encrypted(&self) -> EncryptionProtocol {
-        (*(self.encryption_protocol.lock().unwrap())).clone()
+    pub(crate) fn get_encrypted(&self) -> &EncryptionProtocol {
+        &self.encryption_protocol
+    }
+
+    pub(crate) fn binary_on(&mut self, msg_id: u16) {
+        self.in_bin_mode.insert(msg_id);
+    }
+
+    #[allow(unused)] // Used in tests
+    pub(crate) fn binary_off(&mut self, msg_id: u16) {
+        self.in_bin_mode.remove(&msg_id);
     }
 }
 

@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use structopt::StructOpt;
+use clap::Parser;
 
 fn onoff_parse(src: &str) -> Result<bool> {
     match src {
@@ -13,11 +13,11 @@ fn onoff_parse(src: &str) -> Result<bool> {
 }
 
 /// The status-light command will control the blue status light on the camera
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct Opt {
     /// The name of the camera to change the lights of. Must be a name in the config
     pub camera: String,
     /// Whether to turn the light on or off
-    #[structopt(parse(try_from_str = onoff_parse), name = "on|off")]
+    #[arg(value_parser = onoff_parse, name = "on|off")]
     pub on: bool,
 }

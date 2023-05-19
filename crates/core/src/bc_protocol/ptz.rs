@@ -1,4 +1,4 @@
-use super::{BcCamera, Error, Result, RX_TIMEOUT};
+use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
 
 /// Directions used for Ptz
@@ -15,14 +15,17 @@ pub enum Direction {
     In,
     /// To zoom the camera Out (may be done with cropping depending on camera model)
     Out,
+    /// To stop currently active PTZ command
+    Stop,
 }
 
 impl BcCamera {
     /// Send a PTZ message to the camera
-    pub fn send_ptz(&self, direction: Direction, amount: f32) -> Result<()> {
+    pub async fn send_ptz(&self, direction: Direction, amount: f32) -> Result<()> {
+        self.has_ability_rw("control").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_set = connection.subscribe(msg_num)?;
+        let mut sub_set = connection.subscribe(msg_num).await?;
 
         let direction_str = match direction {
             Direction::Up => "up",
@@ -30,11 +33,12 @@ impl BcCamera {
             Direction::Left => "left",
             Direction::Right => "right",
             Direction::In => {
-                unimplemented!()
+                todo!()
             }
             Direction::Out => {
-                unimplemented!()
+                todo!()
             }
+            Direction::Stop => "stop",
         }
         .to_string();
         let send = Bc {
@@ -63,8 +67,8 @@ impl BcCamera {
             }),
         };
 
-        sub_set.send(send)?;
-        let msg = sub_set.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_set.send(send).await?;
+        let msg = sub_set.recv().await?;
 
         if let BcMeta {
             response_code: 200, ..
@@ -73,7 +77,7 @@ impl BcCamera {
             Ok(())
         } else {
             Err(Error::UnintelligibleReply {
-                reply: Box::new(msg),
+                reply: std::sync::Arc::new(Box::new(msg)),
                 why: "The camera did not accept the PtzControl xml",
             })
         }

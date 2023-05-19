@@ -17,3 +17,11 @@
 
 # We prefer to keep .vscode files outside the repo
 .vscode/
+# MacOS
+.DS_Store
+._.DS_Store
+**/.DS_Store
+**/._.DS_Store
+
+# The token file for the FCM tests
+token.toml

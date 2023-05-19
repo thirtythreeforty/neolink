@@ -1,6 +1,9 @@
-use super::{BcCamera, Error, Result, RX_TIMEOUT};
+use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
-use time::{date, Date, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
+use std::convert::{TryFrom, TryInto};
+use time::{
+    macros::date, parsing::Parsed, Date, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset,
+};
 
 impl BcCamera {
     ///
@@ -10,10 +13,11 @@ impl BcCamera {
     ///
     /// returns either an error or an option with the offsetted date time
     ///
-    pub fn get_time(&self) -> Result<Option<OffsetDateTime>> {
+    pub async fn get_time(&self) -> Result<Option<OffsetDateTime>> {
+        self.has_ability_ro("general").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_get_general = connection.subscribe(msg_num)?;
+        let mut sub_get_general = connection.subscribe(msg_num).await?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_GET_GENERAL,
@@ -26,8 +30,8 @@ impl BcCamera {
             body: BcBody::ModernMsg(ModernMsg::default()),
         };
 
-        sub_get_general.send(get)?;
-        let msg = sub_get_general.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_get_general.send(get).await?;
+        let msg = sub_get_general.recv().await?;
         if msg.meta.response_code != 200 {
             return Err(Error::CameraServiceUnavaliable);
         }
@@ -56,7 +60,7 @@ impl BcCamera {
                     Ok(dt) => dt,
                     Err(_) => {
                         return Err(Error::UnintelligibleReply {
-                            reply: Box::new(msg),
+                            reply: std::sync::Arc::new(Box::new(msg)),
                             why: "Could not parse date",
                         })
                     }
@@ -77,7 +81,7 @@ impl BcCamera {
             }
         } else {
             Err(Error::UnintelligibleReply {
-                reply: Box::new(msg),
+                reply: std::sync::Arc::new(Box::new(msg)),
                 why: "Reply did not contain SystemGeneral with all time fields filled out",
             })
         }
@@ -94,10 +98,11 @@ impl BcCamera {
     ///
     /// returns Ok(()) or error
     ///
-    pub fn set_time(&self, timestamp: OffsetDateTime) -> Result<()> {
+    pub async fn set_time(&self, timestamp: OffsetDateTime) -> Result<()> {
+        self.has_ability_rw("general").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_set_general = connection.subscribe(msg_num)?;
+        let mut sub_set_general = connection.subscribe(msg_num).await?;
         let set = Bc::new_from_xml(
             BcMeta {
                 msg_id: MSG_ID_SET_GENERAL,
@@ -113,9 +118,9 @@ impl BcCamera {
                     //osd_format: Some("MDY".to_string()),
                     time_format: Some(0),
                     // Reolink uses positive seconds to indicate a negative UTC offset:
-                    time_zone: Some(-timestamp.offset().as_seconds()),
+                    time_zone: Some(-timestamp.offset().whole_seconds()),
                     year: Some(timestamp.year()),
-                    month: Some(timestamp.month()),
+                    month: Some(timestamp.month().into()),
                     day: Some(timestamp.day()),
                     hour: Some(timestamp.hour()),
                     minute: Some(timestamp.minute()),
@@ -126,8 +131,18 @@ impl BcCamera {
             },
         );
 
-        sub_set_general.send(set)?;
-        let _ = sub_set_general.rx.recv_timeout(RX_TIMEOUT)?;
+        sub_set_general.send(set).await?;
+        let msg = sub_set_general.recv().await?;
+        if let BcMeta {
+            response_code: 200, ..
+        } = msg.meta
+        {
+        } else {
+            return Err(Error::UnintelligibleReply {
+                reply: std::sync::Arc::new(Box::new(msg)),
+                why: "The camera did not accept the set time command.",
+            });
+        }
 
         Ok(())
     }
@@ -141,14 +156,26 @@ fn try_build_timestamp(
     hour: u8,
     minute: u8,
     second: u8,
-) -> std::result::Result<OffsetDateTime, time::ComponentRangeError> {
-    let date = Date::try_from_ymd(year, month, day)?;
-    let time = Time::try_from_hms(hour, minute, second)?;
-    let offset = if timezone > 0 {
-        UtcOffset::west_seconds(timezone as u32)
-    } else {
-        UtcOffset::east_seconds(-timezone as u32)
-    };
+) -> std::result::Result<OffsetDateTime, crate::Error> {
+    let date = Date::try_from(
+        Parsed::new()
+            .with_year(year)
+            .ok_or(Error::TimeParse)?
+            .with_month(month.try_into()?)
+            .ok_or(Error::TimeParse)?
+            .with_day(day.try_into()?)
+            .ok_or(Error::TimeParse)?,
+    )?;
+    let time = Time::try_from(
+        Parsed::new()
+            .with_hour_24(hour)
+            .ok_or(Error::TimeParse)?
+            .with_minute(minute)
+            .ok_or(Error::TimeParse)?
+            .with_second(second)
+            .ok_or(Error::TimeParse)?,
+    )?;
+    let offset = UtcOffset::from_whole_seconds(timezone)?;
 
     Ok(PrimitiveDateTime::new(date, time).assume_offset(offset))
 }

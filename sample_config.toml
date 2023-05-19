@@ -51,6 +51,46 @@ address = "192.168.1.187:9000"
 # If your device has user connection limits try a single stream instead.
 # stream = "mainStream"
 
+# By default neolink will use any means to connect to the camera
+# from a UID
+# This include relaying via reolink servers
+# This variable `discovery` controls the method of UID discovery
+# - Possible values
+# "relay" # Any means including connecting and transmitting through reolink
+# "map" # Register our local ip address with reolink and ask the camera to connect to us but don't relay data through reolink
+# "remote" # Register our local ip address with reolink but only permit same network connections (useful if broadcast is not possible)
+# "local" # Do not contact reolink servers at all. Rely soley on local UDP broadcast based discovery
+#
+# discovery = "relay"
+
+# Certain types of camera emit status messages (such as battery levels)
+#
+# By default we hide these status messages from the user but you can instead requst that
+# they be printed to stdout using print_format
+#
+# Valid values are:
+# - None
+# - Human
+# - Xml
+#
+# print_format = "None"
+
+# Internally neolink uses a buffer to improve delivery of frames at their actual times
+# A large buffer can work even for large interupts in the connection with the camera
+# A small buffer will reduce the latency introduced
+# buffer_size: 100
+
+# Over long periods of time the camera buffer can exhaust with no means of recovery
+# to combat this a time stretching stratery is employed where the stream is slowed
+# as the buffer is exhausted and sped up when full
+# this can keep the camera and rtsp streams in sync and reduce buffer exhaustions
+#
+# HOWEVER if there is real latency issues (such as too high a bitrate)
+# then smoothing can result in a stream appearing in slow motion
+#
+# you can disable and enable this feature here
+# use_smoothing: true
+
 
 [[cameras]]
 name = "storage shed"

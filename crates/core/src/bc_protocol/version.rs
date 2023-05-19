@@ -1,12 +1,13 @@
-use super::{BcCamera, Error, Result, RX_TIMEOUT};
+use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
 
 impl BcCamera {
     /// Request the [VersionInfo] xml
-    pub fn version(&self) -> Result<VersionInfo> {
+    pub async fn version(&self) -> Result<VersionInfo> {
+        self.has_ability_ro("version").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let sub_version = connection.subscribe(msg_num)?;
+        let mut sub_version = connection.subscribe(msg_num).await?;
 
         let version = Bc {
             meta: BcMeta {
@@ -22,9 +23,9 @@ impl BcCamera {
             }),
         };
 
-        sub_version.send(version)?;
+        sub_version.send(version).await?;
 
-        let modern_reply = sub_version.rx.recv_timeout(RX_TIMEOUT)?;
+        let modern_reply = sub_version.recv().await?;
         if modern_reply.meta.response_code != 200 {
             return Err(Error::CameraServiceUnavaliable);
         }
@@ -42,7 +43,7 @@ impl BcCamera {
             }
             _ => {
                 return Err(Error::UnintelligibleReply {
-                    reply: Box::new(modern_reply),
+                    reply: std::sync::Arc::new(Box::new(modern_reply)),
                     why: "Expected a VersionInfo message",
                 })
             }
