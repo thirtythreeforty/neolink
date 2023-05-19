@@ -145,6 +145,15 @@ In the `[[cameras]]` section of the toml.
 Possible values are `local`, `remote`, `map`, `relay` later values implictly
 enable prior methods.
 
+#### Cellular
+
+Cellular cameras should select `"cellular"` which only enables `map` and
+`relay` since `local` and `remote` will always fail
+
+```toml
+discovery = "cellular"
+```
+
 ### MQTT
 
 To use mqtt you will to adjust your config file as such:

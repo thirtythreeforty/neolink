@@ -38,6 +38,10 @@ pub enum DiscoveryMethods {
     /// **This also enabled `Local`, `Map` and `Remote` discovery**
     #[serde(alias = "relay")]
     Relay,
+    /// Cellular camera only support relay and map, by choosing this option
+    /// only those are tried
+    #[serde(alias = "cellular")]
+    Cellular,
     #[doc(hidden)]
     #[serde(alias = "debug")]
     /// Used for debugging it is set to whatever the dev is currently testing

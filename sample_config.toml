@@ -61,6 +61,8 @@ address = "192.168.1.187:9000"
 # "remote" # Register our local ip address with reolink but only permit same network connections (useful if broadcast is not possible)
 # "local" # Do not contact reolink servers at all. Rely soley on local UDP broadcast based discovery
 #
+# "cellular" # Cellular camera only support Relay and Map to speed up connecting to them this option will skip the local/remote
+#
 # discovery = "relay"
 
 # Certain types of camera emit status messages (such as battery levels)
