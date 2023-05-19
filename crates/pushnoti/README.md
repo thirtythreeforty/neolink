@@ -202,3 +202,30 @@ We can use the
 `https://pushx.reolink.com/listeners/<clientID_FROM_PushInfo>/devices`
 api to confirm if our client is regeristed for push notifications.
 Which was the next thing to do once we passed the token onto the camera
+
+---
+
+On motion reolink will send the following json
+
+```json
+{
+    "data": {
+        "SRVTIME": "2023-05-19T08:07:03.566Z",
+        "ALMNAME": "Motion Alert from Cam01",
+        "sound": "push.wav",
+        "CHNAME": "Cam0",
+        "messageType": "alarm",
+        "DEVNAME": "Cam01",
+        "pushVersion": "v1.1",
+        "UID": "REDACTED",
+        "ALMTYPE": "MD",
+        "ALMCHN": "1",
+        "alert": "Motion Alert from Cam01",
+        "title": "Camera Alert"
+    },
+    "from": "743639030586",
+    "priority": "normal",
+    "notification": { "title": "Camera Alert", "body": "Motion Alert from Cam01" },
+    "fcmMessageId": "REDACTED"
+}
+```

@@ -10,13 +10,13 @@ pub enum PhoneType {
     /// Specify that this is an andriod push notfication
     ///
     /// In this case the token must firebase cloud messaging token
-    Andriod,
+    Android,
 }
 
 impl BcCamera {
     /// Convenience method for andriod of `[send_pushinfo]`
-    pub async fn send_pushinfo_andriod(&self, token: &str, client_id: &str) -> Result<()> {
-        self.send_pushinfo(token, client_id, PhoneType::Andriod)
+    pub async fn send_pushinfo_android(&self, token: &str, client_id: &str) -> Result<()> {
+        self.send_pushinfo(token, client_id, PhoneType::Android)
             .await
     }
     /// Convenience method for andriod of `[send_pushinfo]`
@@ -36,7 +36,7 @@ impl BcCamera {
 
         let phone_type_str = match phone_type {
             PhoneType::Ios => "reo_iphone",
-            PhoneType::Andriod => "reo_fcm",
+            PhoneType::Android => "reo_fcm",
         };
 
         let msg = Bc {

@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     info!("registration.fcm_token: {}", registration.fcm_token);
     let uid = "6A5443E486511B0D828543445DC55A7D"; // MD5 Hash of "WHY_REOLINK"
     camera
-        .send_pushinfo_ios(&registration.fcm_token, uid)
+        .send_pushinfo_android(&registration.fcm_token, uid)
         .await?;
 
     info!("Listening");
@@ -75,7 +75,7 @@ async fn main() -> Result<()> {
             info!("Message JSON: {}", message.payload_json);
             info!("Persistent ID: {:?}", message.persistent_id);
         },
-        vec!["1:696841269229:ios:695029b18debb23e".to_owned()],
+        vec![],
     );
     listener.connect().await?;
     Ok(())
