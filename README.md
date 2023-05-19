@@ -240,7 +240,6 @@ passed by a script for processing.
 
 [Docker](https://hub.docker.com/r/quantumentangledandy/neolink) builds are also
 provided in multiple architectures. The latest tag tracks master while each
-
 branch gets it's own tag.
 
 ```bash

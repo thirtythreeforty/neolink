@@ -240,6 +240,17 @@ pub struct IpPort {
     pub port: u16,
 }
 
+impl std::convert::TryFrom<IpPort> for std::net::SocketAddr {
+    type Error = crate::Error;
+
+    fn try_from(src: IpPort) -> Result<Self, Self::Error> {
+        Ok(src
+            .ip
+            .parse::<std::net::IpAddr>()
+            .map(|ip| std::net::SocketAddr::new(ip, src.port))?)
+    }
+}
+
 /// C2R_C xml
 ///
 /// This is from client to the register reolink server
@@ -290,11 +301,11 @@ pub struct R2cT {
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct R2cCr {
     /// Dev camera location (actual local ip)
-    pub dev: IpPort,
+    pub dev: Option<IpPort>,
     /// Dmap camera location
-    pub dmap: IpPort,
+    pub dmap: Option<IpPort>,
     /// The location of the relay
-    pub relay: IpPort,
+    pub relay: Option<IpPort>,
     /// The nat type. Known values `"NULL"`
     pub nat: String,
     /// The camera SID

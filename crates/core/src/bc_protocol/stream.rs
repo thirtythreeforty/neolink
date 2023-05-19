@@ -91,7 +91,12 @@ impl BcCamera {
         mut buffer_size: usize,
         strict: bool,
     ) -> Result<StreamData> {
-        self.has_ability_rw("preview").await?;
+        if let Err(e) = self.has_ability_rw("preview").await {
+            if self.has_ability_ro("streamTable").await.is_err() {
+                return Err(e);
+            }
+        }
+
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
 
@@ -256,7 +261,11 @@ impl BcCamera {
 
     /// Stop a camera from sending more stream data.
     pub async fn stop_video(&self, stream: StreamKind) -> Result<()> {
-        self.has_ability_rw("preview").await?;
+        if let Err(e) = self.has_ability_rw("preview").await {
+            if self.has_ability_ro("streamTable").await.is_err() {
+                return Err(e);
+            }
+        }
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
         let mut sub_video = connection.subscribe(msg_num).await?;

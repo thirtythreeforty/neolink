@@ -18,6 +18,7 @@ use local_ip_address::local_ip;
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use std::collections::{btree_map::Entry, BTreeMap};
+use std::convert::TryInto;
 use std::net::{Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 use tokio::{
@@ -35,9 +36,9 @@ use tokio_util::udp::UdpFramed;
 #[derive(Debug, Clone)]
 struct RegisterResult {
     reg: SocketAddr,
-    dev: SocketAddr,
-    dmap: SocketAddr,
-    relay: SocketAddr,
+    dev: Option<SocketAddr>,
+    dmap: Option<SocketAddr>,
+    relay: Option<SocketAddr>,
     client_id: i32,
     sid: u32,
 }
@@ -463,17 +464,32 @@ impl Discoverer {
                                 }),
                             ..
                         },
-                } if !dev.ip.is_empty() && dev.port > 0 && rsp != -1 => {
+                } if (dev.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false)
+                    || dmap.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false)
+                    || relay.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false))
+                    && rsp != -1 =>
+                {
                     Some(Ok((sid, dev, dmap, relay)))
                 }
                 UdpDiscovery {
                     tid: _,
                     payload:
                         UdpXml {
-                            r2c_c_r: Some(R2cCr { dev, rsp, .. }),
+                            r2c_c_r:
+                                Some(R2cCr {
+                                    dev,
+                                    dmap,
+                                    relay,
+                                    rsp,
+                                    ..
+                                }),
                             ..
                         },
-                } if !dev.ip.is_empty() && dev.port > 0 && rsp == -1 => {
+                } if (dev.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false)
+                    || dmap.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false)
+                    || relay.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false))
+                    && rsp == -1 =>
+                {
                     Some(Err(Error::RegisterError))
                 }
                 _ => None,
@@ -484,9 +500,9 @@ impl Discoverer {
             reg: lookup.reg,
             sid,
             client_id,
-            dev: SocketAddr::new(dev.ip.parse()?, dev.port),
-            dmap: SocketAddr::new(dmap.ip.parse()?, dmap.port),
-            relay: SocketAddr::new(relay.ip.parse()?, relay.port),
+            dev: dev.and_then(|d| d.try_into().ok()),
+            dmap: dmap.and_then(|d| d.try_into().ok()),
+            relay: relay.and_then(|d| d.try_into().ok()),
         })
     }
 
@@ -521,7 +537,10 @@ impl Discoverer {
                         },
                     ) if cid == register_result.client_id
                         && &sid == register_sid
-                        && &addr == register_dmap
+                        && register_dmap
+                            .as_ref()
+                            .map(|dmap| &addr == dmap)
+                            .unwrap_or(false)
                         && &conn == "local" =>
                     {
                         Some((addr, tid, did))
@@ -635,7 +654,10 @@ impl Discoverer {
                         },
                     ) if cid == register_result.client_id
                         && &sid == register_sid
-                        && &addr == register_dmap
+                        && register_dmap
+                            .as_ref()
+                            .map(|dmap| &addr == dmap)
+                            .unwrap_or(false)
                         && &conn == "map" =>
                     {
                         Some((addr, tid, did))
@@ -724,7 +746,7 @@ impl Discoverer {
     ) -> Result<ConnectResult> {
         let tid = generate_tid();
 
-        let dev_addr = register_result.dev;
+        let dev_addr = register_result.dev.ok_or(Error::NoDev)?;
         let msg = UdpDiscovery {
             tid,
             payload: UdpXml {
@@ -789,6 +811,7 @@ impl Discoverer {
     ) -> Result<ConnectResult> {
         let tid = generate_tid();
 
+        let relay_addr = register_result.relay.ok_or(Error::NoDev)?;
         let msg = UdpDiscovery {
             tid,
             payload: UdpXml {
@@ -803,7 +826,7 @@ impl Discoverer {
         };
 
         let (final_addr, local_did) = self
-            .retry_send(msg, register_result.relay, |bc, addr| match bc {
+            .retry_send(msg, relay_addr, |bc, addr| match bc {
                 UdpDiscovery {
                     tid: _,
                     payload:
