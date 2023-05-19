@@ -1,6 +1,6 @@
 # Reolink Push Notifications
 
-This is the test crate to experient with REing the push notifications for a
+This is the test crate to experiment with RE-ing the push notifications for a
 camera
 
 The goal here is to connect to Google's firebase cloud messaging system (FCM)
@@ -62,8 +62,21 @@ Key information from this is
 
 Which we use to register for FCM
 
+---
+
+p.s. maybe some one can do something fun with the API
+key not sure what thats doing there since anyone can
+extract that.
+
+```xml
+<key>API_KEY</key>
+<string>AIzaSyAV5l5DbbAkYB5X61wgn81Lb2f7s1h-ANE</string>
+```
+
+---
+
 On andriod the details are little harder for me to extract (ios here). By
-extracing the apk with apktook I found the following:
+extracting the apk with apktook I found the following:
 
 ```xml
 <string name="gcm_defaultSenderId">743639030586</string>
@@ -74,13 +87,26 @@ extracing the apk with apktook I found the following:
 
 Where the key we need is `743639030586`
 
+To emulate the push recievier we use the `fcm-push-listener` crate. Which
+is a rust implementation of the good
+[RE work of Matthieu Lemoine.](https://medium.com/@MatthieuLemoine/my-journey-to-bring-web-push-support-to-node-and-electron-ce70eea1c0b0)
+hats off to you.
+
 We also need to send the PushInfo command to the camera with the token we get
 from FCM and some client ID. On IOS the token is the APNS number.
 
 The client ID is an all CAPS UID of hexadecimal of 33 chars. Not sure how
 these are generated but they seem to be unique to the device, perhaps a MD5 of
-something or some generated UID on app initial login. On data wipe the app
-generates a new UID
+something or some generated UID on app initial login.
+
+To experiment I did a data wipe on the reolink app and found it generates a new UID.
+I also found out that if you do this while you have Push Notifications turned on
+then you cannot turn them off anymore. To disable the push notifications you need
+the UID which I just wiped.... Fortunatly I saved before I wiped it so I could restore.
+p.d. If you every wipe your reolink data and need to stop the push notifications
+you can try doing manually using the API listed at the end.
+
+This is the data of the `PushInfo` command that is sent to the camera:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8" ?>
@@ -97,10 +123,10 @@ For ios the phonetype is `reo_iphone` which I observed live but for andriod
 no such luck.
 
 First I just tried `reo_andriod` but the camera replied with an error code.
-Which at least told me that I can test other string quickly by seeing if it
+Which at least told me that I can test other string quickly and see if it
 returns the error code.
 
-Next attempt was dumping the binaries from the apk and searching for a string
+Next thing to do was dumping the binaries from the apk and searching for a string
 like `reo_`
 
 ```bash
@@ -118,10 +144,51 @@ grep -Ria  "reo_" .
 ./smali/com/android/bc/component/BaseWebViewFragment.smali:    const-string v2, "REO_LANGUAGE="
 ```
 
-Interesting one was `MyPushAdapterImpl.smali:    const-string v0, "reo_fcm"`
-which suggested that it is `reo_fcm`
+The interesting one was `MyPushAdapterImpl.smali:    const-string v0, "reo_fcm"`
+which suggested that it is `reo_fcm` stuck that in and voilla
+no error messages from the camera.
 
-stuck that in and voilla no error messages from the camera.
+Now to compile the test app with all this info
+wait patiently for a motion event and...
+
+viola!
+
+Reolink was kinda enough to send this to my test app:
+
+```json
+{
+    "data": {
+        "SRVTIME": "2023-05-19T08:07:03.566Z",
+        "ALMNAME": "Motion Alert from Cam01",
+        "sound": "push.wav",
+        "CHNAME": "Cam0",
+        "messageType": "alarm",
+        "DEVNAME": "Cam01",
+        "pushVersion": "v1.1",
+        "UID": "REDACTED",
+        "ALMTYPE": "MD",
+        "ALMCHN": "1",
+        "alert": "Motion Alert from Cam01",
+        "title": "Camera Alert"
+    },
+    "from": "743639030586",
+    "priority": "normal",
+    "notification": { "title": "Camera Alert", "body": "Motion Alert from Cam01" },
+    "fcmMessageId": "REDACTED"
+}
+```
+
+There's no push notifiation for motion stop event but I can wait for this message
+then login and use normal motion detection to tell when it stops.
+
+Yay.... now to just add all this to actual neolink so we can save battery.....
+
+---
+
+While experimenting with the ios app, in addition to observing all the
+data send to the camera, I also looked at all https calls the app was making
+(mitmproxy). This showed a set of APIs that could be useful. Including the api
+for deleting a push notification.
 
 ---
 
@@ -198,34 +265,9 @@ Which returns
 
 ---
 
-We can use the
-`https://pushx.reolink.com/listeners/<clientID_FROM_PushInfo>/devices`
-api to confirm if our client is regeristed for push notifications.
-Which was the next thing to do once we passed the token onto the camera
+There's also a profile one that the app does when a new camera is added
+but I forgot to save the details of it.
 
----
-
-On motion reolink will send the following json
-
-```json
-{
-    "data": {
-        "SRVTIME": "2023-05-19T08:07:03.566Z",
-        "ALMNAME": "Motion Alert from Cam01",
-        "sound": "push.wav",
-        "CHNAME": "Cam0",
-        "messageType": "alarm",
-        "DEVNAME": "Cam01",
-        "pushVersion": "v1.1",
-        "UID": "REDACTED",
-        "ALMTYPE": "MD",
-        "ALMCHN": "1",
-        "alert": "Motion Alert from Cam01",
-        "title": "Camera Alert"
-    },
-    "from": "743639030586",
-    "priority": "normal",
-    "notification": { "title": "Camera Alert", "body": "Motion Alert from Cam01" },
-    "fcmMessageId": "REDACTED"
-}
-```
+It reports all the capabilities of the camera, such as it's model
+and its resolution etc. Could be useful to test if a UID is valid
+quickly
