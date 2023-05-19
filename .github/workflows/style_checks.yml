@@ -24,11 +24,11 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v3
-    - name: apt install gstreamer
+    - name: apt install gstreamer and deps
       run: |
         sudo apt update
         sudo apt install -y aptitude
-        sudo aptitude install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev
+        sudo aptitude install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev protobuf-compiler
     - name: Install nightly rust
       run: |
           rustup toolchain install nightly --component clippy
