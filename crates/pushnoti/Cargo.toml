@@ -1,0 +1,21 @@
+[package]
+name = "pushnoti"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.71"
+clap = { version = "4.2.2", features = ["derive", "cargo"] }
+env_logger = "0.10.0"
+fcm-push-listener =  "2.0.1"
+lazy_static = "1.4.0"
+log = { version = "0.4.17", features = [ "release_max_level_debug" ] }
+neolink_core = { path = "../core", version = "0.5" }
+regex = "1.8.1"
+serde = "1.0.163"
+tokio = { version = "1.28.1", features = ["full"] }
+toml = "0.7.3"
+validator = "0.16.0"
+validator_derive = "0.16.0"

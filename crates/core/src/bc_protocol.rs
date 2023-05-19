@@ -40,6 +40,7 @@ pub use login::MaxEncryption;
 pub use motion::{MotionData, MotionStatus};
 pub use pirstate::PirState;
 pub use ptz::Direction;
+pub use pushinfo::PhoneType;
 pub use resolution::*;
 use std::sync::Arc;
 pub use stream::{StreamData, StreamKind};
