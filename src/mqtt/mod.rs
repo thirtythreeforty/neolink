@@ -167,6 +167,28 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                             format!("Failed to post connect over MQTT for {}", camera_name)
                         })?;
                 }
+                Messages::FloodlightOn => {
+                    mqtt_sender_cam
+                        .send_message("status/floodlight", "on", true)
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "Failed to publish gloodlight on over MQTT for {}",
+                                camera_name
+                            )
+                        })?;
+                }
+                Messages::FloodlightOff => {
+                    mqtt_sender_cam
+                        .send_message("status/floodlight", "off", true)
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "Failed to publish gloodlight off over MQTT for {}",
+                                camera_name
+                            )
+                        })?;
+                }
                 Messages::MotionStop => {
                     mqtt_sender_cam
                         .send_message("status/motion", "off", true)

@@ -1,6 +1,7 @@
 use crate::config::CameraConfig;
 use crate::utils::AddressOrUid;
 use anyhow::{anyhow, Context, Result};
+use futures::stream::StreamExt;
 use log::*;
 use neolink_core::bc_protocol::{
     BcCamera, Direction as BcDirection, Error as BcError, LightState, MaxEncryption, MotionStatus,
@@ -9,10 +10,8 @@ use std::sync::Arc;
 use tokio::{
     sync::mpsc::{channel, Receiver, Sender},
     task::JoinSet,
-    time::sleep,
+    time::{interval, sleep, Duration},
 };
-
-use core::time::Duration;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum Messages {
@@ -205,6 +204,15 @@ impl EventCamThread {
             camera: arc_cam.clone(),
         };
 
+        let mut flight_thread = FloodlightThread {
+            tx: self.tx.clone(),
+            camera: arc_cam.clone(),
+        };
+
+        let mut keepalive_thread = KeepaliveThread {
+            camera: arc_cam.clone(),
+        };
+
         let mut message_handler = MessageHandler {
             rx: &mut self.rx,
             camera: arc_cam,
@@ -220,6 +228,30 @@ impl EventCamThread {
                     Err(e)
                 } else {
                     debug!("Normal finish on motion thread");
+                    Ok(())
+                }
+            },
+            val = async {
+                debug!("{}: Starting Pings", camera_config.name);
+                keepalive_thread.run().await
+            } => {
+                if let Err(e) = val {
+                    debug!("Ping thread aborted: {:?}", e);
+                    Err(e)
+                } else {
+                    debug!("Normal finish on Ping thread");
+                    Ok(())
+                }
+            },
+            val = async {
+                info!("{}: Listening to FloodLight Status", camera_config.name);
+                flight_thread.run().await
+            } => {
+                if let Err(e) = val {
+                    error!("FloodLight thread aborted: {:?}", e);
+                    Err(e)
+                } else {
+                    debug!("Normal finish on FloodLight thread");
                     Ok(())
                 }
             },
@@ -274,6 +306,47 @@ impl MotionThread {
     }
 }
 
+struct FloodlightThread {
+    tx: Sender<Messages>,
+    camera: Arc<BcCamera>,
+}
+
+impl FloodlightThread {
+    async fn run(&mut self) -> Result<()> {
+        let mut reciever =
+            tokio_stream::wrappers::ReceiverStream::new(self.camera.listen_on_flightlight().await?);
+        while let Some(flights) = reciever.next().await {
+            for flight in flights.floodlight_status_list.iter() {
+                if flight.status == 0 {
+                    self.tx.send(Messages::FloodlightOff).await?;
+                } else {
+                    self.tx.send(Messages::FloodlightOn).await?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+struct KeepaliveThread {
+    camera: Arc<BcCamera>,
+}
+
+impl KeepaliveThread {
+    async fn run(&mut self) -> Result<()> {
+        let mut interval =
+            tokio_stream::wrappers::IntervalStream::new(interval(Duration::from_secs(5)));
+        while let Some(_update) = interval.next().await {
+            if self.camera.ping().await.is_err() {
+                break;
+            }
+        }
+
+        futures::pending!(); // Never actually finish, has to be aborted
+        Ok(())
+    }
+}
+
 struct MessageHandler<'a> {
     rx: &'a mut Receiver<ToCamera>,
     camera: Arc<BcCamera>,
@@ -325,7 +398,8 @@ impl<'a> MessageHandler<'a> {
                         }
                         Messages::StatusLedOn => {
                             if let Err(e) = self.camera.led_light_set(true).await {
-                                error = Some(format!("Failed to turn on the status light: {:?}", e));
+                                error =
+                                    Some(format!("Failed to turn on the status light: {:?}", e));
                                 "FAIL".to_string()
                             } else {
                                 "OK".to_string()

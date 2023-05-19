@@ -91,6 +91,9 @@ pub struct BcXml {
     /// Recieved on request for a users persmissions/capabilitoes
     #[yaserde(rename = "AbilityInfo")]
     pub ability_info: Option<AbilityInfo>,
+    /// Recieved on request for a link type
+    #[yaserde(rename = "LinkType")]
+    pub link_type: Option<LinkType>,
 }
 
 impl BcXml {
@@ -332,7 +335,7 @@ pub struct LedState {
 }
 
 /// FloodlightStatus xml
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct FloodlightStatus {
     /// XML Version
     #[yaserde(attribute)]
@@ -346,7 +349,7 @@ pub struct FloodlightStatus {
 }
 
 /// FloodlightStatusList xml
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct FloodlightStatusList {
     /// XML Version
     #[yaserde(attribute)]
@@ -659,6 +662,14 @@ pub struct AbilityInfoSubModule {
     /// The comma seperated list of permissions like this: `general_rw, norm_rw, version_ro`
     #[yaserde(rename = "abilityValue")]
     pub ability_value: String,
+}
+
+/// The Link Type contains the type of connection present
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct LinkType {
+    #[yaserde(rename = "type")]
+    /// Type of connection known values `"LAN"`
+    link_type: String,
 }
 
 /// Convience function to return the xml version used throughout the library
