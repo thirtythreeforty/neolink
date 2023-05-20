@@ -93,6 +93,7 @@ impl Camera<LoggedIn> {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub(crate) fn get_camera(&self) -> &BcCamera {
         &self.state.camera
     }
