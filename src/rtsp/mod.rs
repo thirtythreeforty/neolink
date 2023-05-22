@@ -252,7 +252,7 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
             v = async {
             // Wait for error
             streaming.join().await
-            } => {
+            }, if ! active_tags.is_empty() => {
                 info!("{}: Join Pause", name);
                 Ok(StreamChange::StreamError(v))
             },
@@ -263,7 +263,7 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
                 &active_tags,
                 motion_pause,
                 &name,
-            ) => {
+            ), if streaming.shared.get_config().pause.on_motion || streaming.shared.get_config().pause.on_disconnect => {
                 v.with_context(|| format!("{}: Error updating pause state", name))
                 .map_err(CameraFailureKind::Retry)
             }
@@ -279,7 +279,7 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
                     .shared
                     .get_streams()
                     .iter()
-                    .filter(|i| active_tags.contains(i))
+                    .filter(|i| !active_tags.contains(i))
                     .copied()
                     .collect::<Vec<_>>();
 
@@ -422,7 +422,8 @@ async fn await_change(
             v = async {
                 // Wait for client to connect
                 let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
-                let inactive_tags = shared.get_streams().iter().filter(|i| active_tags.contains(i)).collect::<Vec<_>>();
+                let inactive_tags = shared.get_streams().iter().filter(|i| !active_tags.contains(i)).collect::<Vec<_>>();
+                trace!("inactive_tags: {:?}", inactive_tags);
                 loop {
                     inter.tick().await;
                     for tag in inactive_tags.iter() {
