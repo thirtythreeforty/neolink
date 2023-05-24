@@ -337,14 +337,10 @@ pub struct LedState {
 /// FloodlightStatus xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct FloodlightStatus {
-    /// XML Version
-    #[yaserde(attribute)]
-    pub version: String,
     /// Channel ID of floodlight
     #[yaserde(rename = "channel")]
     pub channel_id: u8,
     /// On or off
-    #[yaserde(rename = "status")]
     pub status: u8,
 }
 
@@ -355,7 +351,7 @@ pub struct FloodlightStatusList {
     #[yaserde(attribute)]
     pub version: String,
     /// List of events
-    #[yaserde(rename = "FloodlightStatusList")]
+    #[yaserde(rename = "FloodlightStatus")]
     pub floodlight_status_list: Vec<FloodlightStatus>,
 }
 
@@ -369,7 +365,6 @@ pub struct FloodlightManual {
     #[yaserde(rename = "channelId")]
     pub channel_id: u8,
     /// On or off
-    #[yaserde(rename = "status")]
     pub status: u8,
     /// How long the manual control should apply for
     pub duration: u16,
