@@ -264,12 +264,16 @@ impl Mqtt {
 impl Drop for Mqtt {
     fn drop(&mut self) {
         if let Some(drop_message) = self.drop_message.as_ref() {
-            let res = self
-                .get_sender()
-                .try_send_message(&drop_message.topic, &drop_message.message, true);
-            if res.is_err()
-            {
-                error!("Failed to send offline message to mqtt: {:?}. Is the MQTT topic name valid?", res.err().unwrap());
+            let res = self.get_sender().try_send_message(
+                &drop_message.topic,
+                &drop_message.message,
+                true,
+            );
+            if res.is_err() {
+                error!(
+                    "Failed to send offline message to mqtt: {:?}. Is the MQTT topic name valid?",
+                    res.err().unwrap()
+                );
             }
         }
         self.set.abort_all();
