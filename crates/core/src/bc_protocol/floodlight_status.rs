@@ -10,27 +10,30 @@ impl BcCamera {
         let connection = self.get_connection();
         connection
             .handle_msg(MSG_ID_FLOODLIGHT_STATUS_LIST, move |bc| {
-                if let Bc {
-                    meta:
-                        BcMeta {
-                            msg_id: MSG_ID_FLOODLIGHT_STATUS_LIST,
-                            ..
-                        },
-                    body:
-                        BcBody::ModernMsg(ModernMsg {
-                            payload:
-                                Some(BcPayloads::BcXml(BcXml {
-                                    floodlight_status_list: Some(list),
-                                    ..
-                                })),
-                            ..
-                        }),
-                } = bc
-                {
-                    let send_this: FloodlightStatusList = list.clone();
-                    let _ = tx.blocking_send(send_this);
-                }
-                None
+                let tx = tx.clone();
+                Box::pin(async move {
+                    if let Bc {
+                        meta:
+                            BcMeta {
+                                msg_id: MSG_ID_FLOODLIGHT_STATUS_LIST,
+                                ..
+                            },
+                        body:
+                            BcBody::ModernMsg(ModernMsg {
+                                payload:
+                                    Some(BcPayloads::BcXml(BcXml {
+                                        floodlight_status_list: Some(list),
+                                        ..
+                                    })),
+                                ..
+                            }),
+                    } = bc
+                    {
+                        let send_this: FloodlightStatusList = list.clone();
+                        let _ = tx.send(send_this).await;
+                    }
+                    None
+                })
             })
             .await?;
 
