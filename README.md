@@ -190,6 +190,7 @@ Control messages:
 - `/control/reboot` Reboot the camera
 - `/control/ptz [up|down|left|right|in|out]` (amount) Control the PTZ
   movements, amount defaults to 32.0
+- `/control/preset [id]` Move to PTZ preset `id`
 - `/control/pir [on|off]`
 
 Status Messages:

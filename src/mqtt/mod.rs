@@ -14,6 +14,7 @@
 /// - `/control/ir [on|off|auto]` Turn IR lights on/off or automatically via light detection
 /// - `/control/reboot` Reboot the camera
 /// - `/control/ptz` [up|down|left|right|in|out] (amount) Control the PTZ movements, amount defaults to 32.0
+/// - `/control/preset` [id] Move the camera to a known preset
 ///
 /// Status Messages:
 ///
@@ -323,6 +324,21 @@ async fn handle_mqtt_message(
                 }
             } else {
                 error!("No PTZ Direction given. Please add up/down/left/right/in/out");
+            }
+        }
+        MqttReplyRef {
+            topic: "control/preset",
+            message,
+        } => {
+            if let Ok(id) = message.parse::<i8>() {
+                reply = Some(
+                    event_cam_sender
+                        .send_message_with_reply(Messages::Preset(id))
+                        .await
+                        .with_context(|| "Failed to send PTZ preset")?,
+                );
+            } else {
+                error!("PTZ preset was not a valid number");
             }
         }
         MqttReplyRef {

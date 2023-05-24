@@ -30,6 +30,7 @@ pub(crate) enum Messages {
     PIROff,
     PIRQuery,
     Ptz(Direction),
+    Preset(i8),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -447,6 +448,14 @@ impl<'a> MessageHandler<'a> {
                                 } else {
                                     "OK".to_string()
                                 }
+                            }
+                        }
+                        Messages::Preset(id) => {
+                            if let Err(e) = self.camera.set_ptz_preset(id, None).await {
+                                error = Some(format!("Failed to send PTZ preset: {:?}", e));
+                                "FAIL".to_string()
+                            } else {
+                                "OK".to_string()
                             }
                         }
                         _ => "UNKNOWN COMMAND".to_string(),
