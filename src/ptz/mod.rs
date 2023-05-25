@@ -17,8 +17,7 @@
 /// ```
 ///
 use anyhow::{Context, Result};
-use std::thread::sleep;
-use std::time::Duration;
+use tokio::time::{sleep, Duration};
 
 mod cmdline;
 
@@ -68,7 +67,7 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
                 .send_ptz(direction, 32_f32)
                 .await
                 .context("Unable to execute PTZ move command")?;
-            sleep(Duration::from_millis(duration as u64));
+            sleep(Duration::from_millis(duration as u64)).await;
             camera
                 .send_ptz(Direction::Stop, 0_f32)
                 .await
