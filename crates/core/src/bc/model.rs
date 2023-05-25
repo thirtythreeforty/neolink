@@ -57,6 +57,10 @@ pub const MSG_ID_UDP_KEEP_ALIVE: u32 = 234;
 pub const MSG_ID_BATTERY_INFO_LIST: u32 = 252;
 /// Battery message initiaed by the client
 pub const MSG_ID_BATTERY_INFO: u32 = 253;
+/// Manual Floodlight Control
+pub const MSG_ID_FLOODLIGHT_MANUAL: u32 = 288;
+/// Floodlight status report from the camera
+pub const MSG_ID_FLOODLIGHT_STATUS_LIST: u32 = 291;
 
 /// An empty password in legacy format
 pub const EMPTY_LEGACY_PASSWORD: &str =
