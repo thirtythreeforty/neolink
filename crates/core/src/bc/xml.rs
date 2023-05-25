@@ -76,6 +76,12 @@ pub struct BcXml {
     /// Sent to move the camera
     #[yaserde(rename = "PtzControl")]
     pub ptz_control: Option<PtzControl>,
+    /// Sent to manually control the floodlight
+    #[yaserde(rename = "FloodlightManual")]
+    pub floodlight_manual: Option<FloodlightManual>,
+    /// Received when the floodlight status is updated
+    #[yaserde(rename = "FloodlightStatusList")]
+    pub floodlight_status_list: Option<FloodlightStatusList>,
     /// Recieved on login/low battery events
     #[yaserde(rename = "BatteryList")]
     pub battery_list: Option<BatteryList>,
@@ -85,6 +91,9 @@ pub struct BcXml {
     /// Recieved on request for a users persmissions/capabilitoes
     #[yaserde(rename = "AbilityInfo")]
     pub ability_info: Option<AbilityInfo>,
+    /// Recieved on request for a link type
+    #[yaserde(rename = "LinkType")]
+    pub link_type: Option<LinkType>,
 }
 
 impl BcXml {
@@ -323,6 +332,42 @@ pub struct LedState {
     /// State of the LED status light (blue on light), values are "open", "close"
     #[yaserde(rename = "lightState")]
     pub light_state: String,
+}
+
+/// FloodlightStatus xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
+pub struct FloodlightStatus {
+    /// Channel ID of floodlight
+    #[yaserde(rename = "channel")]
+    pub channel_id: u8,
+    /// On or off
+    pub status: u8,
+}
+
+/// FloodlightStatusList xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
+pub struct FloodlightStatusList {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// List of events
+    #[yaserde(rename = "FloodlightStatus")]
+    pub floodlight_status_list: Vec<FloodlightStatus>,
+}
+
+/// FloodlightManual xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct FloodlightManual {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Channel ID of floodlight
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// On or off
+    pub status: u8,
+    /// How long the manual control should apply for
+    pub duration: u16,
 }
 
 /// rfAlarmCfg xml
@@ -612,6 +657,14 @@ pub struct AbilityInfoSubModule {
     /// The comma seperated list of permissions like this: `general_rw, norm_rw, version_ro`
     #[yaserde(rename = "abilityValue")]
     pub ability_value: String,
+}
+
+/// The Link Type contains the type of connection present
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct LinkType {
+    #[yaserde(rename = "type")]
+    /// Type of connection known values `"LAN"`
+    link_type: String,
 }
 
 /// Convience function to return the xml version used throughout the library

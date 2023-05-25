@@ -1,10 +1,12 @@
 use super::BcSubscription;
 use crate::{bc::model::*, Error, Result};
+use futures::future::BoxFuture;
 use futures::sink::{Sink, SinkExt};
 use futures::stream::{Stream, StreamExt};
 use log::*;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::task::yield_now;
 use tokio_stream::wrappers::ReceiverStream;
@@ -12,13 +14,14 @@ use tokio_util::sync::PollSender;
 
 use tokio::{sync::RwLock, task::JoinSet};
 
-type MsgHandler = Box<dyn Fn(&Bc) -> Option<Bc> + Send + Sync>;
+type MsgHandler = dyn 'static + Send + Sync + for<'a> Fn(&'a Bc) -> BoxFuture<'a, Option<Bc>>;
+
 #[derive(Default)]
 struct Subscriber {
     /// Subscribers based on their Num
     num: BTreeMap<u16, Sender<Result<Bc>>>,
     /// Subscribers based on their ID
-    id: BTreeMap<u32, MsgHandler>,
+    id: BTreeMap<u32, Arc<MsgHandler>>,
 }
 
 pub(crate) type BcConnSink = Box<dyn Sink<Bc, Error = Error> + Send + Sync + Unpin>;
@@ -95,10 +98,10 @@ impl BcConnection {
     /// and return either None or Some(Bc) reply
     pub async fn handle_msg<T>(&self, msg_id: u32, handler: T) -> Result<()>
     where
-        T: Fn(&Bc) -> Option<Bc> + Send + Sync + 'static,
+        T: 'static + Send + Sync + for<'a> Fn(&'a Bc) -> BoxFuture<'a, Option<Bc>>,
     {
         self.poll_commander
-            .send(PollCommand::AddHandler(msg_id, Box::new(handler)))
+            .send(PollCommand::AddHandler(msg_id, Arc::new(handler)))
             .await?;
         Ok(())
     }
@@ -133,7 +136,7 @@ impl BcConnection {
 
 enum PollCommand {
     Bc(Box<Result<Bc>>),
-    AddHandler(u32, MsgHandler),
+    AddHandler(u32, Arc<MsgHandler>),
     RemoveHandler(u32),
     AddSubscriber(u16, Sender<Result<Bc>>),
 }
@@ -160,7 +163,7 @@ impl Poller {
                             self.subscribers.num.get(&msg_num),
                         ) {
                             (Some(occ), _) => {
-                                if let Some(reply) = occ(&response) {
+                                if let Some(reply) = occ(&response).await {
                                     assert!(reply.meta.msg_num == response.meta.msg_num);
                                     self.sink.send(Ok(reply)).await?;
                                 }

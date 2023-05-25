@@ -15,6 +15,8 @@
 # Committing IntelliJ project files is a violation of intergalactic law
 .idea/
 
+# We prefer to keep .vscode files outside the repo
+.vscode/
 # MacOS
 .DS_Store
 ._.DS_Store
