@@ -31,10 +31,12 @@ pub enum PtzCommand {
     },
     /// Performs a movement in the given direction
     Control {
-        /// The time in milliseconds to move
-        duration: u32,
+        /// The amount to move
+        amount: u32,
         /// The direction command
         #[clap(value_enum)]
         command: CmdDirection,
+        /// The speed to move at
+        speed: Option<u32>,
     },
 }

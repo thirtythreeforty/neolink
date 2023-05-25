@@ -511,27 +511,23 @@ impl<'a> MessageHandler<'a> {
                             }
                         }
                         Messages::Ptz(direction) => {
-                            let (bc_direction, amount, seconds) = match direction {
-                                Direction::Up(amount, seconds) => {
-                                    (BcDirection::Up, amount, seconds)
+                            let (bc_direction, speed, seconds) = match direction {
+                                Direction::Up(speed, seconds) => (BcDirection::Up, speed, seconds),
+                                Direction::Down(speed, seconds) => {
+                                    (BcDirection::Down, speed, seconds)
                                 }
-                                Direction::Down(amount, seconds) => {
-                                    (BcDirection::Down, amount, seconds)
+                                Direction::Left(speed, seconds) => {
+                                    (BcDirection::Left, speed, seconds)
                                 }
-                                Direction::Left(amount, seconds) => {
-                                    (BcDirection::Left, amount, seconds)
+                                Direction::Right(speed, seconds) => {
+                                    (BcDirection::Right, speed, seconds)
                                 }
-                                Direction::Right(amount, seconds) => {
-                                    (BcDirection::Right, amount, seconds)
-                                }
-                                Direction::In(amount, seconds) => {
-                                    (BcDirection::In, amount, seconds)
-                                }
-                                Direction::Out(amount, seconds) => {
-                                    (BcDirection::Out, amount, seconds)
+                                Direction::In(speed, seconds) => (BcDirection::In, speed, seconds),
+                                Direction::Out(speed, seconds) => {
+                                    (BcDirection::Out, speed, seconds)
                                 }
                             };
-                            if let Err(e) = self.camera.send_ptz(bc_direction, amount).await {
+                            if let Err(e) = self.camera.send_ptz(bc_direction, speed).await {
                                 error = Some(format!("Failed to send PTZ: {:?}", e));
                                 "FAIL".to_string()
                             } else {
@@ -539,9 +535,7 @@ impl<'a> MessageHandler<'a> {
                                 sleep(Duration::from_secs_f32(seconds)).await;
 
                                 // note that amount is not used in the stop command
-                                if let Err(e) =
-                                    self.camera.send_ptz(BcDirection::Stop, amount).await
-                                {
+                                if let Err(e) = self.camera.send_ptz(BcDirection::Stop, 0.0).await {
                                     error = Some(format!("Failed to send PTZ: {:?}", e));
                                     "FAIL".to_string()
                                 } else {

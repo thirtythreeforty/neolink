@@ -6,14 +6,16 @@
 /// # Usage
 ///
 /// ```bash
-/// # Rotate left for 300 milliseconds
-/// neolink status-light --config=config.toml CameraName control 300 left
+/// # Rotate left by 32
+/// neolink ptz --config=config.toml CameraName control 32 left
+/// # Rotate left by 32 at speed 10 (speed not supported on most camera)
+/// neolink ptz --config=config.toml CameraName control 32 left 10
 /// # Print the list of preset positions
-/// neolink status-light --config=config.toml CameraName preset
+/// neolink ptz --config=config.toml CameraName preset
 /// # Move the camera to preset ID 0
-/// neolink status-light --config=config.toml CameraName preset 0
+/// neolink ptz --config=config.toml CameraName preset 0
 /// # Save the current position as preset ID 0 with name PresetName
-/// neolink status-light --config=config.toml CameraName preset 0 PresetName
+/// neolink ptz --config=config.toml CameraName preset 0 PresetName
 /// ```
 ///
 use anyhow::{Context, Result};
@@ -53,7 +55,11 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
                 }
             }
         }
-        PtzCommand::Control { duration, command } => {
+        PtzCommand::Control {
+            amount,
+            command,
+            speed,
+        } => {
             let direction = match command {
                 CmdDirection::Left => Direction::Left,
                 CmdDirection::Right => Direction::Right,
@@ -63,11 +69,14 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
                 CmdDirection::Out => Direction::Out,
                 CmdDirection::Stop => Direction::Stop,
             };
+            let speed = speed.unwrap_or(32) as f32;
+            let seconds = amount as f32 / speed;
+            let duration = Duration::from_secs_f32(seconds);
             camera
-                .send_ptz(direction, 32_f32)
+                .send_ptz(direction, speed)
                 .await
                 .context("Unable to execute PTZ move command")?;
-            sleep(Duration::from_millis(duration as u64)).await;
+            sleep(duration).await;
             camera
                 .send_ptz(Direction::Stop, 0_f32)
                 .await
