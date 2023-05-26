@@ -37,10 +37,10 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
     let camera = find_and_connect(&config, &opt.camera).await?;
 
     match opt.cmd {
-        PtzCommand::Preset { preset_id, name } => {
-            if preset_id.is_some() {
+        PtzCommand::Preset { preset_id } => {
+            if let Some(preset_id) = preset_id {
                 camera
-                    .set_ptz_preset(preset_id.unwrap(), name)
+                    .moveto_ptz_preset(preset_id)
                     .await
                     .context("Unable to set PTZ preset")
                     .expect("TODO: panic message");
@@ -50,10 +50,17 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
                     .await
                     .context("Unable to get PTZ presets")?;
                 println!("Available presets:\nID Name");
-                for preset in preset_list.preset_list.unwrap().preset {
-                    println!("{:<2} {}", preset.id, preset.name.unwrap());
+                for preset in preset_list.preset_list.preset {
+                    println!("{:<2} {:?}", preset.id, preset.name);
                 }
             }
+        }
+        PtzCommand::Assign { preset_id, name } => {
+            camera
+                .set_ptz_preset(preset_id, name)
+                .await
+                .context("Unable to set PTZ preset")
+                .expect("TODO: panic message");
         }
         PtzCommand::Control {
             amount,
