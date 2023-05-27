@@ -26,6 +26,7 @@ Currently it has been tested on the following cameras:
 - E1
 - Lumus
 - 510A
+- Argus eco 3MP
 
 Neolink does not support other cameras such as the RLC-420, since they already
 [provide native RTSP](https://support.reolink.com/hc/en-us/articles/360007010473-How-to-Live-View-Reolink-Cameras-via-VLC-Media-Player).
