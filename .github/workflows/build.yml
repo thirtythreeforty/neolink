@@ -195,8 +195,23 @@ jobs:
         uses: docker/login-action@v2
         with:
           registry: docker.io
-          username: ${{ steps.string_user.outputs.lowercase }}
+          username: ${{ vars.DOCKER_USERNAME || steps.string_user.outputs.lowercase }}
           password: ${{ secrets.DOCKER_TOKEN }}
+      - name: Set Docker name with owner (package name) depending on if DOCKER_USERNAME is set
+        if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
+        id: docker_repo
+        shell: bash
+        run: |
+          if [ -z $DOCKER_USERNAME ]; then
+            echo "DOCKER_NWO=${GITHUB_NWO}" >> $GITHUB_OUTPUT
+          else
+            IFS='/' read -ra NWO_SPLIT <<< "$GITHUB_NWO"
+            REPO_NAME=${NWO_SPLIT[1]}
+            echo "DOCKER_NWO=${DOCKER_USERNAME}/${REPO_NAME}" >> $GITHUB_OUTPUT
+          fi
+        env:
+          DOCKER_USERNAME: ${{ vars.DOCKER_USERNAME }}
+          GITHUB_NWO: ${{ steps.string_repo.outputs.lowercase }}
       - name: Get tag name
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
         id: tags
@@ -226,7 +241,7 @@ jobs:
           echo "TAGS=${tagstr}"
           echo "TAGS=${tagstr}"  >> "${GITHUB_OUTPUT}"
         env:
-          REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
+          REPO_NAME: ${{ steps.docker_repo.outputs.DOCKER_NWO }}
       - name: Install latest rust
         run: |
             rustup toolchain install stable
@@ -272,7 +287,7 @@ jobs:
           push: true
           file: Dockerfile
           tags: ${{ steps.tags.outputs.TAGS }}
-          build-args: VERSION=${{ steps.toml.outputs.version }}, REPO=${{ github.repository }}, OWNER=${{ github.repository_owner }}
+          build-args: VERSION=${{ steps.toml.outputs.version }}, REPO=${{ github.repository }}, OWNER=${{ vars.DOCKER_USERNAME || github.repository_owner }}
         env:
           DOCKER_BUILDKIT: 1
 

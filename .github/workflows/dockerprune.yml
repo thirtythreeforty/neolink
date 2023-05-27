@@ -31,7 +31,7 @@ jobs:
             if [ -n $SECRET ]; then HAS_SECRET='true' ; fi
             echo "HAS_SECRET_TOKEN=${HAS_SECRET}" >> $GITHUB_OUTPUT
         env:
-          SECRET: "${{ secrets.DOCKER_PRUNE_TOKEN }}"
+          SECRET: "${{ secrets.DOCKER_TOKEN }}"
       - name: Convert username to lower case for docker
         id: string_user
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
@@ -143,5 +143,5 @@ jobs:
         env:
           DAYS: "100"
           REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
-          OWNER: ${{ steps.string_user.outputs.lowercase }}
-          TOKEN: ${{ secrets.DOCKER_PRUNE__TOKEN }}
+          OWNER: ${{ vars.DOCKER_USERNAME || steps.string_user.outputs.lowercase }}
+          TOKEN: ${{ secrets.DOCKER_TOKEN }}
