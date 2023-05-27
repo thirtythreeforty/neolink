@@ -9,6 +9,7 @@
 ///
 /// Control messages:
 ///
+/// - `/control/floodlight [on|off]` Turns floodlight (if equipped) on/off
 /// - `/control/led [on|off]` Turns status LED on/off
 /// - `/control/pir [on|off]` Turns PIR on/off
 /// - `/control/ir [on|off|auto]` Turn IR lights on/off or automatically via light detection
@@ -60,11 +61,13 @@ mod cmdline;
 mod event_cam;
 mod mqttc;
 
-use crate::config::{CameraConfig, Config, MqttConfig};
+use crate::config::{CameraConfig, Config, MqttConfig, MqttDiscoveryConfig};
 use anyhow::{anyhow, Context, Error, Result};
 pub(crate) use cmdline::Opt;
 use event_cam::EventCam;
 pub(crate) use event_cam::{Direction, Messages};
+use heck::ToTitleCase;
+use json::{array, object};
 use log::*;
 use mqttc::{Mqtt, MqttReplyRef};
 
@@ -167,6 +170,10 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                         .with_context(|| {
                             format!("Failed to post connect over MQTT for {}", camera_name)
                         })?;
+
+                    if let Some(discovery_config) = &mqtt_config.discovery {
+                        enable_discovery(discovery_config, &mqtt_sender_cam, &cam_config).await?;
+                    }
                 }
                 Messages::FloodlightOn => {
                     mqtt_sender_cam
@@ -174,7 +181,7 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                         .await
                         .with_context(|| {
                             format!(
-                                "Failed to publish gloodlight on over MQTT for {}",
+                                "Failed to publish floodlight on over MQTT for {}",
                                 camera_name
                             )
                         })?;
@@ -185,7 +192,7 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                         .await
                         .with_context(|| {
                             format!(
-                                "Failed to publish gloodlight off over MQTT for {}",
+                                "Failed to publish floodlight off over MQTT for {}",
                                 camera_name
                             )
                         })?;
@@ -215,6 +222,109 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
         v = mqtt_to_cam => {v},
         v = cam_to_mqtt => {v},
     }?;
+
+    Ok(())
+}
+
+/// Enables MQTT discovery for a camera. See docs at https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
+async fn enable_discovery(
+    discovery_config: &MqttDiscoveryConfig,
+    mqtt_sender: &MqttSender,
+    cam_config: &Arc<CameraConfig>,
+) -> Result<()> {
+    debug!("Enabling MQTT discovery for {}", cam_config.name);
+
+    let mut connections = array![];
+    if let Some(addr) = &cam_config.camera_addr {
+        connections
+            .push(array!["camera_addr", addr.clone()])
+            .expect("Failed to add camera_addr to connections");
+    }
+    if let Some(uid) = &cam_config.camera_uid {
+        connections
+            .push(array!["camera_uid", uid.clone()])
+            .expect("Failed to add camera_uid to connections");
+    }
+
+    if connections.is_empty() {
+        error!(
+            "No connections found for camera {}, either addr or UID must be supplied",
+            cam_config.name
+        );
+        return Ok(());
+    }
+
+    let friendly_name = cam_config.name.replace("_", " ").to_title_case();
+    let device = object! {
+        connections: connections,
+        name: friendly_name.clone(),
+        identifiers: array![format!("neolink_{}", cam_config.name)],
+        manufacturer: "Reolink",
+        model: "Neolink",
+        sw_version: env!("CARGO_PKG_VERSION"),
+    };
+
+    let availability = object! {
+        topic: format!("neolink/{}/status", cam_config.name),
+        payload_available: "connected",
+    };
+
+    for feature in &discovery_config.features {
+        match feature.as_str() {
+            "floodlight" => {
+                let discovery_prefix = format!("{}/light", discovery_config.topic);
+
+                let config_data = object! {
+                    // Common across all potential features
+                    device: device.clone(),
+                    availability: availability.clone(),
+
+                    // Identifiers
+                    name: format!("{} Floodlight", friendly_name.clone()),
+                    unique_id: format!("neolink_{}_floodlight", cam_config.name),
+                    // Match native home assistant integration: https://github.com/home-assistant/core/blob/dev/homeassistant/components/reolink/light.py#L49
+                    icon: "mdi:spotlight-beam",
+
+                    // State
+                    state_topic: format!("neolink/{}/status/floodlight", cam_config.name),
+                    state_value_template: "{{ value_json.state }}",
+
+                    // Control
+                    command_topic: format!("neolink/{}/control/floodlight", cam_config.name),
+                    // Lowercase payloads to match neolink convention
+                    payload_on: "on",
+                    payload_off: "off",
+                };
+
+                // Each feature needs to be individually registered
+                mqtt_sender
+                    .send_message_with_root_topic(
+                        &discovery_prefix,
+                        "config",
+                        &config_data.dump(),
+                        true,
+                    )
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to publish auto-discover data on over MQTT for {}",
+                            cam_config.name
+                        )
+                    })?;
+            }
+            _ => {
+                error!(
+                    "Unsupported MQTT feature {} for {}",
+                    feature, cam_config.name
+                );
+            }
+        }
+    }
+
+    info!(
+        "Enabled MQTT discovery for {} with friendly name {}",
+        cam_config.name, friendly_name
+    );
 
     Ok(())
 }

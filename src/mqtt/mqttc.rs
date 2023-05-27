@@ -50,19 +50,31 @@ pub(crate) struct MqttSender {
 }
 
 impl MqttSender {
-    pub async fn send_message(
+    pub async fn send_message_with_root_topic(
         &self,
+        root_topic: &str,
         sub_topic: &str,
         message: &str,
         retain: bool,
     ) -> Result<(), ClientError> {
         self.client
             .publish(
-                format!("neolink/{}/{}", self.name, sub_topic),
+                format!("{}/{}/{}", root_topic, self.name, sub_topic),
                 QoS::AtLeastOnce,
                 retain,
                 message,
             )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn send_message(
+        &self,
+        sub_topic: &str,
+        message: &str,
+        retain: bool,
+    ) -> Result<(), ClientError> {
+        self.send_message_with_root_topic("neolink", sub_topic, message, retain)
             .await?;
         Ok(())
     }

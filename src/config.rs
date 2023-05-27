@@ -146,6 +146,16 @@ pub(crate) struct MqttConfig {
 
     #[serde(default)]
     pub(crate) client_auth: Option<(std::path::PathBuf, std::path::PathBuf)>,
+
+    #[serde(default)]
+    pub(crate) discovery: Option<MqttDiscoveryConfig>,
+}
+
+#[derive(Debug, Deserialize, Clone, Validate)]
+pub(crate) struct MqttDiscoveryConfig {
+    pub(crate) topic: String,
+
+    pub(crate) features: Vec<String>,
 }
 
 fn validate_mqtt_config(config: &MqttConfig) -> Result<(), ValidationError> {

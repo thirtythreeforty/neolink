@@ -38,6 +38,10 @@ address = "192.168.1.187:9000"
 # mqtt.broker_addr = "192.168.1.122"
 # mqtt.port = 1883
 # mqtt.credentials = ["mqtt_user", "mqtt_password"]
+# MQTT Discovery: https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
+# mqtt.discovery.topic = homeassistant # Uncomment to enable
+# If using discovery, _ characters are replaced with spaces in the name and title case is applied
+# mqtt.discovery.features = ["floodlight"] # Uncomment if this camera has a spotlight/floodlight
 
 # If you use a battery camera: **Instead** of an `address` supply the uid
 # as follows
