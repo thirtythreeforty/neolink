@@ -67,7 +67,7 @@ pub(crate) use cmdline::Opt;
 use event_cam::EventCam;
 pub(crate) use event_cam::{Direction, Messages};
 use heck::ToTitleCase;
-use json::{array, object};
+use json::{array, object, JsonValue};
 use log::*;
 use mqttc::{Mqtt, MqttReplyRef};
 
@@ -234,15 +234,15 @@ async fn enable_discovery(
 ) -> Result<()> {
     debug!("Enabling MQTT discovery for {}", cam_config.name);
 
-    let mut connections = array![];
+    let mut connections: JsonValue = array![];
     if let Some(addr) = &cam_config.camera_addr {
         connections
-            .push(array!["camera_addr", addr.clone()])
+            .push(array!["camera_addr", addr.as_str()])
             .expect("Failed to add camera_addr to connections");
     }
     if let Some(uid) = &cam_config.camera_uid {
         connections
-            .push(array!["camera_uid", uid.clone()])
+            .push(array!["camera_uid", uid.as_str()])
             .expect("Failed to add camera_uid to connections");
     }
 
@@ -255,19 +255,19 @@ async fn enable_discovery(
     }
 
     let friendly_name = cam_config.name.replace("_", " ").to_title_case();
-    let device = object! {
+    let device = Arc::new(object! {
         connections: connections,
-        name: friendly_name.clone(),
+        name: friendly_name.as_str(),
         identifiers: array![format!("neolink_{}", cam_config.name)],
         manufacturer: "Reolink",
         model: "Neolink",
         sw_version: env!("CARGO_PKG_VERSION"),
-    };
+    });
 
-    let availability = object! {
+    let availability = Arc::new(object! {
         topic: format!("neolink/{}/status", cam_config.name),
         payload_available: "connected",
-    };
+    });
 
     for feature in &discovery_config.features {
         match feature.as_str() {
@@ -276,11 +276,11 @@ async fn enable_discovery(
 
                 let config_data = object! {
                     // Common across all potential features
-                    device: device.clone(),
-                    availability: availability.clone(),
+                    device: Arc::try_unwrap(device.clone()).unwrap(),
+                    availability: Arc::try_unwrap(availability.clone()).unwrap(),
 
                     // Identifiers
-                    name: format!("{} Floodlight", friendly_name.clone()),
+                    name: format!("{} Floodlight", friendly_name.as_str()),
                     unique_id: format!("neolink_{}_floodlight", cam_config.name),
                     // Match native home assistant integration: https://github.com/home-assistant/core/blob/dev/homeassistant/components/reolink/light.py#L49
                     icon: "mdi:spotlight-beam",
@@ -323,7 +323,8 @@ async fn enable_discovery(
 
     info!(
         "Enabled MQTT discovery for {} with friendly name {}",
-        cam_config.name, friendly_name
+        cam_config.name,
+        friendly_name.as_str()
     );
 
     Ok(())
