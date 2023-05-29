@@ -34,6 +34,7 @@ mod config;
 mod image;
 mod mqtt;
 mod pir;
+mod ptz;
 mod reboot;
 mod rtsp;
 mod statusled;
@@ -101,6 +102,9 @@ async fn main() -> Result<()> {
         }
         Some(Command::Pir(opts)) => {
             pir::main(opts, config).await?;
+        }
+        Some(Command::Ptz(opts)) => {
+            ptz::main(opts, config).await?;
         }
         Some(Command::Talk(opts)) => {
             talk::main(opts, config).await?;

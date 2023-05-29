@@ -14,6 +14,7 @@
 /// - `/control/ir [on|off|auto]` Turn IR lights on/off or automatically via light detection
 /// - `/control/reboot` Reboot the camera
 /// - `/control/ptz` [up|down|left|right|in|out] (amount) Control the PTZ movements, amount defaults to 32.0
+/// - `/control/preset` [id] Move the camera to a known preset
 ///
 /// Status Messages:
 ///
@@ -332,9 +333,10 @@ async fn handle_mqtt_message(
             let mut words = lowercase_message.split_whitespace();
             if let Some(direction_txt) = words.next() {
                 // Target amount to move
+                let speed = 32f32;
                 let amount = words.next().unwrap_or("32.0");
                 if let Ok(amount) = amount.parse::<f32>() {
-                    let seconds = amount / 32f32;
+                    let seconds = amount / speed;
                     // range checking on seconds so that you can't sleep for 3.4E+38 seconds
                     match seconds {
                         x if (0.0..10.0).contains(&x) => seconds,
@@ -345,12 +347,12 @@ async fn handle_mqtt_message(
                     };
 
                     let direction = match direction_txt {
-                        "up" => Direction::Up(amount, seconds),
-                        "down" => Direction::Down(amount, seconds),
-                        "left" => Direction::Left(amount, seconds),
-                        "right" => Direction::Right(amount, seconds),
-                        "in" => Direction::In(amount, seconds),
-                        "out" => Direction::Out(amount, seconds),
+                        "up" => Direction::Up(speed, seconds),
+                        "down" => Direction::Down(speed, seconds),
+                        "left" => Direction::Left(speed, seconds),
+                        "right" => Direction::Right(speed, seconds),
+                        "in" => Direction::In(speed, seconds),
+                        "out" => Direction::Out(speed, seconds),
                         _ => {
                             error!("Unrecognized PTZ direction \"{}\"", direction_txt);
                             return Ok(());
@@ -367,6 +369,21 @@ async fn handle_mqtt_message(
                 }
             } else {
                 error!("No PTZ Direction given. Please add up/down/left/right/in/out");
+            }
+        }
+        MqttReplyRef {
+            topic: "control/preset",
+            message,
+        } => {
+            if let Ok(id) = message.parse::<i8>() {
+                reply = Some(
+                    event_cam_sender
+                        .send_message_with_reply(Messages::Preset(id))
+                        .await
+                        .with_context(|| "Failed to send PTZ preset")?,
+                );
+            } else {
+                error!("PTZ preset was not a valid number");
             }
         }
         MqttReplyRef {

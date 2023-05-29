@@ -19,6 +19,8 @@ pub const MSG_ID_TALKABILITY: u32 = 10;
 pub const MSG_ID_TALKRESET: u32 = 11;
 /// PtzControl messages have this ID
 pub const MSG_ID_PTZ_CONTROL: u32 = 18;
+/// PTZ goto preset position
+pub const MSG_ID_PTZ_CONTROL_PRESET: u32 = 19;
 /// Reboot messages have this ID
 pub const MSG_ID_REBOOT: u32 = 23;
 /// Request motion detection messages
@@ -35,6 +37,8 @@ pub const MSG_ID_GET_GENERAL: u32 = 104;
 pub const MSG_ID_ABILITY_INFO: u32 = 151;
 /// Setting general system info (clock mostly) messages have this ID
 pub const MSG_ID_SET_GENERAL: u32 = 105;
+/// Get the available PTZ position presets
+pub const MSG_ID_GET_PTZ_PRESET: u32 = 190;
 /// Will send the talk config for talk back data to follow this msg
 pub const MSG_ID_TALKCONFIG: u32 = 201;
 /// Used to send talk back binary data
