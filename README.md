@@ -208,6 +208,21 @@ Query Messages:
 - `/query/battery` Request that the camera reports its battery level
 - `/query/pir` Request that the camera reports its pir status
 
+#### MQTT Discovery
+
+[MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery) is partially supported. 
+Currently, discovery is opt-in and camera features must be manually specified.
+
+```toml
+[cameras.mqtt]
+  # <see above>
+  [cameras.mqtt.discovery]
+  topic = "homeassistant"
+  features = ["floodlight"]
+```
+
+See the sample config file for more details.
+
 ### Pause
 
 To use the pause feature you will need to adjust your config file as such:
