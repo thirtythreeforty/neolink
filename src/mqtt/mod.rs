@@ -255,19 +255,19 @@ async fn enable_discovery(
     }
 
     let friendly_name = cam_config.name.replace("_", " ").to_title_case();
-    let device = Arc::new(object! {
+    let device = object! {
         connections: connections,
         name: friendly_name.as_str(),
         identifiers: array![format!("neolink_{}", cam_config.name)],
         manufacturer: "Reolink",
         model: "Neolink",
         sw_version: env!("CARGO_PKG_VERSION"),
-    });
+    };
 
-    let availability = Arc::new(object! {
+    let availability = object! {
         topic: format!("neolink/{}/status", cam_config.name),
         payload_available: "connected",
-    });
+    };
 
     for feature in &discovery_config.features {
         match feature.as_str() {
@@ -276,8 +276,8 @@ async fn enable_discovery(
 
                 let config_data = object! {
                     // Common across all potential features
-                    device: Arc::try_unwrap(device.clone()).unwrap(),
-                    availability: Arc::try_unwrap(availability.clone()).unwrap(),
+                    device: device.clone(),
+                    availability: availability.clone(),
 
                     // Identifiers
                     name: format!("{} Floodlight", friendly_name.as_str()),
