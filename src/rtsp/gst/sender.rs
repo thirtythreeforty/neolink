@@ -415,7 +415,7 @@ impl NeoMediaSender {
             command_sender: tx,
             inited: false,
             playing: true,
-            use_smoothing,
+            use_smoothing: use_smoothing && buffer_size > 0,
         }
     }
 
