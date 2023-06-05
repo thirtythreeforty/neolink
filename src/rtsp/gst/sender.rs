@@ -43,6 +43,12 @@ struct NeoBuffer {
     max_size: usize,
 }
 
+/// The historical buffer is how much we keep extra after live.
+///
+/// This represents the upper limit we keep in storage after live
+/// while waiting for the time to play arrives
+const HISTORICAL_BUFFER_SIZE: usize = 100;
+
 impl NeoBuffer {
     fn new(max_size: usize) -> Self {
         Self {
@@ -98,64 +104,20 @@ impl NeoBuffer {
             last.data.push(media);
         }
 
-        while self.buf.len() > self.max_size {
+        while self.buf.len() > self.max_size + HISTORICAL_BUFFER_SIZE {
             if self.buf.pop_front().is_none() {
                 break;
             }
         }
     }
 
-    fn prep_size(&self) -> usize {
-        self.max_size * 2 / 3
-    }
-
     fn live_size(&self) -> usize {
-        self.max_size / 3
+        self.max_size
     }
 
     pub(crate) fn ready(&self) -> bool {
-        self.buf.len() > self.prep_size()
+        self.buf.len() >= self.live_size()
     }
-
-    pub(crate) fn ready_play(&self) -> bool {
-        self.buf.len() > self.live_size()
-    }
-
-    // fn last_iframe_time(&self) -> Option<FrameTime> {
-    //     let (fronts, backs) = self.buf.as_slices();
-    //     backs
-    //         .iter()
-    //         .rev()
-    //         .chain(&mut fronts.iter().rev())
-    //         .flat_map(|frame| match frame {
-    //             BcMedia::Iframe(BcMediaIframe { microseconds, .. }) => Some(*microseconds),
-    //             _ => None,
-    //         })
-    //         .next()
-    //         .map(|i| i as FrameTime)
-    // }
-
-    // fn first_iframe_time(&self) -> Option<FrameTime> {
-    //     let (fronts, backs) = self.buf.as_slices();
-    //     fronts
-    //         .iter()
-    //         .chain(&mut backs.iter())
-    //         .flat_map(|frame| match frame {
-    //             BcMedia::Iframe(BcMediaIframe { microseconds, .. }) => Some(*microseconds),
-    //             _ => None,
-    //         })
-    //         .next()
-    //         .map(|i| i as FrameTime)
-    // }
-
-    // fn start_time(&self) -> Option<FrameTime> {
-    //     let (fronts, backs) = self.buf.as_slices();
-    //     fronts
-    //         .iter()
-    //         .chain(&mut backs.iter())
-    //         .map(|frame| frame.time)
-    //         .next()
-    // }
 
     fn end_time(&self) -> Option<FrameTime> {
         let (fronts, backs) = self.buf.as_slices();
@@ -166,35 +128,6 @@ impl NeoBuffer {
             .map(|frame| frame.time)
             .next()
     }
-
-    // fn min_time(&self) -> Option<FrameTime> {
-    //     let (fronts, backs) = self.buf.as_slices();
-    //     fronts
-    //         .iter()
-    //         .chain(&mut backs.iter())
-    //         .flat_map(|frame| match Arc::as_ref(frame) {
-    //             BcMedia::Iframe(BcMediaIframe { microseconds, .. }) => Some(*microseconds),
-    //             BcMedia::Pframe(BcMediaPframe { microseconds, .. }) => Some(*microseconds),
-    //             _ => None,
-    //         })
-    //         .min()
-    //         .map(|i| i as FrameTime)
-    // }
-
-    // fn max_time(&self) -> Option<FrameTime> {
-    //     let (fronts, backs) = self.buf.as_slices();
-    //     backs
-    //         .iter()
-    //         .rev()
-    //         .chain(&mut fronts.iter().rev())
-    //         .flat_map(|frame| match Arc::as_ref(frame) {
-    //             BcMedia::Iframe(BcMediaIframe { microseconds, .. }) => Some(*microseconds),
-    //             BcMedia::Pframe(BcMediaPframe { microseconds, .. }) => Some(*microseconds),
-    //             _ => None,
-    //         })
-    //         .max()
-    //         .map(|i| i as FrameTime)
-    // }
 }
 
 pub(super) struct NeoMediaSenders {
@@ -288,51 +221,8 @@ impl NeoMediaSenders {
     async fn handle_new_data(&mut self, data: BcMedia) -> AnyResult<()> {
         // trace!("Handle new data");
         self.update_mediatypes(&data).await;
-        let time = match &data {
-            BcMedia::Iframe(BcMediaIframe { microseconds, .. }) => *microseconds as FrameTime,
-            BcMedia::Pframe(BcMediaPframe { microseconds, .. }) => *microseconds as FrameTime,
-            _ => self.buffer.end_time().unwrap_or(0),
-        };
 
         let data = Arc::new(data);
-
-        let end_time = self.buffer.end_time();
-        let frame_time = time;
-        // Ocassionally the camera will make a jump in timestamps of about 15s (on sub 9s on main)
-        // This could mean that it runs on some fixed sized buffer
-        if let Some(end_time) = end_time {
-            let delta_frame = (self.buffer.buf.back().unwrap().time
-                - self.buffer.buf.front().unwrap().time)
-                / self.buffer.buf.len() as i64;
-            let delta_time = frame_time - end_time - delta_frame;
-            let delta_duration = Duration::from_micros(delta_time.unsigned_abs());
-            if delta_duration > Duration::from_secs(1) {
-                trace!(
-                    "Reschedule buffer due to jump: {:?}, Prev: {}, New: {}",
-                    delta_duration,
-                    end_time,
-                    frame_time
-                );
-                trace!("Adjusting master: {}", self.buffer.buf.len());
-                for frame in self.buffer.buf.iter_mut() {
-                    let old_frame_time = frame.time;
-                    frame.time = frame.time.saturating_add(delta_time);
-                    trace!(
-                        "  - New frame time: {} -> {} (target {})",
-                        old_frame_time,
-                        frame.time,
-                        frame_time
-                    );
-                }
-
-                for (_, client) in self.client_data.iter_mut() {
-                    for frame in client.buffer.buf.iter_mut() {
-                        frame.time = frame.time.saturating_add(delta_time);
-                    }
-                    client.start_time.mod_value(delta_time as f64);
-                }
-            }
-        }
 
         for client_data in self.client_data.values_mut() {
             client_data.add_data(data.clone()).await?;
@@ -465,9 +355,6 @@ impl NeoMediaSenders {
                         },
                         FactoryCommand::JumpToLive => {
                             for client in self.client_data.values_mut() {
-                                // Set them into the non init state
-                                // This will make them wait for the
-                                // buffer to be enough then jump to live
                                 let _ = client.jump_to_live().await;
                             }
                         },
@@ -512,7 +399,6 @@ pub(super) struct NeoMediaSender {
     command_sender: Sender<NeoMediaSenderCommand>,
     inited: bool,
     playing: bool,
-    refilling: bool,
     use_smoothing: bool,
 }
 
@@ -529,7 +415,6 @@ impl NeoMediaSender {
             command_sender: tx,
             inited: false,
             playing: true,
-            refilling: false,
             use_smoothing,
         }
     }
@@ -687,7 +572,7 @@ impl NeoMediaSender {
                 self.start_time.reset_to(target_time as f64);
 
                 // Send preprocess now
-                self.send_buffers(preprocess.as_slice()).await?;
+                self.send_buffers(preprocess.as_slice(), true).await?;
                 trace!("Preprocessed");
                 // Send these later
                 for frame in buffer.drain(..) {
@@ -741,18 +626,9 @@ impl NeoMediaSender {
             debug!("Buffer overfull");
             self.jump_to_live().await?;
         }
-        if self.refilling && self.buffer.ready_play() {
-            self.refilling = false;
-            self.jump_to_live().await?;
-        } else if self.refilling {
-            trace!(
-                "Refilling: {}/{} ({:.2}%)",
-                self.buffer.buf.len(),
-                self.buffer.live_size(),
-                self.buffer.buf.len() as f32 / (self.buffer.live_size()) as f32 * 100.0
-            );
-        } else if !self.refilling && self.inited && self.playing {
+        if self.inited && self.playing {
             self.update_starttime().await?;
+            let ignore_stamps = self.buffer.live_size() == 0;
             // Check app src is live
             if !self
                 .vid
@@ -761,17 +637,6 @@ impl NeoMediaSender {
                 .unwrap_or(false)
             {
                 return Err(anyhow!("Vid src is closed"));
-            }
-
-            // Check if buffers are ok
-            if self.buffer.buf.len() <= self.buffer.max_size / 10 {
-                warn!(
-                    "Buffer exhausted. Not enough data from Camera. Pausing RTSP until refilled."
-                );
-                info!("Try reducing your Max Bitrate using the offical app");
-                self.refilling = true;
-            } else {
-                trace!("Buffer size: {}", self.buffer.buf.len());
             }
 
             // Send buffers
@@ -785,7 +650,6 @@ impl NeoMediaSender {
                     .map(|data| data.time <= buftime)
                     .unwrap_or(false)
                 {
-                    tokio::task::yield_now().await;
                     match self.buffer.buf.pop_front() {
                         Some(frame) => {
                             buffers.push(frame);
@@ -797,13 +661,13 @@ impl NeoMediaSender {
 
             tokio::task::yield_now().await;
             // collect certain frames
-            self.send_buffers(&buffers).await?;
+            self.send_buffers(&buffers, ignore_stamps).await?;
         }
 
         Ok(())
     }
 
-    async fn send_buffers(&mut self, medias: &[Stamped]) -> AnyResult<()> {
+    async fn send_buffers(&mut self, medias: &[Stamped], ignore_stamps: bool) -> AnyResult<()> {
         if medias.is_empty() {
             return Ok(());
         }
@@ -852,7 +716,10 @@ impl NeoMediaSender {
                                 let buffers_ref = buffers.get_mut().unwrap();
                                 for (time, buf) in vid_buffers.drain(..) {
                                     tokio::task::yield_now().await;
-                                    let runtime = self.buftime_to_runtime(time);
+                                    let runtime = match (self.get_runtime(), ignore_stamps) {
+                                        (None, _) | (_, false) => self.buftime_to_runtime(time),
+                                        (Some(runtime), true) => runtime,
+                                    };
                                     trace!(
                                         "  - Sending vid frame at time {} ({:?} Expect: {:?})",
                                         time,
@@ -913,7 +780,10 @@ impl NeoMediaSender {
                                 let buffers_ref = buffers.get_mut().unwrap();
                                 for (time, buf) in aud_buffers.drain(..) {
                                     tokio::task::yield_now().await;
-                                    let runtime = self.buftime_to_runtime(time);
+                                    let runtime = match (self.get_runtime(), ignore_stamps) {
+                                        (None, _) | (_, false) => self.buftime_to_runtime(time),
+                                        (Some(runtime), true) => runtime,
+                                    };
 
                                     let gst_buf = {
                                         let mut gst_buf =
