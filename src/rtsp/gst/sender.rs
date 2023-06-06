@@ -224,6 +224,57 @@ impl NeoMediaSenders {
 
         let data = Arc::new(data);
 
+        let end_time = self.buffer.end_time();
+        let frame_time = match data.as_ref() {
+            BcMedia::Iframe(BcMediaIframe { microseconds, .. }) => *microseconds as FrameTime,
+            BcMedia::Pframe(BcMediaPframe { microseconds, .. }) => *microseconds as FrameTime,
+            _ => self.buffer.end_time().unwrap_or(0),
+        };
+        // If there is a jump in the time stamps for any reason
+        // (including a resume from a pause)
+        // Then we stitch the old and new frames together without
+        // waiting for the time to elapse
+        if let Some(end_time) = end_time {
+            // An approximate fps
+            let delta_frame = (self.buffer.buf.back().unwrap().time
+                - self.buffer.buf.front().unwrap().time)
+                / self.buffer.buf.len() as i64;
+
+            // Shift current frames backwards from the new start - approx fps
+            let delta_time = frame_time - end_time - delta_frame;
+            let delta_duration = Duration::from_micros(delta_time.unsigned_abs());
+
+            // If that shift >1s then we stitch it together
+            if delta_duration > Duration::from_secs(1) {
+                trace!(
+                    "Reschedule buffer due to jump: {:?}, Prev: {}, New: {}",
+                    delta_duration,
+                    end_time,
+                    frame_time
+                );
+                trace!("Adjusting master: {}", self.buffer.buf.len());
+                for frame in self.buffer.buf.iter_mut() {
+                    let old_frame_time = frame.time;
+                    frame.time = frame.time.saturating_add(delta_time);
+                    trace!(
+                        "  - New frame time: {} -> {} (target {})",
+                        old_frame_time,
+                        frame.time,
+                        frame_time
+                    );
+                }
+
+                for (_, client) in self.client_data.iter_mut() {
+                    for frame in client.buffer.buf.iter_mut() {
+                        frame.time = frame.time.saturating_add(delta_time);
+                    }
+                    // We also move the start time up so that the new frames will play
+                    // with the stiching
+                    client.start_time.mod_value(delta_time as f64);
+                }
+            }
+        }
+
         for client_data in self.client_data.values_mut() {
             client_data.add_data(data.clone()).await?;
         }
@@ -453,12 +504,7 @@ impl NeoMediaSender {
             }
         } else {
             trace!("Not enough timestamps for target live: {:?}", stamps);
-            if let Some(st) = stamps.first() {
-                trace!("Setting to 1s behind first frame in buffer");
-                Some(st - Duration::from_secs(1).as_micros() as FrameTime)
-            } else {
-                None
-            }
+            None
         }
     }
 
@@ -622,10 +668,6 @@ impl NeoMediaSender {
     }
 
     async fn update(&mut self) -> AnyResult<()> {
-        if self.buffer.buf.len() >= self.buffer.max_size * 9 / 10 {
-            debug!("Buffer overfull");
-            self.jump_to_live().await?;
-        }
         if self.inited && self.playing {
             self.update_starttime().await?;
             let ignore_stamps = self.buffer.live_size() == 0;

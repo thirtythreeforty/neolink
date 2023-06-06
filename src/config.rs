@@ -104,7 +104,7 @@ pub(crate) struct CameraConfig {
     pub(crate) update_time: bool,
 
     #[validate(range(
-        min = 10,
+        min = 0,
         max = 500,
         message = "Invalid buffer size",
         code = "buffer_size"
