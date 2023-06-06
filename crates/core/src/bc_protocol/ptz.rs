@@ -139,12 +139,6 @@ impl BcCamera {
         let mut sub_set = connection.subscribe(msg_num).await?;
 
         let command = if name.is_some() { "setPos" } else { "toPos" };
-        let preset = Preset {
-            id: preset_id,
-            name,
-            command: Some(command.to_string()),
-            ..Default::default()
-        };
         let send = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_PTZ_CONTROL_PRESET,
@@ -163,7 +157,11 @@ impl BcCamera {
                 payload: Some(BcPayloads::BcXml(BcXml {
                     ptz_preset: Some(PtzPreset {
                         preset_list: Some(PresetList {
-                            preset: vec![preset],
+                            preset: vec![Preset {
+                                id: preset_id,
+                                name,
+                                command: Some(command.to_string()),
+                            }],
                         }),
                         ..Default::default()
                     }),
