@@ -260,7 +260,7 @@ fn default_smoothing() -> bool {
 }
 
 fn default_buffer_size() -> usize {
-    100
+    25
 }
 
 pub(crate) static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];
