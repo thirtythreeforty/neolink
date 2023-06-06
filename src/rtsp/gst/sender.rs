@@ -116,7 +116,7 @@ impl NeoBuffer {
     }
 
     pub(crate) fn ready(&self) -> bool {
-        self.buf.len() >= self.live_size()
+        self.buf.len() >= self.live_size() + HISTORICAL_BUFFER_SIZE / 2
     }
 
     fn end_time(&self) -> Option<FrameTime> {
@@ -623,12 +623,12 @@ impl NeoMediaSender {
 
                 // Send preprocess now
                 self.send_buffers(preprocess.as_slice(), true).await?;
-                trace!("Preprocessed");
+                trace!("Preprocessed: {}", preprocess.len());
                 // Send these later
                 for frame in buffer.drain(..) {
                     self.buffer.buf.push_back(frame);
                 }
-                trace!("Buffer filled");
+                trace!("Buffer filled: {}", self.buffer.buf.len());
 
                 self.jump_to_live().await?;
             } else {
