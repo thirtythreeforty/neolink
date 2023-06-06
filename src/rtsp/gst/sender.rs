@@ -783,6 +783,7 @@ impl NeoMediaSender {
                                                 runtime.try_into().unwrap(),
                                             );
                                             gst_buf_mut.set_dts(time);
+                                            gst_buf_mut.set_pts(time);
                                             let mut gst_buf_data =
                                                 gst_buf_mut.map_writable().unwrap();
                                             gst_buf_data.copy_from_slice(buf.as_slice());
@@ -841,6 +842,7 @@ impl NeoMediaSender {
                                                 runtime.try_into().unwrap(),
                                             );
                                             gst_buf_mut.set_dts(time);
+                                            gst_buf_mut.set_pts(time);
                                             let mut gst_buf_data =
                                                 gst_buf_mut.map_writable().unwrap();
                                             gst_buf_data.copy_from_slice(buf.as_slice());
