@@ -489,6 +489,10 @@ impl NeoMediaSender {
 
     fn target_live_for(buffer: &NeoBuffer) -> Option<FrameTime> {
         let target_idx = buffer.live_size();
+        if target_idx == 0 {
+            // No buffer needed grab the last
+            return buffer.buf.back().map(|item| item.time);
+        }
         let stamps = buffer.buf.iter().map(|item| item.time).collect::<Vec<_>>();
 
         if stamps.len() >= target_idx {
