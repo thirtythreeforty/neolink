@@ -104,7 +104,7 @@ pub(crate) struct CameraConfig {
     pub(crate) update_time: bool,
 
     #[validate(range(
-        min = 10,
+        min = 0,
         max = 500,
         message = "Invalid buffer size",
         code = "buffer_size"
@@ -260,7 +260,7 @@ fn default_smoothing() -> bool {
 }
 
 fn default_buffer_size() -> usize {
-    100
+    25
 }
 
 pub(crate) static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];
