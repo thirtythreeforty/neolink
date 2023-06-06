@@ -58,22 +58,22 @@ use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
 mod cmdline;
+mod discovery;
 mod event_cam;
 mod mqttc;
 
-use crate::config::{CameraConfig, Config, MqttConfig, MqttDiscoveryConfig};
+use crate::config::{CameraConfig, Config, MqttConfig};
 use anyhow::{anyhow, Context, Error, Result};
 pub(crate) use cmdline::Opt;
 use event_cam::EventCam;
 pub(crate) use event_cam::{Direction, Messages};
-use heck::ToTitleCase;
-use json::{array, object, JsonValue};
 use log::*;
 use mqttc::{Mqtt, MqttReplyRef};
 
 use self::{
     event_cam::EventCamSender,
     mqttc::{MqttReply, MqttSender},
+    discovery::enable_discovery,
 };
 
 /// Entry point for the mqtt subcommand
@@ -222,110 +222,6 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
         v = mqtt_to_cam => {v},
         v = cam_to_mqtt => {v},
     }?;
-
-    Ok(())
-}
-
-/// Enables MQTT discovery for a camera. See docs at https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
-async fn enable_discovery(
-    discovery_config: &MqttDiscoveryConfig,
-    mqtt_sender: &MqttSender,
-    cam_config: &Arc<CameraConfig>,
-) -> Result<()> {
-    debug!("Enabling MQTT discovery for {}", cam_config.name);
-
-    let mut connections: JsonValue = array![];
-    if let Some(addr) = &cam_config.camera_addr {
-        connections
-            .push(array!["camera_addr", addr.as_str()])
-            .expect("Failed to add camera_addr to connections");
-    }
-    if let Some(uid) = &cam_config.camera_uid {
-        connections
-            .push(array!["camera_uid", uid.as_str()])
-            .expect("Failed to add camera_uid to connections");
-    }
-
-    if connections.is_empty() {
-        error!(
-            "No connections found for camera {}, either addr or UID must be supplied",
-            cam_config.name
-        );
-        return Ok(());
-    }
-
-    let friendly_name = cam_config.name.replace("_", " ").to_title_case();
-    let device = object! {
-        connections: connections,
-        name: friendly_name.as_str(),
-        identifiers: array![format!("neolink_{}", cam_config.name)],
-        manufacturer: "Reolink",
-        model: "Neolink",
-        sw_version: env!("CARGO_PKG_VERSION"),
-    };
-
-    let availability = object! {
-        topic: format!("neolink/{}/status", cam_config.name),
-        payload_available: "connected",
-    };
-
-    for feature in &discovery_config.features {
-        match feature.as_str() {
-            "floodlight" => {
-                let discovery_prefix = format!("{}/light", discovery_config.topic);
-
-                let config_data = object! {
-                    // Common across all potential features
-                    device: device.clone(),
-                    availability: availability.clone(),
-
-                    // Identifiers
-                    name: format!("{} Floodlight", friendly_name.as_str()),
-                    unique_id: format!("neolink_{}_floodlight", cam_config.name),
-                    // Match native home assistant integration: https://github.com/home-assistant/core/blob/dev/homeassistant/components/reolink/light.py#L49
-                    icon: "mdi:spotlight-beam",
-
-                    // State
-                    state_topic: format!("neolink/{}/status/floodlight", cam_config.name),
-                    state_value_template: "{{ value_json.state }}",
-
-                    // Control
-                    command_topic: format!("neolink/{}/control/floodlight", cam_config.name),
-                    // Lowercase payloads to match neolink convention
-                    payload_on: "on",
-                    payload_off: "off",
-                };
-
-                // Each feature needs to be individually registered
-                mqtt_sender
-                    .send_message_with_root_topic(
-                        &discovery_prefix,
-                        "config",
-                        &config_data.dump(),
-                        true,
-                    )
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Failed to publish auto-discover data on over MQTT for {}",
-                            cam_config.name
-                        )
-                    })?;
-            }
-            _ => {
-                error!(
-                    "Unsupported MQTT feature {} for {}",
-                    feature, cam_config.name
-                );
-            }
-        }
-    }
-
-    info!(
-        "Enabled MQTT discovery for {} with friendly name {}",
-        cam_config.name,
-        friendly_name.as_str()
-    );
 
     Ok(())
 }
