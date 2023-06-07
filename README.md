@@ -202,6 +202,7 @@ Status Messages:
 - `/status disconnected` Sent when the camera goes offline
 - `/status/battery` Sent in reply to a `/query/battery` an XML encoded version
   of the battery status
+- `/status/battery_level` A simple % value of current battery level
 - `/status/pir` Sent in reply to a `/query/pir` an XML encoded version of the
   pir status
 - `/status/motion` Contains the motion detection alarm status. `on` for motion and `off` for still
@@ -233,6 +234,7 @@ Avaliable features are:
 - `motion`: This adds a motion detection binary sensor to home assistant
 - `reboot`: This adds a reboot button  to home assistant
 - `pt`: This adds a selection of buttons to control the pan and tilt of the camera
+- `battery`: This adds a battery level sensor to home assistant
 
 
 ### Pause
