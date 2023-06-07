@@ -13,7 +13,7 @@ use tokio::{
     time::{interval, sleep, Duration},
 };
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub(crate) enum Messages {
     Login,
     MotionStop,
@@ -32,6 +32,7 @@ pub(crate) enum Messages {
     PIRQuery,
     Ptz(Direction),
     Preset(i8),
+    Snap(Vec<u8>),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -210,6 +211,11 @@ impl EventCamThread {
             camera: arc_cam.clone(),
         };
 
+        let mut snap_thread = SnapThread {
+            tx: self.tx.clone(),
+            camera: arc_cam.clone(),
+        };
+
         let mut keepalive_thread = KeepaliveThread {
             camera: arc_cam.clone(),
         };
@@ -253,6 +259,18 @@ impl EventCamThread {
                     Err(e)
                 } else {
                     debug!("Normal finish on FloodLight thread");
+                    Ok(())
+                }
+            },
+            val = async {
+                info!("{}: Updating Preview", camera_config.name);
+                snap_thread.run().await
+            } => {
+                if let Err(e) = val {
+                    error!("Snap thread aborted: {:?}", e);
+                    Err(e)
+                } else {
+                    debug!("Normal finish on Snap thread");
                     Ok(())
                 }
             },
@@ -326,6 +344,22 @@ impl FloodlightThread {
             }
         }
         Ok(())
+    }
+}
+
+struct SnapThread {
+    tx: Sender<Messages>,
+    camera: Arc<BcCamera>,
+}
+
+impl SnapThread {
+    async fn run(&mut self) -> Result<()> {
+        let mut inter = interval(Duration::from_millis(500));
+        loop {
+            inter.tick().await;
+            let snapshot = self.camera.get_snapshot().await?;
+            self.tx.send(Messages::Snap(snapshot)).await?;
+        }
     }
 }
 

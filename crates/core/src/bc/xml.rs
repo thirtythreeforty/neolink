@@ -97,6 +97,9 @@ pub struct BcXml {
     /// Recieved on request for a link type
     #[yaserde(rename = "LinkType")]
     pub link_type: Option<LinkType>,
+    /// Recieved AND send for the snap message
+    #[yaserde(rename = "Snap")]
+    pub snap: Option<Snap>,
 }
 
 impl BcXml {
@@ -700,7 +703,37 @@ pub struct AbilityInfoSubModule {
 pub struct LinkType {
     #[yaserde(rename = "type")]
     /// Type of connection known values `"LAN"`
-    link_type: String,
+    pub link_type: String,
+}
+
+/// The Link Type contains the type of connection present
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct Snap {
+    #[yaserde(rename = "channelId")]
+    /// The channel id to get the snapshot from
+    pub channel_id: u8,
+    /// Unknown, observed values: 0
+    /// value is only set on request
+    #[yaserde(rename = "logicChannel")]
+    pub logic_channel: Option<u8>,
+    /// Time of snapshot, zero when requesting
+    pub time: u32,
+    /// Request a full frame, observed values: 0
+    /// value is only set on request
+    #[yaserde(rename = "fullFrame")]
+    pub full_frame: Option<u32>,
+    /// Stream name, observed values: `main`, `sub`
+    /// value is only set on request
+    #[yaserde(rename = "streamType")]
+    pub stream_type: Option<String>,
+    /// File name, usually of the form `01_20230518140240.jpg`
+    /// value is only set on recieve
+    #[yaserde(rename = "fileName")]
+    pub file_name: Option<String>,
+    /// Size in bytes of the picture
+    /// value is only set on recieve
+    #[yaserde(rename = "pictureSize")]
+    pub picture_size: Option<u32>,
 }
 
 /// Convience function to return the xml version used throughout the library

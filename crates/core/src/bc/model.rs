@@ -33,6 +33,8 @@ pub const MSG_ID_VERSION: u32 = 80;
 pub const MSG_ID_PING: u32 = 93;
 /// General system info messages have this ID
 pub const MSG_ID_GET_GENERAL: u32 = 104;
+/// Snapshot to get a jpeg image
+pub const MSG_ID_SNAP: u32 = 109;
 /// Used to get the abilities of a user
 pub const MSG_ID_ABILITY_INFO: u32 = 151;
 /// Setting general system info (clock mostly) messages have this ID

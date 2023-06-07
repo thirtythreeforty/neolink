@@ -168,6 +168,8 @@ impl Mqtt {
             &config.broker_addr,
             config.port,
         );
+        let max_size = 100 * (1024 * 1024);
+        mqttoptions.set_max_packet_size(max_size, max_size);
 
         // Use TLS if ca path is set
         if let Some(ca_path) = &config.ca {

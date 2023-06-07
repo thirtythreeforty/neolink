@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 ///
 /// # Neolink MQTT
 ///
@@ -71,9 +72,9 @@ use log::*;
 use mqttc::{Mqtt, MqttReplyRef};
 
 use self::{
+    discovery::enable_discovery,
     event_cam::EventCamSender,
     mqttc::{MqttReply, MqttSender},
-    discovery::enable_discovery,
 };
 
 /// Entry point for the mqtt subcommand
@@ -135,7 +136,8 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
         tokio::select! {
             v  = async {
                 // Normal poll operations
-                while let Ok(msg) = mqtt.poll().await {
+                loop {
+                    let msg = mqtt.poll().await?;
                     tokio::task::yield_now().await;
                     // Put the reply  on it's own async thread so we can safely sleep
                     // and wait for it to reply in it's own time
@@ -152,7 +154,6 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                         }
                     });
                 }
-                Ok(())
             } => v,
             // Wait on any error from any of the error channels and if we get it we abort
             v = error_recv.recv() => v.map(Err).unwrap_or_else(|| Err(anyhow!("Listen on camera error channel closed"))),
@@ -211,6 +212,14 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                         .await
                         .with_context(|| {
                             format!("Failed to publish motion start for {}", camera_name)
+                        })?;
+                }
+                Messages::Snap(data) => {
+                    mqtt_sender_cam
+                        .send_message("status/preview", BASE64.encode(data).as_str(), true)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to publish preview over MQTT for {}", camera_name)
                         })?;
                 }
                 _ => {}
