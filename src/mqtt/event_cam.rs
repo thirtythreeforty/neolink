@@ -33,6 +33,7 @@ pub(crate) enum Messages {
     Ptz(Direction),
     Preset(i8),
     Snap(Vec<u8>),
+    BatteryLevel(u32),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -215,6 +216,11 @@ impl EventCamThread {
             tx: self.tx.clone(),
             camera: arc_cam.clone(),
         };
+        
+        let mut battery_thread = BatteryThread {
+            tx: self.tx.clone(),
+            camera: arc_cam.clone(),
+        };
 
         let mut keepalive_thread = KeepaliveThread {
             camera: arc_cam.clone(),
@@ -271,6 +277,18 @@ impl EventCamThread {
                     Err(e)
                 } else {
                     debug!("Normal finish on Snap thread");
+                    Ok(())
+                }
+            },
+            val = async {
+                info!("{}: Updating Battery Level", camera_config.name);
+                battery_thread.run().await
+            } => {
+                if let Err(e) = val {
+                    error!("Battery thread aborted: {:?}", e);
+                    Err(e)
+                } else {
+                    debug!("Normal finish on Battery thread");
                     Ok(())
                 }
             },
@@ -359,6 +377,22 @@ impl SnapThread {
             inter.tick().await;
             let snapshot = self.camera.get_snapshot().await?;
             self.tx.send(Messages::Snap(snapshot)).await?;
+        }
+    }
+}
+
+struct BatteryLevelThread {
+    tx: Sender<Messages>,
+    camera: Arc<BcCamera>,
+}
+
+impl BatteryLevelThread {
+    async fn run(&mut self) -> Result<()> {
+        let mut inter = interval(Duration::from_millis(500));
+        loop {
+            inter.tick().await;
+            let battery = self.camera.battery_info().await?;
+            self.tx.send(Messages::BatteryLevel(battery.battery_percent)).await?;
         }
     }
 }
