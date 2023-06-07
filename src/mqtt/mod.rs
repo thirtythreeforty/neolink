@@ -68,6 +68,7 @@ use anyhow::{anyhow, Context, Error, Result};
 pub(crate) use cmdline::Opt;
 use event_cam::EventCam;
 pub(crate) use event_cam::{Direction, Messages};
+pub(crate) use discovery::Discoveries;
 use log::*;
 use mqttc::{Mqtt, MqttReplyRef};
 

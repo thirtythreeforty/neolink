@@ -9,7 +9,25 @@ use std::sync::Arc;
 
 use super::mqttc::MqttSender;
 use crate::config::{CameraConfig, MqttDiscoveryConfig};
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
+
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Copy, Hash)]
+pub(crate) enum Discoveries {
+    #[serde(alias = "floodlight", alias = "light")]
+    Floodlight,
+    #[serde(alias = "camera")]
+    Camera,
+    #[serde(alias = "motion", alias = "md", alias = "pir")]
+    Motion,
+    #[serde(alias = "led")]
+    Led,
+    #[serde(alias = "ir")]
+    Ir,
+    #[serde(alias = "reboot")]
+    Reboot,
+    #[serde(alias = "pt")]
+    Pt,
+}
 
 #[derive(Debug, Clone)]
 struct DiscoveryConnection {
@@ -210,8 +228,8 @@ pub(crate) async fn enable_discovery(
     };
 
     for feature in &discovery_config.features {
-        match feature.as_str() {
-            "floodlight" => {
+        match feature {
+            Discoveries::Floodlight => {
                 let config_data = DiscoveryLight {
                     // Common across all potential features
                     device: device.clone(),
@@ -255,7 +273,7 @@ pub(crate) async fn enable_discovery(
                         )
                     })?;
             }
-            "camera" => {
+            Discoveries::Camera => {
                 let config_data = DiscoveryCamera {
                     // Common across all potential features
                     device: device.clone(),
@@ -292,7 +310,7 @@ pub(crate) async fn enable_discovery(
                         )
                     })?;
             }
-            "led" => {
+            Discoveries::Led => {
                 let config_data = DiscoverySwitch {
                     // Common across all potential features
                     device: device.clone(),
@@ -333,7 +351,7 @@ pub(crate) async fn enable_discovery(
                         )
                     })?;
             }
-            "ir" => {
+            Discoveries::Ir => {
                 let config_data = DiscoverySelect {
                     // Common across all potential features
                     device: device.clone(),
@@ -371,7 +389,7 @@ pub(crate) async fn enable_discovery(
                         )
                     })?;
             }
-            "motion" => {
+            Discoveries::Motion => {
                 let config_data = DiscoveryBinarySensor {
                     // Common across all potential features
                     device: device.clone(),
@@ -409,7 +427,7 @@ pub(crate) async fn enable_discovery(
                         )
                     })?;
             }
-            "reboot" => {
+            Discoveries::Reboot => {
                 let config_data = DiscoveryButton {
                     // Common across all potential features
                     device: device.clone(),
@@ -446,7 +464,7 @@ pub(crate) async fn enable_discovery(
                         )
                     })?;
             }
-            "pt" => {
+            Discoveries::Pt => {
                 for dir in ["left", "right", "up", "down"] {
                     let config_data = DiscoveryButton {
                         // Common across all potential features
@@ -484,12 +502,6 @@ pub(crate) async fn enable_discovery(
                             )
                         })?;
                 }
-            }
-            _ => {
-                error!(
-                    "Unsupported MQTT feature {} for {}",
-                    feature, cam_config.name
-                );
             }
         }
     }

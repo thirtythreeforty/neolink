@@ -1,8 +1,10 @@
+use crate::mqtt::Discoveries;
 use lazy_static::lazy_static;
 use neolink_core::bc_protocol::{DiscoveryMethods, PrintFormat};
 use regex::Regex;
 use serde::Deserialize;
 use std::clone::Clone;
+use std::collections::HashSet;
 use validator::{Validate, ValidationError};
 use validator_derive::Validate;
 
@@ -155,7 +157,7 @@ pub(crate) struct MqttConfig {
 pub(crate) struct MqttDiscoveryConfig {
     pub(crate) topic: String,
 
-    pub(crate) features: Vec<String>,
+    pub(crate) features: HashSet<Discoveries>,
 }
 
 fn validate_mqtt_config(config: &MqttConfig) -> Result<(), ValidationError> {
