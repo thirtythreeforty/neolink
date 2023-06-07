@@ -202,6 +202,7 @@ Status Messages:
   of the battery status
 - `/status/pir` Sent in reply to a `/query/pir` an XML encoded version of the
   pir status
+- `/status/motion` Contains the motion detection alarm status. `on` for motion and `off` for still
 
 Query Messages:
 

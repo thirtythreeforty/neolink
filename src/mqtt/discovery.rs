@@ -54,6 +54,9 @@ struct DiscoveryLight {
     unique_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     icon: Option<String>,
+    device: DiscoveryDevice,
+    availability: DiscoveryAvaliablity,
+    // Light specific
     #[serde(skip_serializing_if = "Option::is_none")]
     state_topic: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -62,8 +65,6 @@ struct DiscoveryLight {
     command_topic: Option<String>,
     payload_on: String,
     payload_off: String,
-    device: DiscoveryDevice,
-    availability: DiscoveryAvaliablity,
 }
 
 #[derive(Serialize, Debug)]
@@ -86,11 +87,80 @@ struct DiscoveryCamera {
     unique_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     icon: Option<String>,
-    topic: String,
     device: DiscoveryDevice,
     availability: DiscoveryAvaliablity,
+    // Camera specific
+    topic: String,
     #[serde(skip_serializing_if = "Encoding::is_none")]
     image_encoding: Encoding,
+}
+
+#[derive(Serialize, Debug)]
+struct DiscoverySwitch {
+    name: String,
+    unique_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
+    device: DiscoveryDevice,
+    availability: DiscoveryAvaliablity,
+    // Switch specific
+    // - Control
+    command_topic: String,
+    payload_off: String,
+    payload_on: String,
+    // - State
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state_topic: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state_off: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state_on: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+struct DiscoverySelect {
+    name: String,
+    unique_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
+    device: DiscoveryDevice,
+    availability: DiscoveryAvaliablity,
+    // Switch specific
+    // - Control
+    command_topic: String,
+    options: Vec<String>,
+    // - State
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state_topic: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+struct DiscoveryBinarySensor {
+    name: String,
+    unique_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
+    device: DiscoveryDevice,
+    availability: DiscoveryAvaliablity,
+    // BinarySensor specific
+    payload_off: String,
+    payload_on: String,
+    // - State
+    state_topic: String,
+}
+
+#[derive(Serialize, Debug)]
+struct DiscoveryButton {
+    name: String,
+    unique_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
+    device: DiscoveryDevice,
+    availability: DiscoveryAvaliablity,
+    // Button specific
+    command_topic: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    payload_press: Option<String>,
 }
 
 /// Enables MQTT discovery for a camera. See docs at https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
@@ -167,7 +237,10 @@ pub(crate) async fn enable_discovery(
                 // Each feature needs to be individually registered
                 mqtt_sender
                     .send_message_with_root_topic(
-                        &format!("{}/light", discovery_config.topic),
+                        &format!(
+                            "{}/light/{}",
+                            discovery_config.topic, &config_data.unique_id
+                        ),
                         "config",
                         &serde_json::to_string(&config_data).with_context(|| {
                             "Cound not serialise discovery light config into json"
@@ -201,7 +274,10 @@ pub(crate) async fn enable_discovery(
                 // Each feature needs to be individually registered
                 mqtt_sender
                     .send_message_with_root_topic(
-                        &format!("{}/camera", discovery_config.topic),
+                        &format!(
+                            "{}/camera/{}",
+                            discovery_config.topic, &config_data.unique_id
+                        ),
                         "config",
                         &serde_json::to_string(&config_data).with_context(|| {
                             "Cound not serialise discovery camera config into json"
@@ -215,6 +291,199 @@ pub(crate) async fn enable_discovery(
                             cam_config.name
                         )
                     })?;
+            }
+            "led" => {
+                let config_data = DiscoverySwitch {
+                    // Common across all potential features
+                    device: device.clone(),
+                    availability: availability.clone(),
+
+                    // Identifiers
+                    name: format!("{} LED", friendly_name.as_str()),
+                    unique_id: format!("neolink_{}_led", cam_config.name),
+                    icon: Some("mdi:led-on".to_string()),
+
+                    // Switch specific
+                    command_topic: format!("neolink/{}/control/led", cam_config.name),
+                    payload_off: "off".to_string(),
+                    payload_on: "on".to_string(),
+                    state_topic: None,
+                    state_off: None,
+                    state_on: None,
+                };
+
+                // Each feature needs to be individually registered
+                mqtt_sender
+                    .send_message_with_root_topic(
+                        &format!(
+                            "{}/switch/{}",
+                            discovery_config.topic, &config_data.unique_id
+                        ),
+                        "config",
+                        &serde_json::to_string(&config_data).with_context(|| {
+                            "Cound not serialise discovery led config into json"
+                        })?,
+                        true,
+                    )
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to publish led auto-discover data on over MQTT for {}",
+                            cam_config.name
+                        )
+                    })?;
+            }
+            "ir" => {
+                let config_data = DiscoverySelect {
+                    // Common across all potential features
+                    device: device.clone(),
+                    availability: availability.clone(),
+
+                    // Identifiers
+                    name: format!("{} IR", friendly_name.as_str()),
+                    unique_id: format!("neolink_{}_ir", cam_config.name),
+                    icon: Some("mdi:lightbulb-night".to_string()),
+
+                    // Switch specific
+                    command_topic: format!("neolink/{}/control/ir", cam_config.name),
+                    options: vec!["on".to_string(), "off".to_string(), "auto".to_string()],
+                    state_topic: None,
+                };
+
+                // Each feature needs to be individually registered
+                mqtt_sender
+                    .send_message_with_root_topic(
+                        &format!(
+                            "{}/select/{}",
+                            discovery_config.topic, &config_data.unique_id
+                        ),
+                        "config",
+                        &serde_json::to_string(&config_data).with_context(|| {
+                            "Cound not serialise discovery led config into json"
+                        })?,
+                        true,
+                    )
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to publish led auto-discover data on over MQTT for {}",
+                            cam_config.name
+                        )
+                    })?;
+            }
+            "motion" => {
+                let config_data = DiscoveryBinarySensor {
+                    // Common across all potential features
+                    device: device.clone(),
+                    availability: availability.clone(),
+
+                    // Identifiers
+                    name: format!("{} MD", friendly_name.as_str()),
+                    unique_id: format!("neolink_{}_md", cam_config.name),
+                    icon: Some("mdi:motion-sensor".to_string()),
+
+                    // Switch specific
+                    state_topic: format!("neolink/{}/status/motion", cam_config.name),
+                    payload_off: "off".to_string(),
+                    payload_on: "on".to_string(),
+                };
+
+                // Each feature needs to be individually registered
+                mqtt_sender
+                    .send_message_with_root_topic(
+                        &format!(
+                            "{}/binary_sensor/{}",
+                            discovery_config.topic, &config_data.unique_id
+                        ),
+                        "config",
+                        &serde_json::to_string(&config_data).with_context(|| {
+                            "Cound not serialise discovery motion config into json"
+                        })?,
+                        true,
+                    )
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to publish motion auto-discover data on over MQTT for {}",
+                            cam_config.name
+                        )
+                    })?;
+            }
+            "reboot" => {
+                let config_data = DiscoveryButton {
+                    // Common across all potential features
+                    device: device.clone(),
+                    availability: availability.clone(),
+
+                    // Identifiers
+                    name: format!("{} Reboot", friendly_name.as_str()),
+                    unique_id: format!("neolink_{}_reboot", cam_config.name),
+                    icon: Some("mdi:restart".to_string()),
+
+                    // Switch specific
+                    command_topic: format!("neolink/{}/control/reboot", cam_config.name),
+                    payload_press: None,
+                };
+
+                // Each feature needs to be individually registered
+                mqtt_sender
+                    .send_message_with_root_topic(
+                        &format!(
+                            "{}/button/{}",
+                            discovery_config.topic, &config_data.unique_id
+                        ),
+                        "config",
+                        &serde_json::to_string(&config_data).with_context(|| {
+                            "Cound not serialise discovery reboot config into json"
+                        })?,
+                        true,
+                    )
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to publish reboot auto-discover data on over MQTT for {}",
+                            cam_config.name
+                        )
+                    })?;
+            }
+            "pt" => {
+                for dir in ["left", "right", "up", "down"] {
+                    let config_data = DiscoveryButton {
+                        // Common across all potential features
+                        device: device.clone(),
+                        availability: availability.clone(),
+
+                        // Identifiers
+                        name: format!("{} Pan {}", friendly_name.as_str(), dir),
+                        unique_id: format!("neolink_{}_pan_{}", cam_config.name, dir),
+                        icon: Some(format!("mdi:pan-{}", dir)),
+
+                        // Switch specific
+                        command_topic: format!("neolink/{}/control/ptz", cam_config.name),
+                        payload_press: Some(dir.to_string()),
+                    };
+
+                    // Each feature needs to be individually registered
+                    mqtt_sender
+                        .send_message_with_root_topic(
+                            &format!(
+                                "{}/button/{}",
+                                discovery_config.topic, &config_data.unique_id
+                            ),
+                            "config",
+                            &serde_json::to_string(&config_data).with_context(|| {
+                                "Cound not serialise discovery pt config into json"
+                            })?,
+                            true,
+                        )
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "Failed to publish pt auto-discover data on over MQTT for {}",
+                                cam_config.name
+                            )
+                        })?;
+                }
             }
             _ => {
                 error!(
