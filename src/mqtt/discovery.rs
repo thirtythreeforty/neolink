@@ -192,7 +192,7 @@ pub(crate) async fn enable_discovery(
                     name: format!("{} Camera", friendly_name.as_str()),
                     unique_id: format!("neolink_{}_camera", cam_config.name),
                     icon: Some("mdi:camera-iris".to_string()),
-                    
+
                     // Camera specific
                     topic: format!("neolink/{}/status/preview", cam_config.name),
                     image_encoding: Encoding::Base64,
