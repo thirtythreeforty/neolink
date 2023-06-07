@@ -77,18 +77,25 @@ impl BcCamera {
         };
 
         sub_set.send(get).await?;
-        let msg = sub_set.recv().await?;
 
-        if let BcMeta {
-            response_code: 200, ..
-        } = msg.meta
+        if let Ok(reply) =
+            tokio::time::timeout(tokio::time::Duration::from_micros(500), sub_set.recv()).await
         {
-            Ok(())
+            let msg = reply?;
+            if let BcMeta {
+                response_code: 200, ..
+            } = msg.meta
+            {
+                Ok(())
+            } else {
+                Err(Error::UnintelligibleReply {
+                    reply: std::sync::Arc::new(Box::new(msg)),
+                    why: "The camera did not accept the Floodlight manual state",
+                })
+            }
         } else {
-            Err(Error::UnintelligibleReply {
-                reply: std::sync::Arc::new(Box::new(msg)),
-                why: "The camera did not accept the Floodlight manual state",
-            })
+            // Some cameras seem to just not send a reply on success, so after 500ms we return Ok
+            Ok(())
         }
     }
 }

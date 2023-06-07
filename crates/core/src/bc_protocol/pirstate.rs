@@ -94,21 +94,28 @@ impl BcCamera {
         };
 
         sub_set.send(get).await?;
-        let msg = sub_set.recv().await?;
-        if msg.meta.response_code != 200 {
-            return Err(Error::CameraServiceUnavaliable);
-        }
-
-        if let BcMeta {
-            response_code: 200, ..
-        } = msg.meta
+        if let Ok(reply) =
+            tokio::time::timeout(tokio::time::Duration::from_micros(500), sub_set.recv()).await
         {
-            Ok(())
+            let msg = reply?;
+            if msg.meta.response_code != 200 {
+                return Err(Error::CameraServiceUnavaliable);
+            }
+
+            if let BcMeta {
+                response_code: 200, ..
+            } = msg.meta
+            {
+                Ok(())
+            } else {
+                Err(Error::UnintelligibleReply {
+                    reply: std::sync::Arc::new(Box::new(msg)),
+                    why: "The camera did not except the RfAlarmCfg xml",
+                })
+            }
         } else {
-            Err(Error::UnintelligibleReply {
-                reply: std::sync::Arc::new(Box::new(msg)),
-                why: "The camera did not except the RfAlarmCfg xml",
-            })
+            // Some cameras seem to just not send a reply on success, so after 500ms we return Ok
+            Ok(())
         }
     }
 
