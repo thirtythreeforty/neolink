@@ -66,9 +66,9 @@ mod mqttc;
 use crate::config::{CameraConfig, Config, MqttConfig};
 use anyhow::{anyhow, Context, Error, Result};
 pub(crate) use cmdline::Opt;
+pub(crate) use discovery::Discoveries;
 use event_cam::EventCam;
 pub(crate) use event_cam::{Direction, Messages};
-pub(crate) use discovery::Discoveries;
 use log::*;
 use mqttc::{Mqtt, MqttReplyRef};
 
