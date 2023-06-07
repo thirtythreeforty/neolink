@@ -586,7 +586,7 @@ impl<'a> MessageHandler<'a> {
                                     }
                                 }
                             }
-                        }
+                        },
                         _ => "UNKNOWN COMMAND".to_string(),
                     };
                     if let Some(replier) = replier {
