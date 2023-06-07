@@ -27,6 +27,8 @@ pub(crate) enum Discoveries {
     Reboot,
     #[serde(alias = "pt")]
     Pt,
+    #[serde(alias = "battery", alias = "power")]
+    Battery,
 }
 
 #[derive(Debug, Clone)]
@@ -179,6 +181,20 @@ struct DiscoveryButton {
     command_topic: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     payload_press: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+struct DiscoverySensor {
+    name: String,
+    unique_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
+    device: DiscoveryDevice,
+    availability: DiscoveryAvaliablity,
+    // Button specific
+    state_topic: String,
+    state_class: String,
+    unit_of_measurement: String,
 }
 
 /// Enables MQTT discovery for a camera. See docs at https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
@@ -502,6 +518,44 @@ pub(crate) async fn enable_discovery(
                             )
                         })?;
                 }
+            }
+            Discoveries::Battery => {
+                let config_data = DiscoverySensor {
+                    // Common across all potential features
+                    device: device.clone(),
+                    availability: availability.clone(),
+
+                    // Identifiers
+                    name: format!("{} Battery", friendly_name.as_str()),
+                    unique_id: format!("neolink_{}_battery", cam_config.name),
+                    icon: Some("mdi:battery".to_string()),
+
+                    // Camera specific
+                    state_topic: format!("neolink/{}/status/battery_level", cam_config.name),
+                    state_class: "measurement".to_string(),
+                    unit_of_measurement: "%".to_string(),
+                };
+
+                // Each feature needs to be individually registered
+                mqtt_sender
+                    .send_message_with_root_topic(
+                        &format!(
+                            "{}/sensor/{}",
+                            discovery_config.topic, &config_data.unique_id
+                        ),
+                        "config",
+                        &serde_json::to_string(&config_data).with_context(|| {
+                            "Cound not serialise discovery battery config into json"
+                        })?,
+                        true,
+                    )
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to publish battery auto-discover data on over MQTT for {}",
+                            cam_config.name
+                        )
+                    })?;
             }
         }
     }

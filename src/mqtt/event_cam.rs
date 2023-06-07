@@ -216,8 +216,8 @@ impl EventCamThread {
             tx: self.tx.clone(),
             camera: arc_cam.clone(),
         };
-        
-        let mut battery_thread = BatteryThread {
+
+        let mut battery_thread = BatteryLevelThread {
             tx: self.tx.clone(),
             camera: arc_cam.clone(),
         };
@@ -372,10 +372,22 @@ struct SnapThread {
 
 impl SnapThread {
     async fn run(&mut self) -> Result<()> {
-        let mut inter = interval(Duration::from_millis(500));
+        let mut tries = 0;
+        let base_duration = Duration::from_millis(500);
         loop {
-            inter.tick().await;
-            let snapshot = self.camera.get_snapshot().await?;
+            tokio::time::sleep(base_duration.saturating_mul(tries)).await;
+            let snapshot = match self.camera.get_snapshot().await {
+                Ok(info) => {
+                    tries = 1;
+                    info
+                }
+                Err(neolink_core::Error::UnintelligibleReply { .. }) => {
+                    // Try again later
+                    tries += 1;
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            };
             self.tx.send(Messages::Snap(snapshot)).await?;
         }
     }
@@ -388,11 +400,25 @@ struct BatteryLevelThread {
 
 impl BatteryLevelThread {
     async fn run(&mut self) -> Result<()> {
-        let mut inter = interval(Duration::from_millis(500));
+        let mut tries = 0;
+        let base_duration = Duration::from_millis(500);
         loop {
-            inter.tick().await;
-            let battery = self.camera.battery_info().await?;
-            self.tx.send(Messages::BatteryLevel(battery.battery_percent)).await?;
+            tokio::time::sleep(base_duration.saturating_mul(tries)).await;
+            let battery = match self.camera.battery_info().await {
+                Ok(info) => {
+                    tries = 1;
+                    info
+                }
+                Err(neolink_core::Error::UnintelligibleReply { .. }) => {
+                    // Try again later
+                    tries += 1;
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            };
+            self.tx
+                .send(Messages::BatteryLevel(battery.battery_percent))
+                .await?;
         }
     }
 }
