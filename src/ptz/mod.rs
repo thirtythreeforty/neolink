@@ -15,7 +15,7 @@
 /// # Move the camera to preset ID 0
 /// neolink ptz --config=config.toml CameraName preset 0
 /// # Save the current position as preset ID 0 with name PresetName
-/// neolink ptz --config=config.toml CameraName preset 0 PresetName
+/// neolink ptz --config=config.toml CameraName assign 0 PresetName
 /// ```
 ///
 use anyhow::{Context, Result};
