@@ -15,6 +15,7 @@ impl<T> Camera<T> {
         self.shared.config.name.clone()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn get_config(&self) -> &CameraConfig {
         &self.shared.config
     }

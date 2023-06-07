@@ -55,6 +55,8 @@
 use anyhow::{anyhow, Context, Result};
 use futures::stream::FuturesUnordered;
 use log::*;
+use neolink_core::bc_protocol::{BcCamera, StreamKind};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_stream::StreamExt;
@@ -242,23 +244,153 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
         .await;
     log::info!("{}: Buffers prepared", name);
 
+    let mut active_tags = streaming.shared.get_streams().clone();
+    let mut motion_pause = false;
     loop {
         // Wait for error or reason to pause
-        tokio::select! {
+        let change = tokio::select! {
             v = async {
-                // Wait for error
-                streaming.join().await
-            } => {
-                info!("Join Pause");
-                v
+            // Wait for error
+            streaming.join().await
+            }, if ! active_tags.is_empty() => {
+                info!("{}: Join Pause", name);
+                Ok(StreamChange::StreamError(v))
             },
+            v = await_change(
+                streaming.get_camera(),
+                &streaming.shared,
+                &rtsp_thread,
+                &active_tags,
+                motion_pause,
+                &name,
+            ), if streaming.shared.get_config().pause.on_motion || streaming.shared.get_config().pause.on_disconnect => {
+                v.with_context(|| format!("{}: Error updating pause state", name))
+                .map_err(CameraFailureKind::Retry)
+            }
+        }?;
+
+        match change {
+            StreamChange::StreamError(res) => {
+                res.map_err(CameraFailureKind::Retry)?;
+            }
+            StreamChange::MotionStart => {
+                motion_pause = false;
+                let inactive_streams = streaming
+                    .shared
+                    .get_streams()
+                    .iter()
+                    .filter(|i| !active_tags.contains(i))
+                    .copied()
+                    .collect::<Vec<_>>();
+
+                if streaming.shared.get_config().pause.on_disconnect {
+                    // Pause on client is also on
+                    //
+                    // Only resume clients with active connections
+                    for stream in inactive_streams.iter() {
+                        if rtsp_thread
+                            .get_number_of_clients(streaming.shared.get_tag_for_stream(stream))
+                            .await
+                            .map(|n| n > 0)
+                            .unwrap_or(false)
+                        {
+                            streaming
+                                .start_stream(*stream)
+                                .await
+                                .map_err(CameraFailureKind::Retry)?;
+                            active_tags.insert(*stream);
+                            rtsp_thread
+                                .resume(streaming.shared.get_tag_for_stream(stream))
+                                .await
+                                .map_err(CameraFailureKind::Retry)?;
+                        }
+                    }
+                } else {
+                    // Pause on client is not on
+                    //
+                    // Resume all
+                    for stream in inactive_streams.iter() {
+                        streaming
+                            .start_stream(*stream)
+                            .await
+                            .map_err(CameraFailureKind::Retry)?;
+                        active_tags.insert(*stream);
+                        rtsp_thread
+                            .resume(streaming.shared.get_tag_for_stream(stream))
+                            .await
+                            .map_err(CameraFailureKind::Retry)?;
+                    }
+                }
+            }
+            StreamChange::MotionStop => {
+                motion_pause = true;
+                // Clear all streams
+                for stream in active_tags.drain() {
+                    rtsp_thread
+                        .pause(streaming.shared.get_tag_for_stream(&stream))
+                        .await
+                        .map_err(CameraFailureKind::Retry)?;
+                    streaming
+                        .stop_stream(stream)
+                        .await
+                        .map_err(CameraFailureKind::Retry)?;
+                }
+            }
+            StreamChange::ClientStart(stream) => {
+                if !streaming.shared.get_config().pause.on_motion || !motion_pause {
+                    streaming
+                        .start_stream(stream)
+                        .await
+                        .map_err(CameraFailureKind::Retry)?;
+                    active_tags.insert(stream);
+                    rtsp_thread
+                        .resume(streaming.shared.get_tag_for_stream(&stream))
+                        .await
+                        .map_err(CameraFailureKind::Retry)?;
+                }
+            }
+            StreamChange::ClientStop(stream) => {
+                if !streaming.shared.get_config().pause.on_motion || !motion_pause {
+                    rtsp_thread
+                        .pause(streaming.shared.get_tag_for_stream(&stream))
+                        .await
+                        .map_err(CameraFailureKind::Retry)?;
+                    streaming
+                        .stop_stream(stream)
+                        .await
+                        .map_err(CameraFailureKind::Retry)?;
+                    active_tags.remove(&stream);
+                }
+            }
+        }
+    }
+    // Ok(())
+}
+
+enum StreamChange {
+    StreamError(Result<()>),
+    MotionStart,
+    MotionStop,
+    ClientStart(StreamKind),
+    ClientStop(StreamKind),
+}
+async fn await_change(
+    camera: &BcCamera,
+    shared: &Shared,
+    rtsp_thread: &NeoRtspServer,
+    active_tags: &HashSet<StreamKind>,
+    motion_pause: bool,
+    name: &str,
+) -> Result<StreamChange> {
+    tokio::select! {
             v = async {
                 // Wait for motion stop
-                let mut motion = streaming.get_camera().listen_on_motion().await?;
-                motion.await_stop(Duration::from_secs_f64(streaming.get_config().pause.motion_timeout)).await
-            }, if streaming.get_config().pause.on_motion => {
-                info!("Motion Pause");
-                v.map_err(|e| anyhow!("Error while processing motion messages: {:?}", e))
+                let mut motion = camera.listen_on_motion().await?;
+                motion.await_stop(Duration::from_secs_f64(shared.get_config().pause.motion_timeout)).await
+            }, if motion_pause && shared.get_config().pause.on_motion => {
+                info!("{}: Motion Pause", name);
+                v.map_err(|e| anyhow!("Error while processing motion messages: {:?}", e))?;
+                Ok(StreamChange::MotionStop)
             },
             v = async {
                 // Wait for client to disconnect
@@ -266,97 +398,45 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
 
                 loop {
                     inter.tick().await;
-                    let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;
-                    // info!("Num clients: {}", total_clients);
-                    if total_clients == 0 {
-                        return Ok(())
+                    for tag in active_tags.iter() {
+                        if rtsp_thread.get_number_of_clients(shared.get_tag_for_stream(tag)).await.map(|n| n == 0).unwrap_or(true) {
+                            return Result::<_,anyhow::Error>::Ok(StreamChange::ClientStop(*tag))
+                        }
                     }
                 }
-            }, if streaming.get_config().pause.on_disconnect => {
-                info!("Client Pause");
+            }, if shared.get_config().pause.on_disconnect => {
+                if let Ok(StreamChange::ClientStop(tag)) = v.as_ref() {
+                    info!("{}: Client Pause:: {:?}", name, tag);
+                }
                 v
-            },
-        }.with_context(|| format!("{}: Error while streaming", name))
-        .map_err(CameraFailureKind::Retry)?;
-
-        tags.iter()
-            .map(|tag| rtsp_thread.pause(tag))
-            .collect::<FuturesUnordered<_>>()
-            .collect::<Vec<_>>()
-            .await;
-
-        let paused = streaming
-            .stop()
-            .await
-            .with_context(|| format!("{}: Could not stop stream", name))
-            .map_err(CameraFailureKind::Retry)?;
-        // Wait for reason to restart
-        tokio::select! {
-            v = async {
-                // Wait for motion start and client for start
-                let mut motion = paused.get_camera().listen_on_motion().await?;
-                let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
-                loop {
-                    motion.await_start(Duration::ZERO).await?;
-                    let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;
-                    if total_clients > 0 {
-                        return Result::<()>::Ok(());
-                    }
-                    inter.tick().await;
-                }
-            }, if paused.get_config().pause.on_motion && paused.get_config().pause.on_disconnect => {
-                info!("Motion and Client Resume");
-                v.with_context(|| "Error while processing motion/client messages")
             },
             v = async {
                 // Wait for motion start
-                let mut motion = paused.get_camera().listen_on_motion().await?;
+                let mut motion = camera.listen_on_motion().await?;
                 motion.await_start(Duration::ZERO).await
-            }, if paused.get_config().pause.on_motion && !paused.get_config().pause.on_disconnect => {
-                info!("Motion Resume");
-                v.with_context(|| "Error while processing motion messages")
+            }, if ! motion_pause && shared.get_config().pause.on_motion => {
+                info!("{}: Motion Resume", name);
+                v.with_context(|| "Error while processing motion messages")?;
+                Ok(StreamChange::MotionStart)
             },
             v = async {
                 // Wait for client to connect
                 let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
-
+                let inactive_tags = shared.get_streams().iter().filter(|i| !active_tags.contains(i)).collect::<Vec<_>>();
+                trace!("inactive_tags: {:?}", inactive_tags);
                 loop {
                     inter.tick().await;
-                    let total_clients =  tags.iter().map(|tag| rtsp_thread.get_number_of_clients(tag)).collect::<FuturesUnordered<_>>().fold(0usize, |acc, f| acc + f.unwrap_or(0usize)).await;
-                    if total_clients > 0 {
-                        return Ok(())
+                    for tag in inactive_tags.iter() {
+                        if rtsp_thread.get_number_of_clients(shared.get_tag_for_stream(tag)).await.map(|n| n > 0).unwrap_or(false) {
+                            return Result::<_,anyhow::Error>::Ok(StreamChange::ClientStart(**tag))
+                        }
                     }
                 }
-            }, if paused.get_config().pause.on_disconnect && !paused.get_config().pause.on_motion => {
-                info!("Client Resume");
+            }, if shared.get_config().pause.on_disconnect => {
+                if let Ok(StreamChange::ClientStart(tag)) = v.as_ref() {
+                    info!("{}: Client Resume:: {:?}", name, tag);
+                }
                 v
             },
-            else => {
-                // No pause. This means that the stream stopped for some reason
-                // but not because of an error
-                info!("Generic Resume");
-                Ok(())
-            }
-        }
-        .with_context(|| format!("{}: Error while paused", name))
-        .map_err(CameraFailureKind::Retry)?;
-
-        tags.iter()
-            .map(|tag| rtsp_thread.jump_to_live(tag))
-            .collect::<FuturesUnordered<_>>()
-            .collect::<Vec<_>>()
-            .await;
-
-        streaming = paused
-            .stream()
-            .await
-            .with_context(|| format!("{}: Could not start stream", name))
-            .map_err(CameraFailureKind::Retry)?;
-
-        tags.iter()
-            .map(|tag| rtsp_thread.resume(tag))
-            .collect::<FuturesUnordered<_>>()
-            .collect::<Vec<_>>()
-            .await;
-    }
+        }.with_context(|| format!("{}: Error while streaming", name))
 }

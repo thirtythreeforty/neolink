@@ -143,5 +143,5 @@ jobs:
         env:
           DAYS: "100"
           REPO_NAME: ${{ steps.string_repo.outputs.lowercase }}
-          OWNER: ${{ steps.string_user.outputs.lowercase }}
-          TOKEN: ${{ secrets.DOCKER_PRUNE__TOKEN }}
+          OWNER: ${{ vars.DOCKER_USERNAME || steps.string_user.outputs.lowercase }}
+          TOKEN: ${{ secrets.DOCKER_PRUNE_TOKEN }}

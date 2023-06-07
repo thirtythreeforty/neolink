@@ -102,6 +102,12 @@ impl Shared {
             .map(|k| self.get_tag_for_stream(k))
             .collect()
     }
+    pub(crate) fn get_streams(&self) -> &HashSet<Stream> {
+        &self.streams
+    }
+    pub(crate) fn get_config(&self) -> &CameraConfig {
+        &self.config
+    }
     pub(crate) fn get_tag_for_stream(&self, stream: &Stream) -> String {
         format!("{}::{:?}", self.config.name, stream)
     }
