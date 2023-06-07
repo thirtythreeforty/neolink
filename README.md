@@ -154,6 +154,8 @@ Cellular cameras should select `"cellular"` which only enables `map` and
 discovery = "cellular"
 ```
 
+See the sample config file for more details.
+
 ### MQTT
 
 To use mqtt you will to adjust your config file as such:
@@ -222,7 +224,16 @@ Currently, discovery is opt-in and camera features must be manually specified.
   features = ["floodlight"]
 ```
 
-See the sample config file for more details.
+Avaliable features are:
+
+- `floodlight`: This adds a light control to home assistant
+- `camera`: This adds a camera preview to home assistant. It is only updated every 0.5s and cannot be much more than that since it is updated over mqtt not over RTSP
+- `led`: This adds a switch to chage the LED status light on/off to home assistant
+- `ir`: This adds a selection switch to chage the IR light on/off/auto to home assistant
+- `motion`: This adds a motion detection binary sensor to home assistant
+- `reboot`: This adds a reboot button  to home assistant
+- `pt`: This adds a selection of buttons to control the pan and tilt of the camera
+
 
 ### Pause
 
