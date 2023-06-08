@@ -148,7 +148,7 @@ pub(crate) struct MqttConfig {
 
     #[serde(default)]
     pub(crate) client_auth: Option<(std::path::PathBuf, std::path::PathBuf)>,
-    
+
     #[serde(default = "default_true")]
     pub(crate) enable_motion: bool,
     #[serde(default = "default_true")]
