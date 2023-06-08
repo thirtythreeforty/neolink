@@ -7,7 +7,7 @@ impl BcCamera {
         self.has_ability_ro("ledState").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_get = connection.subscribe(msg_num).await?;
+        let mut sub_get = connection.subscribe(MSG_ID_GET_LED_STATUS, msg_num).await?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_GET_LED_STATUS,
@@ -56,7 +56,7 @@ impl BcCamera {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let mut sub_set = connection.subscribe(msg_num).await?;
+        let mut sub_set = connection.subscribe(MSG_ID_SET_LED_STATUS, msg_num).await?;
 
         // led_version is a field recieved from the camera but not sent
         // we set to None to ensure we don't send it to the camera

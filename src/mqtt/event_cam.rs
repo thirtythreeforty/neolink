@@ -388,6 +388,7 @@ impl SnapThread {
                     continue;
                 }
                 Err(neolink_core::Error::CameraServiceUnavaliable) => {
+                    log::debug!("Snap not supported");
                     futures::future::pending().await
                 }
                 Err(e) => return Err(e.into()),
@@ -405,7 +406,7 @@ struct BatteryLevelThread {
 impl BatteryLevelThread {
     async fn run(&mut self) -> Result<()> {
         let mut tries = 0;
-        let base_duration = Duration::from_millis(500);
+        let base_duration = Duration::from_secs(15);
         loop {
             tokio::time::sleep(base_duration.saturating_mul(tries)).await;
             let battery = match self.camera.battery_info().await {
@@ -419,6 +420,7 @@ impl BatteryLevelThread {
                     continue;
                 }
                 Err(neolink_core::Error::CameraServiceUnavaliable) => {
+                    log::debug!("Battery not supported");
                     futures::future::pending().await
                 }
                 Err(e) => return Err(e.into()),

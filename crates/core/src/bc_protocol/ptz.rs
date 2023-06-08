@@ -25,7 +25,7 @@ impl BcCamera {
         self.has_ability_rw("control").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_set = connection.subscribe(msg_num).await?;
+        let mut sub_set = connection.subscribe(MSG_ID_PTZ_CONTROL, msg_num).await?;
 
         let direction_str = match direction {
             Direction::Up => "up",
@@ -88,7 +88,7 @@ impl BcCamera {
         self.has_ability_rw("control").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_set = connection.subscribe(msg_num).await?;
+        let mut sub_set = connection.subscribe(MSG_ID_GET_PTZ_PRESET, msg_num).await?;
 
         let send = Bc {
             meta: BcMeta {
@@ -136,7 +136,9 @@ impl BcCamera {
         self.has_ability_rw("control").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_set = connection.subscribe(msg_num).await?;
+        let mut sub_set = connection
+            .subscribe(MSG_ID_PTZ_CONTROL_PRESET, msg_num)
+            .await?;
 
         let command = if name.is_some() { "setPos" } else { "toPos" };
         let send = Bc {

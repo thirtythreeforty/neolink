@@ -45,7 +45,9 @@ impl BcCamera {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let mut sub_set = connection.subscribe(msg_num).await?;
+        let mut sub_set = connection
+            .subscribe(MSG_ID_FLOODLIGHT_MANUAL, msg_num)
+            .await?;
 
         let get = Bc {
             meta: BcMeta {

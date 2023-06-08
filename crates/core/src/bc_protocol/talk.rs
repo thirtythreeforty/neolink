@@ -17,7 +17,7 @@ impl BcCamera {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let mut sub = connection.subscribe(msg_num).await?;
+        let mut sub = connection.subscribe(MSG_ID_TALKRESET, msg_num).await?;
 
         let msg = Bc {
             meta: BcMeta {
@@ -60,7 +60,7 @@ impl BcCamera {
     pub async fn talk_ability(&self) -> Result<TalkAbility> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_get = connection.subscribe(msg_num).await?;
+        let mut sub_get = connection.subscribe(MSG_ID_TALKABILITY, msg_num).await?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_TALKABILITY,
@@ -120,7 +120,7 @@ impl BcCamera {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let mut sub = connection.subscribe(msg_num).await?;
+        let mut sub = connection.subscribe(MSG_ID_TALKCONFIG, msg_num).await?;
 
         if &talk_config.audio_config.audio_type != "adpcm" {
             return Err(Error::UnknownTalkEncoding);
@@ -182,7 +182,7 @@ impl BcCamera {
 
         let full_block_size = block_size + 4; // Block size + predictor state
         let msg_num = self.new_message_num();
-        let sub = connection.subscribe(msg_num).await?;
+        let sub = connection.subscribe(MSG_ID_TALK, msg_num).await?;
 
         const BLOCK_PER_PAYLOAD: usize = 4;
         const BLOCK_HEADER_SIZE: usize = 4;
@@ -261,7 +261,7 @@ impl BcCamera {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let mut sub = connection.subscribe(msg_num).await?;
+        let mut sub = connection.subscribe(MSG_ID_TALKCONFIG, msg_num).await?;
 
         if &talk_config.audio_config.audio_type != "adpcm" {
             return Err(Error::UnknownTalkEncoding);
@@ -323,7 +323,7 @@ impl BcCamera {
 
         let full_block_size = block_size + 4; // Block size + predictor state
         let msg_num = self.new_message_num();
-        let sub = connection.subscribe(msg_num).await?;
+        let sub = connection.subscribe(MSG_ID_TALK, msg_num).await?;
 
         const BLOCK_PER_PAYLOAD: usize = 1;
         const BLOCK_HEADER_SIZE: usize = 4;

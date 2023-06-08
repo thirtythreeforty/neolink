@@ -228,7 +228,10 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                         .send_message("status/battery_level", format!("{}", data).as_str(), true)
                         .await
                         .with_context(|| {
-                            format!("Failed to publish battery level over MQTT for {}", camera_name)
+                            format!(
+                                "Failed to publish battery level over MQTT for {}",
+                                camera_name
+                            )
                         })?;
                 }
                 _ => {}

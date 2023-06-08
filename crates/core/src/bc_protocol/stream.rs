@@ -111,7 +111,7 @@ impl BcCamera {
 
         let handle = task::spawn(async move {
             tokio::task::yield_now().await;
-            let mut sub_video = connection.subscribe(msg_num).await?;
+            let mut sub_video = connection.subscribe(MSG_ID_VIDEO, msg_num).await?;
 
             // On an E1 and swann cameras:
             //  - mainStream always has a value of 0
@@ -224,13 +224,14 @@ impl BcCamera {
                 },
             );
             // debug!("Stream: Send Stop");
-            sub_video.send(stop_video).await?;
+            let mut sub_stop = connection.subscribe(MSG_ID_VIDEO_STOP, msg_num).await?;
+            sub_stop.send(stop_video).await?;
             // debug!("Stream: Sent Stop");
 
             tokio::select! {
                 v = async {
                     loop {
-                        let msg = sub_video.recv().await?;
+                        let msg = sub_stop.recv().await?;
                         if let BcMeta {
                             response_code: 200,
                             msg_id: MSG_ID_VIDEO_STOP,
@@ -268,7 +269,7 @@ impl BcCamera {
         }
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_video = connection.subscribe(msg_num).await?;
+        let mut sub_video = connection.subscribe(MSG_ID_VIDEO_STOP, msg_num).await?;
 
         // On an E1 and swann cameras:
         //  - mainStream always has a value of 0

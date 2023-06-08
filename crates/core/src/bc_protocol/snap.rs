@@ -1,4 +1,4 @@
-use futures::{StreamExt, TryStreamExt};
+// use futures::{StreamExt, TryStreamExt};
 
 use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
@@ -8,7 +8,7 @@ impl BcCamera {
     pub async fn get_snapshot(&self) -> Result<Vec<u8>> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_get = connection.subscribe(msg_num).await?;
+        let mut sub_get = connection.subscribe(MSG_ID_SNAP, msg_num).await?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_SNAP,
@@ -57,17 +57,90 @@ impl BcCamera {
             ..
         }) = msg.body
         {
-            log::trace!("Got snap {} with size {}", filename, expected_size);
+            log::debug!("Got snap XML {} with size {}", filename, expected_size);
+            // Messages are now sent on ID 109 but not with the same message ID
+            // preumably because the camera considers it to be a new message rather
+            // than a reply
+            //
+            // This means we need to listen for the next 109 grab the message num and
+            // subscribe to it. This is what `subscribe_to_next` is for
+            let mut sub_get = connection.subscribe_to_id(MSG_ID_SNAP).await?;
             let expected_size = expected_size as usize;
 
-            let binary_stream = sub_get.payload_stream();
-            let result: Vec<_> = binary_stream
-                .map_ok(|i| tokio_stream::iter(i).map(Result::Ok))
-                .try_flatten()
-                .take(expected_size)
-                .try_collect()
-                .await?;
-            log::trace!("Got whole of the snap: {}", result.len());
+            let mut result: Vec<_> = vec![];
+            log::debug!("Waiting for packets on {}", msg_num);
+            let mut msg = sub_get.recv().await?;
+
+            while msg.meta.response_code == 200 {
+                // sends 200 while more is to come
+                //       201 when finished
+
+                if let BcBody::ModernMsg(ModernMsg {
+                    extension:
+                        Some(Extension {
+                            binary_data: Some(1),
+                            ..
+                        }),
+                    payload: Some(BcPayloads::Binary(data)),
+                }) = msg.body
+                {
+                    result.extend_from_slice(&data);
+                } else {
+                    return Err(Error::UnintelligibleReply {
+                        reply: std::sync::Arc::new(Box::new(msg)),
+                        why: "Expected binary data but got something else",
+                    });
+                }
+                log::debug!(
+                    "Got packet size is now {} of {}",
+                    result.len(),
+                    expected_size
+                );
+                msg = sub_get.recv().await?;
+            }
+
+            if msg.meta.response_code == 201 {
+                // 201 means all binary data sent
+                if let BcBody::ModernMsg(ModernMsg {
+                    extension:
+                        Some(Extension {
+                            binary_data: Some(1),
+                            ..
+                        }),
+                    payload,
+                }) = msg.body
+                {
+                    if let Some(BcPayloads::Binary(data)) = payload {
+                        // Add last data if present (may be zero if preveious packet contained it)
+                        result.extend_from_slice(&data);
+                    }
+                    log::debug!(
+                        "Got all packets size is now {} of {}",
+                        result.len(),
+                        expected_size
+                    );
+                    if result.len() != expected_size {
+                        log::warn!("Snap did not recieve expected number of byes");
+                    }
+                } else {
+                    return Err(Error::UnintelligibleReply {
+                        reply: std::sync::Arc::new(Box::new(msg)),
+                        why: "Expected binary data but got something else",
+                    });
+                }
+            } else {
+                // anything else is an error
+                return Err(Error::CameraServiceUnavaliable);
+            }
+
+            // let binary_stream = sub_get.payload_stream();
+            // let result: Vec<_>= binary_stream
+            //     .map_ok(|i| tokio_stream::iter(i).map(Result::Ok))
+            //     .try_flatten()
+            //     .take(expected_size)
+            //     .try_collect()
+            //     .await?;
+            log::debug!("Snapshot recieved: {} of {}", result.len(), expected_size);
             Ok(result)
         } else {
             Err(Error::UnintelligibleReply {

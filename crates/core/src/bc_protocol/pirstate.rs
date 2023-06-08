@@ -12,7 +12,7 @@ impl BcCamera {
         loop {
             retry_interval.tick().await;
             let msg_num = self.new_message_num();
-            let mut sub_get = connection.subscribe(msg_num).await?;
+            let mut sub_get = connection.subscribe(MSG_ID_GET_PIR_ALARM, msg_num).await?;
             let get = Bc {
                 meta: BcMeta {
                     msg_id: MSG_ID_GET_PIR_ALARM,
@@ -70,7 +70,9 @@ impl BcCamera {
         self.has_ability_rw("rfAlarm").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_set = connection.subscribe(msg_num).await?;
+        let mut sub_set = connection
+            .subscribe(MSG_ID_START_PIR_ALARM, msg_num)
+            .await?;
 
         let get = Bc {
             meta: BcMeta {

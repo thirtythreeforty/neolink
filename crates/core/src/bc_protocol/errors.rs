@@ -96,10 +96,10 @@ pub enum Error {
     GenError(#[error(source)] std::sync::Arc<cookie_factory::GenError>),
 
     /// Raised when a connection is subscrbed to more than once for msg_num
-    #[error(display = "Simultaneous subscription, {}", _0)]
+    #[error(display = "Simultaneous subscription, {:?}", _0)]
     SimultaneousSubscription {
         /// The message number that was subscribed to
-        msg_num: u16,
+        msg_num: Option<u16>,
     },
 
     /// Raised when a connection is subscrbed to more than once for msg_id

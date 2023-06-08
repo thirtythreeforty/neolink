@@ -17,7 +17,7 @@ impl BcCamera {
         self.has_ability_ro("general").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_get_general = connection.subscribe(msg_num).await?;
+        let mut sub_get_general = connection.subscribe(MSG_ID_GET_GENERAL, msg_num).await?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_GET_GENERAL,
@@ -102,7 +102,7 @@ impl BcCamera {
         self.has_ability_rw("general").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_set_general = connection.subscribe(msg_num).await?;
+        let mut sub_set_general = connection.subscribe(MSG_ID_SET_GENERAL, msg_num).await?;
         let set = Bc::new_from_xml(
             BcMeta {
                 msg_id: MSG_ID_SET_GENERAL,

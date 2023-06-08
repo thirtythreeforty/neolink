@@ -175,7 +175,7 @@ impl Discoverer {
                     Ok(rx)
                 } else {
                     Err(Error::SimultaneousSubscription {
-                        msg_num: (tid as u16),
+                        msg_num: Some(tid as u16),
                     })
                 }
             }
