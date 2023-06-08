@@ -237,7 +237,7 @@ impl EventCamThread {
             val = async {
                 info!("{}: Listening to Camera Motion", camera_config.name);
                 motion_thread.run().await
-            } => {
+            }, if camera_config.mqtt.as_ref().expect("Should have an mqtt config at this point").enable_motion => {
                 if let Err(e) = val {
                     error!("Motion thread aborted: {:?}", e);
                     Err(e)
@@ -249,7 +249,7 @@ impl EventCamThread {
             val = async {
                 debug!("{}: Starting Pings", camera_config.name);
                 keepalive_thread.run().await
-            } => {
+            }, if camera_config.mqtt.as_ref().expect("Should have an mqtt config at this point").enable_pings => {
                 if let Err(e) = val {
                     debug!("Ping thread aborted: {:?}", e);
                     Err(e)
@@ -261,7 +261,7 @@ impl EventCamThread {
             val = async {
                 info!("{}: Listening to FloodLight Status", camera_config.name);
                 flight_thread.run().await
-            } => {
+            }, if camera_config.mqtt.as_ref().expect("Should have an mqtt config at this point").enable_light => {
                 if let Err(e) = val {
                     error!("FloodLight thread aborted: {:?}", e);
                     Err(e)
@@ -273,7 +273,7 @@ impl EventCamThread {
             val = async {
                 info!("{}: Updating Preview", camera_config.name);
                 snap_thread.run().await
-            } => {
+            }, if camera_config.mqtt.as_ref().expect("Should have an mqtt config at this point").enable_preview => {
                 if let Err(e) = val {
                     error!("Snap thread aborted: {:?}", e);
                     Err(e)
@@ -285,7 +285,7 @@ impl EventCamThread {
             val = async {
                 info!("{}: Updating Battery Level", camera_config.name);
                 battery_thread.run().await
-            } => {
+            }, if camera_config.mqtt.as_ref().expect("Should have an mqtt config at this point").enable_battery => {
                 if let Err(e) = val {
                     error!("Battery thread aborted: {:?}", e);
                     Err(e)

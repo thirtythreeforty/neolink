@@ -209,12 +209,35 @@ Status Messages:
 - `/status/motion` Contains the motion detection alarm status. `on` for motion and `off` for still
 - `/status/ptz/preset` Sent in reply to a `/query/ptz/preset` an XML encoded version of the
   PTZ presets
+- `/status/preview` a base64 encoded camera image updated every 0.5s
 
 Query Messages:
 
 - `/query/battery` Request that the camera reports its battery level
 - `/query/pir` Request that the camera reports its pir status
 - `/query/ptz/preset` Request that the camera reports its PTZ presets
+
+### MQTT Disable Features
+
+Certain features like preview and motion detection may not be desired
+you can disable them by them with the following config options. 
+Disabling these may help to conserve battery
+
+```toml
+enable_motion = false  # motion detection
+                       # (limited battery drain since it
+                       # is a passive listening connection)
+
+enable_pings = false   # keep alive pings that keep the camera connected
+
+enable_light = false   # flood lights only avaliable on some camera
+                       # (limited battery drain since it
+                       # is a passive listening connection)
+
+enable_battery = false # battery updates in `/status/battery_level`
+
+enable_preview = false # preview image in `/status/preview`
+```
 
 #### MQTT Discovery
 
