@@ -23,12 +23,10 @@ pub struct Opt {
 
 #[derive(Parser, Debug)]
 pub enum PtzCommand {
-    /// Gets the available presets on the camera, moves the camera to a given preset ID or saves
-    /// the current position as a preset with name and ID.
-    Preset {
-        preset_id: Option<i8>,
-        name: Option<String>,
-    },
+    /// Move to a stored preset
+    Preset { preset_id: Option<u8> },
+    /// Assign the current position to a preset with a given name
+    Assign { preset_id: u8, name: String },
     /// Performs a movement in the given direction
     Control {
         /// The amount to move
