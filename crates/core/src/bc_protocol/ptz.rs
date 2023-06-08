@@ -129,10 +129,10 @@ impl BcCamera {
         }
     }
 
-    /// Set a PTZ preset. If a [name] is given the current position will be saved as a preset
-    /// with the given [preset_id] and [name], otherwise the camera will attempt to move to the
-    /// preset with the given ID.
-    pub async fn set_ptz_preset(&self, preset_id: i8, name: Option<String>) -> Result<()> {
+    /// Set a PTZ preset.
+    ///
+    /// The current position will be saved as a preset with the given [preset_id] and [name]
+    pub async fn set_ptz_preset(&self, preset_id: u8, name: String) -> Result<()> {
         self.has_ability_rw("control").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
@@ -140,7 +140,11 @@ impl BcCamera {
             .subscribe(MSG_ID_PTZ_CONTROL_PRESET, msg_num)
             .await?;
 
-        let command = if name.is_some() { "setPos" } else { "toPos" };
+        let preset = Preset {
+            id: preset_id,
+            name: Some(name),
+            command: "setPos".to_owned(),
+        };
         let send = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_PTZ_CONTROL_PRESET,
@@ -158,13 +162,64 @@ impl BcCamera {
                 }),
                 payload: Some(BcPayloads::BcXml(BcXml {
                     ptz_preset: Some(PtzPreset {
-                        preset_list: Some(PresetList {
-                            preset: vec![Preset {
-                                id: preset_id,
-                                name,
-                                command: Some(command.to_string()),
-                            }],
-                        }),
+                        preset_list: PresetList {
+                            preset: vec![preset],
+                        },
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })),
+            }),
+        };
+
+        sub_set.send(send).await?;
+        let msg = sub_set.recv().await?;
+
+        if let BcMeta {
+            response_code: 200, ..
+        } = msg.meta
+        {
+            Ok(())
+        } else {
+            Err(Error::UnintelligibleReply {
+                reply: std::sync::Arc::new(Box::new(msg)),
+                why: "The camera did not accept the PtzPreset xml",
+            })
+        }
+    }
+
+    /// The camera will attempt to move to the preset with the given ID.
+    pub async fn moveto_ptz_preset(&self, preset_id: u8) -> Result<()> {
+        self.has_ability_rw("control").await?;
+        let connection = self.get_connection();
+        let msg_num = self.new_message_num();
+        let mut sub_set = connection.subscribe(MSG_ID_PTZ_CONTROL_PRESET, msg_num).await?;
+
+        let preset = Preset {
+            id: preset_id,
+            name: None,
+            command: "toPos".to_owned(),
+        };
+        let send = Bc {
+            meta: BcMeta {
+                msg_id: MSG_ID_PTZ_CONTROL_PRESET,
+                channel_id: self.channel_id,
+                msg_num,
+                response_code: 0,
+                stream_type: 0,
+                class: 0x6414,
+            },
+
+            body: BcBody::ModernMsg(ModernMsg {
+                extension: Some(Extension {
+                    channel_id: Some(self.channel_id),
+                    ..Default::default()
+                }),
+                payload: Some(BcPayloads::BcXml(BcXml {
+                    ptz_preset: Some(PtzPreset {
+                        preset_list: PresetList {
+                            preset: vec![preset],
+                        },
                         ..Default::default()
                     }),
                     ..Default::default()

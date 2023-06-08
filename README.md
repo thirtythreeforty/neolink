@@ -190,9 +190,10 @@ Control messages:
 - `/control/ir [on|off|auto]` Turn IR lights on/off or automatically via light
   detection
 - `/control/reboot` Reboot the camera
-- `/control/ptz [up|down|left|right|in|out]` (amount) Control the PTZ
+- `/control/ptz [up|down|left|right|in|out] (amount)` Control the PTZ
   movements, amount defaults to 32.0
-- `/control/preset [id]` Move to PTZ preset `id`
+- `/control/ptz/preset [id]` Move the camera to a PTZ preset
+- `/control/ptz/assign [id] [name]` Set the current PTZ position to a preset ID and name
 - `/control/pir [on|off]`
 
 Status Messages:
@@ -206,11 +207,14 @@ Status Messages:
 - `/status/pir` Sent in reply to a `/query/pir` an XML encoded version of the
   pir status
 - `/status/motion` Contains the motion detection alarm status. `on` for motion and `off` for still
+- `/status/ptz/preset` Sent in reply to a `/query/ptz/preset` an XML encoded version of the
+  PTZ presets
 
 Query Messages:
 
 - `/query/battery` Request that the camera reports its battery level
 - `/query/pir` Request that the camera reports its pir status
+- `/query/ptz/preset` Request that the camera reports its PTZ presets
 
 #### MQTT Discovery
 

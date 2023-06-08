@@ -586,7 +586,7 @@ pub struct PtzPreset {
     pub channel_id: u8,
     /// List of presets
     #[yaserde(rename = "presetList")]
-    pub preset_list: Option<PresetList>,
+    pub preset_list: PresetList,
 }
 
 /// A preset list
@@ -600,11 +600,11 @@ pub struct PresetList {
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct Preset {
     /// The ID of the preset
-    pub id: i8,
+    pub id: u8,
     /// The preset name
     pub name: Option<String>,
     /// Command: Known values: `"toPos"` and `"setPos"`
-    pub command: Option<String>,
+    pub command: String,
 }
 
 /// A list of battery infos. This message is sent from the camera as

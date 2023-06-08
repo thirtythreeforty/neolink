@@ -31,9 +31,11 @@ pub(crate) enum Messages {
     PIROff,
     PIRQuery,
     Ptz(Direction),
-    Preset(i8),
     Snap(Vec<u8>),
     BatteryLevel(u32),
+    Preset(u8),
+    PresetAssign(u8, String),
+    PresetQuery,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -647,13 +649,47 @@ impl<'a> MessageHandler<'a> {
                             }
                         }
                         Messages::Preset(id) => {
-                            if let Err(e) = self.camera.set_ptz_preset(id, None).await {
+                            if let Err(e) = self.camera.moveto_ptz_preset(id).await {
                                 error = Some(format!("Failed to send PTZ preset: {:?}", e));
                                 "FAIL".to_string()
                             } else {
                                 "OK".to_string()
                             }
                         }
+                        Messages::PresetAssign(id, name) => {
+                            if let Err(e) = self.camera.set_ptz_preset(id, name).await {
+                                error = Some(format!("Failed to send PTZ preset: {:?}", e));
+                                "FAIL".to_string()
+                            } else {
+                                "OK".to_string()
+                            }
+                        }
+                        Messages::PresetQuery => match self.camera.get_ptz_preset().await {
+                            Err(e) => {
+                                error!("Failed to get PTZ preset status: {:?}", e);
+                                "FAIL".to_string()
+                            }
+                            Ok(ptz_info) => {
+                                let bytes_res = yaserde::ser::serialize_with_writer(
+                                    &ptz_info,
+                                    vec![],
+                                    &Default::default(),
+                                );
+                                match bytes_res {
+                                    Ok(bytes) => match String::from_utf8(bytes) {
+                                        Ok(str) => str,
+                                        Err(_) => {
+                                            error!("Failed to encode PTZ preset status");
+                                            "FAIL".to_string()
+                                        }
+                                    },
+                                    Err(_) => {
+                                        error!("Failed to serialise PTZ preset status");
+                                        "FAIL".to_string()
+                                    }
+                                }
+                            }
+                        },
                         _ => "UNKNOWN COMMAND".to_string(),
                     };
                     if let Some(replier) = replier {

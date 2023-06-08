@@ -16,7 +16,8 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 /// - `/control/ir [on|off|auto]` Turn IR lights on/off or automatically via light detection
 /// - `/control/reboot` Reboot the camera
 /// - `/control/ptz` [up|down|left|right|in|out] (amount) Control the PTZ movements, amount defaults to 32.0
-/// - `/control/preset` [id] Move the camera to a known preset
+/// - `/control/ptz/preset` [id] Move the camera to a known preset
+/// - `/control/ptz/assign` [id] [name] Assign the current ptz position to an ID and name
 ///
 /// Status Messages:
 ///
@@ -24,11 +25,13 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 /// `/status disconnected` Sent when the camera goes offline
 /// `/status/battery` Sent in reply to a `/query/battery`
 /// `/status/pir` Sent in reply to a `/query/pir`
+/// `/status/ptz/preset` Sent in reply to a `/query/ptz/preset`
 ///
 /// Query Messages:
 ///
 /// `/query/battery` Request that the camera reports its battery level
 /// `/query/pir` Request that the camera reports its pir status
+/// `/query/ptz/preset` Request that the camera reports the PTZ presets
 ///
 ///
 /// # Usage
@@ -400,10 +403,10 @@ async fn handle_mqtt_message(
             }
         }
         MqttReplyRef {
-            topic: "control/preset",
+            topic: "control/ptz/preset",
             message,
         } => {
-            if let Ok(id) = message.parse::<i8>() {
+            if let Ok(id) = message.parse::<u8>() {
                 reply = Some(
                     event_cam_sender
                         .send_message_with_reply(Messages::Preset(id))
@@ -412,6 +415,27 @@ async fn handle_mqtt_message(
                 );
             } else {
                 error!("PTZ preset was not a valid number");
+            }
+        }
+        MqttReplyRef {
+            topic: "control/ptz/assign",
+            message,
+        } => {
+            let mut words = message.split_whitespace();
+            let id = words.next();
+            let name = words.next();
+
+            if let (Some(Ok(id)), Some(name)) = (id.map(|id| id.parse::<u8>()), name) {
+                reply = Some(
+                    event_cam_sender
+                        .send_message_with_reply(Messages::PresetAssign(id, name.to_owned()))
+                        .await
+                        .with_context(|| "Failed to send PTZ preset assign")?,
+                );
+            } else if let (Some(Err(_)), _) = (id.map(|id| id.parse::<u8>()), name) {
+                error!("PTZ preset was not a valid number");
+            } else if let (_, None) = (id.map(|id| id.parse::<u8>()), name) {
+                error!("PTZ preset was not given a name");
             }
         }
         MqttReplyRef {
@@ -458,6 +482,18 @@ async fn handle_mqtt_message(
                     .with_context(|| "Failed to get pir status")?,
             );
             reply_topic = Some("status/pir");
+        }
+        MqttReplyRef {
+            topic: "query/ptz/preset",
+            ..
+        } => {
+            reply = Some(
+                event_cam_sender
+                    .send_message_with_reply(Messages::PresetQuery)
+                    .await
+                    .with_context(|| "Failed to get prz preset status")?,
+            );
+            reply_topic = Some("status/ptz/preset");
         }
         _ => {}
     }
