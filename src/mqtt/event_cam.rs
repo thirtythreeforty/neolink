@@ -381,10 +381,14 @@ impl SnapThread {
                     tries = 1;
                     info
                 }
-                Err(neolink_core::Error::UnintelligibleReply { .. }) => {
+                Err(neolink_core::Error::UnintelligibleReply { reply, why }) => {
+                    log::debug!("Reply: {:?}, why: {:?}", reply, why);
                     // Try again later
                     tries += 1;
                     continue;
+                }
+                Err(neolink_core::Error::CameraServiceUnavaliable) => {
+                    futures::future::pending().await
                 }
                 Err(e) => return Err(e.into()),
             };
@@ -413,6 +417,9 @@ impl BatteryLevelThread {
                     // Try again later
                     tries += 1;
                     continue;
+                }
+                Err(neolink_core::Error::CameraServiceUnavaliable) => {
+                    futures::future::pending().await
                 }
                 Err(e) => return Err(e.into()),
             };

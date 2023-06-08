@@ -3,7 +3,11 @@ use crate::Credentials;
 pub use super::xml::{BcPayloads, BcXml, Extension};
 use std::collections::HashSet;
 
-pub(super) const MAGIC_HEADER: u32 = 0xabcdef0;
+pub(super) const MAGIC_HEADER: u32 = 0x0abcdef0;
+/// Sometimes will get the BE magic header even though all other numbers are LE?
+/// Seems to happens with certain messages like snap that produce jpegs, so perhaps it
+/// it is meant to be a hint as to the endianess of the binary payload
+pub(super) const MAGIC_HEADER_REV: u32 = 0x0fedcba0;
 
 /// Login messages have this ID
 pub const MSG_ID_LOGIN: u32 = 1;
