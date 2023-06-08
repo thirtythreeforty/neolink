@@ -184,17 +184,28 @@ impl Poller {
                                     }
                                 }
                                 (None, Some(occ)) => {
-                                    let sender =
-                                        if let Some(sender) = occ.get(&Some(msg_num)).cloned() {
-                                            Some(sender)
-                                        } else if let Some(sender) = occ.get(&None).cloned() {
-                                            // Upgrade a None to a known MsgID
-                                            occ.remove(&None);
-                                            occ.insert(Some(msg_num), sender.clone());
-                                            Some(sender)
-                                        } else {
-                                            None
-                                        };
+                                    let sender = if let Some(sender) =
+                                        occ.get(&Some(msg_num)).filter(|a| !a.is_closed()).cloned()
+                                    {
+                                        // Connection with id exists and is not closed
+                                        Some(sender)
+                                    } else if let Some(sender) = occ.get(&None).cloned() {
+                                        // Upgrade a None to a known MsgID
+                                        occ.remove(&None);
+                                        occ.insert(Some(msg_num), sender.clone());
+                                        Some(sender)
+                                    } else if occ
+                                        .get(&Some(msg_num))
+                                        .map(|a| a.is_closed())
+                                        .unwrap_or(false)
+                                    {
+                                        // Connection is closed and there is no None to replace it
+                                        // Remove it for cleanup and report no sender
+                                        occ.remove(&Some(msg_num));
+                                        None
+                                    } else {
+                                        None
+                                    };
                                     if let Some(sender) = sender {
                                         if sender.capacity() == 0 {
                                             warn!("Reaching limit of channel");
@@ -217,6 +228,12 @@ impl Poller {
                                         if sender.send(Ok(response)).await.is_err() {
                                             occ.remove(&Some(msg_num));
                                         }
+                                    } else {
+                                        debug!(
+                                            "Ignoring uninteresting message id {} (number: {})",
+                                            msg_id, msg_num
+                                        );
+                                        trace!("Contents: {:?}", response);
                                     }
                                 }
                                 (None, None) => {

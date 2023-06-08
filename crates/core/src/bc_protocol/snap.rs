@@ -57,7 +57,7 @@ impl BcCamera {
             ..
         }) = msg.body
         {
-            log::debug!("Got snap XML {} with size {}", filename, expected_size);
+            log::trace!("Got snap XML {} with size {}", filename, expected_size);
             // Messages are now sent on ID 109 but not with the same message ID
             // preumably because the camera considers it to be a new message rather
             // than a reply
@@ -68,7 +68,7 @@ impl BcCamera {
             let expected_size = expected_size as usize;
 
             let mut result: Vec<_> = vec![];
-            log::debug!("Waiting for packets on {}", msg_num);
+            log::trace!("Waiting for packets on {}", msg_num);
             let mut msg = sub_get.recv().await?;
 
             while msg.meta.response_code == 200 {
@@ -91,7 +91,7 @@ impl BcCamera {
                         why: "Expected binary data but got something else",
                     });
                 }
-                log::debug!(
+                log::trace!(
                     "Got packet size is now {} of {}",
                     result.len(),
                     expected_size
@@ -114,7 +114,7 @@ impl BcCamera {
                         // Add last data if present (may be zero if preveious packet contained it)
                         result.extend_from_slice(&data);
                     }
-                    log::debug!(
+                    log::trace!(
                         "Got all packets size is now {} of {}",
                         result.len(),
                         expected_size
@@ -140,7 +140,7 @@ impl BcCamera {
             //     .take(expected_size)
             //     .try_collect()
             //     .await?;
-            log::debug!("Snapshot recieved: {} of {}", result.len(), expected_size);
+            log::trace!("Snapshot recieved: {} of {}", result.len(), expected_size);
             Ok(result)
         } else {
             Err(Error::UnintelligibleReply {
