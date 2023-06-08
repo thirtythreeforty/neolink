@@ -193,7 +193,9 @@ impl BcCamera {
         self.has_ability_rw("control").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_set = connection.subscribe(MSG_ID_PTZ_CONTROL_PRESET, msg_num).await?;
+        let mut sub_set = connection
+            .subscribe(MSG_ID_PTZ_CONTROL_PRESET, msg_num)
+            .await?;
 
         let preset = Preset {
             id: preset_id,
