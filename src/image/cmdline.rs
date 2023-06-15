@@ -10,4 +10,9 @@ pub struct Opt {
     /// The path of the output.
     #[structopt(short, long, value_parser = PathBuf::from_str)]
     pub file_path: PathBuf,
+    /// If set then the image will pull from the live stream, if not it will be pulled from the cameras snap feature
+    ///
+    /// Using the snap feature, is preffered unless your camera does not support it
+    #[structopt(short, long)]
+    pub use_stream: bool,
 }
