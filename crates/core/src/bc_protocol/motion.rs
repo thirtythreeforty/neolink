@@ -167,7 +167,7 @@ impl BcCamera {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let mut sub = connection.subscribe(msg_num).await?;
+        let mut sub = connection.subscribe(MSG_ID_MOTION_REQUEST, msg_num).await?;
         let msg = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_MOTION_REQUEST,
@@ -202,7 +202,7 @@ impl BcCamera {
     /// This returns a data structure which can be used to
     /// query motion events
     pub async fn listen_on_motion(&self) -> Result<MotionData> {
-        let msg_num = self.start_motion_query().await?;
+        self.start_motion_query().await?;
 
         let connection = self.get_connection();
 
@@ -213,7 +213,7 @@ impl BcCamera {
         let mut set = JoinSet::new();
         let channel_id = self.channel_id;
         set.spawn(async move {
-            let mut sub = connection.subscribe(msg_num).await?;
+            let mut sub = connection.subscribe_to_id(MSG_ID_MOTION).await?;
 
             loop {
                 tokio::task::yield_now().await;

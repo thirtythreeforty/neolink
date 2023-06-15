@@ -197,8 +197,10 @@ fn bc_modern_msg<'a>(
 }
 
 fn bc_header(buf: &[u8]) -> IResult<&[u8], BcHeader> {
-    let (buf, _magic) =
-        error_context("Magic invalid", verify(le_u32, |x| *x == MAGIC_HEADER))(buf)?;
+    let (buf, _magic) = error_context(
+        "Magic invalid",
+        verify(le_u32, |x| *x == MAGIC_HEADER || *x == MAGIC_HEADER_REV),
+    )(buf)?;
     let (buf, msg_id) = error_context("MsgID missing", le_u32)(buf)?;
     let (buf, body_len) = error_context("BodyLen missing", le_u32)(buf)?;
     let (buf, channel_id) = error_context("ChannelID missing", le_u8)(buf)?;

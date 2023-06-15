@@ -1,8 +1,10 @@
+use crate::mqtt::Discoveries;
 use lazy_static::lazy_static;
 use neolink_core::bc_protocol::{DiscoveryMethods, PrintFormat};
 use regex::Regex;
 use serde::Deserialize;
 use std::clone::Clone;
+use std::collections::HashSet;
 use validator::{Validate, ValidationError};
 use validator_derive::Validate;
 
@@ -146,6 +148,27 @@ pub(crate) struct MqttConfig {
 
     #[serde(default)]
     pub(crate) client_auth: Option<(std::path::PathBuf, std::path::PathBuf)>,
+
+    #[serde(default = "default_true")]
+    pub(crate) enable_motion: bool,
+    #[serde(default = "default_true")]
+    pub(crate) enable_pings: bool,
+    #[serde(default = "default_true")]
+    pub(crate) enable_light: bool,
+    #[serde(default = "default_true")]
+    pub(crate) enable_battery: bool,
+    #[serde(default = "default_true")]
+    pub(crate) enable_preview: bool,
+
+    #[serde(default)]
+    pub(crate) discovery: Option<MqttDiscoveryConfig>,
+}
+
+#[derive(Debug, Deserialize, Clone, Validate)]
+pub(crate) struct MqttDiscoveryConfig {
+    pub(crate) topic: String,
+
+    pub(crate) features: HashSet<Discoveries>,
 }
 
 fn validate_mqtt_config(config: &MqttConfig) -> Result<(), ValidationError> {
@@ -156,6 +179,10 @@ fn validate_mqtt_config(config: &MqttConfig) -> Result<(), ValidationError> {
     } else {
         Ok(())
     }
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 fn default_mqtt() -> Option<MqttConfig> {

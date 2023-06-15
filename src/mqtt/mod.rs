@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 ///
 /// # Neolink MQTT
 ///
@@ -9,6 +10,7 @@
 ///
 /// Control messages:
 ///
+/// - `/control/floodlight [on|off]` Turns floodlight (if equipped) on/off
 /// - `/control/led [on|off]` Turns status LED on/off
 /// - `/control/pir [on|off]` Turns PIR on/off
 /// - `/control/ir [on|off|auto]` Turn IR lights on/off or automatically via light detection
@@ -60,18 +62,21 @@ use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
 mod cmdline;
+mod discovery;
 mod event_cam;
 mod mqttc;
 
 use crate::config::{CameraConfig, Config, MqttConfig};
 use anyhow::{anyhow, Context, Error, Result};
 pub(crate) use cmdline::Opt;
+pub(crate) use discovery::Discoveries;
 use event_cam::EventCam;
 pub(crate) use event_cam::{Direction, Messages};
 use log::*;
 use mqttc::{Mqtt, MqttReplyRef};
 
 use self::{
+    discovery::enable_discovery,
     event_cam::EventCamSender,
     mqttc::{MqttReply, MqttSender},
 };
@@ -135,7 +140,8 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
         tokio::select! {
             v  = async {
                 // Normal poll operations
-                while let Ok(msg) = mqtt.poll().await {
+                loop {
+                    let msg = mqtt.poll().await?;
                     tokio::task::yield_now().await;
                     // Put the reply  on it's own async thread so we can safely sleep
                     // and wait for it to reply in it's own time
@@ -152,7 +158,6 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                         }
                     });
                 }
-                Ok(())
             } => v,
             // Wait on any error from any of the error channels and if we get it we abort
             v = error_recv.recv() => v.map(Err).unwrap_or_else(|| Err(anyhow!("Listen on camera error channel closed"))),
@@ -170,6 +175,10 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                         .with_context(|| {
                             format!("Failed to post connect over MQTT for {}", camera_name)
                         })?;
+
+                    if let Some(discovery_config) = &mqtt_config.discovery {
+                        enable_discovery(discovery_config, &mqtt_sender_cam, &cam_config).await?;
+                    }
                 }
                 Messages::FloodlightOn => {
                     mqtt_sender_cam
@@ -177,7 +186,7 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                         .await
                         .with_context(|| {
                             format!(
-                                "Failed to publish gloodlight on over MQTT for {}",
+                                "Failed to publish floodlight on over MQTT for {}",
                                 camera_name
                             )
                         })?;
@@ -188,7 +197,7 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                         .await
                         .with_context(|| {
                             format!(
-                                "Failed to publish gloodlight off over MQTT for {}",
+                                "Failed to publish floodlight off over MQTT for {}",
                                 camera_name
                             )
                         })?;
@@ -207,6 +216,25 @@ async fn listen_on_camera(cam_config: Arc<CameraConfig>, mqtt_config: &MqttConfi
                         .await
                         .with_context(|| {
                             format!("Failed to publish motion start for {}", camera_name)
+                        })?;
+                }
+                Messages::Snap(data) => {
+                    mqtt_sender_cam
+                        .send_message("status/preview", BASE64.encode(data).as_str(), true)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to publish preview over MQTT for {}", camera_name)
+                        })?;
+                }
+                Messages::BatteryLevel(data) => {
+                    mqtt_sender_cam
+                        .send_message("status/battery_level", format!("{}", data).as_str(), true)
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "Failed to publish battery level over MQTT for {}",
+                                camera_name
+                            )
                         })?;
                 }
                 _ => {}

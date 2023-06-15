@@ -12,7 +12,7 @@ impl BcCamera {
         loop {
             retry_interval.tick().await;
             let msg_num = self.new_message_num();
-            let mut sub_get = connection.subscribe(msg_num).await?;
+            let mut sub_get = connection.subscribe(MSG_ID_GET_PIR_ALARM, msg_num).await?;
             let get = Bc {
                 meta: BcMeta {
                     msg_id: MSG_ID_GET_PIR_ALARM,
@@ -70,7 +70,9 @@ impl BcCamera {
         self.has_ability_rw("rfAlarm").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_set = connection.subscribe(msg_num).await?;
+        let mut sub_set = connection
+            .subscribe(MSG_ID_START_PIR_ALARM, msg_num)
+            .await?;
 
         let get = Bc {
             meta: BcMeta {
@@ -94,21 +96,28 @@ impl BcCamera {
         };
 
         sub_set.send(get).await?;
-        let msg = sub_set.recv().await?;
-        if msg.meta.response_code != 200 {
-            return Err(Error::CameraServiceUnavaliable);
-        }
-
-        if let BcMeta {
-            response_code: 200, ..
-        } = msg.meta
+        if let Ok(reply) =
+            tokio::time::timeout(tokio::time::Duration::from_micros(500), sub_set.recv()).await
         {
-            Ok(())
+            let msg = reply?;
+            if msg.meta.response_code != 200 {
+                return Err(Error::CameraServiceUnavaliable);
+            }
+
+            if let BcMeta {
+                response_code: 200, ..
+            } = msg.meta
+            {
+                Ok(())
+            } else {
+                Err(Error::UnintelligibleReply {
+                    reply: std::sync::Arc::new(Box::new(msg)),
+                    why: "The camera did not except the RfAlarmCfg xml",
+                })
+            }
         } else {
-            Err(Error::UnintelligibleReply {
-                reply: std::sync::Arc::new(Box::new(msg)),
-                why: "The camera did not except the RfAlarmCfg xml",
-            })
+            // Some cameras seem to just not send a reply on success, so after 500ms we return Ok
+            Ok(())
         }
     }
 

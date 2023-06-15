@@ -27,6 +27,7 @@ mod pirstate;
 mod ptz;
 mod reboot;
 mod resolution;
+mod snap;
 mod stream;
 mod talk;
 mod time;

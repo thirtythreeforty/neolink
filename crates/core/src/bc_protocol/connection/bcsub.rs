@@ -12,7 +12,7 @@ use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt};
 
 pub struct BcSubscription<'a> {
     rx: ReceiverStream<Result<Bc>>,
-    msg_num: u32,
+    msg_num: Option<u32>,
     conn: &'a BcConnection,
 }
 
@@ -89,7 +89,7 @@ pub type BcMediaStream<'b> = FramedRead<Compat<IntoAsyncRead<BcPayloadStream<'b>
 impl<'a> BcSubscription<'a> {
     pub fn new(
         rx: Receiver<Result<Bc>>,
-        msg_num: u32,
+        msg_num: Option<u32>,
         conn: &'a BcConnection,
     ) -> BcSubscription<'a> {
         BcSubscription {
@@ -100,7 +100,11 @@ impl<'a> BcSubscription<'a> {
     }
 
     pub async fn send(&self, bc: Bc) -> Result<()> {
-        assert!(bc.meta.msg_num as u32 == self.msg_num);
+        if let Some(msg_num) = self.msg_num {
+            assert!(bc.meta.msg_num as u32 == msg_num);
+        } else {
+            log::debug!("Sending message before msg_num has been aquired");
+        }
         self.conn.send(bc).await?;
         Ok(())
     }
@@ -108,7 +112,12 @@ impl<'a> BcSubscription<'a> {
     pub async fn recv(&mut self) -> Result<Bc> {
         let bc = self.rx.next().await.ok_or(Error::DroppedSubscriber)?;
         if let Ok(bc) = &bc {
-            assert!(bc.meta.msg_num as u32 == self.msg_num);
+            if let Some(msg_num) = self.msg_num {
+                assert!(bc.meta.msg_num as u32 == msg_num);
+            } else {
+                // Leaning number now
+                self.msg_num = Some(bc.meta.msg_num as u32);
+            }
         }
         bc
     }

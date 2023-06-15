@@ -7,7 +7,7 @@ impl BcCamera {
         self.has_ability_ro("version").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_version = connection.subscribe(msg_num).await?;
+        let mut sub_version = connection.subscribe(MSG_ID_VERSION, msg_num).await?;
 
         let version = Bc {
             meta: BcMeta {

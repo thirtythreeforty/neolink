@@ -31,6 +31,8 @@ pub(crate) enum Messages {
     PIROff,
     PIRQuery,
     Ptz(Direction),
+    Snap(Vec<u8>),
+    BatteryLevel(u32),
     Preset(u8),
     PresetAssign(u8, String),
     PresetQuery,
@@ -212,6 +214,16 @@ impl EventCamThread {
             camera: arc_cam.clone(),
         };
 
+        let mut snap_thread = SnapThread {
+            tx: self.tx.clone(),
+            camera: arc_cam.clone(),
+        };
+
+        let mut battery_thread = BatteryLevelThread {
+            tx: self.tx.clone(),
+            camera: arc_cam.clone(),
+        };
+
         let mut keepalive_thread = KeepaliveThread {
             camera: arc_cam.clone(),
         };
@@ -225,7 +237,7 @@ impl EventCamThread {
             val = async {
                 info!("{}: Listening to Camera Motion", camera_config.name);
                 motion_thread.run().await
-            } => {
+            }, if camera_config.mqtt.as_ref().expect("Should have an mqtt config at this point").enable_motion => {
                 if let Err(e) = val {
                     error!("Motion thread aborted: {:?}", e);
                     Err(e)
@@ -237,7 +249,7 @@ impl EventCamThread {
             val = async {
                 debug!("{}: Starting Pings", camera_config.name);
                 keepalive_thread.run().await
-            } => {
+            }, if camera_config.mqtt.as_ref().expect("Should have an mqtt config at this point").enable_pings => {
                 if let Err(e) = val {
                     debug!("Ping thread aborted: {:?}", e);
                     Err(e)
@@ -249,12 +261,36 @@ impl EventCamThread {
             val = async {
                 info!("{}: Listening to FloodLight Status", camera_config.name);
                 flight_thread.run().await
-            } => {
+            }, if camera_config.mqtt.as_ref().expect("Should have an mqtt config at this point").enable_light => {
                 if let Err(e) = val {
                     error!("FloodLight thread aborted: {:?}", e);
                     Err(e)
                 } else {
                     debug!("Normal finish on FloodLight thread");
+                    Ok(())
+                }
+            },
+            val = async {
+                info!("{}: Updating Preview", camera_config.name);
+                snap_thread.run().await
+            }, if camera_config.mqtt.as_ref().expect("Should have an mqtt config at this point").enable_preview => {
+                if let Err(e) = val {
+                    error!("Snap thread aborted: {:?}", e);
+                    Err(e)
+                } else {
+                    debug!("Normal finish on Snap thread");
+                    Ok(())
+                }
+            },
+            val = async {
+                info!("{}: Updating Battery Level", camera_config.name);
+                battery_thread.run().await
+            }, if camera_config.mqtt.as_ref().expect("Should have an mqtt config at this point").enable_battery => {
+                if let Err(e) = val {
+                    error!("Battery thread aborted: {:?}", e);
+                    Err(e)
+                } else {
+                    debug!("Normal finish on Battery thread");
                     Ok(())
                 }
             },
@@ -328,6 +364,73 @@ impl FloodlightThread {
             }
         }
         Ok(())
+    }
+}
+
+struct SnapThread {
+    tx: Sender<Messages>,
+    camera: Arc<BcCamera>,
+}
+
+impl SnapThread {
+    async fn run(&mut self) -> Result<()> {
+        let mut tries = 0;
+        let base_duration = Duration::from_millis(500);
+        loop {
+            tokio::time::sleep(base_duration.saturating_mul(tries)).await;
+            let snapshot = match self.camera.get_snapshot().await {
+                Ok(info) => {
+                    tries = 1;
+                    info
+                }
+                Err(neolink_core::Error::UnintelligibleReply { reply, why }) => {
+                    log::debug!("Reply: {:?}, why: {:?}", reply, why);
+                    // Try again later
+                    tries += 1;
+                    continue;
+                }
+                Err(neolink_core::Error::CameraServiceUnavaliable) => {
+                    log::debug!("Snap not supported");
+                    futures::future::pending().await
+                }
+                Err(e) => return Err(e.into()),
+            };
+            self.tx.send(Messages::Snap(snapshot)).await?;
+        }
+    }
+}
+
+struct BatteryLevelThread {
+    tx: Sender<Messages>,
+    camera: Arc<BcCamera>,
+}
+
+impl BatteryLevelThread {
+    async fn run(&mut self) -> Result<()> {
+        let mut tries = 0;
+        let base_duration = Duration::from_secs(15);
+        loop {
+            tokio::time::sleep(base_duration.saturating_mul(tries)).await;
+            let battery = match self.camera.battery_info().await {
+                Ok(info) => {
+                    tries = 1;
+                    info
+                }
+                Err(neolink_core::Error::UnintelligibleReply { .. }) => {
+                    // Try again later
+                    tries += 1;
+                    continue;
+                }
+                Err(neolink_core::Error::CameraServiceUnavaliable) => {
+                    log::debug!("Battery not supported");
+                    futures::future::pending().await
+                }
+                Err(e) => return Err(e.into()),
+            };
+            self.tx
+                .send(Messages::BatteryLevel(battery.battery_percent))
+                .await?;
+        }
     }
 }
 

@@ -7,7 +7,7 @@ impl BcCamera {
         self.has_ability_rw("reboot").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub = connection.subscribe(msg_num).await?;
+        let mut sub = connection.subscribe(MSG_ID_REBOOT, msg_num).await?;
 
         let msg = Bc {
             meta: BcMeta {

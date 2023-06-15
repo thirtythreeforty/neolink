@@ -37,7 +37,7 @@ impl BcCamera {
             let credentials = self.get_credentials();
             let connection = self.get_connection();
             let msg_num = self.new_message_num();
-            let mut sub_login = connection.subscribe(msg_num).await?;
+            let mut sub_login = connection.subscribe(MSG_ID_LOGIN, msg_num).await?;
 
             // Login flow is: Send legacy login message, expect back a modern message with Encryption
             // details.  Then, re-send the login as a modern login message.  Expect back a device info

@@ -83,7 +83,7 @@ impl BcCamera {
         let connection = self.get_connection();
 
         let msg_num = self.new_message_num();
-        let mut sub = connection.subscribe(msg_num).await?;
+        let mut sub = connection.subscribe(MSG_ID_BATTERY_INFO, msg_num).await?;
 
         let msg = Bc {
             meta: BcMeta {

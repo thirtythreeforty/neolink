@@ -7,7 +7,7 @@ impl BcCamera {
     pub async fn ping(&self) -> Result<()> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_ping = connection.subscribe(msg_num).await?;
+        let mut sub_ping = connection.subscribe(MSG_ID_PING, msg_num).await?;
 
         let ping = Bc {
             meta: BcMeta {

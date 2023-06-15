@@ -9,7 +9,7 @@ impl BcCamera {
             let credentials = self.get_credentials();
             let connection = self.get_connection();
             let msg_num = self.new_message_num();
-            let sub_logout = connection.subscribe(msg_num).await?;
+            let sub_logout = connection.subscribe(MSG_ID_LOGOUT, msg_num).await?;
 
             let username = credentials.username.clone();
             let password = credentials.password.as_ref().cloned().unwrap_or_default();
