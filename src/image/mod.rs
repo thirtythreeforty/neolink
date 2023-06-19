@@ -9,6 +9,14 @@
 /// neolink image --config=config.toml --file-path=filepath CameraName
 /// ```
 ///
+/// Cameras that do not support the SNAP command need to use `--use_stream`
+/// which will make the camera play the stream and transcode the video into a jpeg
+/// e.g.:
+///
+/// ```bash
+/// neolink image --config=config.toml --use_stream --file-path=filepath CameraName
+/// ```
+///
 use anyhow::{Context, Result};
 use log::*;
 use neolink_core::{bc_protocol::*, bcmedia::model::*};
