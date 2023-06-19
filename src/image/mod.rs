@@ -12,6 +12,7 @@
 use anyhow::{Context, Result};
 use log::*;
 use neolink_core::{bc_protocol::*, bcmedia::model::*};
+use tokio::{fs::File, io::AsyncWriteExt};
 
 mod cmdline;
 mod gst;
@@ -76,9 +77,9 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         // Simply use the snap command
         debug!("Using the snap command");
         let file_path = opt.file_path.with_extension("jpeg");
-        let mut buffer = File::create(file_path)?;
+        let mut buffer = File::create(file_path).await?;
         let jpeg_data = camera.get_snapshot().await?;
-        buffer.write_all(jpeg_data)?;
+        buffer.write_all(jpeg_data.as_slice()).await?;
     }
 
     Ok(())
