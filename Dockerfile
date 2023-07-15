@@ -54,7 +54,8 @@ RUN apt-get update && \
         gstreamer1.0-x \
         gstreamer1.0-plugins-base \
         gstreamer1.0-plugins-good \
-        gstreamer1.0-plugins-bad && \
+        gstreamer1.0-plugins-bad \
+        gstreamer1.0-libav && \
     apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build \
