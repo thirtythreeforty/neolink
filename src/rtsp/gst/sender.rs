@@ -444,8 +444,8 @@ pub(super) struct NeoMediaSender {
     start_time: Spring,
     live_offset: FrameTime,
     buffer: NeoBuffer,
-    vid: Option<AppSrc>,
-    aud: Option<AppSrc>,
+    vid: Option<Arc<AppSrc>>,
+    aud: Option<Arc<AppSrc>>,
     command_reciever: Receiver<NeoMediaSenderCommand>,
     command_sender: Sender<NeoMediaSenderCommand>,
     inited: bool,
@@ -476,11 +476,11 @@ impl NeoMediaSender {
     }
 
     pub(super) fn update_vid(&mut self, source: AppSrc) {
-        self.vid.replace(source);
+        self.vid.replace(Arc::new(source));
     }
 
     pub(super) fn update_aud(&mut self, source: AppSrc) {
-        self.aud.replace(source);
+        self.aud.replace(Arc::new(source));
     }
 
     pub(super) fn get_commader(&self) -> Sender<NeoMediaSenderCommand> {

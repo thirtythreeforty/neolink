@@ -42,7 +42,7 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         .await
         .context("Failed to connect to the camera, check credentials and network")?;
 
-    if (opt.use_stream) {
+    if opt.use_stream {
         let mut stream_data = camera
             .start_video(StreamKind::Main, 0, camera_config.strict)
             .await

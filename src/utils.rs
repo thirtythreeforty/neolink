@@ -13,6 +13,13 @@ use std::{
     str::FromStr,
 };
 
+pub(crate) fn timeout<F>(future: F) -> tokio::time::Timeout<F>
+where
+    F: std::future::Future,
+{
+    tokio::time::timeout(tokio::time::Duration::from_secs(5), future)
+}
+
 pub(crate) enum AddressOrUid {
     Address(String),
     Uid(String, DiscoveryMethods),
@@ -133,10 +140,9 @@ pub(crate) async fn connect_and_login(camera_config: &CameraConfig) -> Result<Bc
         _ => MaxEncryption::Aes,
     };
     info!("{}: Logging in", camera_config.name);
-    camera
-        .login_with_maxenc(max_encryption)
+    timeout(camera.login_with_maxenc(max_encryption))
         .await
-        .with_context(|| format!("Failed to login to {}", camera_config.name))?;
+        .with_context(|| format!("Failed to login to {}", camera_config.name))??;
 
     info!("{}: Connected and logged in", camera_config.name);
 
