@@ -491,21 +491,24 @@ impl NeoMediaFactoryImpl {
                 let queue = make_queue("audqueue")?;
                 // let queue2 = make_queue2("audqueue2")?;
                 let parser = make_element("aacparse", "audparser")?;
-                let decoder = make_element("decodebin", "auddecoder")?;
+                let decoder = match make_element("faad", "auddecoder_faad") {
+                    Ok(ele) => Ok(ele),
+                    Err(_) => make_element("avdec_aac", "auddecoder_avdec_aac"),
+                }?;
                 let encoder = make_element("audioconvert", "audencoder")?;
                 let payload = make_element("rtpL16pay", "pay1")?;
 
                 bin.add_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
-                Element::link_many(&[&source, &queue, &parser, &decoder])?;
-                Element::link_many(&[&encoder, &payload])?;
-                decoder.connect_pad_added(move |_element, pad| {
-                    debug!("Linking encoder to decoder: {:?}", pad.caps());
-                    let sink_pad = encoder
-                        .static_pad("sink")
-                        .expect("Encoder is missing its pad");
-                    pad.link(&sink_pad)
-                        .expect("Failed to link AAC decoder to encoder");
-                });
+                Element::link_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
+                // Element::link_many(&[])?;
+                // decoder.connect_pad_added(move |_element, pad| {
+                //     debug!("Linking encoder to decoder: {:?}", pad.caps());
+                //     let sink_pad = encoder
+                //         .static_pad("sink")
+                //         .expect("Encoder is missing its pad");
+                //     pad.link(&sink_pad)
+                //         .expect("Failed to link AAC decoder to encoder");
+                // });
 
                 let source = source
                     .dynamic_cast::<AppSrc>()
