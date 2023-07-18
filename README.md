@@ -334,6 +334,10 @@ the camera from the config to save the image from.
 File is always jpeg and the extension given in filepath will be added or changed
 to reflect this.
 
+Some cameras do not support the SNAP command that is used to generate the image on the camera.
+If this is the case with your camera you can try the `--use-stream` option which will instead
+create a jpeg by transcoding the video stream.
+
 ## License
 
 Neolink is free software, released under the GNU Affero General Public License
