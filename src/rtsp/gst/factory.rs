@@ -41,16 +41,17 @@ glib::wrapper! {
 
 impl Default for NeoMediaFactory {
     fn default() -> Self {
-        Self::new(100, true)
+        Self::new(100, true, true)
     }
 }
 
 impl NeoMediaFactory {
-    pub(crate) fn new(buffer_size: usize, use_smoothing: bool) -> Self {
+    pub(crate) fn new(buffer_size: usize, use_smoothing: bool, use_splash: bool) -> Self {
         let factory = Object::new::<NeoMediaFactory>();
         factory.set_shared(false);
         factory.imp().shared.set_buffer_size(buffer_size);
         factory.imp().shared.set_use_smoothing(use_smoothing);
+        factory.imp().shared.set_use_splash(use_splash);
         factory.set_launch("videotestsrc pattern=\"snow\" ! video/x-raw,width=896,height=512,framerate=25/1 ! textoverlay name=\"inittextoverlay\" text=\"Stream not Ready\" valignment=top halignment=left font-desc=\"Sans, 32\" ! jpegenc ! rtpjpegpay name=pay0");
         factory.set_suspend_mode(RTSPSuspendMode::None);
         factory.set_transport_mode(RTSPTransportMode::PLAY);
@@ -183,7 +184,7 @@ impl ObjectImpl for NeoMediaFactoryImpl {}
 impl RTSPMediaFactoryImpl for NeoMediaFactoryImpl {
     fn create_element(&self, url: &RTSPUrl) -> Option<Element> {
         self.parent_create_element(url)
-            .map(|orig| self.build_pipeline(orig).expect("Could not build pipeline"))
+            .and_then(|orig| self.build_pipeline(orig).expect("Could not build pipeline"))
     }
 }
 
@@ -259,7 +260,7 @@ impl NeoMediaFactoryImpl {
         self.shared.number_of_clients.load(Ordering::Relaxed)
     }
 
-    fn build_pipeline(&self, media: Element) -> AnyResult<Element> {
+    fn build_pipeline(&self, media: Element) -> AnyResult<Option<Element>> {
         // debug!("Building PIPELINE");
         let bin = media
             .dynamic_cast::<Bin>()
@@ -282,6 +283,9 @@ impl NeoMediaFactoryImpl {
             self.shared.buffer_ready.load(Ordering::Relaxed),
         ) {
             (VidFormats::Unknown, true) | (_, false) => {
+                if !self.shared.get_use_splash() {
+                    return Ok(None);
+                }
                 debug!("Building Unknown Pipeline");
                 let source = make_element("videotestsrc", "testvidsrc")?;
                 source.set_property_from_str("pattern", "snow");
@@ -588,8 +592,10 @@ impl NeoMediaFactoryImpl {
 
         self.clientsender.blocking_send(client_data)?;
         // debug!("Pipeline built");
-        bin.dynamic_cast::<Element>()
-            .map_err(|_| anyhow!("Cannot cast back"))
+        let element = bin
+            .dynamic_cast::<Element>()
+            .map_err(|_| anyhow!("Cannot cast back"))?;
+        Ok(Some(element))
     }
 
     async fn join(&self) -> AnyResult<()> {
