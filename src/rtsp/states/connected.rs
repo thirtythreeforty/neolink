@@ -3,6 +3,7 @@
 // This state has formed the TCP/UDP tunnel
 // but has not logged in
 use super::{camera::Camera, disconnected::Disconnected, loggedin::LoggedIn};
+use crate::utils::timeout;
 use anyhow::Result;
 
 use neolink_core::bc_protocol::{BcCamera, MaxEncryption};
@@ -28,7 +29,7 @@ impl Camera<Connected> {
             _ => MaxEncryption::Aes,
         };
 
-        self.state.camera.login_with_maxenc(max_encryption).await?;
+        timeout(self.state.camera.login_with_maxenc(max_encryption)).await??;
         Ok(Camera {
             shared: self.shared,
             state: LoggedIn {

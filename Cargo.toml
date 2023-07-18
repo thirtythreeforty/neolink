@@ -26,12 +26,12 @@ gstreamer-rtsp = "0.20.0"
 gstreamer-rtsp-server = { version = "0.20.3", features = ["v1_16"] }
 heck = "0.4.1"
 is_sorted = "0.1.1"
-itertools = "0.10.5"
+itertools = "0.11.0"
 lazy_static = "1.4.0"
 log = { version = "0.4.17", features = [ "release_max_level_debug" ] }
 neolink_core = { path = "crates/core", version = "0.5.13" }
 regex = "1.7.3"
-rumqttc = "0.20.0"
+rumqttc = "0.22.0"
 serde = { version = "1.0.160", features = ["derive"] }
 serde_json = "1.0.96"
 time = "0.3.20"

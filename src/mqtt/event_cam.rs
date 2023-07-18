@@ -1,5 +1,5 @@
 use crate::config::CameraConfig;
-use crate::utils::AddressOrUid;
+use crate::utils::{timeout, AddressOrUid};
 use anyhow::{anyhow, Context, Result};
 use futures::stream::StreamExt;
 use log::*;
@@ -193,10 +193,9 @@ impl EventCamThread {
             "aes" => MaxEncryption::Aes,
             _ => MaxEncryption::Aes,
         };
-        camera
-            .login_with_maxenc(max_encryption)
+        timeout(camera.login_with_maxenc(max_encryption))
             .await
-            .context("Failed to login to the camera")?;
+            .context("Failed to login to the camera")??;
         info!("{}: Connected and logged in", camera_config.name);
 
         self.tx.send(Messages::Login).await?;
