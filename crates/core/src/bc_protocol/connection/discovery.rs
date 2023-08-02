@@ -11,7 +11,7 @@ use crate::bcudp::xml::*;
 use crate::{Error, Result};
 use futures::{
     sink::SinkExt,
-    stream::{FuturesUnordered, StreamExt},
+    stream::{FuturesUnordered, Stream, StreamExt},
 };
 use lazy_static::lazy_static;
 use local_ip_address::local_ip;
@@ -214,32 +214,6 @@ impl Discoverer {
         &self.local_addr
     }
 
-    async fn retry_send_multi<F, T>(
-        &self,
-        mut disc: UdpDiscovery,
-        dests: &[SocketAddr],
-        map: F,
-    ) -> Result<T>
-    where
-        F: Fn(UdpDiscovery, SocketAddr) -> Option<T>,
-    {
-        trace!("Retrying send");
-        disc.tid = 0; // Must be random to avoid simulatenous subscription errors
-        let mut set = FuturesUnordered::new();
-        for dest in dests.iter() {
-            set.push(self.retry_send(disc.clone(), *dest, &map));
-        }
-
-        // Get what ever completes first
-        while let Some(result) = set.next().await {
-            trace!("Result: {}", result.is_ok());
-            if let Ok(ret) = result {
-                return Ok(ret);
-            }
-        }
-        Err(Error::DiscoveryTimeout)
-    }
-
     async fn retry_send<F, T>(&self, mut disc: UdpDiscovery, dest: SocketAddr, map: F) -> Result<T>
     where
         F: Fn(UdpDiscovery, SocketAddr) -> Option<T>,
@@ -357,13 +331,10 @@ impl Discoverer {
         Ok(result)
     }
 
-    /// This function will contact the p2p relay servers
-    ///
-    /// It will ask each of the servers for details on a specific UID
-    ///
-    /// On success it returns the M2cQr that the p2p relay
-    /// server has about the UID
-    async fn uid_loopup(&self, uid: &str) -> Result<UidLookupResults> {
+    async fn uid_lookup_all<'a>(
+        &'a self,
+        uid: &'a str,
+    ) -> Result<impl Stream<Item = UidLookupResults> + 'a> {
         let task = tokio::task::spawn_blocking(move || {
             let mut addrs = vec![];
             for p2p_relay in P2P_RELAY_HOSTNAMES.iter() {
@@ -376,8 +347,22 @@ impl Discoverer {
             }
             addrs
         });
-        let addrs = timeout(*MAXIMUM_WAIT, task).await??;
+        let mut addrs = timeout(*MAXIMUM_WAIT, task).await??;
         trace!("Uid lookup to: {:?}", addrs);
+
+        Ok(addrs
+            .drain(..)
+            .map(|addr| self.uid_lookup(uid, addr))
+            .collect::<FuturesUnordered<_>>()
+            .filter_map(|f| async { f.ok() }))
+    }
+    /// This function will contact the p2p relay servers
+    ///
+    /// It will ask each of the servers for details on a specific UID
+    ///
+    /// On success it will returns an async iter that yields the M2cQr that the p2p relay
+    /// server has about the UID
+    async fn uid_lookup(&self, uid: &str, addr: SocketAddr) -> Result<UidLookupResults> {
         let msg = UdpDiscovery {
             tid: 0,
             payload: UdpXml {
@@ -390,7 +375,7 @@ impl Discoverer {
         };
         trace!("Sending look up {:?}", msg);
         let (packet, _) = self
-            .retry_send_multi(msg, addrs.as_slice(), |bc, addr| match bc {
+            .retry_send(msg, addr, |bc, addr| match bc {
                 UdpDiscovery {
                     tid: _,
                     payload:
@@ -1046,20 +1031,35 @@ impl Discovery {
         let client_id = generate_cid();
         trace!("client_id: {}", client_id);
 
-        let lookup = discoverer.uid_loopup(uid).await?;
-        trace!("lookup: {:?}", lookup);
-        let reg_addr = lookup.reg;
-        let relay_addr = lookup.relay;
+        let lookups = Box::pin(discoverer.uid_lookup_all(uid).await?);
 
-        let reg_result = discoverer.register_address(uid, client_id, &lookup).await?;
-        trace!("reg_result: {:?}", reg_result);
+        let reg_result = Box::pin(
+            lookups
+                .then(|lookup| {
+                    let discoverer = &discoverer;
+                    async move {
+                        trace!("lookup: {:?}", lookup);
+                        let reg_addr = lookup.reg;
+                        let relay_addr = lookup.relay;
+
+                        let reg_result = discoverer.register_address(uid, client_id, &lookup).await;
+                        trace!("reg_result: {:?}", reg_result);
+                        reg_result
+                    }
+                })
+                .filter_map(|f| async { f.ok() }),
+        )
+        .next()
+        .await
+        .ok_or(Error::Other(
+            "No reolink registers returned valid device data.",
+        ))?;
 
         let connect_result = tokio::select! {
             v = discoverer.client_initiated_dev(&reg_result) => {v},
             v = discoverer.device_initiated_dev(&reg_result) => {v},
         }?;
         trace!("connect_result: {:?}", connect_result);
-
         let (socket, keep_alive_tasks) = discoverer.into_socket().await;
         Ok(DiscoveryResult {
             socket,
@@ -1084,11 +1084,27 @@ impl Discovery {
         let client_id = generate_cid();
         trace!("client_id: {}", client_id);
 
-        let lookup = discoverer.uid_loopup(uid).await?;
-        trace!("lookup: {:?}", lookup);
+        let lookups = Box::pin(discoverer.uid_lookup_all(uid).await?);
 
-        let reg_result = discoverer.register_address(uid, client_id, &lookup).await?;
-        trace!("reg_result: {:?}", reg_result);
+        let reg_result = Box::pin(
+            lookups
+                .then(|lookup| {
+                    let discoverer = &discoverer;
+                    async move {
+                        trace!("lookup: {:?}", lookup);
+
+                        let reg_result = discoverer.register_address(uid, client_id, &lookup).await;
+                        trace!("reg_result: {:?}", reg_result);
+                        reg_result
+                    }
+                })
+                .filter_map(|f| async { f.ok() }),
+        )
+        .next()
+        .await
+        .ok_or(Error::Other(
+            "No reolink registers returned valid device data.",
+        ))?;
 
         let connect_result = discoverer.device_initiated_map(&reg_result).await?;
         trace!("connect_result: {:?}", connect_result);
@@ -1114,11 +1130,27 @@ impl Discovery {
 
         trace!("client_id: {}", client_id);
 
-        let lookup = discoverer.uid_loopup(uid).await?;
-        trace!("lookup: {:?}", lookup);
+        let lookups = Box::pin(discoverer.uid_lookup_all(uid).await?);
 
-        let reg_result = discoverer.register_address(uid, client_id, &lookup).await?;
-        trace!("reg_result: {:?}", reg_result);
+        let reg_result = Box::pin(
+            lookups
+                .then(|lookup| {
+                    let discoverer = &discoverer;
+                    async move {
+                        trace!("lookup: {:?}", lookup);
+
+                        let reg_result = discoverer.register_address(uid, client_id, &lookup).await;
+                        trace!("reg_result: {:?}", reg_result);
+                        reg_result
+                    }
+                })
+                .filter_map(|f| async { f.ok() }),
+        )
+        .next()
+        .await
+        .ok_or(Error::Other(
+            "No reolink registers returned valid device data.",
+        ))?;
 
         let connect_result = discoverer.client_initiated_relay(&reg_result).await?;
         trace!("connect_result: {:?}", connect_result);
