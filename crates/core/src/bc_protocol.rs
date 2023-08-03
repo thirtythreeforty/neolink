@@ -185,12 +185,6 @@ impl BcCamera {
                 DiscoveryMethods::Debug => (false, false, false, true),
             };
 
-            let reg_result = if allow_remote || allow_map || allow_relay {
-                Some(discovery.get_registration(uid).await?)
-            } else {
-                None
-            };
-
             let res = tokio::select! {
                 v = async {
                     let uid_local = uid.clone();
@@ -210,58 +204,72 @@ impl BcCamera {
                     }
                 }, if allow_local => v,
                 v = async {
-                    let uid_remote = uid.clone();
-                    info!("{}: Trying remote discovery", options.name);
-                    let result = discovery
-                        .remote(&uid_remote, reg_result.as_ref().unwrap())
-                        .await;
-                    match result {
-                        Ok(disc) => {
-                            info!(
-                                "{}: Remote discovery success {} at {}",
-                                options.name,
-                                uid_remote,
-                                disc.get_addr()
-                            );
-                            Ok(CameraLocation::Udp(disc))
-                        },
-                        Err(e) => Err(e)
+                    let reg_result;
+                    loop {
+                        tokio::task::yield_now().await;
+                        if let Ok(result) = discovery.get_registration(uid).await {
+                            reg_result = result;
+                            break;
+                        }
+                        log::debug!("Registration failed. Retrying");
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    };
+                    tokio::select! {
+                        v = async {
+                            let uid_remote = uid.clone();
+                            info!("{}: Trying remote discovery", options.name);
+                            let result = discovery
+                                .remote(&uid_remote, &reg_result)
+                                .await;
+                            match result {
+                                Ok(disc) => {
+                                    info!(
+                                        "{}: Remote discovery success {} at {}",
+                                        options.name,
+                                        uid_remote,
+                                        disc.get_addr()
+                                    );
+                                    Ok(CameraLocation::Udp(disc))
+                                },
+                                Err(e) => Err(e)
+                            }
+                        }, if allow_remote => v,
+                        v = async {
+                            let uid_map = uid.clone();
+                            info!("{}: Trying map discovery", options.name);
+                            let result = discovery.map(&reg_result).await;
+                            match result {
+                                Ok(disc) => {
+                                    info!(
+                                        "{}: Map success {} at {}",
+                                        options.name,
+                                        uid_map,
+                                        disc.get_addr()
+                                    );
+                                    Ok(CameraLocation::Udp(disc))
+                                },
+                                Err(e) => Err(e),
+                            }
+                        }, if allow_map => v,
+                        v = async {
+                            let uid_relay = uid.clone();
+                            info!("{}: Trying relay discovery", options.name);
+                            let result = discovery.relay(&reg_result).await;
+                            match result {
+                                Ok(disc) => {
+                                    info!(
+                                        "{}: Relay success {} at {}",
+                                        options.name,
+                                        uid_relay,
+                                        disc.get_addr()
+                                    );
+                                    Ok(CameraLocation::Udp(disc))
+                                },
+                                Err(e) => Err(e),
+                            }
+                        }, if allow_relay => v,
                     }
-                }, if allow_remote => v,
-                v = async {
-                    let uid_map = uid.clone();
-                    info!("{}: Trying map discovery", options.name);
-                    let result = discovery.map(reg_result.as_ref().unwrap()).await;
-                    match result {
-                        Ok(disc) => {
-                            info!(
-                                "{}: Map success {} at {}",
-                                options.name,
-                                uid_map,
-                                disc.get_addr()
-                            );
-                            Ok(CameraLocation::Udp(disc))
-                        },
-                        Err(e) => Err(e),
-                    }
-                }, if allow_map => v,
-                v = async {
-                    let uid_relay = uid.clone();
-                    info!("{}: Trying relay discovery", options.name);
-                    let result = discovery.relay(reg_result.as_ref().unwrap()).await;
-                    match result {
-                        Ok(disc) => {
-                            info!(
-                                "{}: Relay success {} at {}",
-                                options.name,
-                                uid_relay,
-                                disc.get_addr()
-                            );
-                            Ok(CameraLocation::Udp(disc))
-                        },
-                        Err(e) => Err(e),
-                    }
-                }, if allow_relay => v,
+                }, if allow_remote || allow_map || allow_relay => v,
             }?;
 
             return Ok(res);
