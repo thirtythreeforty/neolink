@@ -205,6 +205,13 @@ impl BcCamera {
                 }, if allow_local => v,
                 v = async {
                     let reg_result;
+                    // Registration is looped as it seems that reolink
+                    // only updates the registration lazily when someone attempts
+                    // to connect. The first few connects fails until the server data
+                    // is updated
+                    //
+                    // We loop infinitly and allow the caller to timeout at the
+                    // interval they desire
                     loop {
                         tokio::task::yield_now().await;
                         if let Ok(result) = discovery.get_registration(uid).await {
