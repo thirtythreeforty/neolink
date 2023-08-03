@@ -120,6 +120,9 @@ pub(crate) struct CameraConfig {
         alias = "stretching"
     )]
     pub(crate) use_smoothing: bool,
+
+    #[serde(default = "default_true", alias = "splash")]
+    pub(crate) use_splash: bool,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]

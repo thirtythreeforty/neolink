@@ -25,6 +25,7 @@ pub(super) struct NeoMediaShared {
     pub(super) buffer_ready: AtomicBool,
     pub(super) buffer_size: AtomicUsize,
     pub(super) use_smoothing: AtomicBool,
+    pub(super) splash: AtomicBool,
 }
 
 impl Default for NeoMediaShared {
@@ -36,6 +37,7 @@ impl Default for NeoMediaShared {
             buffer_ready: AtomicBool::new(false),
             buffer_size: AtomicUsize::new(100),
             use_smoothing: AtomicBool::new(false),
+            splash: AtomicBool::new(true),
         }
     }
 }
@@ -55,5 +57,13 @@ impl NeoMediaShared {
 
     pub(super) fn set_use_smoothing(&self, new_value: bool) {
         self.use_smoothing.store(new_value, Ordering::Relaxed)
+    }
+
+    pub(super) fn get_use_splash(&self) -> bool {
+        self.splash.load(Ordering::Relaxed)
+    }
+
+    pub(super) fn set_use_splash(&self, new_value: bool) {
+        self.splash.store(new_value, Ordering::Relaxed)
     }
 }

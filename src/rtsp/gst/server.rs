@@ -363,7 +363,11 @@ impl NeoRtspServerImpl {
         match self.medias.write().await.entry(key.clone()) {
             Entry::Occupied(_occ) => {}
             Entry::Vacant(vac) => {
-                let media = NeoMediaFactory::new(config.buffer_size, config.use_smoothing);
+                let media = NeoMediaFactory::new(
+                    config.buffer_size,
+                    config.use_smoothing,
+                    config.use_splash,
+                );
                 let thread_media = media.clone();
                 self.threads
                     .write()
