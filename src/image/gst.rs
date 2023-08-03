@@ -20,7 +20,6 @@ enum GstControl {
 
 pub(super) struct GstSender {
     sender: Sender<GstControl>,
-    #[allow(dead_code)] // It is used for its automatic drop
     set: JoinSet<Result<()>>,
     finished: sync::oneshot::Receiver<Result<()>>,
 }
@@ -48,6 +47,11 @@ impl GstSender {
                 Some(Err(anyhow!("Gstreamer finished channel is closed")))
             }
         }
+    }
+
+    pub(super) async fn join(mut self) -> Result<()> {
+        while self.set.join_next().await.is_some() {}
+        Ok(())
     }
 }
 

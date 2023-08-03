@@ -445,9 +445,18 @@ impl Discoverer {
                                 }),
                             ..
                         },
-                } if (dev.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false)
-                    || dmap.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false)
-                    || relay.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false))
+                } if (dev
+                    .as_ref()
+                    .map(|d| !d.ip.is_empty() && d.port > 0)
+                    .unwrap_or(false)
+                    || dmap
+                        .as_ref()
+                        .map(|d| !d.ip.is_empty() && d.port > 0)
+                        .unwrap_or(false)
+                    || relay
+                        .as_ref()
+                        .map(|d| !d.ip.is_empty() && d.port > 0)
+                        .unwrap_or(false))
                     && rsp != -1 =>
                 {
                     Some(Ok((sid, dev, dmap, relay)))
@@ -466,9 +475,18 @@ impl Discoverer {
                                 }),
                             ..
                         },
-                } if (dev.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false)
-                    || dmap.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false)
-                    || relay.as_ref().map(|d| !d.ip.is_empty()).unwrap_or(false))
+                } if (dev
+                    .as_ref()
+                    .map(|d| !d.ip.is_empty() && d.port > 0)
+                    .unwrap_or(false)
+                    || dmap
+                        .as_ref()
+                        .map(|d| !d.ip.is_empty() && d.port > 0)
+                        .unwrap_or(false)
+                    || relay
+                        .as_ref()
+                        .map(|d| !d.ip.is_empty() && d.port > 0)
+                        .unwrap_or(false))
                     && rsp == -1 =>
                 {
                     Some(Err(Error::RegisterError))

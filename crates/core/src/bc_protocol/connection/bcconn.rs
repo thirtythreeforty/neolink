@@ -147,6 +147,15 @@ impl BcConnection {
         }
         Ok(())
     }
+
+    pub async fn disconnect(mut self) -> Result<()> {
+        self.poll_commander.send(PollCommand::Disconnect).await?;
+        drop(self.sink);
+        drop(self.poll_commander);
+        let locked_threads = self.rx_thread.get_mut();
+        while locked_threads.join_next().await.is_some() {}
+        Ok(())
+    }
 }
 
 enum PollCommand {
@@ -154,6 +163,7 @@ enum PollCommand {
     AddHandler(u32, Arc<MsgHandler>),
     RemoveHandler(u32),
     AddSubscriber(u32, Option<u16>, Sender<Result<Bc>>),
+    Disconnect,
 }
 
 struct Poller {
@@ -291,6 +301,9 @@ impl Poller {
                             }
                         }
                     };
+                }
+                PollCommand::Disconnect => {
+                    return Err(Error::DroppedConnection);
                 }
             }
         }
