@@ -126,6 +126,7 @@ impl BcCamera {
     /// Try to connect to the camera via appropaite methods and return
     /// the location that should be used
     async fn find_camera(options: &BcCameraOpt) -> Result<CameraLocation> {
+        let discovery = Discovery::new().await?;
         if let ConnectionProtocol::Tcp | ConnectionProtocol::TcpUdp = options.protocol {
             let mut sockets = vec![];
             match options.port {
@@ -145,7 +146,7 @@ impl BcCamera {
                 info!("{}: Trying TCP discovery", options.name);
                 for socket in sockets.drain(..) {
                     let channel_id: u8 = options.channel_id;
-                    if let Ok(addr) = Discovery::check_tcp(socket, channel_id).await.map(|_| {
+                    if let Ok(addr) = discovery.check_tcp(socket, channel_id).await.map(|_| {
                         info!("{}: TCP Discovery success at {:?}", options.name, &socket);
                         socket
                     }) {
@@ -184,10 +185,16 @@ impl BcCamera {
                 DiscoveryMethods::Debug => (false, false, false, true),
             };
 
+            let reg_result = if allow_remote || allow_map || allow_relay {
+                Some(discovery.get_registration(uid).await?)
+            } else {
+                None
+            };
+
             if allow_local {
                 let uid_local = uid.clone();
                 info!("{}: Trying local discovery", options.name);
-                let result = Discovery::local(&uid_local, Some(sockets)).await;
+                let result = discovery.local(&uid_local, Some(sockets)).await;
                 if let Ok(disc) = result {
                     info!(
                         "{}: Local discovery success {} at {}",
@@ -201,7 +208,9 @@ impl BcCamera {
             if allow_remote {
                 let uid_remote = uid.clone();
                 info!("{}: Trying remote discovery", options.name);
-                let result = Discovery::remote(&uid_remote).await;
+                let result = discovery
+                    .remote(&uid_remote, reg_result.as_ref().unwrap())
+                    .await;
                 if let Ok(disc) = result {
                     info!(
                         "{}: Remote discovery success {} at {}",
@@ -215,7 +224,7 @@ impl BcCamera {
             if allow_map {
                 let uid_map = uid.clone();
                 info!("{}: Trying map discovery", options.name);
-                let result = Discovery::map(&uid_map).await;
+                let result = discovery.map(reg_result.as_ref().unwrap()).await;
                 if let Ok(disc) = result {
                     info!(
                         "{}: Map success {} at {}",
@@ -229,7 +238,7 @@ impl BcCamera {
             if allow_relay {
                 let uid_relay = uid.clone();
                 info!("{}: Trying relay discovery", options.name);
-                let result = Discovery::relay(&uid_relay).await;
+                let result = discovery.relay(reg_result.as_ref().unwrap()).await;
                 if let Ok(disc) = result {
                     info!(
                         "{}: Relay success {} at {}",

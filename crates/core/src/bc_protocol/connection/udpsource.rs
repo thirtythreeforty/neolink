@@ -49,13 +49,12 @@ impl UdpSource {
         Self::new_from_socket(stream, addr, client_id, camera_id, username, password).await
     }
     pub(crate) async fn new_from_discovery<T: Into<String>, U: Into<String>>(
-        mut discovery: DiscoveryResult,
+        discovery: DiscoveryResult,
         username: T,
         password: Option<U>,
     ) -> Result<Self> {
         // Ensure that the discovery keep alive are all stopped here
         // We now handle all coms in UdpSource
-        discovery.shutdown().await;
         Self::new_from_socket(
             discovery.socket,
             discovery.addr,
