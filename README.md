@@ -1,6 +1,10 @@
 # Neolink
 
-![CI](https://github.com/QuantumEntangledAndy/neolink/workflows/CI/badge.svg) [![dependency status](https://deps.rs/repo/github/QuantumEntangledAndy/neolink/status.svg)](https://deps.rs/repo/github/QuantumEntangledAndy/neolink) <a href='https://ko-fi.com/G2G5HOYIZ' target='_blank'><img height='12' style='border:0px;height:30px;' src='https://storage.ko-fi.com/cdn/kofi2.png?v=3' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
+![CI](https://github.com/QuantumEntangledAndy/neolink/workflows/CI/badge.svg)
+[![dependency status](https://deps.rs/repo/github/QuantumEntangledAndy/neolink/status.svg)](https://deps.rs/repo/github/QuantumEntangledAndy/neolink)
+
+If you find this code helpful please consider supporting development.
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/G2G5HOYIZ)
 
 Neolink is a small program that acts as a proxy between Reolink IP cameras and
 normal RTSP clients.
@@ -31,7 +35,7 @@ features not yet in upstream master.
 
 **Minor Features**:
 
-- Improved error messages when your missing gstreamer plugins
+- Improved error messages when missing gstreamer plugins
 - Protocol more closely follows offical reolink format
   - Possibly can handle more simulatenous connections
 - More ways to connect to the camera. Including Relaying through reolink
@@ -93,7 +97,7 @@ uid = "BCDEF0123456789A"
 address = "192.168.1.10"
 ```
 
-Create a text file with called `neolink.toml` in the same folder as the
+Create a text file called `neolink.toml` in the same folder as the
 neolink binary. With your config options.
 
 When ready start `neolink` with the following command
@@ -114,20 +118,20 @@ The IP is discovered with four methods
    the local network if there is a camera with this UID. This only works if
    the network supports broadcasts
 
-   If you know the ip address you can put it into the  `address` field of the
+   If you know the ip address you can put it into the `address` field of the
    config and attempt a direct connection without broadcasts. This requires a
    route from neolink to the camera.
 
-2. Remote discovery: Here a ask the reolink servers what the IP address is.
+2. Remote discovery: Here we ask the reolink servers what the IP address is.
    This requires that we contact reolink and provide some basic information
    like the UID. Once we have this information we connect directly to the
    local IP address. This requires a route from neolink to the camera and
-   for the camera to be able to contact the reolink IPs.
+   for the camera to be able to contact reolink.
 
 3. Map discovery: In this case we register our IP address with reolink and ask
-   the camera to connect to us. Once the camera either polls/recives a connect
-   request from the reolink servers the camera will then initiate a connect
-   to neolink. This requires that our IP and the reolink IPs are reacable from
+   the camera to connect to us. Once the camera either polls/recieves a connect
+   request from the reolink servers the camera will initiate a connection
+   to neolink. This requires that our IP and reolink are reachable from
    the camera.
 
 4. Relay: In this case we request that reolink relay our connection. Neolink
@@ -158,7 +162,7 @@ See the sample config file for more details.
 
 ### MQTT
 
-To use mqtt you will to adjust your config file as such:
+To use mqtt you will need to adjust your config file as such:
 
 ```toml
 bind = "0.0.0.0"
@@ -193,7 +197,8 @@ Control messages:
 - `/control/ptz [up|down|left|right|in|out] (amount)` Control the PTZ
   movements, amount defaults to 32.0
 - `/control/ptz/preset [id]` Move the camera to a PTZ preset
-- `/control/ptz/assign [id] [name]` Set the current PTZ position to a preset ID and name
+- `/control/ptz/assign [id] [name]` Set the current PTZ position to a preset ID
+  and name
 - `/control/pir [on|off]`
 
 Status Messages:
@@ -206,10 +211,13 @@ Status Messages:
 - `/status/battery_level` A simple % value of current battery level
 - `/status/pir` Sent in reply to a `/query/pir` an XML encoded version of the
   pir status
-- `/status/motion` Contains the motion detection alarm status. `on` for motion and `off` for still
-- `/status/ptz/preset` Sent in reply to a `/query/ptz/preset` an XML encoded version of the
-  PTZ presets
-- `/status/preview` a base64 encoded camera image updated every 0.5s
+- `/status/motion` Contains the motion detection alarm status. `on` for motion
+  and `off` for still
+- `/status/ptz/preset` Sent in reply to a `/query/ptz/preset` an XML encoded
+  version of the PTZ presets
+- `/status/preview` a base64 encoded camera image updated every 0.5s. Not
+  every camera supports the snapshot command needed for this. In such cases
+  there will be no `/status/preview` message.
 
 Query Messages:
 
@@ -220,7 +228,7 @@ Query Messages:
 ### MQTT Disable Features
 
 Certain features like preview and motion detection may not be desired
-you can disable them by them with the following config options. 
+you can disable them with the following config options.
 Disabling these may help to conserve battery
 
 ```toml
@@ -241,8 +249,9 @@ enable_preview = false # preview image in `/status/preview`
 
 #### MQTT Discovery
 
-[MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery) is partially supported. 
-Currently, discovery is opt-in and camera features must be manually specified.
+[MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery)
+is partially supported. Currently, discovery is opt-in and camera features
+must be manually specified.
 
 ```toml
 [cameras.mqtt]
@@ -255,14 +264,19 @@ Currently, discovery is opt-in and camera features must be manually specified.
 Avaliable features are:
 
 - `floodlight`: This adds a light control to home assistant
-- `camera`: This adds a camera preview to home assistant. It is only updated every 0.5s and cannot be much more than that since it is updated over mqtt not over RTSP
-- `led`: This adds a switch to chage the LED status light on/off to home assistant
-- `ir`: This adds a selection switch to chage the IR light on/off/auto to home assistant
+- `camera`: This adds a camera preview to home assistant. It is only updated
+  every 0.5s and cannot be much more than that since it is updated over mqtt
+  not over RTSP. Not every camera supports the snapshot command needed for
+  this. In such cases there will be no `/status/preview` message.
+- `led`: This adds a switch to chage the LED status light on/off to home
+  assistant
+- `ir`: This adds a selection switch to chage the IR light on/off/auto to home
+  assistant
 - `motion`: This adds a motion detection binary sensor to home assistant
-- `reboot`: This adds a reboot button  to home assistant
-- `pt`: This adds a selection of buttons to control the pan and tilt of the camera
+- `reboot`: This adds a reboot button to home assistant
+- `pt`: This adds a selection of buttons to control the pan and tilt of the
+  camera
 - `battery`: This adds a battery level sensor to home assistant
-
 
 ### Pause
 
@@ -290,8 +304,8 @@ Then start the rtsp server as usual:
 
 ### Battery Levels
 
-If you have a battery camera and would like to see the battery messages in th
-log  add the following to your config
+If you have a battery camera and would like to see the battery messages in the
+log, add the following to your config
 
 ```toml
 [[cameras]]
@@ -299,8 +313,8 @@ log  add the following to your config
 print_format = "Human"
 ```
 
-You can also print into xml format with `print_format = "Xml"` which can then b
-passed by a script for processing.
+You can also print into xml format with `print_format = "Xml"` which can then
+be passed by a script for processing.
 
 ### Docker
 
@@ -316,7 +330,8 @@ docker pull quantumentangledandy/neolink
 # --network host is only needed if you require to connect
 # via local broadcasts. If you can connect via any other
 # method then normal bridge mode should work fine
-# and you can ommit this option
+# and you can ommit this option. Not all OSes support
+# network=host, notably macos lacks this option.
 docker run --network host --volume=$PWD/config.toml:/etc/neolink.toml quantumentangledandy/neolink
 ```
 
@@ -334,9 +349,10 @@ the camera from the config to save the image from.
 File is always jpeg and the extension given in filepath will be added or changed
 to reflect this.
 
-Some cameras do not support the SNAP command that is used to generate the image on the camera.
-If this is the case with your camera you can try the `--use-stream` option which will instead
-create a jpeg by transcoding the video stream.
+Some cameras do not support the SNAP command that is used to generate the image
+on the camera. If this is the case with your camera you can try the
+`--use-stream` option which will instead create a jpeg by transcoding the video
+stream.
 
 ## License
 
