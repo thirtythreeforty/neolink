@@ -34,7 +34,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::udp::UdpFramed;
 
 #[derive(Debug, Clone)]
-struct RegisterResult {
+pub(crate) struct RegisterResult {
     reg: SocketAddr,
     dev: Option<SocketAddr>,
     dmap: Option<SocketAddr>,
@@ -56,8 +56,6 @@ struct UidLookupResults {
     reg: SocketAddr,
     relay: SocketAddr,
 }
-
-pub(crate) struct Discovery {}
 
 const MTU: u32 = 1350;
 lazy_static! {
@@ -154,10 +152,8 @@ impl Discoverer {
         })
     }
 
-    async fn into_socket(self) -> (Arc<UdpSocket>, JoinSet<()>) {
-        let socket = self.socket.clone();
-        let handle = self.handle.into_inner();
-        (socket, handle)
+    async fn get_socket(&self) -> Arc<UdpSocket> {
+        self.socket.clone()
     }
 
     async fn subscribe(&self, tid: u32) -> Result<Receiver<Result<(UdpDiscovery, SocketAddr)>>> {
@@ -924,11 +920,49 @@ impl Discoverer {
     }
 }
 
+pub(crate) struct Discovery {
+    discoverer: Discoverer,
+    client_id: i32,
+}
+
 impl Discovery {
+    pub(crate) async fn new() -> Result<Self> {
+        Ok(Self {
+            discoverer: Discoverer::new().await?,
+            client_id: generate_cid(),
+        })
+    }
+
+    pub(crate) async fn get_registration(&self, uid: &str) -> Result<RegisterResult> {
+        let lookups = self.discoverer.uid_lookup_all(uid).await?;
+
+        let reg_result = Box::pin(
+            lookups
+                .then(|lookup| {
+                    let discoverer = &self.discoverer;
+                    let client_id = self.client_id;
+                    async move {
+                        trace!("lookup: {:?}", lookup);
+                        let reg_result = discoverer.register_address(uid, client_id, &lookup).await;
+                        trace!("reg_result: {:?}", reg_result);
+                        reg_result
+                    }
+                })
+                .filter_map(|f| async { f.ok() }),
+        )
+        .next()
+        .await
+        .ok_or(Error::Other(
+            "No reolink registers returned valid device data.",
+        ))?;
+
+        Ok(reg_result)
+    }
+
     // Check if TCP is possible
     //
     // To do this we send a dummy login  and see if it replies with any BC packet
-    pub(crate) async fn check_tcp(addr: SocketAddr, channel_id: u8) -> Result<()> {
+    pub(crate) async fn check_tcp(&self, addr: SocketAddr, channel_id: u8) -> Result<()> {
         let username = "admin";
         let password = Some("123456");
         let mut tcp_source =
@@ -964,18 +998,17 @@ impl Discovery {
 
     // Perform UDP broadcast lookup and connection
     pub(crate) async fn local(
+        &self,
         uid: &str,
         mut optional_addrs: Option<Vec<SocketAddr>>,
     ) -> Result<DiscoveryResult> {
-        let discoverer = Discoverer::new().await?;
-
-        let client_id = generate_cid();
         let mut dests = get_broadcasts(&[2015, 2018])?;
         if let Some(mut optional_addrs) = optional_addrs.take() {
             trace!("Also sending to {:?}", optional_addrs);
             dests.append(&mut optional_addrs);
         }
-        let discoverer_ref = &discoverer;
+        let discoverer_ref = &self.discoverer;
+        let client_id = self.client_id;
         let mut futures = FuturesUnordered::new();
         for addr in dests.iter().copied() {
             futures.push(async move {
@@ -1003,10 +1036,9 @@ impl Discovery {
         drop(futures);
         // drop(discoverer_ref);
 
-        let (socket, keep_alive_tasks) = discoverer.into_socket().await;
+        let socket = self.discoverer.get_socket().await;
         Ok(DiscoveryResult {
             socket,
-            keep_alive_tasks,
             addr: connect_result.addr,
             camera_id: connect_result.camera_id,
             client_id: connect_result.client_id,
@@ -1024,48 +1056,22 @@ impl Discovery {
     // This method is best when broadcasts are not possible but we can contact the camera
     // directly
     #[allow(unused)]
-    pub(crate) async fn remote(uid: &str) -> Result<DiscoveryResult> {
+    pub(crate) async fn remote(
+        &self,
+        uid: &str,
+        reg_result: &RegisterResult,
+    ) -> Result<DiscoveryResult> {
         trace!("Start remote");
-        let mut discoverer = Discoverer::new().await?;
-
-        let client_id = generate_cid();
-        trace!("client_id: {}", client_id);
-
-        let lookups = Box::pin(discoverer.uid_lookup_all(uid).await?);
-
-        let reg_result = Box::pin(
-            lookups
-                .then(|lookup| {
-                    let discoverer = &discoverer;
-                    async move {
-                        trace!("lookup: {:?}", lookup);
-                        let reg_addr = lookup.reg;
-                        let relay_addr = lookup.relay;
-
-                        let reg_result = discoverer.register_address(uid, client_id, &lookup).await;
-                        trace!("reg_result: {:?}", reg_result);
-                        reg_result
-                    }
-                })
-                .filter_map(|f| async { f.ok() }),
-        )
-        .next()
-        .await
-        .ok_or(Error::Other(
-            "No reolink registers returned valid device data.",
-        ))?;
-
         let connect_result = tokio::select! {
-            v = discoverer.client_initiated_dev(&reg_result) => {v},
-            v = discoverer.device_initiated_dev(&reg_result) => {v},
+            v = self.discoverer.client_initiated_dev(reg_result) => {v},
+            v = self.discoverer.device_initiated_dev(reg_result) => {v},
         }?;
         trace!("connect_result: {:?}", connect_result);
-        let (socket, keep_alive_tasks) = discoverer.into_socket().await;
+        let socket = self.discoverer.get_socket().await;
         Ok(DiscoveryResult {
             socket,
-            keep_alive_tasks,
             addr: connect_result.addr,
-            client_id,
+            client_id: self.client_id,
             camera_id: connect_result.camera_id,
         })
     }
@@ -1078,43 +1084,15 @@ impl Discovery {
     //
     // This method should be used when the camera is behind a NAT or firewall but we are
     // reachable
-    pub(crate) async fn map(uid: &str) -> Result<DiscoveryResult> {
-        let discoverer = Discoverer::new().await?;
-
-        let client_id = generate_cid();
-        trace!("client_id: {}", client_id);
-
-        let lookups = Box::pin(discoverer.uid_lookup_all(uid).await?);
-
-        let reg_result = Box::pin(
-            lookups
-                .then(|lookup| {
-                    let discoverer = &discoverer;
-                    async move {
-                        trace!("lookup: {:?}", lookup);
-
-                        let reg_result = discoverer.register_address(uid, client_id, &lookup).await;
-                        trace!("reg_result: {:?}", reg_result);
-                        reg_result
-                    }
-                })
-                .filter_map(|f| async { f.ok() }),
-        )
-        .next()
-        .await
-        .ok_or(Error::Other(
-            "No reolink registers returned valid device data.",
-        ))?;
-
-        let connect_result = discoverer.device_initiated_map(&reg_result).await?;
+    pub(crate) async fn map(&self, reg_result: &RegisterResult) -> Result<DiscoveryResult> {
+        let connect_result = self.discoverer.device_initiated_map(reg_result).await?;
         trace!("connect_result: {:?}", connect_result);
 
-        let (socket, keep_alive_tasks) = discoverer.into_socket().await;
+        let socket = self.discoverer.get_socket().await;
         Ok(DiscoveryResult {
             socket,
-            keep_alive_tasks,
             addr: connect_result.addr,
-            client_id,
+            client_id: self.client_id,
             camera_id: connect_result.camera_id,
         })
     }
@@ -1124,43 +1102,15 @@ impl Discovery {
     // This method should work if all else fails but it will require
     // us to trust reolink with our data once more...
     //
-    pub(crate) async fn relay(uid: &str) -> Result<DiscoveryResult> {
-        let discoverer = Discoverer::new().await?;
-        let client_id = generate_cid();
-
-        trace!("client_id: {}", client_id);
-
-        let lookups = Box::pin(discoverer.uid_lookup_all(uid).await?);
-
-        let reg_result = Box::pin(
-            lookups
-                .then(|lookup| {
-                    let discoverer = &discoverer;
-                    async move {
-                        trace!("lookup: {:?}", lookup);
-
-                        let reg_result = discoverer.register_address(uid, client_id, &lookup).await;
-                        trace!("reg_result: {:?}", reg_result);
-                        reg_result
-                    }
-                })
-                .filter_map(|f| async { f.ok() }),
-        )
-        .next()
-        .await
-        .ok_or(Error::Other(
-            "No reolink registers returned valid device data.",
-        ))?;
-
-        let connect_result = discoverer.client_initiated_relay(&reg_result).await?;
+    pub(crate) async fn relay(&self, reg_result: &RegisterResult) -> Result<DiscoveryResult> {
+        let connect_result = self.discoverer.client_initiated_relay(reg_result).await?;
         trace!("connect_result: {:?}", connect_result);
 
-        let (socket, keep_alive_tasks) = discoverer.into_socket().await;
+        let socket = self.discoverer.get_socket().await;
         Ok(DiscoveryResult {
             socket,
-            keep_alive_tasks,
             addr: connect_result.addr,
-            client_id,
+            client_id: self.client_id,
             camera_id: connect_result.camera_id,
         })
     }

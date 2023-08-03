@@ -6,7 +6,7 @@
 //!
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::{net::UdpSocket, task::JoinSet};
+use tokio::net::UdpSocket;
 
 mod bcconn;
 mod bcsub;
@@ -22,16 +22,11 @@ pub(crate) use self::{
 pub(crate) struct DiscoveryResult {
     socket: Arc<UdpSocket>,
     addr: SocketAddr,
-    keep_alive_tasks: JoinSet<()>,
     client_id: i32,
     camera_id: i32,
 }
 
 impl DiscoveryResult {
-    /// Stop all keep alive and any remaining tasks that the discover is managing
-    pub(crate) async fn shutdown(&mut self) {
-        self.keep_alive_tasks.shutdown().await;
-    }
     /// Get the address discovered
     pub(crate) fn get_addr(&self) -> &SocketAddr {
         &self.addr
