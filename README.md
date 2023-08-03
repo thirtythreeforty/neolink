@@ -3,9 +3,6 @@
 ![CI](https://github.com/QuantumEntangledAndy/neolink/workflows/CI/badge.svg)
 [![dependency status](https://deps.rs/repo/github/QuantumEntangledAndy/neolink/status.svg)](https://deps.rs/repo/github/QuantumEntangledAndy/neolink)
 
-If you find this code helpful please consider supporting development.
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/G2G5HOYIZ)
-
 Neolink is a small program that acts as a proxy between Reolink IP cameras and
 normal RTSP clients.
 Certain cameras, such as the Reolink B800, do not implement ONVIF or RTSP, but
@@ -361,3 +358,9 @@ v3.
 
 This means that if you incorporate it into a piece of software available over
 the network, you must offer that software's source code to your users.
+
+# Donations
+
+If you find this code helpful please consider supporting development.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/G2G5HOYIZ)
