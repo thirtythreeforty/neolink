@@ -81,6 +81,9 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         }
         debug!("Sending EOS");
         let _ = sender.eos().await; // Ignore return because if pipeline is finished this will error
+        let _ = sender.join().await;
+
+        let _ = stream_data.shutdown().await;
     } else {
         // Simply use the snap command
         debug!("Using the snap command");
@@ -89,6 +92,9 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         let jpeg_data = camera.get_snapshot().await?;
         buffer.write_all(jpeg_data.as_slice()).await?;
     }
+
+    let _ = camera.logout().await;
+    camera.disconnect().await?;
 
     Ok(())
 }

@@ -191,64 +191,80 @@ impl BcCamera {
                 None
             };
 
-            if allow_local {
-                let uid_local = uid.clone();
-                info!("{}: Trying local discovery", options.name);
-                let result = discovery.local(&uid_local, Some(sockets)).await;
-                if let Ok(disc) = result {
-                    info!(
-                        "{}: Local discovery success {} at {}",
-                        options.name,
-                        uid_local,
-                        disc.get_addr()
-                    );
-                    return Ok(CameraLocation::Udp(disc));
-                }
-            }
-            if allow_remote {
-                let uid_remote = uid.clone();
-                info!("{}: Trying remote discovery", options.name);
-                let result = discovery
-                    .remote(&uid_remote, reg_result.as_ref().unwrap())
-                    .await;
-                if let Ok(disc) = result {
-                    info!(
-                        "{}: Remote discovery success {} at {}",
-                        options.name,
-                        uid_remote,
-                        disc.get_addr()
-                    );
-                    return Ok(CameraLocation::Udp(disc));
-                }
-            }
-            if allow_map {
-                let uid_map = uid.clone();
-                info!("{}: Trying map discovery", options.name);
-                let result = discovery.map(reg_result.as_ref().unwrap()).await;
-                if let Ok(disc) = result {
-                    info!(
-                        "{}: Map success {} at {}",
-                        options.name,
-                        uid_map,
-                        disc.get_addr()
-                    );
-                    return Ok(CameraLocation::Udp(disc));
-                }
-            }
-            if allow_relay {
-                let uid_relay = uid.clone();
-                info!("{}: Trying relay discovery", options.name);
-                let result = discovery.relay(reg_result.as_ref().unwrap()).await;
-                if let Ok(disc) = result {
-                    info!(
-                        "{}: Relay success {} at {}",
-                        options.name,
-                        uid_relay,
-                        disc.get_addr()
-                    );
-                    return Ok(CameraLocation::Udp(disc));
-                }
-            }
+            let res = tokio::select! {
+                v = async {
+                    let uid_local = uid.clone();
+                    info!("{}: Trying local discovery", options.name);
+                    let result = discovery.local(&uid_local, Some(sockets)).await;
+                    match result {
+                        Ok(disc) => {
+                            info!(
+                                "{}: Local discovery success {} at {}",
+                                options.name,
+                                uid_local,
+                                disc.get_addr()
+                            );
+                            Ok(CameraLocation::Udp(disc))
+                        },
+                        Err(e) => Err(e)
+                    }
+                }, if allow_local => v,
+                v = async {
+                    let uid_remote = uid.clone();
+                    info!("{}: Trying remote discovery", options.name);
+                    let result = discovery
+                        .remote(&uid_remote, reg_result.as_ref().unwrap())
+                        .await;
+                    match result {
+                        Ok(disc) => {
+                            info!(
+                                "{}: Remote discovery success {} at {}",
+                                options.name,
+                                uid_remote,
+                                disc.get_addr()
+                            );
+                            Ok(CameraLocation::Udp(disc))
+                        },
+                        Err(e) => Err(e)
+                    }
+                }, if allow_remote => v,
+                v = async {
+                    let uid_map = uid.clone();
+                    info!("{}: Trying map discovery", options.name);
+                    let result = discovery.map(reg_result.as_ref().unwrap()).await;
+                    match result {
+                        Ok(disc) => {
+                            info!(
+                                "{}: Map success {} at {}",
+                                options.name,
+                                uid_map,
+                                disc.get_addr()
+                            );
+                            Ok(CameraLocation::Udp(disc))
+                        },
+                        Err(e) => Err(e),
+                    }
+                }, if allow_map => v,
+                v = async {
+                    let uid_relay = uid.clone();
+                    info!("{}: Trying relay discovery", options.name);
+                    let result = discovery.relay(reg_result.as_ref().unwrap()).await;
+                    match result {
+                        Ok(disc) => {
+                            info!(
+                                "{}: Relay success {} at {}",
+                                options.name,
+                                uid_relay,
+                                disc.get_addr()
+                            );
+                            Ok(CameraLocation::Udp(disc))
+                        },
+                        Err(e) => Err(e),
+                    }
+                }, if allow_relay => v,
+            }?;
+
+            return Ok(res);
         }
 
         info!("{}: Discovery failed", options.name);
@@ -364,6 +380,16 @@ impl BcCamera {
     /// If an error is returned in any thread it will return the first error
     pub async fn join(&self) -> Result<()> {
         self.connection.join().await
+    }
+
+    /// Disconnect from the camera. This is done by dropping the reciever
+    /// so further communications are not possible.
+    pub async fn disconnect(self) -> Result<()> {
+        let connection = Arc::try_unwrap(self.connection)
+            .map_err(|_| Error::Other("Connection still active"))?;
+        connection.disconnect().await?;
+
+        Ok(())
     }
 }
 
