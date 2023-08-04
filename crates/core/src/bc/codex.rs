@@ -110,7 +110,7 @@ impl Decoder for BcCodex {
                 match encryption_protocol_byte {
                     0x00 => self.context.set_encrypted(EncryptionProtocol::Unencrypted),
                     0x01 => self.context.set_encrypted(EncryptionProtocol::BCEncrypt),
-                    0x02 => self.context.set_encrypted(EncryptionProtocol::Aes(
+                    0x02 | 0x12 => self.context.set_encrypted(EncryptionProtocol::Aes(
                         self.context.credentials.make_aeskey(nonce),
                     )),
                     _ => {
