@@ -186,7 +186,7 @@ impl BcCamera {
             };
 
             let res = tokio::select! {
-                v = async {
+                Ok(v) = async {
                     let uid_local = uid.clone();
                     info!("{}: Trying local discovery", options.name);
                     let result = discovery.local(&uid_local, Some(sockets)).await;
@@ -202,8 +202,9 @@ impl BcCamera {
                         },
                         Err(e) => Err(e)
                     }
-                }, if allow_local => v,
-                v = async {
+                }, if allow_local => Ok(v),
+                Ok(v) = async {
+                    let mut discovery = Discovery::new().await?;
                     let reg_result;
                     // Registration is looped as it seems that reolink
                     // only updates the registration lazily when someone attempts
@@ -220,9 +221,11 @@ impl BcCamera {
                         }
                         log::debug!("Registration failed. Retrying");
                         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                        // New discovery to get new client IDs
+                        discovery = Discovery::new().await?;
                     };
                     tokio::select! {
-                        v = async {
+                        Ok(v) = async {
                             let uid_remote = uid.clone();
                             info!("{}: Trying remote discovery", options.name);
                             let result = discovery
@@ -240,8 +243,8 @@ impl BcCamera {
                                 },
                                 Err(e) => Err(e)
                             }
-                        }, if allow_remote => v,
-                        v = async {
+                        }, if allow_remote => Ok(v),
+                        Ok(v) = async {
                             let uid_map = uid.clone();
                             info!("{}: Trying map discovery", options.name);
                             let result = discovery.map(&reg_result).await;
@@ -257,8 +260,8 @@ impl BcCamera {
                                 },
                                 Err(e) => Err(e),
                             }
-                        }, if allow_map => v,
-                        v = async {
+                        }, if allow_map => Ok(v),
+                        Ok(v) = async {
                             let uid_relay = uid.clone();
                             info!("{}: Trying relay discovery", options.name);
                             let result = discovery.relay(&reg_result).await;
@@ -274,9 +277,11 @@ impl BcCamera {
                                 },
                                 Err(e) => Err(e),
                             }
-                        }, if allow_relay => v,
+                        }, if allow_relay => Ok(v),
+                        else => Err(Error::DiscoveryTimeout),
                     }
-                }, if allow_remote || allow_map || allow_relay => v,
+                }, if allow_remote || allow_map || allow_relay => Ok(v),
+                else => Err(Error::DiscoveryTimeout),
             }?;
 
             return Ok(res);
