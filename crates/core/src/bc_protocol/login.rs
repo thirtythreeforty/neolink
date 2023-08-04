@@ -58,7 +58,7 @@ impl BcCamera {
             let enc_byte = match max_encryption {
                 MaxEncryption::None => 0xdc00,
                 MaxEncryption::BcEncrypt => 0xdc01,
-                MaxEncryption::Aes => 0xdc02,
+                MaxEncryption::Aes => 0xdc12,
             };
             let legacy_login = Bc {
                 meta: BcMeta {
