@@ -128,6 +128,8 @@ pub enum LegacyMsg {
         /// Password for a legacy login
         password: String,
     },
+    /// Sent to upgrade to modern and not exposed the MD5 username/password
+    LoginUpgrade,
     /// Any other type of legacy message will be collected here
     UnknownMsg,
 }

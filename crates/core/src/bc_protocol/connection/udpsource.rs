@@ -282,7 +282,9 @@ impl UdpPayloadSource {
                 self.send_buffer.push_back(BcUdp::Data(resend.clone()));
             }
         }
-        if self.ack_interval.poll_tick(cx).is_ready() && self.packets_want > 0 {
+        if self.ack_interval.poll_tick(cx).is_ready()
+        // && self.packets_want > 0
+        {
             let ack = BcUdp::Ack(self.build_send_ack());
             self.send_buffer.push_back(ack);
             self.state = State::Flushing;
