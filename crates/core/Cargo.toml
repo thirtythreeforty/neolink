@@ -1,7 +1,7 @@
 [package]
 name = "neolink_core"
 description = "Core services and structure for Reolink IP cameras"
-version = "0.5.15"
+version = "0.5.16"
 authors = ["George Hilliard <thirtythreeforty@gmail.com>", "Andrew King <sheepchaan@gmail.com>"]
 edition = "2018"
 license = "AGPL-3.0-or-later"
