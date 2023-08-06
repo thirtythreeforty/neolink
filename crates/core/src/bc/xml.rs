@@ -265,6 +265,9 @@ pub struct Extension {
     /// Encrypted binary has this to verify successful decryption
     #[yaserde(rename = "checkValue")]
     pub check_value: Option<u32>,
+    /// Used in newer encrypted payload packets
+    #[yaserde(rename = "encryptLen")]
+    pub encrypt_len: Option<u32>,
 }
 
 impl Default for Extension {
@@ -278,6 +281,7 @@ impl Default for Extension {
             rf_id: None,
             check_pos: None,
             check_value: None,
+            encrypt_len: None,
         }
     }
 }
