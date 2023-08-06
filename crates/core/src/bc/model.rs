@@ -200,6 +200,9 @@ pub enum EncryptionProtocol {
     /// Latest cameras/firmwares use Aes with the key derived from
     /// the camera's password and the negotiated NONCE
     Aes([u8; 16]),
+    /// Same as Aes but the media stream is also encrypted and not just
+    /// the control commands
+    FullAes([u8; 16]),
 }
 
 #[derive(Debug)]

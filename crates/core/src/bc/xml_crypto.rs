@@ -21,7 +21,7 @@ pub fn decrypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol
                 .map(|(key, i)| *i ^ key ^ (offset as u8))
                 .collect()
         }
-        EncryptionProtocol::Aes(aeskey) => {
+        EncryptionProtocol::Aes(aeskey) | EncryptionProtocol::FullAes(aeskey) => {
             // AES decryption
 
             let mut decrypted = buf.to_vec();
@@ -41,7 +41,7 @@ pub fn encrypt(offset: u32, buf: &[u8], encryption_protocol: &EncryptionProtocol
             // Encrypt is the same as decrypt
             decrypt(offset, buf, encryption_protocol)
         }
-        EncryptionProtocol::Aes(aeskey) => {
+        EncryptionProtocol::Aes(aeskey) | EncryptionProtocol::FullAes(aeskey) => {
             // AES encryption
             let mut encrypted = buf.to_vec();
             Aes128CfbEnc::new(aeskey.into(), IV.into()).encrypt(&mut encrypted);

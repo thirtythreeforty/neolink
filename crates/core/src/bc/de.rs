@@ -149,24 +149,23 @@ fn bc_modern_msg<'a>(
                 msg_id: 1,
                 response_code,
                 ..
-            } if (response_code & 0xff) == 0x00 => EncryptionProtocol::Unencrypted,
-            BcHeader {
-                msg_id: 1,
-                response_code,
-                ..
-            } if (response_code & 0xff) == 0x01 => EncryptionProtocol::BCEncrypt,
-            BcHeader {
-                msg_id: 1,
-                response_code,
-                ..
-            } if (response_code & 0xff) == 0x02 || (response_code & 0xff) == 0x12 => {
-                EncryptionProtocol::BCEncrypt
-            } // This is AES but the first packet with the NONCE is BCEcrypt, since the NONCE in this packet is required to build the AES key
-            BcHeader { msg_id: 1, .. }
-                if matches!(context.get_encrypted(), EncryptionProtocol::Aes(_)) =>
-            {
-                // Maximum encryption level is BCEncrypt during login... Not sure why Reolink did it like that
-                EncryptionProtocol::BCEncrypt
+            } if (response_code >> 8) & 0xff == 0xdd => {
+                // 0xdd means we are setting the encryption method
+                // Durig login, the max encryption is BcEncrypt since
+                // the nonce has not been exchanged yet
+                match response_code & 0xff {
+                    0x00 => EncryptionProtocol::Unencrypted,
+                    _ => EncryptionProtocol::BCEncrypt,
+                }
+            }
+            BcHeader { msg_id: 1, .. } => {
+                match *context.get_encrypted() {
+                    EncryptionProtocol::Aes(_) | EncryptionProtocol::FullAes(_) => {
+                        // During login max is BcEncrypt
+                        EncryptionProtocol::BCEncrypt
+                    }
+                    n => n,
+                }
             }
             _ => *context.get_encrypted(),
         };
@@ -174,7 +173,12 @@ fn bc_modern_msg<'a>(
         let processed_payload_buf =
             xml_crypto::decrypt(header.channel_id as u32, payload_buf, &encryption_protocol);
         if context.in_bin_mode.contains(&(header.msg_num)) || in_binary {
-            payload = Some(BcPayloads::Binary(payload_buf.to_vec()));
+            payload = match context.get_encrypted() {
+                EncryptionProtocol::FullAes(_) => {
+                    Some(BcPayloads::Binary(processed_payload_buf.to_vec()))
+                }
+                _ => Some(BcPayloads::Binary(payload_buf.to_vec())),
+            };
         } else {
             let xml = BcXml::try_parse(processed_payload_buf.as_slice()).map_err(|_| {
                 error!("header.msg_id: {}", header.msg_id);
