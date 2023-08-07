@@ -1425,7 +1425,7 @@ dependencies = [
 
 [[package]]
 name = "neolink"
-version = "0.5.16"
+version = "0.5.17"
 dependencies = [
  "anyhow",
  "base64 0.21.2",
