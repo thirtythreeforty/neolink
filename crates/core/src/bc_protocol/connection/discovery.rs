@@ -78,12 +78,14 @@ lazy_static! {
 }
 
 type Subscriber = Arc<RwLock<BTreeMap<u32, Sender<Result<(UdpDiscovery, SocketAddr)>>>>>;
+type Handlers = Arc<RwLock<Vec<Sender<Result<(UdpDiscovery, SocketAddr)>>>>>;
 type ArcFramedSocket = UdpFramed<BcUdpCodex, Arc<UdpSocket>>;
 pub(crate) struct Discoverer {
     socket: Arc<UdpSocket>,
     handle: RwLock<JoinSet<()>>,
     writer: Sender<Result<(BcUdp, SocketAddr)>>,
     subsribers: Subscriber,
+    handlers: Handlers,
     local_addr: SocketAddr,
 }
 
@@ -96,26 +98,27 @@ impl Discoverer {
         let (mut writer, mut reader) = inner.split();
         let mut set = JoinSet::new();
         let subsribers: Subscriber = Default::default();
+        let handlers: Handlers = Default::default();
 
         let thread_subscriber = subsribers.clone();
+        let thread_handlers = handlers.clone();
         set.spawn(async move {
             loop {
                 tokio::task::yield_now().await;
                 match reader.next().await {
                     Some(Ok((BcUdp::Discovery(bcudp), addr))) => {
-                        let mut tid = bcudp.tid;
+                        let tid = bcudp.tid;
                         let mut needs_removal = false;
-                        if let Some(sender) = thread_subscriber.read().await.get(&tid) {
+                        if let (Some(sender), true) =
+                            (thread_subscriber.read().await.get(&tid), tid > 0)
+                        {
                             if sender.send(Ok((bcudp, addr))).await.is_err() {
                                 needs_removal = true;
                             }
-                        } else if let Some(any_sender) = thread_subscriber.read().await.get(&0) {
-                            if any_sender.send(Ok((bcudp, addr))).await.is_err() {
-                                tid = 0; // To make is remove 0
-                                needs_removal = true;
-                            }
                         } else {
-                            trace!("Udp Discovery got this unexpected BcUdp {:?}", bcudp);
+                            for sender in thread_handlers.write().await.iter_mut() {
+                                let _ = sender.send(Ok((bcudp.clone(), addr))).await;
+                            }
                         }
                         if needs_removal {
                             thread_subscriber.write().await.remove(&tid);
@@ -148,6 +151,7 @@ impl Discoverer {
             handle: RwLock::new(set),
             writer: sinker,
             subsribers,
+            handlers,
             local_addr,
         })
     }
@@ -157,24 +161,33 @@ impl Discoverer {
     }
 
     async fn subscribe(&self, tid: u32) -> Result<Receiver<Result<(UdpDiscovery, SocketAddr)>>> {
-        let mut subs = self.subsribers.write().await;
-        match subs.entry(tid) {
-            Entry::Vacant(vacant) => {
-                let (tx, rx) = channel(10);
-                vacant.insert(tx);
-                Ok(rx)
-            }
-            Entry::Occupied(mut occ) => {
-                if occ.get().is_closed() {
+        if tid > 0 {
+            let mut subs = self.subsribers.write().await;
+            match subs.entry(tid) {
+                Entry::Vacant(vacant) => {
                     let (tx, rx) = channel(10);
-                    occ.insert(tx);
+                    vacant.insert(tx);
                     Ok(rx)
-                } else {
-                    Err(Error::SimultaneousSubscription {
-                        msg_num: Some(tid as u16),
-                    })
+                }
+                Entry::Occupied(mut occ) => {
+                    if occ.get().is_closed() {
+                        let (tx, rx) = channel(10);
+                        occ.insert(tx);
+                        Ok(rx)
+                    } else {
+                        // log::error!("Failed to subscribe in discovery to {:?}", tid);
+                        Err(Error::SimultaneousSubscription {
+                            msg_num: Some(tid as u16),
+                        })
+                    }
                 }
             }
+        } else {
+            // If tid is zero we listen to all!
+            let mut handlers = self.handlers.write().await;
+            let (tx, rx) = channel(10);
+            handlers.push(tx);
+            Ok(rx)
         }
     }
 
@@ -429,69 +442,103 @@ impl Discoverer {
 
         // Send and await acceptance
         let (sid, dev, dmap, relay) = self
-            .retry_send(msg, lookup.reg, |bc, _| match bc {
-                UdpDiscovery {
-                    tid: _,
-                    payload:
-                        UdpXml {
-                            r2c_c_r:
-                                Some(R2cCr {
-                                    dmap,
-                                    dev,
-                                    relay,
-                                    sid,
-                                    rsp,
-                                    ..
-                                }),
-                            ..
-                        },
-                } if (dev
-                    .as_ref()
-                    .map(|d| !d.ip.is_empty() && d.port > 0)
-                    .unwrap_or(false)
-                    || dmap
+            .retry_send(msg, lookup.reg, |bc, socket| {
+                trace!("{}", socket.ip());
+                match bc {
+                    UdpDiscovery {
+                        tid: _,
+                        payload:
+                            UdpXml {
+                                r2c_c_r:
+                                    Some(R2cCr {
+                                        dmap,
+                                        dev,
+                                        relay,
+                                        sid,
+                                        rsp,
+                                        ..
+                                    }),
+                                ..
+                            },
+                    } if (dev
                         .as_ref()
                         .map(|d| !d.ip.is_empty() && d.port > 0)
                         .unwrap_or(false)
-                    || relay
-                        .as_ref()
-                        .map(|d| !d.ip.is_empty() && d.port > 0)
-                        .unwrap_or(false))
-                    && rsp != -1 =>
-                {
-                    Some(Ok((sid, dev, dmap, relay)))
-                }
-                UdpDiscovery {
-                    tid: _,
-                    payload:
-                        UdpXml {
-                            r2c_c_r:
-                                Some(R2cCr {
-                                    dev,
-                                    dmap,
-                                    relay,
-                                    rsp,
-                                    ..
-                                }),
-                            ..
-                        },
-                } if (dev
-                    .as_ref()
-                    .map(|d| !d.ip.is_empty() && d.port > 0)
-                    .unwrap_or(false)
-                    || dmap
+                        || dmap
+                            .as_ref()
+                            .map(|d| !d.ip.is_empty() && d.port > 0)
+                            .unwrap_or(false)
+                        || relay
+                            .as_ref()
+                            .map(|d| !d.ip.is_empty() && d.port > 0)
+                            .unwrap_or(false))
+                        && rsp != -1 =>
+                    {
+                        Some(Ok((sid, dev, dmap, relay)))
+                    }
+                    // UdpDiscovery {
+                    //     tid: _,
+                    //     payload:
+                    //         UdpXml {
+                    //             r2c_c_r:
+                    //                 Some(R2cCr {
+                    //                     dmap,
+                    //                     dev,
+                    //                     relay: Some(mut relay),
+                    //                     sid,
+                    //                     rsp,
+                    //                     ..
+                    //                 }),
+                    //             ..
+                    //         },
+                    // } if (dev
+                    //     .as_ref()
+                    //     .map(|d| !d.ip.is_empty() && d.port > 0)
+                    //     .unwrap_or(false)
+                    //     || dmap
+                    //         .as_ref()
+                    //         .map(|d| !d.ip.is_empty() && d.port > 0)
+                    //         .unwrap_or(false)
+                    //     || (relay.ip == format!("{}", socket.ip()) && relay.port == 0))
+                    //     && rsp != -1 =>
+                    // {
+                    //     // For a relay connection if port is 0 and the ip is the current socker addr
+                    //     // we use the current port
+                    //     relay.port = socket.port();
+                    //     Some(Ok((sid, dev, dmap, Some(relay))))
+                    // }
+                    UdpDiscovery {
+                        tid: _,
+                        payload:
+                            UdpXml {
+                                r2c_c_r:
+                                    Some(R2cCr {
+                                        dev,
+                                        dmap,
+                                        relay,
+                                        rsp,
+                                        ..
+                                    }),
+                                ..
+                            },
+                    } if (dev
                         .as_ref()
                         .map(|d| !d.ip.is_empty() && d.port > 0)
                         .unwrap_or(false)
-                    || relay
-                        .as_ref()
-                        .map(|d| !d.ip.is_empty() && d.port > 0)
-                        .unwrap_or(false))
-                    && rsp == -1 =>
-                {
-                    Some(Err(Error::RegisterError))
+                        || dmap
+                            .as_ref()
+                            .map(|d| !d.ip.is_empty() && d.port > 0)
+                            .unwrap_or(false)
+                        || relay
+                            .as_ref()
+                            .map(|d| !d.ip.is_empty() && d.port > 0)
+                            .unwrap_or(false))
+                        && rsp == -1 =>
+                    {
+                        Some(Err(Error::RegisterError))
+                    }
+                    _ => None,
                 }
-                _ => None,
             })
             .await??;
 

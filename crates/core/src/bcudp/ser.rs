@@ -52,7 +52,7 @@ fn bcudp_ack<'a, W: 'a + Write>(
         le_u32(0),
         le_u32(payload.group_id),
         le_u32(payload.packet_id),
-        le_u32(0xd7160000),
+        le_u32(payload.maybe_latency),
         le_u32(binary_payload.len() as u32),
         slice(binary_payload),
     ))

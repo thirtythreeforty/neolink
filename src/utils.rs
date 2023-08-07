@@ -153,6 +153,7 @@ pub(crate) fn find_camera_by_name<'a>(config: &'a Config, name: &str) -> Result<
     config
         .cameras
         .iter()
+        .filter(|c| c.enabled)
         .find(|c| c.name == name)
         .ok_or_else(|| anyhow!("Camera {} not found in the config file", name))
 }

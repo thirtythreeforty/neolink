@@ -130,6 +130,10 @@ fn bc_legacy<W: Write>(legacy: &'_ LegacyMsg) -> impl SerializeFn<W> + '_ {
                     slice(&[0u8; 1772][..]),
                 ))(out)
             }
+            LoginUpgrade => {
+                // Write nothing as it is header only
+                slice(&[])(out)
+            }
             UnknownMsg => {
                 panic!("Cannot serialize an unknown message!");
             }

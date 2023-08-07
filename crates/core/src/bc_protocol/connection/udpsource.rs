@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::{
     net::UdpSocket,
-    time::{interval, Duration, Interval},
+    time::{interval, Duration, Instant, Interval},
 };
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt};
 use tokio_util::{
@@ -164,6 +164,7 @@ impl BcUdpSource {
             send_buffer: Default::default(),
             ack_interval: interval(Duration::from_millis(10)), // Offical Client does ack every 10ms
             resend_interval: interval(Duration::from_millis(500)), // Offical Client does resend every 500ms
+            ack_latency: Default::default(),
         }
     }
 }
@@ -205,6 +206,57 @@ enum State {
     YieldNow, // Used to ensure we rest between polling packets so as to not starve the runtime
 }
 
+#[derive(Default)]
+struct AckLatency {
+    current_values: Vec<u32>,
+    last_recieve_time: Option<Instant>,
+    display_value: u32,
+    last_display_time: Option<Instant>,
+}
+
+impl AckLatency {
+    /// Used to get the current latency, in thd way that the official
+    /// client does. This is a value that seems to be updated only every second
+    /// Observed values are `0`,    `54785`,    `55062`,     `2528`,
+    fn get_value(&self) -> u32 {
+        self.display_value
+    }
+
+    /// Used to updaet the average latency calculation
+    fn feed_ack(&mut self) {
+        // Update the last recieve time
+        let now = Instant::now();
+        if let Some(last_recieve_time) = self.last_recieve_time {
+            let diff = (now - last_recieve_time).as_micros();
+            self.current_values.push(diff as u32);
+            self.last_recieve_time = Some(now);
+        } else {
+            self.last_recieve_time = Some(now);
+        }
+
+        // Update the display_value
+        // this is done only ever 1s
+        if let Some(last_display_time) = self.last_display_time {
+            if now - last_display_time > Duration::from_secs(1) {
+                // A second has passed update this
+                self.last_display_time = Some(now);
+                let current_values_count = self.current_values.len() as u32;
+                let current_value = self
+                    .current_values
+                    .iter()
+                    .fold(0u32, |acc, value| acc + *value / current_values_count);
+                self.current_values = vec![]; // Reset the average vec
+
+                self.display_value = current_value;
+            }
+        } else {
+            // First 1s is a zero value
+            self.last_display_time = Some(now);
+            self.display_value = 0;
+        }
+    }
+}
+
 pub(crate) struct UdpPayloadSource {
     inner: BcUdpSource,
     client_id: i32,
@@ -222,6 +274,7 @@ pub(crate) struct UdpPayloadSource {
     /// Offical Client does resend every 500ms
     /// This `resend_interval` controls how ofen we do this
     resend_interval: Interval,
+    ack_latency: AckLatency,
 }
 
 impl UdpPayloadSource {
@@ -253,6 +306,7 @@ impl UdpPayloadSource {
                 connection_id: self.camera_id,
                 packet_id: first_missing - 1, // Last we actually have is first_missing - 1
                 group_id: 0,
+                maybe_latency: self.ack_latency.get_value(),
                 payload: missing_ids,
             }
         } else {
@@ -273,6 +327,7 @@ impl UdpPayloadSource {
                 }
             }
         }
+        self.ack_latency.feed_ack();
     }
 
     fn maintanence(&mut self, cx: &mut Context<'_>) {
@@ -282,7 +337,9 @@ impl UdpPayloadSource {
                 self.send_buffer.push_back(BcUdp::Data(resend.clone()));
             }
         }
-        if self.ack_interval.poll_tick(cx).is_ready() {
+        if self.ack_interval.poll_tick(cx).is_ready()
+        // && self.packets_want > 0
+        {
             let ack = BcUdp::Ack(self.build_send_ack());
             self.send_buffer.push_back(ack);
             self.state = State::Flushing;

@@ -128,6 +128,8 @@ pub enum LegacyMsg {
         /// Password for a legacy login
         password: String,
     },
+    /// Sent to upgrade to modern and not exposed the MD5 username/password
+    LoginUpgrade,
     /// Any other type of legacy message will be collected here
     UnknownMsg,
 }
@@ -198,6 +200,9 @@ pub enum EncryptionProtocol {
     /// Latest cameras/firmwares use Aes with the key derived from
     /// the camera's password and the negotiated NONCE
     Aes([u8; 16]),
+    /// Same as Aes but the media stream is also encrypted and not just
+    /// the control commands
+    FullAes([u8; 16]),
 }
 
 #[derive(Debug)]

@@ -29,7 +29,9 @@ impl Encoder<Bc> for BcCodex {
         // let context = self.context.read().unwrap();
         let buf: Vec<u8> = Default::default();
         let enc_protocol: EncryptionProtocol = match self.context.get_encrypted() {
-            EncryptionProtocol::Aes(_) if item.meta.msg_id == 1 => {
+            EncryptionProtocol::Aes(_) | EncryptionProtocol::FullAes(_)
+                if item.meta.msg_id == 1 =>
+            {
                 // During login the encyption protocol cannot go higher than BCEncrypt
                 // even if we support AES. (BUt it can go lower i.e. None)
                 EncryptionProtocol::BCEncrypt
@@ -111,6 +113,9 @@ impl Decoder for BcCodex {
                     0x00 => self.context.set_encrypted(EncryptionProtocol::Unencrypted),
                     0x01 => self.context.set_encrypted(EncryptionProtocol::BCEncrypt),
                     0x02 => self.context.set_encrypted(EncryptionProtocol::Aes(
+                        self.context.credentials.make_aeskey(nonce),
+                    )),
+                    0x12 => self.context.set_encrypted(EncryptionProtocol::FullAes(
                         self.context.credentials.make_aeskey(nonce),
                     )),
                     _ => {

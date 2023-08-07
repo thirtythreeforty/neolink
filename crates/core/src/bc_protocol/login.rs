@@ -1,4 +1,4 @@
-use super::{md5_string, BcCamera, Error, Result, Truncate, ZeroLast};
+use super::{md5_string, BcCamera, Error, Result, Truncate};
 use crate::bc::{model::*, xml::*};
 use std::sync::atomic::Ordering;
 
@@ -48,17 +48,17 @@ impl BcCamera {
             // Note: I suspect there may be a buffer overflow opportunity in the firmware since in the
             // Baichuan library, these strings are capped at 32 bytes with a null terminator.  This
             // could also be a mistake in the library, the effect being it only compares 31 chars, not 32.
-            let md5_username = md5_string(&credentials.username, ZeroLast);
-            let md5_password = credentials
-                .password
-                .as_ref()
-                .map(|p| md5_string(p, ZeroLast))
-                .unwrap_or_else(|| EMPTY_LEGACY_PASSWORD.to_owned());
+            // let md5_username = md5_string(&credentials.username, ZeroLast);
+            // let md5_password = credentials
+            //     .password
+            //     .as_ref()
+            //     .map(|p| md5_string(p, ZeroLast))
+            //     .unwrap_or_else(|| EMPTY_LEGACY_PASSWORD.to_owned());
 
             let enc_byte = match max_encryption {
                 MaxEncryption::None => 0xdc00,
                 MaxEncryption::BcEncrypt => 0xdc01,
-                MaxEncryption::Aes => 0xdc02,
+                MaxEncryption::Aes => 0xdc12,
             };
             let legacy_login = Bc {
                 meta: BcMeta {
@@ -69,10 +69,7 @@ impl BcCamera {
                     response_code: enc_byte,
                     class: 0x6514,
                 },
-                body: BcBody::LegacyMsg(LegacyMsg::LoginMsg {
-                    username: md5_username,
-                    password: md5_password,
-                }),
+                body: BcBody::LegacyMsg(LegacyMsg::LoginUpgrade),
             };
 
             sub_login.send(legacy_login).await?;

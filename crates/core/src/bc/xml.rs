@@ -259,6 +259,15 @@ pub struct Extension {
     /// The rfID used in the PIR
     #[yaserde(rename = "rfId")]
     pub rf_id: Option<u8>,
+    /// Encrypted binary has this to verify successful decryption
+    #[yaserde(rename = "checkPos")]
+    pub check_pos: Option<u32>,
+    /// Encrypted binary has this to verify successful decryption
+    #[yaserde(rename = "checkValue")]
+    pub check_value: Option<u32>,
+    /// Used in newer encrypted payload packets
+    #[yaserde(rename = "encryptLen")]
+    pub encrypt_len: Option<u32>,
 }
 
 impl Default for Extension {
@@ -270,6 +279,9 @@ impl Default for Extension {
             token: None,
             channel_id: None,
             rf_id: None,
+            check_pos: None,
+            check_value: None,
+            encrypt_len: None,
         }
     }
 }

@@ -95,6 +95,7 @@ pub(crate) async fn main(_: Opt, config: Config) -> Result<()> {
     for camera_config in config
         .cameras
         .iter()
+        .filter(|c| c.enabled)
         .map(|a| Arc::new(a.clone()))
         .collect::<Vec<_>>()
     {

@@ -295,6 +295,7 @@ impl Poller {
                             if occ_entry.get().is_closed() {
                                 occ_entry.insert(tx);
                             } else {
+                                // log::error!("Failed to subscribe in bcconn to {:?} for {:?}", msg_num, msg_id);
                                 let _ = tx
                                     .send(Err(Error::SimultaneousSubscription { msg_num }))
                                     .await;
