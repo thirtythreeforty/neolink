@@ -30,6 +30,16 @@ impl Camera<Connected> {
         };
 
         timeout(self.state.camera.login_with_maxenc(max_encryption)).await??;
+
+        if let Err(e) = self
+            .state
+            .camera
+            .monitor_battery(self.shared.config.print_format)
+            .await
+        {
+            log::warn!("Could not monitor battery: {:?}", e);
+        }
+
         Ok(Camera {
             shared: self.shared,
             state: LoggedIn {

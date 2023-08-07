@@ -86,5 +86,8 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         .await
         .context("Talk stream ended early")?;
 
+    let _ = camera.logout().await;
+    camera.disconnect().await?;
+
     Ok(())
 }

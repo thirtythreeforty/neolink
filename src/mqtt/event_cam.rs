@@ -198,6 +198,10 @@ impl EventCamThread {
             .context("Failed to login to the camera")??;
         info!("{}: Connected and logged in", camera_config.name);
 
+        if let Err(e) = camera.monitor_battery(camera_config.print_format).await {
+            warn!("Could not monitor battery: {:?}", e);
+        }
+
         self.tx.send(Messages::Login).await?;
 
         // Shararble cameras

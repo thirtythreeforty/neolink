@@ -25,4 +25,5 @@ pub enum Command {
     Talk(super::talk::Opt),
     Mqtt(super::mqtt::Opt),
     Image(super::image::Opt),
+    Battery(super::battery::Opt),
 }

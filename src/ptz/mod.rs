@@ -90,5 +90,9 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
                 .context("Unable to execute PTZ move command")?;
         }
     };
+
+    let _ = camera.logout().await;
+    camera.disconnect().await?;
+
     Ok(())
 }

@@ -44,5 +44,9 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         .expect("Should be UTF8");
         println!("{}", pir_ser);
     }
+
+    let _ = camera.logout().await;
+    camera.disconnect().await?;
+
     Ok(())
 }

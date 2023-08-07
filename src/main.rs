@@ -29,6 +29,7 @@ use log::*;
 use std::fs;
 use validator::Validate;
 
+mod battery;
 mod cmdline;
 mod config;
 mod image;
@@ -114,6 +115,9 @@ async fn main() -> Result<()> {
         }
         Some(Command::Image(opts)) => {
             image::main(opts, config).await?;
+        }
+        Some(Command::Battery(opts)) => {
+            battery::main(opts, config).await?;
         }
     }
 

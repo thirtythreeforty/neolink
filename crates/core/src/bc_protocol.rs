@@ -85,8 +85,6 @@ pub struct BcCameraOpt {
     pub protocol: ConnectionProtocol,
     /// Discovery method to allow
     pub discovery: DiscoveryMethods,
-    /// Printing format for auxilaary data such as battery levels
-    pub aux_printing: PrintFormat,
     /// Credentials for login
     pub credentials: Credentials,
 }
@@ -343,9 +341,6 @@ impl BcCamera {
             abilities: Default::default(),
         };
         me.keepalive().await?;
-        if let Err(e) = me.monitor_battery(options.aux_printing).await {
-            warn!("Could not monitor battery: {:?}", e);
-        }
         Ok(me)
     }
 
