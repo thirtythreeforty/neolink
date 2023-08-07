@@ -123,6 +123,9 @@ pub(crate) struct CameraConfig {
 
     #[serde(default = "default_true", alias = "splash")]
     pub(crate) use_splash: bool,
+
+    #[serde(default = "default_true", alias = "enable")]
+    pub(crate) enabled: bool,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]

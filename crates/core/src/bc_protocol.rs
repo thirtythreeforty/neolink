@@ -213,13 +213,19 @@ impl BcCamera {
                     //
                     // We loop infinitly and allow the caller to timeout at the
                     // interval they desire
+                    let mut retry = 0;
+                    const MAX_RETRY: usize = 10;
                     loop {
                         tokio::task::yield_now().await;
                         if let Ok(result) = discovery.get_registration(uid).await {
                             reg_result = result;
                             break;
                         }
-                        log::debug!("Registration failed. Retrying");
+                        if retry >= MAX_RETRY {
+                            return Err(Error::DiscoveryTimeout);
+                        }
+                        log::info!("{}: Registration with reolink servers failed. Retrying: {}/{}", options.name, retry + 1, MAX_RETRY);
+                        retry += 1;
                         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                         // New discovery to get new client IDs
                         discovery = Discovery::new().await?;

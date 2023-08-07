@@ -442,69 +442,103 @@ impl Discoverer {
 
         // Send and await acceptance
         let (sid, dev, dmap, relay) = self
-            .retry_send(msg, lookup.reg, |bc, _| match bc {
-                UdpDiscovery {
-                    tid: _,
-                    payload:
-                        UdpXml {
-                            r2c_c_r:
-                                Some(R2cCr {
-                                    dmap,
-                                    dev,
-                                    relay,
-                                    sid,
-                                    rsp,
-                                    ..
-                                }),
-                            ..
-                        },
-                } if (dev
-                    .as_ref()
-                    .map(|d| !d.ip.is_empty() && d.port > 0)
-                    .unwrap_or(false)
-                    || dmap
+            .retry_send(msg, lookup.reg, |bc, socket| {
+                trace!("{}", socket.ip());
+                match bc {
+                    UdpDiscovery {
+                        tid: _,
+                        payload:
+                            UdpXml {
+                                r2c_c_r:
+                                    Some(R2cCr {
+                                        dmap,
+                                        dev,
+                                        relay,
+                                        sid,
+                                        rsp,
+                                        ..
+                                    }),
+                                ..
+                            },
+                    } if (dev
                         .as_ref()
                         .map(|d| !d.ip.is_empty() && d.port > 0)
                         .unwrap_or(false)
-                    || relay
-                        .as_ref()
-                        .map(|d| !d.ip.is_empty() && d.port > 0)
-                        .unwrap_or(false))
-                    && rsp != -1 =>
-                {
-                    Some(Ok((sid, dev, dmap, relay)))
-                }
-                UdpDiscovery {
-                    tid: _,
-                    payload:
-                        UdpXml {
-                            r2c_c_r:
-                                Some(R2cCr {
-                                    dev,
-                                    dmap,
-                                    relay,
-                                    rsp,
-                                    ..
-                                }),
-                            ..
-                        },
-                } if (dev
-                    .as_ref()
-                    .map(|d| !d.ip.is_empty() && d.port > 0)
-                    .unwrap_or(false)
-                    || dmap
+                        || dmap
+                            .as_ref()
+                            .map(|d| !d.ip.is_empty() && d.port > 0)
+                            .unwrap_or(false)
+                        || relay
+                            .as_ref()
+                            .map(|d| !d.ip.is_empty() && d.port > 0)
+                            .unwrap_or(false))
+                        && rsp != -1 =>
+                    {
+                        Some(Ok((sid, dev, dmap, relay)))
+                    }
+                    // UdpDiscovery {
+                    //     tid: _,
+                    //     payload:
+                    //         UdpXml {
+                    //             r2c_c_r:
+                    //                 Some(R2cCr {
+                    //                     dmap,
+                    //                     dev,
+                    //                     relay: Some(mut relay),
+                    //                     sid,
+                    //                     rsp,
+                    //                     ..
+                    //                 }),
+                    //             ..
+                    //         },
+                    // } if (dev
+                    //     .as_ref()
+                    //     .map(|d| !d.ip.is_empty() && d.port > 0)
+                    //     .unwrap_or(false)
+                    //     || dmap
+                    //         .as_ref()
+                    //         .map(|d| !d.ip.is_empty() && d.port > 0)
+                    //         .unwrap_or(false)
+                    //     || (relay.ip == format!("{}", socket.ip()) && relay.port == 0))
+                    //     && rsp != -1 =>
+                    // {
+                    //     // For a relay connection if port is 0 and the ip is the current socker addr
+                    //     // we use the current port
+                    //     relay.port = socket.port();
+                    //     Some(Ok((sid, dev, dmap, Some(relay))))
+                    // }
+                    UdpDiscovery {
+                        tid: _,
+                        payload:
+                            UdpXml {
+                                r2c_c_r:
+                                    Some(R2cCr {
+                                        dev,
+                                        dmap,
+                                        relay,
+                                        rsp,
+                                        ..
+                                    }),
+                                ..
+                            },
+                    } if (dev
                         .as_ref()
                         .map(|d| !d.ip.is_empty() && d.port > 0)
                         .unwrap_or(false)
-                    || relay
-                        .as_ref()
-                        .map(|d| !d.ip.is_empty() && d.port > 0)
-                        .unwrap_or(false))
-                    && rsp == -1 =>
-                {
-                    Some(Err(Error::RegisterError))
+                        || dmap
+                            .as_ref()
+                            .map(|d| !d.ip.is_empty() && d.port > 0)
+                            .unwrap_or(false)
+                        || relay
+                            .as_ref()
+                            .map(|d| !d.ip.is_empty() && d.port > 0)
+                            .unwrap_or(false))
+                        && rsp == -1 =>
+                    {
+                        Some(Err(Error::RegisterError))
+                    }
+                    _ => None,
                 }
-                _ => None,
             })
             .await??;
 

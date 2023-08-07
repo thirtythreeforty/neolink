@@ -88,7 +88,7 @@ pub(crate) async fn main(_opt: Opt, mut config: Config) -> Result<()> {
         )
     }
     let mut cameras = vec![];
-    for camera_config in config.cameras.drain(..) {
+    for camera_config in config.cameras.drain(..).filter(|c| c.enabled) {
         cameras
             .push(Camera::<Disconnected>::new(camera_config, &config.users, rtsp.clone()).await?);
     }
