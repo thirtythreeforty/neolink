@@ -232,10 +232,16 @@ impl BcCamera {
                             let mut result = MotionStatus::NoChange(Instant::now());
                             for alarm_event in &alarm_event_list.alarm_events {
                                 if alarm_event.channel_id == channel_id {
-                                    if alarm_event.status == "MD" {
+                                    if alarm_event.status != "none"
+                                        || alarm_event
+                                            .ai_type
+                                            .as_ref()
+                                            .map(|ai_type| ai_type != "none")
+                                            .unwrap_or(false)
+                                    {
                                         result = MotionStatus::Start(Instant::now());
                                         break;
-                                    } else if alarm_event.status == "none" {
+                                    } else {
                                         result = MotionStatus::Stop(Instant::now());
                                         break;
                                     }

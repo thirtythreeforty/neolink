@@ -564,6 +564,9 @@ pub struct AlarmEvent {
     pub channel_id: u8,
     /// Motion status. Known values are `"MD"` or `"none"`
     pub status: String,
+    /// AI status. Known values are `"people"` or `"none"`
+    #[yaserde(rename = "AItype")]
+    pub ai_type: Option<String>,
     /// The recording status. Known values `0` or `1`
     pub recording: i32,
     /// The timestamp associated with the recording. `0` if not recording
