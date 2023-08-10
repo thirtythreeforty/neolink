@@ -126,6 +126,9 @@ pub(crate) struct CameraConfig {
 
     #[serde(default = "default_true", alias = "enable")]
     pub(crate) enabled: bool,
+
+    #[serde(default = "default_false", alias = "verbose")]
+    pub(crate) debug: bool,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -188,6 +191,10 @@ fn validate_mqtt_config(config: &MqttConfig) -> Result<(), ValidationError> {
 }
 
 const fn default_true() -> bool {
+    true
+}
+
+const fn default_false() -> bool {
     true
 }
 

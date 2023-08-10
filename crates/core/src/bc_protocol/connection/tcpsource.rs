@@ -18,11 +18,17 @@ impl TcpSource {
         addr: SocketAddr,
         username: T,
         password: Option<U>,
+        debug: bool,
     ) -> Result<TcpSource> {
         let stream = connect_to(addr).await?;
 
+        let codex = if debug {
+            BcCodex::new_with_debug(Credentials::new(username, password))
+        } else {
+            BcCodex::new(Credentials::new(username, password))
+        };
         Ok(Self {
-            inner: Framed::new(stream, BcCodex::new(Credentials::new(username, password))),
+            inner: Framed::new(stream, codex),
         })
     }
 }

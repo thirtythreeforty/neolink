@@ -116,10 +116,12 @@ fn bc_modern_msg<'a>(
     let mut encrypted_len = None;
     // Now we'll take the buffer that Nom gave a ref to and parse it.
     let extension = if ext_len > 0 {
-        log::trace!(
-            "Extension Txt: {:?}",
-            String::from_utf8(processed_ext_buf.to_vec()).unwrap_or("Not Text".to_string())
-        );
+        if context.debug {
+            println!(
+                "Extension Txt: {:?}",
+                String::from_utf8(processed_ext_buf.to_vec()).unwrap_or("Not Text".to_string())
+            );
+        }
         // Apply the XML parse function, but throw away the reference to decrypted in the Ok and
         // Err case. This error-error-error thing is the same idiom Nom uses internally.
         let parsed = Extension::try_parse(processed_ext_buf).map_err(|_| {
@@ -182,8 +184,9 @@ fn bc_modern_msg<'a>(
         if context.in_bin_mode.contains(&(header.msg_num)) || in_binary {
             payload = match (context.get_encrypted(), encrypted_len) {
                 (EncryptionProtocol::FullAes(_), Some(encrypted_len)) => {
-                    log::trace!("Binary: {:X?}", &processed_payload_buf[0..30]);
-
+                    // if if context.debug {
+                    //     log::trace!("Binary: {:X?}", &processed_payload_buf[0..30]);
+                    // }
                     Some(BcPayloads::Binary(
                         processed_payload_buf[0..(encrypted_len as usize)].to_vec(),
                     ))
@@ -191,10 +194,13 @@ fn bc_modern_msg<'a>(
                 _ => Some(BcPayloads::Binary(payload_buf.to_vec())),
             };
         } else {
-            log::trace!(
-                "Payload Txt: {:?}",
-                String::from_utf8(processed_payload_buf.to_vec()).unwrap_or("Not Text".to_string())
-            );
+            if context.debug {
+                println!(
+                    "Payload Txt: {:?}",
+                    String::from_utf8(processed_payload_buf.to_vec())
+                        .unwrap_or("Not Text".to_string())
+                );
+            }
             let xml = BcXml::try_parse(processed_payload_buf.as_slice()).map_err(|_| {
                 error!("header.msg_id: {}", header.msg_id);
                 error!(

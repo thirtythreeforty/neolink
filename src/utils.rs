@@ -97,6 +97,7 @@ impl AddressOrUid {
                 username: camera_config.username.clone(),
                 password: camera_config.password.clone(),
             },
+            debug: camera_config.debug,
         };
 
         trace!("Camera Info: {:?}", options);

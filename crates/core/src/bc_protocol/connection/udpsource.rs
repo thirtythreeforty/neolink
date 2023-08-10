@@ -43,15 +43,20 @@ impl UdpSource {
         camera_id: i32,
         username: T,
         password: Option<U>,
+        debug: bool,
     ) -> Result<Self> {
         let stream = Arc::new(connect().await?);
 
-        Self::new_from_socket(stream, addr, client_id, camera_id, username, password).await
+        Self::new_from_socket(
+            stream, addr, client_id, camera_id, username, password, debug,
+        )
+        .await
     }
     pub(crate) async fn new_from_discovery<T: Into<String>, U: Into<String>>(
         discovery: DiscoveryResult,
         username: T,
         password: Option<U>,
+        debug: bool,
     ) -> Result<Self> {
         // Ensure that the discovery keep alive are all stopped here
         // We now handle all coms in UdpSource
@@ -62,6 +67,7 @@ impl UdpSource {
             discovery.camera_id,
             username,
             password,
+            debug,
         )
         .await
     }
@@ -73,14 +79,17 @@ impl UdpSource {
         camera_id: i32,
         username: T,
         password: Option<U>,
+        debug: bool,
     ) -> Result<Self> {
         let bcudp_source = BcUdpSource::new_from_socket(stream, addr).await?;
         let payload_source = bcudp_source.into_payload_source(client_id, camera_id);
         let async_read = payload_source.into_async_read().compat();
-        let framed = Framed::new(
-            async_read,
-            BcCodex::new(Credentials::new(username, password)),
-        );
+        let codex = if debug {
+            BcCodex::new_with_debug(Credentials::new(username, password))
+        } else {
+            BcCodex::new(Credentials::new(username, password))
+        };
+        let framed = Framed::new(async_read, codex);
 
         Ok(Self { inner: framed })
     }

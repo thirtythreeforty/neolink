@@ -1030,8 +1030,11 @@ impl Discovery {
     pub(crate) async fn check_tcp(&self, addr: SocketAddr, channel_id: u8) -> Result<()> {
         let username = "admin";
         let password = Some("123456");
-        let mut tcp_source =
-            timeout(*MAXIMUM_WAIT, TcpSource::new(addr, username, password)).await??;
+        let mut tcp_source = timeout(
+            *MAXIMUM_WAIT,
+            TcpSource::new(addr, username, password, false),
+        )
+        .await??;
 
         let md5_username = md5_string(username, Md5Trunc::ZeroLast);
         let md5_password = password

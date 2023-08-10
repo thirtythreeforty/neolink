@@ -210,6 +210,7 @@ pub(crate) struct BcContext {
     pub(crate) credentials: Credentials,
     pub(crate) in_bin_mode: HashSet<u16>,
     pub(crate) encryption_protocol: EncryptionProtocol,
+    pub(crate) debug: bool,
 }
 
 impl Bc {
@@ -251,6 +252,7 @@ impl BcContext {
             credentials,
             in_bin_mode: HashSet::new(),
             encryption_protocol: EncryptionProtocol::Unencrypted,
+            debug: false,
         }
     }
 
@@ -260,6 +262,7 @@ impl BcContext {
             credentials: Default::default(),
             in_bin_mode: HashSet::new(),
             encryption_protocol,
+            debug: false,
         }
     }
 
@@ -278,6 +281,10 @@ impl BcContext {
     #[allow(unused)] // Used in tests
     pub(crate) fn binary_off(&mut self, msg_id: u16) {
         self.in_bin_mode.remove(&msg_id);
+    }
+
+    pub(crate) fn debug_on(&mut self) {
+        self.debug = true;
     }
 }
 

@@ -87,6 +87,8 @@ pub struct BcCameraOpt {
     pub discovery: DiscoveryMethods,
     /// Credentials for login
     pub credentials: Credentials,
+    /// Toggle debug print of underlying data
+    pub debug: bool,
 }
 
 /// Used to choose the print format of various status messages like battery levels
@@ -314,16 +316,20 @@ impl BcCamera {
         let (sink, source): (BcConnSink, BcConnSource) = {
             match BcCamera::find_camera(options).await? {
                 CameraLocation::Tcp(addr) => {
-                    let (x, r) = TcpSource::new(addr, &username, passwd.as_ref())
+                    let (x, r) = TcpSource::new(addr, &username, passwd.as_ref(), options.debug)
                         .await?
                         .split();
                     (Box::new(x), Box::new(r))
                 }
                 CameraLocation::Udp(discovery) => {
-                    let (x, r) =
-                        UdpSource::new_from_discovery(discovery, &username, passwd.as_ref())
-                            .await?
-                            .split();
+                    let (x, r) = UdpSource::new_from_discovery(
+                        discovery,
+                        &username,
+                        passwd.as_ref(),
+                        options.debug,
+                    )
+                    .await?
+                    .split();
                     (Box::new(x), Box::new(r))
                 }
             }

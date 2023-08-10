@@ -15,6 +15,12 @@ pub(crate) struct BcCodex {
 }
 
 impl BcCodex {
+    pub(crate) fn new_with_debug(credentials: Credentials) -> Self {
+        let mut context = BcContext::new(credentials);
+
+        context.debug_on();
+        Self { context }
+    }
     pub(crate) fn new(credentials: Credentials) -> Self {
         Self {
             context: BcContext::new(credentials),
