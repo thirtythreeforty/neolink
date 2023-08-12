@@ -79,7 +79,7 @@ impl Camera<Streaming> {
             loop {
                 tokio::task::yield_now().await;
                 // debug!("Straming: Get");
-                let data = timeout(Duration::from_secs(90), stream_data.get_data())
+                let data = timeout(Duration::from_secs(15), stream_data.get_data())
                     .await
                     .with_context(|| "Timed out waiting for new Media Frame")??;
                 // debug!("Straming: Got");

@@ -349,7 +349,7 @@ impl UdpPayloadSource {
 
     fn maintanence(&mut self, cx: &mut Context<'_>) {
         // Check for periodic resends
-        log::info!("Maintaince");
+        // log::info!("Maintaince");
         if self.resend_interval.poll_tick(cx).is_ready() {
             for (_, resend) in self.sent.iter() {
                 self.send_buffer.push_back(BcUdp::Data(resend.clone()));
@@ -358,7 +358,7 @@ impl UdpPayloadSource {
         if self.ack_interval.poll_tick(cx).is_ready()
         // && self.packets_want > 0
         {
-            log::info!("Pushing Ack");
+            // log::info!("Pushing Ack");
             let ack = BcUdp::Ack(self.build_send_ack());
             self.send_buffer.push_back(ack);
             self.state = State::Flushing;
@@ -372,7 +372,7 @@ impl Stream for UdpPayloadSource {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let camera_addr = self.inner.addr;
         let this = self.get_mut();
-        log::info!("this.state: {:?}", this.state);
+        // log::info!("this.state: {:?}", this.state);
         match this.state {
             State::Normal => {
                 // this.state = State::YieldNow;
@@ -450,7 +450,7 @@ impl Stream for UdpPayloadSource {
                 }
             }
             State::Flushing => {
-                log::info!("Fushing: {}", this.send_buffer.len());
+                // log::info!("Fushing: {}", this.send_buffer.len());
                 if this.send_buffer.is_empty() {
                     this.state = State::Normal;
                 } else {
@@ -519,7 +519,7 @@ impl Sink<Vec<u8>> for UdpPayloadSource {
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), Self::Error>> {
-        log::info!("poll_flush");
+        // log::info!("poll_flush");
         let this = self.get_mut();
         let res = match this.flush_state {
             FlushState::Ready => match this.poll_ready_unpin(cx) {
@@ -555,7 +555,7 @@ impl Sink<Vec<u8>> for UdpPayloadSource {
             }
         };
 
-        log::info!("poll_flush end: {:?}", res);
+        log::trace!("poll_flush end: {:?}", res);
         res
     }
 
