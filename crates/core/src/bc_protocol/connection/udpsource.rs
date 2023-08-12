@@ -174,6 +174,7 @@ impl BcUdpSource {
             ack_interval: interval(Duration::from_millis(10)), // Offical Client does ack every 10ms
             resend_interval: interval(Duration::from_millis(500)), // Offical Client does resend every 500ms
             ack_latency: Default::default(),
+            flush_state: FlushState::Ready,
         }
     }
 }
@@ -208,6 +209,7 @@ impl Sink<(BcUdp, SocketAddr)> for BcUdpSource {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 enum State {
     Normal,   // Normal recieve
     Flushing, // Used to send ack packets and things in the buffer
@@ -266,6 +268,11 @@ impl AckLatency {
     }
 }
 
+enum FlushState {
+    Ready,
+    Flush,
+}
+
 pub(crate) struct UdpPayloadSource {
     inner: BcUdpSource,
     client_id: i32,
@@ -284,6 +291,7 @@ pub(crate) struct UdpPayloadSource {
     /// This `resend_interval` controls how ofen we do this
     resend_interval: Interval,
     ack_latency: AckLatency,
+    flush_state: FlushState,
 }
 
 impl UdpPayloadSource {
@@ -341,6 +349,7 @@ impl UdpPayloadSource {
 
     fn maintanence(&mut self, cx: &mut Context<'_>) {
         // Check for periodic resends
+        log::info!("Maintaince");
         if self.resend_interval.poll_tick(cx).is_ready() {
             for (_, resend) in self.sent.iter() {
                 self.send_buffer.push_back(BcUdp::Data(resend.clone()));
@@ -349,6 +358,7 @@ impl UdpPayloadSource {
         if self.ack_interval.poll_tick(cx).is_ready()
         // && self.packets_want > 0
         {
+            log::info!("Pushing Ack");
             let ack = BcUdp::Ack(self.build_send_ack());
             self.send_buffer.push_back(ack);
             self.state = State::Flushing;
@@ -362,6 +372,7 @@ impl Stream for UdpPayloadSource {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let camera_addr = self.inner.addr;
         let this = self.get_mut();
+        log::info!("this.state: {:?}", this.state);
         match this.state {
             State::Normal => {
                 // this.state = State::YieldNow;
@@ -438,17 +449,24 @@ impl Stream for UdpPayloadSource {
                       // }
                 }
             }
-            State::Flushing => match this.poll_flush_unpin(cx) {
-                Poll::Ready(Ok(())) => {
+            State::Flushing => {
+                log::info!("Fushing: {}", this.send_buffer.len());
+                if this.send_buffer.is_empty() {
                     this.state = State::Normal;
+                } else {
+                    match this.poll_flush_unpin(cx) {
+                        Poll::Ready(Ok(())) => {
+                            this.state = State::Normal;
+                        }
+                        Poll::Ready(Err(e)) => {
+                            return Poll::Ready(Some(Err(e)));
+                        }
+                        Poll::Pending => {
+                            return Poll::Pending;
+                        }
+                    }
                 }
-                Poll::Ready(Err(e)) => {
-                    return Poll::Ready(Some(Err(e)));
-                }
-                Poll::Pending => {
-                    return Poll::Pending;
-                }
-            },
+            }
             State::Closed => {
                 return Poll::Ready(Some(Err(IoError::from(ErrorKind::ConnectionAborted))));
             }
@@ -469,17 +487,9 @@ impl Sink<Vec<u8>> for UdpPayloadSource {
         cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), Self::Error>> {
         let this = self.get_mut();
-        match this.state {
-            State::Normal | State::YieldNow => this
-                .inner
-                .poll_ready_unpin(cx)
-                .map_err(|e| IoError::new(ErrorKind::Other, e)),
-            State::Flushing => this
-                .inner
-                .poll_flush_unpin(cx)
-                .map_err(|e| IoError::new(ErrorKind::Other, e)),
-            State::Closed => Poll::Ready(Err(IoError::from(ErrorKind::ConnectionAborted))),
-        }
+        this.inner
+            .poll_ready_unpin(cx)
+            .map_err(|e| IoError::new(ErrorKind::Other, e))
     }
     fn start_send(self: Pin<&mut Self>, item: Vec<u8>) -> std::result::Result<(), Self::Error> {
         let this = self.get_mut();
@@ -492,7 +502,8 @@ impl Sink<Vec<u8>> for UdpPayloadSource {
             this.packets_sent += 1;
             this.send_buffer.push_back(BcUdp::Data(udp_data));
         }
-        if let Some(first) = this.send_buffer.pop_front() {
+        // Push through whats on the buffer
+        for first in this.send_buffer.drain(..) {
             if let BcUdp::Data(data) = &first {
                 let id = data.packet_id;
                 this.sent.insert(id, data.clone());
@@ -508,44 +519,44 @@ impl Sink<Vec<u8>> for UdpPayloadSource {
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), Self::Error>> {
+        log::info!("poll_flush");
         let this = self.get_mut();
-        match this
-            .inner
-            .poll_flush_unpin(cx)
-            .map_err(|e| IoError::new(ErrorKind::Other, e))
-        {
-            Poll::Ready(Ok(())) => {
-                if let Some(next) = this.send_buffer.pop_front() {
-                    match this
-                        .inner
-                        .poll_ready_unpin(cx)
-                        .map_err(|e| IoError::new(ErrorKind::Other, e))
-                    {
-                        Poll::Ready(Ok(())) => {
-                            if let BcUdp::Data(data) = &next {
-                                let id = data.packet_id;
-                                this.sent.insert(id, data.clone());
-                            }
-
-                            let addr = this.inner.addr;
-                            Pin::new(&mut this.inner)
-                                .start_send((next, addr))
-                                .map_err(|e| IoError::new(ErrorKind::Other, e))?;
+        let res = match this.flush_state {
+            FlushState::Ready => match this.poll_ready_unpin(cx) {
+                Poll::Ready(Ok(())) => {
+                    for first in this.send_buffer.drain(..) {
+                        if let BcUdp::Data(data) = &first {
+                            let id = data.packet_id;
+                            this.sent.insert(id, data.clone());
                         }
-                        poll => {
-                            return poll;
-                        }
+                        let addr = this.inner.addr;
+                        Pin::new(&mut this.inner)
+                            .start_send((first, addr))
+                            .map_err(|e| IoError::new(ErrorKind::Other, e))?;
                     }
-                } else {
-                    return Poll::Ready(Ok(()));
+                    this.flush_state = FlushState::Flush;
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                }
+                poll => poll,
+            },
+            FlushState::Flush => {
+                match this
+                    .inner
+                    .poll_flush_unpin(cx)
+                    .map_err(|e| IoError::new(ErrorKind::Other, e))
+                {
+                    Poll::Ready(Ok(())) => {
+                        this.flush_state = FlushState::Ready;
+                        Poll::Ready(Ok(()))
+                    }
+                    poll => poll,
                 }
             }
-            poll => {
-                return poll;
-            }
-        }
-        cx.waker().wake_by_ref();
-        Poll::Pending
+        };
+
+        log::info!("poll_flush end: {:?}", res);
+        res
     }
 
     fn poll_close(
