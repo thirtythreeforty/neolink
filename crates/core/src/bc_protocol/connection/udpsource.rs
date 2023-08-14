@@ -19,7 +19,7 @@ use std::task::{Context, Poll};
 use tokio::sync::mpsc::channel;
 use tokio::{
     net::UdpSocket,
-    time::{interval, Duration, Instant, Interval},
+    time::{interval, sleep, Duration, Instant, Interval, Sleep},
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt};
@@ -282,6 +282,8 @@ struct UdpPayloadInner {
     /// This `resend_interval` controls how ofen we do this
     resend_interval: Interval,
     ack_latency: AckLatency,
+    // Tracks the timeout of recieving ANY packet
+    recv_timeout: Pin<Box<Sleep>>,
 }
 impl UdpPayloadInner {
     fn new(
@@ -304,6 +306,9 @@ impl UdpPayloadInner {
             ack_interval: interval(Duration::from_millis(10)), // Offical Client does ack every 10ms
             resend_interval: interval(Duration::from_millis(500)), // Offical Client does resend every 500ms
             ack_latency: Default::default(),
+            // A packet of ANY kind must be recieved in the last second
+            // since there are 10 acks a second 3s should be fine
+            recv_timeout: Box::pin(sleep(Duration::from_secs(3))),
         }
     }
     async fn run(&mut self) -> Result<()> {
@@ -360,7 +365,11 @@ impl UdpPayloadInner {
                         },
                     }
                 }
+                self.recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(3));
                 Ok(())
+            },
+            _ = self.recv_timeout.as_mut() => {
+                Err(Error::DroppedConnection)
             }
         }?;
         while let Some(payload) = self.recieved.remove(&self.packets_want) {
