@@ -19,6 +19,9 @@ type MsgHandler = dyn 'static + Send + Sync + for<'a> Fn(&'a Bc) -> BoxFuture<'a
 #[derive(Default)]
 struct Subscriber {
     /// Subscribers based on their ID and their num
+    /// First filtered by ID then number
+    /// If num is None it will be upgraded to a Some based on the number the
+    /// camera assigns
     num: BTreeMap<u32, BTreeMap<Option<u16>, Sender<Result<Bc>>>>,
     /// Subscribers based on their ID
     id: BTreeMap<u32, Arc<MsgHandler>>,
@@ -194,12 +197,22 @@ impl Poller {
                 PollCommand::Bc(boxed_response) => {
                     match *boxed_response {
                         Ok(response) => {
-                            let msg_num = response.meta.msg_num;
                             let msg_id = response.meta.msg_id;
-
+                            let msg_num = response.meta.msg_num;
+                            log::trace!(
+                                "Looking for ID: {} with num: {}, in {:?} and {:?}",
+                                msg_id,
+                                msg_num,
+                                self.subscribers.id.keys().to_owned(),
+                                self.subscribers
+                                    .num
+                                    .iter()
+                                    .map(|(k, v)| (k, v.keys()))
+                                    .collect::<Vec<_>>(),
+                            );
                             match (
                                 self.subscribers.id.get(&msg_id),
-                                self.subscribers.num.get_mut(&msg_id),
+                                self.subscribers.num.get_mut(&msg_id), // Both filter first on ID
                             ) {
                                 (Some(occ), _) => {
                                     if let Some(reply) = occ(&response).await {

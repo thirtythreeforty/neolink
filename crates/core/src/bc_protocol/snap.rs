@@ -57,6 +57,7 @@ impl BcCamera {
             ..
         }) = msg.body
         {
+            drop(sub_get); // Ensure that we are NOT listening on that msgnum as the reply can come on ANY msgnum
             log::trace!("Got snap XML {} with size {}", filename, expected_size);
             // Messages are now sent on ID 109 but not with the same message ID
             // preumably because the camera considers it to be a new message rather
