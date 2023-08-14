@@ -193,6 +193,15 @@ impl Poller {
     async fn run(&mut self) -> Result<()> {
         while let Some(command) = self.reciever.next().await {
             yield_now().await;
+            // Clean Up subscribers
+            self.subscribers
+                .num
+                .iter_mut()
+                .for_each(|(_, channels)| channels.retain(|_, channel| !channel.is_closed()));
+            self.subscribers
+                .num
+                .retain(|_, channels| !channels.is_empty());
+            // Handle the command
             match command {
                 PollCommand::Bc(boxed_response) => {
                     match *boxed_response {
