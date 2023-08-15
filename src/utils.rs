@@ -17,7 +17,7 @@ pub(crate) fn timeout<F>(future: F) -> tokio::time::Timeout<F>
 where
     F: std::future::Future,
 {
-    tokio::time::timeout(tokio::time::Duration::from_secs(5), future)
+    tokio::time::timeout(tokio::time::Duration::from_secs(15), future)
 }
 
 pub(crate) enum AddressOrUid {
@@ -97,6 +97,7 @@ impl AddressOrUid {
                 username: camera_config.username.clone(),
                 password: camera_config.password.clone(),
             },
+            debug: camera_config.debug,
         };
 
         trace!("Camera Info: {:?}", options);

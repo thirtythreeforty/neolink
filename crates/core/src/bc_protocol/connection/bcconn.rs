@@ -55,10 +55,12 @@ impl BcConnection {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .build()
                 .unwrap();
-            runtime.block_on(
+            let result = runtime.block_on(
                 PollSender::new(thread_poll_commander)
                     .send_all(&mut source.map(|bc| Ok(PollCommand::Bc(Box::new(bc))))),
-            )
+            );
+            log::info!("PollSender Bc {:?}", result);
+            result
         });
         rx_thread.spawn(async move {
             handle.await??;
@@ -164,6 +166,18 @@ enum PollCommand {
     RemoveHandler(u32),
     AddSubscriber(u32, Option<u16>, Sender<Result<Bc>>),
     Disconnect,
+}
+
+impl std::fmt::Debug for PollCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PollCommand::Bc(_) => f.write_str("PollCommand::Bc"),
+            PollCommand::AddHandler(_, _) => f.write_str("PollCommand::AddHandler"),
+            PollCommand::RemoveHandler(_) => f.write_str("PollCommand::RemoveHandler"),
+            PollCommand::AddSubscriber(_, _, _) => f.write_str("PollCommand::AddSubscriber"),
+            PollCommand::Disconnect => f.write_str("PollCommand::Disconnect"),
+        }
+    }
 }
 
 struct Poller {
