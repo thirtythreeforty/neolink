@@ -88,7 +88,6 @@ local message_types = {
   [15]="<FileInfoList>",
   [16]="<FileInfoList>",
   [18]="<PtzControl>",
-  [19]="<PtzPreset>",
   [23]="Reboot",
   [25]="<VideoInput> (write)",
   [26]="<VideoInput>", -- <InputAdvanceCfg>
@@ -147,11 +146,14 @@ local message_types = {
   [106]="<Dst>",
   [107]="<Dst> (write)",
   [108]="<ConfigFileInfo> (log)",
+  [109]="<Snap>",
   [114]="<Uid>",
   [115]="<WifiSignal>",
+  [116]="<Wifi>",
   [120]="<OnlineUserList>",
   [122]="<PerformanceInfo>",
   [123]="<ReplaySeek>",
+  [124]="<PushInfo>",
   [132]="<VideoInput>", -- <InputAdvanceCfg>
   [133]="<RfAlarm>",
   [141]="<Email> (test)",
@@ -161,6 +163,7 @@ local message_types = {
   [151]="<AbilityInfo>",
   [190]="PTZ Preset",
   [194]="<Ftp> (test)",
+  [195]="<AutoUpdate>",
   [199]="<Support>",
   [208]="<LedState>",
   [209]="<LedState> (write)",
@@ -175,9 +178,13 @@ local message_types = {
   [228]="<Crop>",
   [229]="<Crop> (write)",
   [230]="<cropSnap>",
+  [232]="<AudioTask>",
   [234]="UDP Keep Alive",
   [252]="<BatteryInfoList>",
   [253]="<BatteryInfo>",
+  [268]="<CloudBindInfo>",
+  [282]="<CloudLoginKey>",
+  [287]="<TimeCfg>",
   [272]="<findAlarmVideo>",
   [273]="<alarmVideoInfo>",
   [274]="<findAlarmVideo>",
@@ -189,6 +196,7 @@ local message_classes = {
   [0x6514]="legacy",
   [0x6614]="modern",
   [0x6414]="modern",
+  [0x6482]="modern (file download)",
   [0x0000]="modern",
 }
 
@@ -196,8 +204,36 @@ local header_lengths = {
   [0x6514]=20,
   [0x6614]=20,
   [0x6414]=24,
+  [0x6482]=24,
   [0x0000]=24,
 }
+
+-----
+-- Decryption routine.
+-----
+-- For other locations, use: LUA_CPATH=.../luagcrypt/?.so
+bc_protocol.prefs.key = Pref.string("Decryption key", "",
+    "Passphrase used for the camera. Required to decrypt the AES packets")
+bc_protocol.prefs.nonce = Pref.string("Nonce key", "",
+    "Nonce negotiate during login. You can find this in the msg_id == 1 packets.")
+local function hexencode(str)
+     return (str:gsub(".", function(char) return string.format("%02X", char:byte()) end))
+end
+local gcrypt = require("luagcrypt")
+local function aes_decrypt(data)
+		local raw_key = bc_protocol.prefs.nonce .. "-" ..  bc_protocol.prefs.key
+    local iv = "0123456789abcdef"
+    local hasher = gcrypt.Hash(gcrypt.MD_MD5)
+    hasher:write(raw_key)
+    local key = string.sub(hexencode(hasher:read()),0,16)
+    local ciphertext = data
+    local cipher = gcrypt.Cipher(gcrypt.CIPHER_AES256, gcrypt.CIPHER_MODE_CFB)
+    cipher:setkey(key)
+    cipher:setiv(iv)
+    local decrypted = cipher:decrypt(ciphertext)
+    local result = ByteArray.new(decrypted, true)
+    return result
+end
 
 local function xml_decrypt(ba, offset)
   local key = "\031\045\060\075\090\105\120\255" -- 1f, 2d, 3c, 4b, 5a, 69, 78 ,ff
@@ -216,12 +252,14 @@ local function get_header_len(buffer)
     return -1 -- No header found
   end
   local header_len = header_lengths[buffer(18, 2):le_uint()]
+  if (not header_len) then
+    return 20
+  end
   return header_len
 end
 
 local function get_header(buffer)
   -- bin_offset is either nil (no binary data) or nonzero
-  -- TODO: bin_offset is actually stateful!
   local bin_offset = nil
   local return_code = nil
   local encr_xml = nil
@@ -246,12 +284,11 @@ local function get_header(buffer)
     channel_id = buffer(12, 1):le_uint(),
     enc_offset = buffer(12, 1):le_uint(),
     stream_type = stream_text,
-    unknown = buffer(14, 1):le_uint(),
-    msg_handle = buffer(15, 1):le_uint(),
+    msg_handle = buffer(14, 2):le_uint(),
     msg_cls = buffer(18, 2):le_uint(),
     status_code = return_code,
-    class = message_classes[buffer(18, 2):le_uint()],
-    header_len = header_lengths[buffer(18, 2):le_uint()],
+    class = message_classes[buffer(18, 2):le_uint()] or "unknown",
+    header_len = get_header_len(buffer(0, nil)),
     bin_offset = bin_offset,
   }
 end
@@ -275,8 +312,7 @@ local function process_header(buffer, headers_tree)
   header:add_le(channel_id, buffer(12, 1))
   header:add_le(stream_id, buffer(13, 1))
         :append_text(stream_text)
-  header:add_le(unknown, buffer(14, 1))
-  header:add_le(msg_handle, buffer(15, 1))
+  header:add_le(msg_handle, buffer(14, 2))
 
   header:add_le(message_class, buffer(18, 2)):append_text(" (" .. header_data.class .. ")")
 
@@ -312,7 +348,14 @@ local function process_body(header, body_buffer, bc_subtree, pinfo)
       local body_tvb = xml_buffer:tvb("Meta Payload")
       body:add(body_tvb(), "Meta Payload")
       if xml_len >= 4 then
-        if xml_decrypt(xml_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
+        if aes_decrypt(xml_buffer:raw(0,5)):raw() == "<?xml" then -- AES encrypted
+					local ba = xml_buffer:bytes()
+          local decrypted = aes_decrypt(ba:raw())
+          body_tvb = decrypted:tvb("Decrypted XML (in Meta Payload)")
+          -- Create a tree item that, when clicked, automatically shows the tab we just created
+          body:add(body_tvb(), "Decrypted XML (in Meta Payload)")
+          Dissector.get("xml"):call(body_tvb, pinfo, body)
+        elseif xml_decrypt(xml_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
           local ba = xml_buffer:bytes()
           local decrypted = xml_decrypt(ba, header.enc_offset)
           body_tvb = decrypted:tvb("Decrypted XML (in Meta Payload)")
@@ -335,7 +378,14 @@ local function process_body(header, body_buffer, bc_subtree, pinfo)
         local body_tvb = binary_buffer:tvb("Main Payload");
         body:add(body_tvb(), "Main Payload")
         if bin_len > 4 then
-          if xml_decrypt(binary_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
+          if aes_decrypt(binary_buffer:raw(0,5)):raw() == "<?xml" then -- AES encrypted
+            local ba = binary_buffer:bytes()
+            local decrypted = aes_decrypt(ba:raw())
+            body_tvb = decrypted:tvb("Decrypted XML (in Binary Payload)")
+            -- Create a tree item that, when clicked, automatically shows the tab we just created
+            body:add(body_tvb(), "Decrypted XML (in Binary Payload)")
+            Dissector.get("xml"):call(body_tvb, pinfo, body)
+          elseif xml_decrypt(binary_buffer(0,5):bytes(), header.enc_offset):raw() == "<?xml" then -- Encrypted xml found
             local decrypted = xml_decrypt(binary_buffer:bytes(), header.enc_offset)
             body_tvb = decrypted:tvb("Decrypted XML (in Main Payload)")
             -- Create a tree item that, when clicked, automatically shows the tab we just created
