@@ -62,4 +62,4 @@ jobs:
       uses: nebularg/actions-luacheck@v1
       with:
         files: 'dissector/baichuan.lua'
-        args: --globals Dissector Proto ProtoField base ByteArray DESEGMENT_ONE_MORE_SEGMENT DissectorTable
+        args: --globals Dissector Proto ProtoField base ByteArray DESEGMENT_ONE_MORE_SEGMENT DissectorTable Pref
