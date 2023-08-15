@@ -27,6 +27,7 @@ impl BcCamera {
 
         sub_ping.recv().await?;
 
+        log::trace!("Ping complete");
         Ok(())
     }
 }
