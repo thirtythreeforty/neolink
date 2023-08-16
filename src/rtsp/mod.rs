@@ -391,7 +391,7 @@ async fn await_change(
                 // Wait for motion stop
                 let mut motion = camera.listen_on_motion().await?;
                 motion.await_stop(Duration::from_secs_f64(shared.get_config().pause.motion_timeout)).await
-            }, if motion_pause && shared.get_config().pause.on_motion => {
+            }, if !motion_pause && shared.get_config().pause.on_motion => {
                 info!("{}: Motion Pause", name);
                 v.map_err(|e| anyhow!("Error while processing motion messages: {:?}", e))?;
                 Ok(StreamChange::MotionStop)
@@ -418,7 +418,7 @@ async fn await_change(
                 // Wait for motion start
                 let mut motion = camera.listen_on_motion().await?;
                 motion.await_start(Duration::ZERO).await
-            }, if ! motion_pause && shared.get_config().pause.on_motion => {
+            }, if motion_pause && shared.get_config().pause.on_motion => {
                 info!("{}: Motion Resume", name);
                 v.with_context(|| "Error while processing motion messages")?;
                 Ok(StreamChange::MotionStart)
