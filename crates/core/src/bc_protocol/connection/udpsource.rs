@@ -19,6 +19,7 @@ use std::task::{Context, Poll};
 use tokio::sync::mpsc::channel;
 use tokio::{
     net::UdpSocket,
+    task::JoinHandle,
     time::{interval, sleep, Duration, Instant, Interval, Sleep},
 };
 use tokio_stream::wrappers::ReceiverStream;
@@ -262,6 +263,13 @@ impl AckLatency {
 pub(crate) struct UdpPayloadSource {
     inner_stream: ReceiverStream<IoResult<Vec<u8>>>,
     inner_sink: PollSender<Vec<u8>>,
+    handle: JoinHandle<Result<()>>,
+}
+
+impl Drop for UdpPayloadSource {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
 }
 
 struct UdpPayloadInner {
@@ -444,7 +452,7 @@ impl UdpPayloadSource {
             client_id,
             camera_id,
         );
-        tokio::task::spawn(async move {
+        let handle = tokio::task::spawn(async move {
             loop {
                 match payload_inner.run().await {
                     Ok(()) => {}
@@ -464,6 +472,7 @@ impl UdpPayloadSource {
         UdpPayloadSource {
             inner_stream: ReceiverStream::new(inner_stream),
             inner_sink: PollSender::new(inner_sink),
+            handle,
         }
     }
 }
