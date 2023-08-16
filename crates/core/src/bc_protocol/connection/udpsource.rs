@@ -24,7 +24,7 @@ use tokio::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt};
-use tokio_util::sync::PollSender;
+use tokio_util::sync::{CancellationToken, PollSender};
 use tokio_util::{
     codec::{Decoder, Encoder, Framed},
     udp::UdpFramed,
@@ -264,10 +264,12 @@ pub(crate) struct UdpPayloadSource {
     inner_stream: ReceiverStream<IoResult<Vec<u8>>>,
     inner_sink: PollSender<Vec<u8>>,
     handle: JoinHandle<Result<()>>,
+    cancel_token: CancellationToken,
 }
 
 impl Drop for UdpPayloadSource {
     fn drop(&mut self) {
+        self.cancel_token.cancel();
         self.handle.abort();
     }
 }
@@ -323,17 +325,20 @@ impl UdpPayloadInner {
         let camera_addr = self.inner.addr;
         tokio::select! {
             _ = self.ack_interval.tick() => {
+                log::trace!("Ack Tick");
                 let ack = BcUdp::Ack(self.build_send_ack());
                 self.inner.feed((ack, camera_addr)).await?;
                 Result::Ok(())
             },
             _ = self.resend_interval.tick() => {
+                log::trace!("Resend Tick");
                 for (_, resend) in self.sent.iter() {
                     self.inner.feed((BcUdp::Data(resend.clone()), camera_addr)).await?;
                 }
                 Ok(())
             },
             v = self.thread_sink.next() => {
+                log::trace!("App->Camera");
                 // Incomming from application
                 // Outgoing on socket
                 let item = v.ok_or(Error::DroppedConnection)?;
@@ -351,6 +356,7 @@ impl UdpPayloadInner {
                 Ok(())
             }
             v = self.inner.next() => {
+                log::trace!("Camera->App");
                 // Incomming from socket
                 // Outgoing to application
                 let (item, addr) = v.ok_or(Error::DroppedConnection)??;
@@ -377,14 +383,19 @@ impl UdpPayloadInner {
                 Ok(())
             },
             _ = self.recv_timeout.as_mut() => {
+                log::trace!("Timeout");
                 Err(Error::DroppedConnection)
             }
         }?;
+        log::trace!("Send");
         while let Some(payload) = self.recieved.remove(&self.packets_want) {
+            log::trace!("  + {}", self.packets_want);
             self.packets_want += 1;
             self.thread_stream.send(Ok(payload)).await?;
         }
-        self.inner.flush().await?;
+        log::trace!("Flush");
+        // self.inner.flush().await?;
+        log::trace!("Flushed");
         Ok(())
     }
 
@@ -442,8 +453,8 @@ impl UdpPayloadInner {
 }
 impl UdpPayloadSource {
     async fn new(inner: BcUdpSource, client_id: i32, camera_id: i32) -> Self {
-        let (inner_sink, thread_sink) = channel(100);
-        let (thread_stream, inner_stream) = channel(100);
+        let (inner_sink, thread_sink) = channel(1000);
+        let (thread_stream, inner_stream) = channel(1000);
 
         let mut payload_inner = UdpPayloadInner::new(
             inner,
@@ -452,27 +463,49 @@ impl UdpPayloadSource {
             client_id,
             camera_id,
         );
-        let handle = tokio::task::spawn(async move {
-            loop {
-                match payload_inner.run().await {
-                    Ok(()) => {}
-                    Err(e) => {
-                        // log::error!("payload_inner: {:?}", e);
-                        // Pass error up
-                        let _ = payload_inner
-                            .thread_stream
-                            .send(Err(IoError::new(ErrorKind::Other, e.clone())))
-                            .await;
-                        return Result::<()>::Err(e);
-                    }
+        let cancel_token = tokio_util::sync::CancellationToken::new();
+
+        let thread_cancel_token = cancel_token.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap();
+
+            runtime.block_on(async move {
+                tokio::select! {
+                    v = async {
+                        loop {
+                            if payload_inner.thread_stream.is_closed() {
+                                payload_inner.thread_sink.close();
+                                return Err(Error::DroppedConnection);
+                            }
+                            log::info!("Calling inner");
+                            let res = payload_inner.run().await;
+                            log::info!("Called inner: {:?}", res);
+                            match res {
+                                Ok(()) => {}
+                                Err(e) => {
+                                    log::error!("UDP Error. Connection will Drop: {:?}", e);
+                                    // Pass error up
+                                    let _ = payload_inner
+                                        .thread_stream
+                                        .send(Err(IoError::new(ErrorKind::Other, e.clone())))
+                                        .await;
+                                    return Result::<()>::Err(e);
+                                }
+                            }
+                        }
+                    } => v,
+                    _ = thread_cancel_token.cancelled() => Ok(()),
                 }
-            }
+            })
         });
 
         UdpPayloadSource {
             inner_stream: ReceiverStream::new(inner_stream),
             inner_sink: PollSender::new(inner_sink),
             handle,
+            cancel_token,
         }
     }
 }

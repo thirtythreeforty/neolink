@@ -74,7 +74,10 @@ impl BcConnection {
 
         rx_thread.spawn(async move {
             loop {
-                poller.run().await?;
+                if let n @ Err(_) = poller.run().await {
+                    error!("Polling has ended");
+                    return n;
+                }
             }
         });
 
@@ -224,10 +227,12 @@ impl Poller {
                                 self.subscribers.num.get_mut(&msg_id), // Both filter first on ID
                             ) {
                                 (Some(occ), _) => {
+                                    log::trace!("Calling ID callback");
                                     if let Some(reply) = occ(&response).await {
                                         assert!(reply.meta.msg_num == response.meta.msg_num);
                                         self.sink.send(Ok(reply)).await?;
                                     }
+                                    log::trace!("Called ID callback");
                                 }
                                 (None, Some(occ)) => {
                                     let sender = if let Some(sender) =

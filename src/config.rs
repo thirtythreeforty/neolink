@@ -195,7 +195,7 @@ const fn default_true() -> bool {
 }
 
 const fn default_false() -> bool {
-    true
+    false
 }
 
 fn default_mqtt() -> Option<MqttConfig> {
