@@ -479,13 +479,13 @@ impl UdpPayloadSource {
                                 payload_inner.thread_sink.close();
                                 return Err(Error::DroppedConnection);
                             }
-                            log::info!("Calling inner");
+                            log::trace!("Calling inner");
                             let res = payload_inner.run().await;
-                            log::info!("Called inner: {:?}", res);
+                            log::trace!("Called inner: {:?}", res);
                             match res {
                                 Ok(()) => {}
                                 Err(e) => {
-                                    log::error!("UDP Error. Connection will Drop: {:?}", e);
+                                    log::trace!("UDP Error. Connection will Drop: {:?}", e);
                                     // Pass error up
                                     let _ = payload_inner
                                         .thread_stream

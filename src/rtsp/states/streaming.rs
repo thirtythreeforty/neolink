@@ -81,8 +81,10 @@ impl Camera<Streaming> {
                 // debug!("Straming: Get");
                 let data = timeout(Duration::from_secs(15), stream_data.get_data())
                     .await
-                    .with_context(|| "Timed out waiting for new Media Frame")??;
-                // debug!("Straming: Got");
+                    .with_context(|| "Timed out waiting for new Media Frame")
+                    .unwrap()
+                    .unwrap(); //??;
+                               // debug!("Straming: Got");
                 match &data {
                     Ok(BcMedia::InfoV1(_)) => trace!("{}:  - InfoV1", &tag_thread),
                     Ok(BcMedia::InfoV2(_)) => trace!("{}:  - InfoV2", &tag_thread),

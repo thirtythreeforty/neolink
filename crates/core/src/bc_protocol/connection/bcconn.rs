@@ -62,7 +62,7 @@ impl BcConnection {
                 PollSender::new(thread_poll_commander)
                     .send_all(&mut source.map(|bc| Ok(PollCommand::Bc(Box::new(bc))))),
             );
-            log::info!("PollSender Bc {:?}", result);
+            log::trace!("PollSender Bc {:?}", result);
             result
         });
         rx_thread.spawn(async move {
@@ -75,7 +75,7 @@ impl BcConnection {
         rx_thread.spawn(async move {
             loop {
                 if let n @ Err(_) = poller.run().await {
-                    error!("Polling has ended");
+                    trace!("Polling has ended");
                     return n;
                 }
             }
