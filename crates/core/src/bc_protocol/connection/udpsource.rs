@@ -19,8 +19,8 @@ use std::task::{Context, Poll};
 use tokio::sync::mpsc::channel;
 use tokio::{
     net::UdpSocket,
-    task::JoinHandle,
-    time::{interval, sleep, Duration, Instant, Interval, Sleep},
+    task::{JoinHandle, JoinSet},
+    time::{interval, sleep, Duration, Instant, Interval},
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt};
@@ -275,7 +275,10 @@ impl Drop for UdpPayloadSource {
 }
 
 struct UdpPayloadInner {
-    inner: BcUdpSource,
+    camera_addr: SocketAddr,
+    ack_tx: PollSender<UdpAck>,
+    socket_in: PollSender<BcUdp>,
+    socket_out: ReceiverStream<(BcUdp, SocketAddr)>,
     thread_stream: PollSender<IoResult<Vec<u8>>>,
     thread_sink: ReceiverStream<Vec<u8>>,
     client_id: i32,
@@ -287,13 +290,12 @@ struct UdpPayloadInner {
     /// Offical Client does ack every 10ms if we don't also do this the camera
     /// seems to think we have a poor connection and will abort
     /// This `ack_interval` controls how ofen we do this
-    ack_interval: Interval,
     /// Offical Client does resend every 500ms
     /// This `resend_interval` controls how ofen we do this
     resend_interval: Interval,
     ack_latency: AckLatency,
-    // Tracks the timeout of recieving ANY packet
-    recv_timeout: Pin<Box<Sleep>>,
+    cancel: CancellationToken,
+    set: JoinSet<Result<()>>,
 }
 impl UdpPayloadInner {
     fn new(
@@ -303,8 +305,115 @@ impl UdpPayloadInner {
         client_id: i32,
         camera_id: i32,
     ) -> Self {
+        let camera_addr = inner.addr;
+        let cancel = CancellationToken::new();
+        // Data in this needs to be passed into the socket regularly
+        // especially the ACK packets on UDP. The thread must not lock
+        // and MUST send ACK packets or else be dropped by the camera.
+        // In order to achieve this we use dedicated threads for ACK
+        // and the socket
+
+        let (socket_in_tx, socket_in_rx) = channel(1000);
+        let (socket_out_tx, socket_out_rx) = channel(1000);
+        let mut set = JoinSet::<Result<()>>::new();
+        let (mut socket_tx, mut socket_rx) = inner.split();
+
+        // Send to socket
+        //
+        // Sending async packets is always a priority so we stop for those
+        let send_cancel = cancel.clone();
+        let mut ack_interval = interval(Duration::from_millis(10)); // Offical Client does ack every 10ms
+        let mut socket_in_rx = ReceiverStream::new(socket_in_rx);
+        let (ack_tx, mut ack_rx) = channel(3);
+        let thread_camera_id = camera_id;
+        set.spawn_blocking(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap();
+            runtime.block_on(async {
+                tokio::select! {
+                    _ = send_cancel.cancelled() => {
+                        Result::Ok(())
+                    },
+                    v = async {
+                        let mut ack_packet = UdpAck::empty(thread_camera_id);
+                        loop {
+                            tokio::select! {
+                                v = ack_rx.recv() => {
+                                    if let Some(v) = v {
+                                        ack_packet = v;
+                                        Ok(())
+                                    } else {
+                                        Err(Error::DroppedConnection)
+                                    }
+                                },
+                                v = async {
+                                    let packet = tokio::select! {
+                                            v = socket_in_rx.next() => {
+                                                v.ok_or(Error::DroppedConnection)
+                                            },
+                                            _ = ack_interval.tick() => {
+                                                log::trace!("send ack");
+                                                Ok(BcUdp::Ack(ack_packet.clone()))
+                                            }
+                                        }?;
+
+                                        socket_tx.send((packet, camera_addr)).await?;
+                                        Result::Ok(())
+                                } => v,
+                            }?;
+                        }
+                    } => v,
+                }
+            })
+        });
+
+        // Get from socket
+        let get_cancel = cancel.clone();
+        let mut socket_out_tx = PollSender::new(socket_out_tx);
+        set.spawn_blocking(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap();
+
+            // A packet of ANY kind must be recieved in the last second
+            // since there are 10 acks a second 3s should be fine
+            let mut recv_timeout = Box::pin(sleep(Duration::from_secs(3)));
+
+            runtime.block_on(async {
+                tokio::select!{
+                    _ = get_cancel.cancelled() => {
+                        Result::Ok(())
+                    },
+                    v = async {
+                        loop {
+                            let packet = tokio::select! {
+                                v = async {
+                                    socket_rx.next().await.ok_or(Error::DroppedConnection)
+                                } => {
+                                    log::trace!("Got packet");
+                                    recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(3));
+                                    v
+                                }
+                                _ = recv_timeout.as_mut() => {
+                                    log::trace!("Timeout");
+                                    Err(Error::DroppedConnection)
+                                }
+                            }??;
+                            socket_out_tx.send(packet).await?;
+                        }
+                    } => v,
+                }
+            })?;
+
+            Ok(())
+        });
+
         Self {
-            inner,
+            camera_addr,
+            ack_tx: PollSender::new(ack_tx),
+            socket_in: PollSender::new(socket_in_tx),
+            socket_out: ReceiverStream::new(socket_out_rx),
             thread_stream,
             thread_sink,
             client_id,
@@ -313,29 +422,22 @@ impl UdpPayloadInner {
             packets_want: 0,
             sent: Default::default(),
             recieved: Default::default(),
-            ack_interval: interval(Duration::from_millis(10)), // Offical Client does ack every 10ms
             resend_interval: interval(Duration::from_millis(500)), // Offical Client does resend every 500ms
             ack_latency: Default::default(),
-            // A packet of ANY kind must be recieved in the last second
-            // since there are 10 acks a second 3s should be fine
-            recv_timeout: Box::pin(sleep(Duration::from_secs(3))),
+            cancel,
+            set,
         }
     }
     async fn run(&mut self) -> Result<()> {
-        let camera_addr = self.inner.addr;
+        let camera_addr = self.camera_addr;
         tokio::select! {
-            _ = self.ack_interval.tick() => {
-                log::trace!("Ack Tick");
-                let ack = BcUdp::Ack(self.build_send_ack());
-                self.inner.feed((ack, camera_addr)).await?;
-                Result::Ok(())
-            },
             _ = self.resend_interval.tick() => {
                 log::trace!("Resend Tick");
                 for (_, resend) in self.sent.iter() {
-                    self.inner.feed((BcUdp::Data(resend.clone()), camera_addr)).await?;
+                    self.socket_in.feed(BcUdp::Data(resend.clone())).await?;
                 }
-                Ok(())
+                self.ack_tx.send(self.build_send_ack()).await?; // Ensure we update this sometimes too
+                Result::Ok(())
             },
             v = self.thread_sink.next() => {
                 log::trace!("App->Camera");
@@ -351,15 +453,15 @@ impl UdpPayloadInner {
                     };
                     self.packets_sent += 1;
                     self.sent.insert(udp_data.packet_id, udp_data.clone());
-                    self.inner.feed((BcUdp::Data(udp_data), camera_addr)).await?;
+                    self.socket_in.feed(BcUdp::Data(udp_data)).await?;
                 }
                 Ok(())
             }
-            v = self.inner.next() => {
+            v = self.socket_out.next() => {
                 log::trace!("Camera->App");
                 // Incomming from socket
                 // Outgoing to application
-                let (item, addr) = v.ok_or(Error::DroppedConnection)??;
+                let (item, addr) = v.ok_or(Error::DroppedConnection)?;
                 if addr == camera_addr {
                     match item {
                         BcUdp::Discovery(_disc) => {},
@@ -374,18 +476,15 @@ impl UdpPayloadInner {
                                 if packet_id >= self.packets_want {
                                     // error!("packets_want: {}", this.packets_want);
                                     self.recieved.insert(packet_id, data.payload);
+                                    self.ack_tx.send(self.build_send_ack()).await?;
                                 }
                             }
                         },
                     }
                 }
-                self.recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(3));
+                log::trace!("Got packet");
                 Ok(())
             },
-            _ = self.recv_timeout.as_mut() => {
-                log::trace!("Timeout");
-                Err(Error::DroppedConnection)
-            }
         }?;
         log::trace!("Send");
         while let Some(payload) = self.recieved.remove(&self.packets_want) {
@@ -394,7 +493,7 @@ impl UdpPayloadInner {
             self.thread_stream.send(Ok(payload)).await?;
         }
         log::trace!("Flush");
-        // self.inner.flush().await?;
+        self.socket_in.flush().await?;
         log::trace!("Flushed");
         Ok(())
     }
@@ -449,6 +548,13 @@ impl UdpPayloadInner {
             }
         }
         self.ack_latency.feed_ack();
+    }
+}
+
+impl Drop for UdpPayloadInner {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+        self.set.abort_all();
     }
 }
 impl UdpPayloadSource {
