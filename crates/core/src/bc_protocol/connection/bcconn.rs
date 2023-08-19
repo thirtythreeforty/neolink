@@ -42,7 +42,7 @@ pub struct BcConnection {
 }
 
 impl BcConnection {
-    pub async fn new(mut sink: BcConnSink, source: BcConnSource) -> Result<BcConnection> {
+    pub async fn new(mut sink: BcConnSink, mut source: BcConnSource) -> Result<BcConnection> {
         let (sinker, sinker_rx) = channel::<Result<Bc>>(100);
 
         let (poll_commander, poll_commanded) = channel(200);
@@ -58,10 +58,13 @@ impl BcConnection {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .build()
                 .unwrap();
-            let result = runtime.block_on(
-                PollSender::new(thread_poll_commander)
-                    .send_all(&mut source.map(|bc| Ok(PollCommand::Bc(Box::new(bc))))),
-            );
+            let result = runtime.block_on(async move {
+                let mut sender = PollSender::new(thread_poll_commander);
+                while let Some(bc) = source.next().await {
+                    sender.send(PollCommand::Bc(Box::new(bc))).await?;
+                }
+                Result::Ok(())
+            });
             log::trace!("PollSender Bc {:?}", result);
             result
         });
@@ -70,7 +73,13 @@ impl BcConnection {
             Ok(())
         });
 
-        rx_thread.spawn(async move { sink.send_all(&mut ReceiverStream::new(sinker_rx)).await });
+        rx_thread.spawn(async move {
+            let mut stream = ReceiverStream::new(sinker_rx);
+            while let Some(packet) = stream.next().await {
+                sink.send(packet?).await?;
+            }
+            Ok(())
+        });
 
         rx_thread.spawn(async move {
             loop {

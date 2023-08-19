@@ -19,7 +19,7 @@ use std::task::{Context, Poll};
 use tokio::sync::mpsc::channel;
 use tokio::{
     net::UdpSocket,
-    task::{JoinHandle, JoinSet},
+    task::JoinHandle,
     time::{interval, sleep, Duration, Instant, Interval},
 };
 use tokio_stream::wrappers::ReceiverStream;
@@ -295,7 +295,6 @@ struct UdpPayloadInner {
     resend_interval: Interval,
     ack_latency: AckLatency,
     cancel: CancellationToken,
-    set: JoinSet<Result<()>>,
 }
 impl UdpPayloadInner {
     fn new(
@@ -313,26 +312,49 @@ impl UdpPayloadInner {
         // In order to achieve this we use dedicated threads for ACK
         // and the socket
 
-        let (socket_in_tx, socket_in_rx) = channel(1000);
-        let (socket_out_tx, socket_out_rx) = channel(1000);
-        let mut set = JoinSet::<Result<()>>::new();
+        let (socket_in_tx, socket_in_rx) = channel::<BcUdp>(1000);
+        let (socket_out_tx, socket_out_rx) = channel::<(BcUdp, SocketAddr)>(1000);
         let (mut socket_tx, mut socket_rx) = inner.split();
 
         // Send to socket
-        //
-        // Sending async packets is always a priority so we stop for those
         let send_cancel = cancel.clone();
-        let mut ack_interval = interval(Duration::from_millis(10)); // Offical Client does ack every 10ms
         let mut socket_in_rx = ReceiverStream::new(socket_in_rx);
-        let (ack_tx, mut ack_rx) = channel(3);
-        let thread_camera_id = camera_id;
-        set.spawn_blocking(move || {
+        let thread_camera_addr = camera_addr;
+        tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .build()
                 .unwrap();
-            runtime.block_on(async {
-                tokio::select! {
+            runtime.block_on(async move {
+                let result = tokio::select! {
                     _ = send_cancel.cancelled() => {
+                        Result::Ok(())
+                    },
+                    v = async {
+                        while let Some(packet) = socket_in_rx.next().await {
+                            socket_tx.send((packet, thread_camera_addr)).await?;
+                        }
+                        Ok(())
+                    } => v,
+                };
+                send_cancel.cancel();
+                result
+            })
+        });
+
+        // Queue up ack packets
+        let ack_cancel = cancel.clone();
+        let mut ack_interval = interval(Duration::from_millis(10)); // Offical Client does ack every 10ms
+        ack_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let (ack_tx, mut ack_rx) = channel(1000);
+        let thread_camera_id = camera_id;
+        let mut ack_socket_in_tx = PollSender::new(socket_in_tx.clone());
+        tokio::task::spawn_blocking(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap();
+            runtime.block_on(async move {
+                tokio::select! {
+                    _ = ack_cancel.cancelled() => {
                         Result::Ok(())
                     },
                     v = async {
@@ -340,6 +362,7 @@ impl UdpPayloadInner {
                         loop {
                             tokio::select! {
                                 v = ack_rx.recv() => {
+                                    // Update the ACK packet
                                     if let Some(v) = v {
                                         ack_packet = v;
                                         Ok(())
@@ -347,20 +370,12 @@ impl UdpPayloadInner {
                                         Err(Error::DroppedConnection)
                                     }
                                 },
-                                v = async {
-                                    let packet = tokio::select! {
-                                            v = socket_in_rx.next() => {
-                                                v.ok_or(Error::DroppedConnection)
-                                            },
-                                            _ = ack_interval.tick() => {
-                                                log::trace!("send ack");
-                                                Ok(BcUdp::Ack(ack_packet.clone()))
-                                            }
-                                        }?;
-
-                                        socket_tx.send((packet, camera_addr)).await?;
-                                        Result::Ok(())
-                                } => v,
+                                _ = ack_interval.tick() => {
+                                    // Send an ack packet
+                                    log::trace!("send ack");
+                                    ack_socket_in_tx.send(BcUdp::Ack(ack_packet.clone())).await?;
+                                    Ok(())
+                                }
                             }?;
                         }
                     } => v,
@@ -371,17 +386,17 @@ impl UdpPayloadInner {
         // Get from socket
         let get_cancel = cancel.clone();
         let mut socket_out_tx = PollSender::new(socket_out_tx);
-        set.spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .build()
                 .unwrap();
 
             // A packet of ANY kind must be recieved in the last second
-            // since there are 10 acks a second 3s should be fine
-            let mut recv_timeout = Box::pin(sleep(Duration::from_secs(3)));
+            // since there are 10 acks a second 3s should be fine (first packet has 15s while later 3s)
+            let mut recv_timeout = Box::pin(sleep(Duration::from_secs(15)));
 
             runtime.block_on(async {
-                tokio::select!{
+                let res = tokio::select! {
                     _ = get_cancel.cancelled() => {
                         Result::Ok(())
                     },
@@ -400,13 +415,16 @@ impl UdpPayloadInner {
                                     Err(Error::DroppedConnection)
                                 }
                             }??;
+                            // let packet = socket_rx.next().await.ok_or(Error::DroppedConnection)??;
                             socket_out_tx.send(packet).await?;
                         }
                     } => v,
-                }
+                };
+                log::trace!("GetSocket: {res:?}");
+                res
             })?;
 
-            Ok(())
+            Result::Ok(())
         });
 
         Self {
@@ -425,7 +443,6 @@ impl UdpPayloadInner {
             resend_interval: interval(Duration::from_millis(500)), // Offical Client does resend every 500ms
             ack_latency: Default::default(),
             cancel,
-            set,
         }
     }
     async fn run(&mut self) -> Result<()> {
@@ -554,7 +571,6 @@ impl UdpPayloadInner {
 impl Drop for UdpPayloadInner {
     fn drop(&mut self) {
         self.cancel.cancel();
-        self.set.abort_all();
     }
 }
 impl UdpPayloadSource {

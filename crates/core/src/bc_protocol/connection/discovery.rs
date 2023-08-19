@@ -141,9 +141,12 @@ impl Discoverer {
             }
         });
 
-        let (sinker, sinker_rx) = channel(100);
+        let (sinker, sinker_rx) = channel::<Result<(BcUdp, SocketAddr)>>(100);
         set.spawn(async move {
-            let _ = writer.send_all(&mut ReceiverStream::new(sinker_rx)).await;
+            let mut sinker_rx = ReceiverStream::new(sinker_rx);
+            while let Some(Ok(packet)) = sinker_rx.next().await {
+                let _ = writer.send(packet).await;
+            }
         });
 
         Ok(Discoverer {
