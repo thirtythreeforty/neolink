@@ -11,8 +11,7 @@ use log::*;
 use neolink_core::bcmedia::model::BcMedia;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
-use tokio::time::{interval, timeout, Duration};
-use tokio_stream::wrappers::IntervalStream;
+use tokio::time::{timeout, Duration};
 
 use neolink_core::bc_protocol::{BcCamera, StreamKind as Stream};
 
@@ -158,20 +157,7 @@ impl Camera<Streaming> {
                 Ok(())
             } => v,
             v = self.state.camera.join() => v.map_err(|e| anyhow!("Camera join error: {:?}", e)),
-            v = self.keepalive() => {v},
         }?;
-        Ok(())
-    }
-
-    async fn keepalive(&self) -> Result<()> {
-        let mut interval = IntervalStream::new(interval(Duration::from_secs(5)));
-        while let Some(_update) = interval.next().await {
-            if self.state.camera.ping().await.is_err() {
-                break;
-            }
-        }
-
-        futures::pending!(); // Never actually finish, has to be aborted
         Ok(())
     }
 

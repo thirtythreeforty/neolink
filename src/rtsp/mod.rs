@@ -58,8 +58,8 @@ use log::*;
 use neolink_core::bc_protocol::{BcCamera, StreamKind};
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio_stream::StreamExt;
+use tokio::time::{interval, Duration};
+use tokio_stream::{wrappers::IntervalStream, StreamExt};
 
 mod cmdline;
 mod gst;
@@ -260,6 +260,18 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
                 info!("{}: Join Pause", name);
                 Ok(StreamChange::StreamError(v))
             },
+            // Send pings
+            v = async {
+                let camera = streaming.get_camera();
+                let mut interval = IntervalStream::new(interval(Duration::from_secs(5)));
+                while let Some(_update) = interval.next().await {
+                    if camera.ping().await.is_err() {
+                        break;
+                    }
+                }
+                futures::pending!(); // Never actually finish, has to be aborted
+                Ok(())
+            } => Ok(StreamChange::StreamError(v)),
             v = await_change(
                 streaming.get_camera(),
                 &streaming.shared,
