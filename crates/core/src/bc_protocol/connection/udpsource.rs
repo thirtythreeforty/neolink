@@ -343,7 +343,7 @@ impl UdpPayloadInner {
 
         // Queue up ack packets
         let ack_cancel = cancel.clone();
-        let mut ack_interval = interval(Duration::from_millis(10)); // Offical Client does ack every 10ms
+        let mut ack_interval = interval(Duration::from_millis(100)); // Offical Client does ack every 10ms
         ack_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let (ack_tx, mut ack_rx) = channel(1000);
         let thread_camera_id = camera_id;
@@ -391,9 +391,10 @@ impl UdpPayloadInner {
                 .build()
                 .unwrap();
 
-            // A packet of ANY kind must be recieved in the last second
-            // since there are 10 acks a second 3s should be fine (first packet has 15s while later 3s)
-            let mut recv_timeout = Box::pin(sleep(Duration::from_secs(15)));
+            // A packet of ANY kind must be recieved in the 10 last second
+            // This is based on the official client which also seems to take 10s timeout
+            const TIME_OUT: u64 = 10;
+            let mut recv_timeout = Box::pin(sleep(Duration::from_secs(TIME_OUT)));
 
             runtime.block_on(async {
                 let res = tokio::select! {
@@ -407,7 +408,7 @@ impl UdpPayloadInner {
                                     socket_rx.next().await.ok_or(Error::DroppedConnection)
                                 } => {
                                     log::trace!("Got packet");
-                                    recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(3));
+                                    recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(TIME_OUT));
                                     v
                                 }
                                 _ = recv_timeout.as_mut() => {

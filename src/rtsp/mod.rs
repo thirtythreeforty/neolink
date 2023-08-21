@@ -258,6 +258,7 @@ async fn camera_main(camera: Camera<Disconnected>) -> Result<(), CameraFailureKi
             streaming.join().await
             }, if ! active_tags.is_empty() => {
                 info!("{}: Join Pause", name);
+                panic!();
                 Ok(StreamChange::StreamError(v))
             },
             v = await_change(
