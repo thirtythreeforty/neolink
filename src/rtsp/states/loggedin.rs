@@ -7,8 +7,11 @@
 
 use super::{camera::Camera, connected::Connected, streaming::Streaming};
 use anyhow::Result;
+use futures::stream::StreamExt;
 use log::*;
 use neolink_core::bc_protocol::BcCamera;
+use tokio::time::{interval, Duration};
+use tokio_stream::wrappers::IntervalStream;
 
 pub(crate) struct LoggedIn {
     pub(crate) camera: BcCamera,
@@ -98,12 +101,29 @@ impl Camera<LoggedIn> {
         &self.state.camera
     }
 
-    #[allow(unused)]
+    #[allow(dead_code)]
     pub(crate) async fn join(&self) -> Result<()> {
-        self.state
-            .camera
-            .join()
-            .await
-            .map_err(|e| anyhow::anyhow!("Camera join error: {:?}", e))
+        tokio::select! {
+            v = async {
+                self.state
+                .camera
+                .join()
+                .await
+                .map_err(|e| anyhow::anyhow!("Camera join error: {:?}", e))
+            } => v,
+            v = self.keepalive() => {v}
+        }
+    }
+
+    async fn keepalive(&self) -> Result<()> {
+        let mut interval = IntervalStream::new(interval(Duration::from_secs(5)));
+        while let Some(_update) = interval.next().await {
+            if self.state.camera.ping().await.is_err() {
+                break;
+            }
+        }
+
+        futures::pending!(); // Never actually finish, has to be aborted
+        Ok(())
     }
 }
