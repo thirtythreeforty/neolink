@@ -26,7 +26,7 @@ pub(crate) use cmdline::Opt;
 /// Opt is the command line options
 pub(crate) async fn main(opt: Opt, config: Config, reactor: NeoReactor) -> Result<()> {
     let config = config.get_camera_config(&opt.camera)?;
-    let camera = reactor.get_or_insert(&opt.camera, config.clone()).await?;
+    let camera = reactor.get_or_insert(config.clone()).await?;
 
     if let Some(on) = opt.on {
         camera

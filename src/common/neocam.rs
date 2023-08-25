@@ -291,7 +291,8 @@ impl NeoInstance {
 enum NeoReactorCommand {
     HangUp,
     Get(String, OneshotSender<Result<NeoInstance>>),
-    GetOrInsert(String, OneshotSender<Result<NeoInstance>>, CameraConfig),
+    GetOrInsert(CameraConfig, OneshotSender<Result<NeoInstance>>),
+    UpdateOrInsert(CameraConfig, OneshotSender<Result<NeoInstance>>),
 }
 
 struct NeoReactorData {
@@ -345,9 +346,30 @@ impl NeoReactor {
                                     .await;
                                 let _ = sender.send(new);
                             }
-                            NeoReactorCommand::GetOrInsert(name, sender, config) => {
+                            NeoReactorCommand::GetOrInsert(config, sender) => {
+                                let name = config.name.clone();
                                 let new = match instances.entry(name) {
                                     Entry::Occupied(occ) => occ.get().instance.subscribe().await,
+                                    Entry::Vacant(vac) => {
+                                        let (config_sender, instance) = NeoCam::init(config).await?;
+                                        vac.insert(NeoReactorData {
+                                            instance,
+                                            config_sender,
+                                        })
+                                        .instance
+                                        .subscribe()
+                                        .await
+                                    }
+                                };
+                                let _ = sender.send(new);
+                            },
+                            NeoReactorCommand::UpdateOrInsert(config, sender) => {
+                                let name = config.name.clone();
+                                let new = match instances.entry(name) {
+                                    Entry::Occupied(occ) => {
+                                        occ.get().config_sender.send(config)?;
+                                        occ.get().instance.subscribe().await
+                                    },
                                     Entry::Vacant(vac) => {
                                         let (config_sender, instance) = NeoCam::init(config).await?;
                                         vac.insert(NeoReactorData {
@@ -372,6 +394,7 @@ impl NeoReactor {
     }
 
     #[allow(dead_code)]
+    /// Get camera by name but do not create
     pub(crate) async fn get(&self, name: &str) -> Result<NeoInstance> {
         let (sender_tx, sender_rx) = oneshot();
         self.commander
@@ -381,18 +404,22 @@ impl NeoReactor {
         sender_rx.await?
     }
 
-    pub(crate) async fn get_or_insert(
-        &self,
-        name: &str,
-        config: CameraConfig,
-    ) -> Result<NeoInstance> {
+    /// Get or create a camera
+    pub(crate) async fn get_or_insert(&self, config: CameraConfig) -> Result<NeoInstance> {
         let (sender_tx, sender_rx) = oneshot();
         self.commander
-            .send(NeoReactorCommand::GetOrInsert(
-                name.to_string(),
-                sender_tx,
-                config,
-            ))
+            .send(NeoReactorCommand::GetOrInsert(config, sender_tx))
+            .await?;
+
+        sender_rx.await?
+    }
+
+    #[allow(dead_code)]
+    /// Update a camera to a new config or create a camera
+    pub(crate) async fn update_or_insert(&self, config: CameraConfig) -> Result<NeoInstance> {
+        let (sender_tx, sender_rx) = oneshot();
+        self.commander
+            .send(NeoReactorCommand::UpdateOrInsert(config, sender_tx))
             .await?;
 
         sender_rx.await?

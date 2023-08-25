@@ -100,10 +100,10 @@ async fn main() -> Result<()> {
             rtsp::main(opts, config).await?;
         }
         Some(Command::StatusLight(opts)) => {
-            statusled::main(opts, config).await?;
+            statusled::main(opts, config, neo_reactor.clone()).await?;
         }
         Some(Command::Reboot(opts)) => {
-            reboot::main(opts, config).await?;
+            reboot::main(opts, config, neo_reactor.clone()).await?;
         }
         Some(Command::Pir(opts)) => {
             pir::main(opts, config, neo_reactor.clone()).await?;
@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
             image::main(opts, config).await?;
         }
         Some(Command::Battery(opts)) => {
-            battery::main(opts, config).await?;
+            battery::main(opts, config, neo_reactor.clone()).await?;
         }
     }
 
