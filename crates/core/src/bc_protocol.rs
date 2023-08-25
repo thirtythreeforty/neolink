@@ -8,6 +8,7 @@ use std::{
     sync::atomic::{AtomicBool, AtomicU16, Ordering},
 };
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 
 use Md5Trunc::*;
 
@@ -19,6 +20,7 @@ mod errors;
 mod floodlight_status;
 mod keepalive;
 mod ledstate;
+mod link;
 mod login;
 mod logout;
 mod motion;
@@ -65,6 +67,8 @@ pub struct BcCamera {
     // Certain commands such as logout require the username/pass in plain text.... why....???
     credentials: Credentials,
     abilities: RwLock<HashMap<String, ReadKind>>,
+    #[allow(dead_code)]
+    cancel: CancellationToken,
 }
 
 /// Options used to construct a camera
@@ -345,6 +349,7 @@ impl BcCamera {
             logged_in: AtomicBool::new(false),
             credentials: Credentials::new(username, passwd),
             abilities: Default::default(),
+            cancel: CancellationToken::new(),
         };
         me.keepalive().await?;
         Ok(me)
@@ -409,13 +414,10 @@ impl BcCamera {
         self.connection.join().await
     }
 
-    /// Disconnect from the camera. This is done by dropping the reciever
-    /// so further communications are not possible.
-    pub async fn disconnect(self) -> Result<()> {
-        let connection = Arc::try_unwrap(self.connection)
-            .map_err(|_| Error::Other("Connection still active"))?;
-        connection.disconnect().await?;
-
+    /// Disconnect from the camera. This is done by sending cancel to
+    /// all threads then waiting for the join
+    pub async fn shutdown(&self) -> Result<()> {
+        self.connection.shutdown().await?;
         Ok(())
     }
 }

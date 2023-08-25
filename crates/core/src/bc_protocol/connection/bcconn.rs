@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::task::yield_now;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::sync::PollSender;
+use tokio_util::sync::{CancellationToken, PollSender};
 
 use tokio::{sync::RwLock, task::JoinSet};
 
@@ -39,11 +39,13 @@ pub struct BcConnection {
     sink: Sender<Result<Bc>>,
     poll_commander: Sender<PollCommand>,
     rx_thread: RwLock<JoinSet<Result<()>>>,
+    cancel: CancellationToken,
 }
 
 impl BcConnection {
     pub async fn new(mut sink: BcConnSink, mut source: BcConnSource) -> Result<BcConnection> {
         let (sinker, sinker_rx) = channel::<Result<Bc>>(100);
+        let cancel = CancellationToken::new();
 
         let (poll_commander, poll_commanded) = channel(200);
         let mut poller = Poller {
@@ -54,39 +56,65 @@ impl BcConnection {
 
         let mut rx_thread = JoinSet::<Result<()>>::new();
         let thread_poll_commander = poll_commander.clone();
+        let thread_cancel = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .build()
                 .unwrap();
             let result = runtime.block_on(async move {
-                let mut sender = PollSender::new(thread_poll_commander);
-                while let Some(bc) = source.next().await {
-                    sender.send(PollCommand::Bc(Box::new(bc))).await?;
+                tokio::select! {
+                    _ = thread_cancel.cancelled() => {
+                        Result::Ok(())
+                    },
+                    v = async {
+                        let mut sender = PollSender::new(thread_poll_commander);
+                        while let Some(bc) = source.next().await {
+                            sender.send(PollCommand::Bc(Box::new(bc))).await?;
+                        }
+                        Result::Ok(())
+                    } => v
                 }
-                Result::Ok(())
             });
             log::trace!("PollSender Bc {:?}", result);
             result
         });
+        let thread_cancel = cancel.clone();
         rx_thread.spawn(async move {
-            handle.await??;
-            Ok(())
-        });
-
-        rx_thread.spawn(async move {
-            let mut stream = ReceiverStream::new(sinker_rx);
-            while let Some(packet) = stream.next().await {
-                sink.send(packet?).await?;
+            tokio::select! {
+                _ = thread_cancel.cancelled() => Result::Ok(()),
+                v = async {
+                    handle.await??;
+                    Ok(())
+                } => v
             }
-            Ok(())
         });
 
+        let thread_cancel = cancel.clone();
         rx_thread.spawn(async move {
-            loop {
-                if let n @ Err(_) = poller.run().await {
-                    trace!("Polling has ended");
-                    return n;
-                }
+            tokio::select! {
+                _ = thread_cancel.cancelled() => Result::Ok(()),
+                v = async {
+                    let mut stream = ReceiverStream::new(sinker_rx);
+                    while let Some(packet) = stream.next().await {
+                        sink.send(packet?).await?;
+                    }
+                    Ok(())
+                } => v
+            }
+        });
+
+        let thread_cancel = cancel.clone();
+        rx_thread.spawn(async move {
+            tokio::select! {
+                _ = thread_cancel.cancelled() => Result::Ok(()),
+                v = async {
+                    loop {
+                        if let n @ Err(_) = poller.run().await {
+                            trace!("Polling has ended");
+                            return n;
+                        }
+                    }
+                }=> v
             }
         });
 
@@ -94,6 +122,7 @@ impl BcConnection {
             sink: sinker,
             poll_commander,
             rx_thread: RwLock::new(rx_thread),
+            cancel,
         })
     }
 
@@ -165,13 +194,18 @@ impl BcConnection {
         Ok(())
     }
 
-    pub async fn disconnect(mut self) -> Result<()> {
-        self.poll_commander.send(PollCommand::Disconnect).await?;
-        drop(self.sink);
-        drop(self.poll_commander);
-        let locked_threads = self.rx_thread.get_mut();
+    pub async fn shutdown(&self) -> Result<()> {
+        let _ = self.poll_commander.send(PollCommand::Disconnect).await;
+        self.cancel.cancel();
+        let mut locked_threads = self.rx_thread.write().await;
         while locked_threads.join_next().await.is_some() {}
         Ok(())
+    }
+}
+
+impl Drop for BcConnection {
+    fn drop(&mut self) {
+        self.cancel.cancel();
     }
 }
 

@@ -35,7 +35,7 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         .context("Unable to set camera light state")?;
 
     let _ = camera.logout().await;
-    camera.disconnect().await?;
+    camera.shutdown().await?;
 
     Ok(())
 }

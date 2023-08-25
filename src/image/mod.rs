@@ -94,7 +94,7 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
     }
 
     let _ = camera.logout().await;
-    camera.disconnect().await?;
+    camera.shutdown().await?;
 
     Ok(())
 }

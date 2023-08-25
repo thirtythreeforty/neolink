@@ -8,7 +8,7 @@ impl BcCamera {
     pub async fn get_linktype(&self) -> Result<LinkType> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub_get = connection.subscribe(msg_num).await?;
+        let mut sub_get = connection.subscribe(MSG_ID_PING, msg_num).await?;
         let get = Bc {
             meta: BcMeta {
                 msg_id: MSG_ID_PING,

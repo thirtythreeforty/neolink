@@ -30,7 +30,7 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         .await
         .context("Could not send reboot command to the camera")?;
 
-    camera.disconnect().await?;
+    camera.shutdown().await?;
 
     Ok(())
 }

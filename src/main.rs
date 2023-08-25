@@ -31,6 +31,7 @@ use validator::Validate;
 
 mod battery;
 mod cmdline;
+mod common;
 mod config;
 mod image;
 mod mqtt;
@@ -43,6 +44,7 @@ mod talk;
 mod utils;
 
 use cmdline::{Command, Opt};
+use common::neocam::NeoReactor;
 use config::Config;
 use console_subscriber as _;
 
@@ -84,6 +86,8 @@ async fn main() -> Result<()> {
         tokio_console_enable();
     }
 
+    let neo_reactor = NeoReactor::new().await;
+
     match opt.cmd {
         None => {
             warn!(
@@ -102,7 +106,7 @@ async fn main() -> Result<()> {
             reboot::main(opts, config).await?;
         }
         Some(Command::Pir(opts)) => {
-            pir::main(opts, config).await?;
+            pir::main(opts, config, neo_reactor.clone()).await?;
         }
         Some(Command::Ptz(opts)) => {
             ptz::main(opts, config).await?;
@@ -120,6 +124,8 @@ async fn main() -> Result<()> {
             battery::main(opts, config).await?;
         }
     }
+
+    neo_reactor.shutdown().await;
 
     Ok(())
 }
