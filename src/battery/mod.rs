@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 
 mod cmdline;
 
-use crate::common::neocam::NeoReactor;
+use crate::common::NeoReactor;
 
 use super::config::Config;
 pub(crate) use cmdline::Opt;

@@ -27,7 +27,7 @@ mod cmdline;
 mod gst;
 
 use super::config::Config;
-use crate::common::neocam::NeoReactor;
+use crate::common::NeoReactor;
 pub(crate) use cmdline::Opt;
 
 /// Entry point for the image subcommand

@@ -44,7 +44,7 @@ mod talk;
 mod utils;
 
 use cmdline::{Command, Opt};
-use common::neocam::NeoReactor;
+use common::NeoReactor;
 use config::Config;
 use console_subscriber as _;
 
