@@ -73,6 +73,15 @@ impl NeoCamStreamThread {
     }
 }
 
+impl Drop for NeoCamStreamThread {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+        for stream in self.streams.values() {
+            stream.cancel.cancel()
+        }
+    }
+}
+
 /// The kind of stream we want a async broadcast of
 pub(crate) struct StreamRequest {
     pub(crate) name: StreamKind,
@@ -119,6 +128,7 @@ impl StreamData {
                 .map(|handle| handle.is_finished())
                 .unwrap_or(true)
         {
+            log::debug!("Restart stream");
             self.restart().await?;
         }
         Ok(())
@@ -143,23 +153,32 @@ impl StreamData {
                         let result = instance.run_task(|camera| {
                             let stream_tx = sender.clone();
                             Box::pin(async move {
-                                let mut stream_data = camera.start_video(name, 0, strict).await?;
-                                loop {
-                                    let data = stream_data.get_data().await??;
-                                    if stream_tx.send(data).is_err() {
-                                        // If noone is listening for the stream we error and stop here
-                                        break;
-                                    };
-                                }
-                                Ok(())
+                                let res = async {
+                                    let mut stream_data = camera.start_video(name, 0, strict).await?;
+                                    loop {
+                                        let data = stream_data.get_data().await??;
+                                        if stream_tx.send(data).is_err() {
+                                            // If noone is listening for the stream we error and stop here
+                                            break;
+                                        };
+                                    }
+                                    Result::<(),anyhow::Error>::Ok(())
+                                }.await;
+                                Ok(res)
                             })
                         }).await;
                         match result {
-                            Ok(()) => {
+                            Ok(Ok(())) => {
                                 log::debug!("Video Stream Stopped due to no listeners");
                                 break;
                             },
-                            Err(e) => log::debug!("Video Stream Restarting Due to Error: {:?}", e),
+                            Ok(Err(e)) => {
+                                log::debug!("Video Stream Restarting Due to Error: {:?}", e);
+                            },
+                            Err(e) => {
+                                log::debug!("Video Stream Stopped Due to Instance Error: {:?}", e);
+                                break;
+                            },
                         }
                     }
                     Ok(())
