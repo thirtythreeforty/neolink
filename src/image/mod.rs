@@ -18,6 +18,7 @@
 /// ```
 ///
 use anyhow::{Context, Result};
+use futures::stream::StreamExt;
 use log::*;
 use neolink_core::{bc_protocol::*, bcmedia::model::*};
 use tokio::{fs::File, io::AsyncWriteExt};
@@ -26,25 +27,19 @@ mod cmdline;
 mod gst;
 
 use super::config::Config;
-use crate::utils::{connect_and_login, find_camera_by_name};
+use crate::common::neocam::NeoReactor;
 pub(crate) use cmdline::Opt;
 
 /// Entry point for the image subcommand
 ///
 /// Opt is the command line options
-pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
-    let camera_config = find_camera_by_name(&config, &opt.camera).context(
-        "failed to load config file or find the camera. Check the path and name of the camera.",
-    )?;
-
-    // Set up camera to recieve the stream
-    let camera = connect_and_login(camera_config)
-        .await
-        .context("Failed to connect to the camera, check credentials and network")?;
+pub(crate) async fn main(opt: Opt, config: Config, reactor: NeoReactor) -> Result<()> {
+    let config = config.get_camera_config(&opt.camera)?;
+    let camera = reactor.get_or_insert(config.clone()).await?;
 
     if opt.use_stream {
         let mut stream_data = camera
-            .start_video(StreamKind::Main, 0, camera_config.strict)
+            .stream(StreamKind::Main)
             .await
             .context("Failed to start video")?;
 
@@ -52,7 +47,7 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         let buf;
         let vid_type;
         loop {
-            if let BcMedia::Iframe(frame) = stream_data.get_data().await?? {
+            if let Some(Ok(BcMedia::Iframe(frame))) = stream_data.next().await {
                 vid_type = frame.video_type;
                 buf = frame.data;
                 break;
@@ -64,9 +59,9 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
 
         // Keep sending both IFrame or PFrame until finished
         while sender.is_finished().await.is_none() {
-            let buf = match stream_data.get_data().await?? {
-                BcMedia::Iframe(frame) => frame.data,
-                BcMedia::Pframe(frame) => frame.data,
+            let buf = match stream_data.next().await {
+                Some(Ok(BcMedia::Iframe(frame))) => frame.data,
+                Some(Ok(BcMedia::Pframe(frame))) => frame.data,
                 _ => {
                     continue;
                 }
@@ -82,19 +77,18 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         debug!("Sending EOS");
         let _ = sender.eos().await; // Ignore return because if pipeline is finished this will error
         let _ = sender.join().await;
-
-        let _ = stream_data.shutdown().await;
     } else {
         // Simply use the snap command
         debug!("Using the snap command");
         let file_path = opt.file_path.with_extension("jpeg");
         let mut buffer = File::create(file_path).await?;
-        let jpeg_data = camera.get_snapshot().await?;
+        let jpeg_data = camera
+            .run_task(|camera| Box::pin(async move { Ok(camera.get_snapshot().await?) }))
+            .await?;
         buffer.write_all(jpeg_data.as_slice()).await?;
     }
 
-    let _ = camera.logout().await;
-    camera.shutdown().await?;
+    camera.shutdown().await;
 
     Ok(())
 }

@@ -5,62 +5,167 @@
 //!    Common restart code
 //!    Clonable interface to share amongst threads
 use crate::{config::CameraConfig, utils::connect_and_login, Result};
-use neolink_core::bc_protocol::BcCamera;
+use neolink_core::bc_protocol::{BcCamera, StreamKind};
 
 use anyhow::anyhow;
 use futures::stream::StreamExt;
+use neolink_core::bcmedia::model::BcMedia;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{Arc, Weak};
 use tokio::sync::{
-    mpsc::{channel as mpsc, Sender as MpscSender, WeakSender as MpscWeakSender},
+    broadcast::{channel as broadcast, Sender as BroadcastSender},
+    mpsc::{channel as mpsc, Receiver as MpscReceiver, Sender as MpscSender},
     oneshot::{channel as oneshot, Sender as OneshotSender},
     watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
 };
 use tokio::time::{interval, sleep, Duration, Instant};
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tokio_util::sync::CancellationToken;
 
 enum NeoCamCommand {
     HangUp,
     Instance(OneshotSender<Result<NeoInstance>>),
+    Stream(StreamKind, OneshotSender<BroadcastStream<BcMedia>>),
 }
 /// The underlying camera binding
 struct NeoCam {
-    config: WatchReceiver<CameraConfig>,
     cancel: CancellationToken,
-    camera_watch: WatchSender<Weak<BcCamera>>,
-    commander: ReceiverStream<NeoCamCommand>,
-    sender: MpscWeakSender<NeoCamCommand>,
+    config_watch: WatchSender<CameraConfig>,
+    commander: MpscSender<NeoCamCommand>,
+    camera_watch: WatchReceiver<Weak<BcCamera>>,
 }
 
 impl NeoCam {
-    async fn init(config: CameraConfig) -> Result<(WatchSender<CameraConfig>, NeoInstance)> {
-        let (watch_config_tx, watch_config_rx) = watch(config);
-        let (camera_watch_tx, _) = watch(Weak::new());
+    async fn new(config: CameraConfig) -> Result<NeoCam> {
         let (commander_tx, commander_rx) = mpsc(100);
-        let mut me = Self {
-            config: watch_config_rx,
+        let (watch_config_tx, watch_config_rx) = watch(config.clone());
+        let (camera_watch_tx, camera_watch_rx) = watch(Weak::new());
+        let (stream_request_tx, stream_request_rx) = mpsc(100);
+
+        let me = Self {
             cancel: CancellationToken::new(),
-            camera_watch: camera_watch_tx,
-            commander: ReceiverStream::new(commander_rx),
-            sender: commander_tx.downgrade(),
+            config_watch: watch_config_tx,
+            commander: commander_tx.clone(),
+            camera_watch: camera_watch_rx.clone(),
         };
 
-        tokio::task::spawn(async move { me.run().await });
+        // This thread recieves messages from the instances
+        // and acts on it.
+        //
+        // This thread must be sta rted first so that we can begin creating instances for the
+        // other threads
+        let sender_cancel = me.cancel.clone();
+        let mut commander_rx = ReceiverStream::new(commander_rx);
+        let strict = config.strict;
+        let thread_commander_tx = commander_tx.clone();
+        tokio::task::spawn(async move {
+            let thread_cancel = sender_cancel.clone();
+            let res = tokio::select! {
+                _ = sender_cancel.cancelled() => Result::Ok(()),
+                v = async {
+                    while let Some(command) = commander_rx.next().await {
+                        match command {
+                            NeoCamCommand::HangUp => {
+                                sender_cancel.cancel();
+                                log::debug!("Cancel:: NeoCamCommand::HangUp");
+                                return Result::<(), anyhow::Error>::Ok(());
+                            }
+                            NeoCamCommand::Instance(result) => {
+                                let instance = NeoInstance::new(
+                                    camera_watch_rx.clone(),
+                                    thread_commander_tx.clone(),
+                                    thread_cancel.clone(),
+                                );
+                                let _ = result.send(instance);
+                            }
+                            NeoCamCommand::Stream(name, sender) => {
+                                stream_request_tx.send(
+                                    StreamRequest {
+                                        name,
+                                        sender,
+                                        strict,
+                                    }
+                                ).await?;
+                            },
+                        }
+                    }
+                    Ok(())
+                } => v
+            };
+            log::debug!("Control thread terminated");
+            res
+        });
+
+        let mut cam_thread =
+            NeoCamThread::new(watch_config_rx, camera_watch_tx, me.cancel.clone()).await;
+
+        // This thread maintains the camera loop
+        //
+        // It will keep it logged and reconnect
+        tokio::task::spawn(async move { cam_thread.run().await });
 
         let (instance_tx, instance_rx) = oneshot();
         commander_tx
             .send(NeoCamCommand::Instance(instance_tx))
             .await?;
 
-        Ok((watch_config_tx, instance_rx.await??))
+        let instance = instance_rx.await??;
+
+        // This thread maintains the streams
+        let stream_instance = instance.subscribe().await?;
+        let stream_cancel = me.cancel.clone();
+        let mut stream_thread =
+            NeoCamStreamThread::new(stream_request_rx, stream_instance, stream_cancel).await;
+
+        tokio::task::spawn(async move { stream_thread.run().await });
+
+        Ok(me)
+    }
+
+    async fn subscribe(&self) -> Result<NeoInstance> {
+        NeoInstance::new(
+            self.camera_watch.clone(),
+            self.commander.clone(),
+            self.cancel.clone(),
+        )
+    }
+
+    pub(crate) async fn shutdown(&self) {
+        let _ = self.commander.send(NeoCamCommand::HangUp).await;
+        self.cancel.cancelled().await
+    }
+}
+
+impl Drop for NeoCam {
+    fn drop(&mut self) {
+        log::debug!("Cancel:: NeoCam::drop");
+        self.cancel.cancel();
+    }
+}
+
+struct NeoCamThread {
+    config: WatchReceiver<CameraConfig>,
+    cancel: CancellationToken,
+    camera_watch: WatchSender<Weak<BcCamera>>,
+}
+
+impl NeoCamThread {
+    async fn new(
+        watch_config_rx: WatchReceiver<CameraConfig>,
+        camera_watch_tx: WatchSender<Weak<BcCamera>>,
+        cancel: CancellationToken,
+    ) -> Self {
+        Self {
+            config: watch_config_rx,
+            cancel,
+            camera_watch: camera_watch_tx,
+        }
     }
     async fn run_camera(&mut self, config: &CameraConfig) -> Result<()> {
         let camera = Arc::new(connect_and_login(config).await?);
 
         self.camera_watch.send_replace(Arc::downgrade(&camera));
 
-        let cancel = self.cancel.clone();
         let cancel_check = self.cancel.clone();
         // Now we wait for a disconnect
         tokio::select! {
@@ -82,21 +187,6 @@ impl NeoCam {
                     }
                 }
             } => v,
-            v = async {
-                while let Some(command) = self.commander.next().await {
-                    match command {
-                        NeoCamCommand::HangUp => {
-                            cancel.cancel();
-                            return Ok(());
-                        }
-                        NeoCamCommand::Instance(result) => {
-                            let instance = NeoInstance::new(self);
-                            let _ = result.send(instance);
-                        }
-                    }
-                }
-                Ok(())
-            } => v
         }?;
 
         let _ = camera.logout().await;
@@ -150,6 +240,7 @@ impl NeoCam {
             match result {
                 Ok(()) => {
                     // Normal shutdown
+                    log::debug!("Cancel:: NeoCamThread::NormalShutdown");
                     self.cancel.cancel();
                     return Ok(());
                 }
@@ -178,9 +269,122 @@ impl NeoCam {
     }
 }
 
-impl Drop for NeoCam {
+impl Drop for NeoCamThread {
     fn drop(&mut self) {
+        log::debug!("Cancel:: NeoCamThread::drop");
         self.cancel.cancel();
+    }
+}
+
+struct StreamRequest {
+    name: StreamKind,
+    sender: OneshotSender<BroadcastStream<BcMedia>>,
+    strict: bool,
+}
+
+struct StreamData {
+    sender: BroadcastSender<BcMedia>,
+    name: StreamKind,
+    instance: NeoInstance,
+    strict: bool,
+    cancel: CancellationToken,
+}
+
+impl StreamData {
+    async fn run(&self) -> Result<()> {
+        let thread_stream_tx = self.sender.clone();
+        let cancel = self.cancel.clone();
+        let instance = self.instance.subscribe().await?;
+        let name = self.name;
+        let strict = self.strict;
+        tokio::task::spawn(async move {
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    Result::<(), anyhow::Error>::Ok(())
+                },
+                v = async {
+                    loop {
+                        instance.run_task(|camera| {
+                            let stream_tx = thread_stream_tx.clone();
+                            Box::pin(async move {
+                                let mut stream_data = camera.start_video(name, 0, strict).await?;
+                                loop {
+                                    let data = stream_data.get_data().await??;
+                                    stream_tx.send(data)?;
+                                }
+                            })
+                        }).await?;
+                    }
+                }    => v,
+            }
+        });
+
+        Ok(())
+    }
+}
+
+impl Drop for StreamData {
+    fn drop(&mut self) {
+        log::debug!("Cancel:: StreamData::drop");
+        self.cancel.cancel();
+    }
+}
+
+/// This thread will start and stop the camera
+/// based on the number of listeners to the
+/// async streams
+struct NeoCamStreamThread {
+    streams: HashMap<StreamKind, StreamData>,
+    stream_request_rx: MpscReceiver<StreamRequest>,
+    cancel: CancellationToken,
+    instance: NeoInstance,
+}
+
+impl NeoCamStreamThread {
+    async fn new(
+        stream_request_rx: MpscReceiver<StreamRequest>,
+        instance: NeoInstance,
+        cancel: CancellationToken,
+    ) -> Self {
+        Self {
+            streams: Default::default(),
+            stream_request_rx,
+            cancel,
+            instance,
+        }
+    }
+    async fn run(&mut self) -> Result<()> {
+        let thread_cancel = self.cancel.clone();
+        tokio::select! {
+            _ = thread_cancel.cancelled() => Ok(()),
+            v = async {
+                while let Some(request) = self.stream_request_rx.recv().await {
+                    match self.streams.entry(request.name) {
+                        Entry::Occupied(occ) => {
+                            let _ = request
+                                .sender
+                                .send(BroadcastStream::new(occ.get().sender.subscribe()));
+                        }
+                        Entry::Vacant(vac) => {
+                            // Make a new streaming instance
+
+                            let (sender, stream_rx) = broadcast(1000);
+                            let data = StreamData {
+                                sender,
+                                name: request.name,
+                                instance: self.instance.subscribe().await?,
+                                strict: request.strict,
+                                cancel: CancellationToken::new(),
+                            };
+                            data.run().await?;
+                            vac.insert(data);
+                            let _ = request.sender.send(BroadcastStream::new(stream_rx));
+                        }
+                    }
+                }
+                Ok(())
+            } => v,
+        }
     }
 }
 
@@ -191,20 +395,21 @@ impl Drop for NeoCam {
 /// The camera watch is used as an event to be triggered
 /// whenever the camera is lost/updated
 pub(crate) struct NeoInstance {
-    camera_watch: tokio::sync::watch::Receiver<Weak<BcCamera>>,
+    camera_watch: WatchReceiver<Weak<BcCamera>>,
     camera_control: MpscSender<NeoCamCommand>,
     cancel: CancellationToken,
 }
 
 impl NeoInstance {
-    fn new(cam: &NeoCam) -> Result<Self> {
+    fn new(
+        camera_watch: WatchReceiver<Weak<BcCamera>>,
+        camera_control: MpscSender<NeoCamCommand>,
+        cancel: CancellationToken,
+    ) -> Result<Self> {
         Ok(Self {
-            camera_watch: cam.camera_watch.subscribe(),
-            camera_control: cam
-                .sender
-                .upgrade()
-                .ok_or_else(|| anyhow!("Camera is shutting down"))?,
-            cancel: cam.cancel.clone(),
+            camera_watch,
+            camera_control,
+            cancel,
         })
     }
 
@@ -233,7 +438,8 @@ impl NeoInstance {
     where
         F: for<'a> Fn(
             &'a BcCamera,
-        ) -> std::pin::Pin<Box<dyn futures::Future<Output = Result<T>> + 'a>>,
+        )
+            -> std::pin::Pin<Box<dyn futures::Future<Output = Result<T>> + Send + 'a>>,
     {
         let mut camera_watch = self.camera_watch.clone();
         let mut camera = camera_watch.borrow_and_update().upgrade();
@@ -285,6 +491,14 @@ impl NeoInstance {
             }
         }
     }
+
+    pub(crate) async fn stream(&self, name: StreamKind) -> Result<BroadcastStream<BcMedia>> {
+        let (instance_tx, instance_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::Stream(name, instance_tx))
+            .await?;
+        Ok(instance_rx.await?)
+    }
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -293,11 +507,6 @@ enum NeoReactorCommand {
     Get(String, OneshotSender<Result<NeoInstance>>),
     GetOrInsert(CameraConfig, OneshotSender<Result<NeoInstance>>),
     UpdateOrInsert(CameraConfig, OneshotSender<Result<NeoInstance>>),
-}
-
-struct NeoReactorData {
-    instance: NeoInstance,
-    config_sender: WatchSender<CameraConfig>,
 }
 
 /// Reactor handles the collection of cameras
@@ -318,12 +527,12 @@ impl NeoReactor {
         let cancel = me.cancel.clone();
         let cancel2 = me.cancel.clone();
         tokio::task::spawn(async move {
-            let mut instances: HashMap<String, NeoReactorData> = Default::default();
+            let mut instances: HashMap<String, NeoCam> = Default::default();
 
             tokio::select! {
                 _ = cancel.cancelled() => {
                     for instance in instances.values() {
-                        instance.instance.shutdown().await;
+                        instance.shutdown().await;
                     }
                     Ok(())
                 },
@@ -333,8 +542,9 @@ impl NeoReactor {
                         match command {
                             NeoReactorCommand::HangUp =>  {
                                 for instance in instances.values() {
-                                    instance.instance.shutdown().await;
+                                    instance.shutdown().await;
                                 }
+                                log::debug!("Cancel:: NeoReactorCommand::HangUp");
                                 cancel2.cancel();
                                 return Result::<(), anyhow::Error>::Ok(());
                             }
@@ -342,41 +552,38 @@ impl NeoReactor {
                                 let new = instances
                                     .get(&name)
                                     .ok_or_else(|| anyhow!("Camera not found"))
-                                    .map(|data| data.instance.subscribe())?
+                                    .map(|data| data.subscribe())?
                                     .await;
                                 let _ = sender.send(new);
                             }
                             NeoReactorCommand::GetOrInsert(config, sender) => {
                                 let name = config.name.clone();
                                 let new = match instances.entry(name) {
-                                    Entry::Occupied(occ) => occ.get().instance.subscribe().await,
+                                    Entry::Occupied(occ) => occ.get().subscribe().await,
                                     Entry::Vacant(vac) => {
-                                        let (config_sender, instance) = NeoCam::init(config).await?;
-                                        vac.insert(NeoReactorData {
-                                            instance,
-                                            config_sender,
-                                        })
-                                        .instance
+                                        log::debug!("Inserting new insance");
+                                        let cam = NeoCam::new(config).await?;
+                                        log::debug!("New instance created");
+                                        vac.insert(
+                                            cam,
+                                        )
                                         .subscribe()
                                         .await
                                     }
                                 };
+                                log::debug!("Got instance from reactor");
                                 let _ = sender.send(new);
                             },
                             NeoReactorCommand::UpdateOrInsert(config, sender) => {
                                 let name = config.name.clone();
                                 let new = match instances.entry(name) {
                                     Entry::Occupied(occ) => {
-                                        occ.get().config_sender.send(config)?;
-                                        occ.get().instance.subscribe().await
+                                        occ.get().config_watch.send(config)?;
+                                        occ.get().subscribe().await
                                     },
                                     Entry::Vacant(vac) => {
-                                        let (config_sender, instance) = NeoCam::init(config).await?;
-                                        vac.insert(NeoReactorData {
-                                            instance,
-                                            config_sender,
-                                        })
-                                        .instance
+                                        let cam = NeoCam::new(config).await?;
+                                        vac.insert(cam)
                                         .subscribe()
                                         .await
                                     }
@@ -433,6 +640,7 @@ impl NeoReactor {
 
 impl Drop for NeoReactor {
     fn drop(&mut self) {
+        log::debug!("Cancel:: NeoReactor::drop");
         self.cancel.cancel();
     }
 }

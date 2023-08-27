@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
             mqtt::main(opts, config).await?;
         }
         Some(Command::Image(opts)) => {
-            image::main(opts, config).await?;
+            image::main(opts, config, neo_reactor.clone()).await?;
         }
         Some(Command::Battery(opts)) => {
             battery::main(opts, config, neo_reactor.clone()).await?;
