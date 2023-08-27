@@ -1,12 +1,16 @@
 //! This thread will start and stop the camera
-//! based on the number of listeners to the
-//! async streams
+//!
+//! If there are no listeners to the broadcast
+//! then it will hangup
 
 use std::collections::{hash_map::Entry, HashMap};
-use tokio::sync::{
-    broadcast::{channel as broadcast, Sender as BroadcastSender},
-    mpsc::Receiver as MpscReceiver,
-    oneshot::Sender as OneshotSender,
+use tokio::{
+    sync::{
+        broadcast::{channel as broadcast, Sender as BroadcastSender},
+        mpsc::Receiver as MpscReceiver,
+        oneshot::Sender as OneshotSender,
+    },
+    task::JoinHandle,
 };
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_util::sync::CancellationToken;
@@ -42,7 +46,8 @@ impl NeoCamStreamThread {
             v = async {
                 while let Some(request) = self.stream_request_rx.recv().await {
                     match self.streams.entry(request.name) {
-                        Entry::Occupied(occ) => {
+                        Entry::Occupied(mut occ) => {
+                            occ.get_mut().ensure_running().await?;
                             let _ = request
                                 .sender
                                 .send(BroadcastStream::new(occ.get().sender.subscribe()));
@@ -51,14 +56,12 @@ impl NeoCamStreamThread {
                             // Make a new streaming instance
 
                             let (sender, stream_rx) = broadcast(1000);
-                            let data = StreamData {
+                            let data = StreamData::new(
                                 sender,
-                                name: request.name,
-                                instance: self.instance.subscribe().await?,
-                                strict: request.strict,
-                                cancel: CancellationToken::new(),
-                            };
-                            data.run().await?;
+                                request.name,
+                                self.instance.subscribe().await?,
+                                request.strict,
+                            ).await?;
                             vac.insert(data);
                             let _ = request.sender.send(BroadcastStream::new(stream_rx));
                         }
@@ -82,39 +85,96 @@ pub(crate) struct StreamData {
     sender: BroadcastSender<BcMedia>,
     name: StreamKind,
     instance: NeoInstance,
-    strict: bool,
     cancel: CancellationToken,
+    handle: Option<JoinHandle<Result<()>>>,
+    strict: bool,
 }
 
 impl StreamData {
-    async fn run(&self) -> Result<()> {
-        let thread_stream_tx = self.sender.clone();
+    async fn new(
+        sender: BroadcastSender<BcMedia>,
+        name: StreamKind,
+        instance: NeoInstance,
+        strict: bool,
+    ) -> Result<Self> {
+        let mut me = Self {
+            name,
+            cancel: CancellationToken::new(),
+            sender,
+            instance,
+            handle: None,
+            strict,
+        };
+
+        me.restart().await?;
+
+        Ok(me)
+    }
+
+    async fn ensure_running(&mut self) -> Result<()> {
+        if self.cancel.is_cancelled()
+            || self
+                .handle
+                .as_ref()
+                .map(|handle| handle.is_finished())
+                .unwrap_or(true)
+        {
+            self.restart().await?;
+        }
+        Ok(())
+    }
+
+    async fn restart(&mut self) -> Result<()> {
+        self.shutdown().await?;
+        self.cancel = CancellationToken::new();
+
         let cancel = self.cancel.clone();
+        let sender = self.sender.clone();
         let instance = self.instance.subscribe().await?;
         let name = self.name;
         let strict = self.strict;
-        tokio::task::spawn(async move {
+        self.handle = Some(tokio::task::spawn(async move {
             tokio::select! {
                 _ = cancel.cancelled() => {
                     Result::<(), anyhow::Error>::Ok(())
                 },
                 v = async {
                     loop {
-                        instance.run_task(|camera| {
-                            let stream_tx = thread_stream_tx.clone();
+                        let result = instance.run_task(|camera| {
+                            let stream_tx = sender.clone();
                             Box::pin(async move {
                                 let mut stream_data = camera.start_video(name, 0, strict).await?;
                                 loop {
                                     let data = stream_data.get_data().await??;
-                                    stream_tx.send(data)?;
+                                    if stream_tx.send(data).is_err() {
+                                        // If noone is listening for the stream we error and stop here
+                                        break;
+                                    };
                                 }
+                                Ok(())
                             })
-                        }).await?;
+                        }).await;
+                        match result {
+                            Ok(()) => {
+                                log::debug!("Video Stream Stopped due to no listeners");
+                                break;
+                            },
+                            Err(e) => log::debug!("Video Stream Restarting Due to Error: {:?}", e),
+                        }
                     }
+                    Ok(())
                 }    => v,
             }
-        });
+        }));
 
+        Ok(())
+    }
+
+    async fn shutdown(&mut self) -> Result<()> {
+        self.cancel.cancel();
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.await;
+        }
         Ok(())
     }
 }
