@@ -88,7 +88,6 @@ local message_types = {
   [15]="<FileInfoList>",
   [16]="<FileInfoList>",
   [18]="<PtzControl>",
-  [19]="<PtzPreset>",
   [23]="Reboot",
   [25]="<VideoInput> (write)",
   [26]="<VideoInput>", -- <InputAdvanceCfg>
@@ -694,7 +693,7 @@ local function udp_reassemple(udp_header, subbuffer, more, pinfo, tree)
     local needed = start_fragment.result
     if needed == "DONE" then
       if start_fragment.message_id == udp_header.packet_count then
-        process_bc_message(start_fragment.buffer:tvb("UDP Reassemble"), pinfo, tree)
+        process_bc_message(start_fragment.buffer:tvb("UDP Reassembly"), pinfo, tree)
       end
     elseif needed == "+1" then
       -- Cannot handle in UDP...

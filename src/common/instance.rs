@@ -9,19 +9,16 @@ use std::sync::Weak;
 use tokio::sync::{
     mpsc::Sender as MpscSender, oneshot::channel as oneshot, watch::Receiver as WatchReceiver,
 };
-use tokio_stream::wrappers::BroadcastStream;
 use tokio_util::sync::CancellationToken;
 
-use super::NeoCamCommand;
-use crate::Result;
-use neolink_core::{
-    bc_protocol::{BcCamera, StreamKind},
-    bcmedia::model::BcMedia,
-};
+use super::{NeoCamCommand, StreamInstance};
+use crate::{config::CameraConfig, Result};
+use neolink_core::bc_protocol::{BcCamera, StreamKind};
 
 /// This instance is the primary interface used throughout the app
 ///
 /// It uses channels to run all tasks on the actual shared `[NeoCam]`
+#[derive(Clone)]
 pub(crate) struct NeoInstance {
     camera_watch: WatchReceiver<Weak<BcCamera>>,
     camera_control: MpscSender<NeoCamCommand>,
@@ -42,6 +39,11 @@ impl NeoInstance {
     }
 
     /// Create a new instance to the same camera
+    ///
+    /// Unlike clone this one will contact the NeoCam and grab it from
+    /// there. There is no real benifit to this, other then being
+    /// able to check if the thread is alive. Which is why it can
+    /// fail.
     pub(crate) async fn subscribe(&self) -> Result<Self> {
         let (instance_tx, instance_rx) = oneshot();
         self.camera_control
@@ -120,10 +122,42 @@ impl NeoInstance {
         }
     }
 
-    pub(crate) async fn stream(&self, name: StreamKind) -> Result<BroadcastStream<BcMedia>> {
+    pub(crate) async fn stream(&self, name: StreamKind) -> Result<StreamInstance> {
         let (instance_tx, instance_rx) = oneshot();
         self.camera_control
             .send(NeoCamCommand::Stream(name, instance_tx))
+            .await?;
+        Ok(instance_rx.await?)
+    }
+
+    pub(crate) async fn low_stream(&self) -> Result<Option<StreamInstance>> {
+        let (instance_tx, instance_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::LowStream(instance_tx))
+            .await?;
+        Ok(instance_rx.await?)
+    }
+
+    pub(crate) async fn high_stream(&self) -> Result<Option<StreamInstance>> {
+        let (instance_tx, instance_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::HighStream(instance_tx))
+            .await?;
+        Ok(instance_rx.await?)
+    }
+
+    pub(crate) async fn streams(&self) -> Result<Vec<StreamInstance>> {
+        let (instance_tx, instance_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::Streams(instance_tx))
+            .await?;
+        Ok(instance_rx.await?)
+    }
+
+    pub(crate) async fn config(&self) -> Result<WatchReceiver<CameraConfig>> {
+        let (instance_tx, instance_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::Config(instance_tx))
             .await?;
         Ok(instance_rx.await?)
     }

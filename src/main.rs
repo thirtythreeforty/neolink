@@ -47,6 +47,7 @@ use cmdline::{Command, Opt};
 use common::NeoReactor;
 use config::Config;
 use console_subscriber as _;
+pub(crate) type AnyResult<T> = Result<T, anyhow::Error>;
 
 #[cfg(tokio_unstable)]
 fn tokio_console_enable() {
@@ -94,10 +95,10 @@ async fn main() -> Result<()> {
                 "Deprecated command line option. Please use: `neolink rtsp --config={:?}`",
                 config
             );
-            rtsp::main(rtsp::Opt {}, config).await?;
+            rtsp::main(rtsp::Opt {}, config, neo_reactor.clone()).await?;
         }
         Some(Command::Rtsp(opts)) => {
-            rtsp::main(opts, config).await?;
+            rtsp::main(opts, config, neo_reactor.clone()).await?;
         }
         Some(Command::StatusLight(opts)) => {
             statusled::main(opts, config, neo_reactor.clone()).await?;

@@ -22,6 +22,17 @@ pub enum StreamKind {
     Extern,
 }
 
+impl StreamKind {
+    pub fn to_string(&self) -> String {
+        match self {
+            StreamKind::Main => "mainStream",
+            StreamKind::Sub => "subStream",
+            StreamKind::Extern => "externStream",
+        }
+        .to_string()
+    }
+}
+
 /// A handle on currently streaming data
 ///
 /// The data can be pulled using `get_data` which returns raw BcMedia packets

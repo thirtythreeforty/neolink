@@ -31,6 +31,7 @@ mod reboot;
 mod resolution;
 mod snap;
 mod stream;
+mod stream_info;
 mod talk;
 mod time;
 mod version;

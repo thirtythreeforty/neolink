@@ -354,7 +354,7 @@ Message have zero to two payloads.
     </PtzControl>
     </body>
     ```
-    
+
     - **Notes** : The known movement commands are `"left"`, `"right"`, `"up"`, `"down"`, `"leftUp"`,
                   `"leftDown"`, `"rightUp"`, `"rightDown"` and `"stop"` although the diagonal movement
                   does not seem to work.
@@ -394,7 +394,7 @@ Message have zero to two payloads.
     </PtzPreset>
     </body>
     ```
-    
+
     - **Notes** : The known values for command are `"setPos"` and `"toPos"`
 
   - Camera
@@ -2608,3 +2608,52 @@ Message have zero to two payloads.
     ```
 
     **Notes**: Sent after login, with a message handle of 0 (usually 0 means not sent in reply to a specific request). TODO: Find out how to request on demand.
+
+- 252 <BatteryList>
+  - Client
+      None: This is a camera event
+  - Camera:
+
+    Standard header
+  - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <BatteryList version="1.1">
+    <BatteryInfo>
+    <channelId>0</channelId>
+    <chargeStatus>charging</chargeStatus>
+    <adapterStatus>solarPanel</adapterStatus>
+    <voltage>4083</voltage>
+    <current>-396</current>
+    <temperature>32</temperature>
+    <batteryPercent>100</batteryPercent>
+    <lowPower>0</lowPower>
+    <batteryVersion>2</batteryVersion>
+    </BatteryInfo>
+    </BatteryList>
+    </body>
+    ```
+
+- 255 <Net3g4gInfo>
+
+  - Client
+        NONE: This is a camera event
+
+  - Camera:
+        Standard header
+
+  - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Net3g4gInfo version="1.1">
+    <sigIntensityLevel>5</sigIntensityLevel>
+    <sigIntensityValue>21</sigIntensityValue>
+    <netMode>7</netMode>
+    <mobileOperator>72403</mobileOperator>
+    </Net3g4gInfo>
+    </body>
+    ```

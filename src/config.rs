@@ -1,6 +1,6 @@
 use crate::mqtt::Discoveries;
 use lazy_static::lazy_static;
-use neolink_core::bc_protocol::{DiscoveryMethods, PrintFormat};
+use neolink_core::bc_protocol::{DiscoveryMethods, PrintFormat, StreamKind};
 use regex::Regex;
 use serde::Deserialize;
 use std::clone::Clone;
@@ -9,8 +9,6 @@ use validator::{Validate, ValidationError};
 use validator_derive::Validate;
 
 lazy_static! {
-    static ref RE_STREAM_SRC: Regex =
-        Regex::new(r"^(mainStream|subStream|externStream|both|all)$").unwrap();
     static ref RE_TLS_CLIENT_AUTH: Regex = Regex::new(r"^(none|request|require)$").unwrap();
     static ref RE_PAUSE_MODE: Regex = Regex::new(r"^(black|still|test|none)$").unwrap();
     static ref RE_MAXENC_SRC: Regex =
@@ -61,6 +59,62 @@ impl Config {
     }
 }
 
+#[derive(Debug, Deserialize, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum StreamConfig {
+    #[serde(alias = "none")]
+    None,
+    #[serde(alias = "all")]
+    All,
+    #[serde(alias = "both")]
+    Both,
+    #[serde(
+        alias = "main",
+        alias = "mainStream",
+        alias = "mainstream",
+        alias = "MainStream"
+    )]
+    Main,
+    #[serde(
+        alias = "sub",
+        alias = "subStream",
+        alias = "substream",
+        alias = "SubStream"
+    )]
+    Sub,
+    #[serde(
+        alias = "extern",
+        alias = "externStream",
+        alias = "externstream",
+        alias = "ExternStream"
+    )]
+    Extern,
+}
+
+impl StreamConfig {
+    pub(crate) fn to_stream_kinds(&self) -> Vec<StreamKind> {
+        match self {
+            StreamConfig::All => {
+                vec![StreamKind::Main, StreamKind::Extern, StreamKind::Sub]
+            }
+            StreamConfig::Both => {
+                vec![StreamKind::Main, StreamKind::Sub]
+            }
+            StreamConfig::Main => {
+                vec![StreamKind::Main]
+            }
+            StreamConfig::Sub => {
+                vec![StreamKind::Sub]
+            }
+            StreamConfig::Extern => {
+                vec![StreamKind::Extern]
+            }
+            StreamConfig::None => {
+                vec![]
+            }
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Validate, Clone)]
 #[validate(schema(function = "validate_camera_config"))]
 pub(crate) struct CameraConfig {
@@ -75,13 +129,8 @@ pub(crate) struct CameraConfig {
     pub(crate) username: String,
     pub(crate) password: Option<String>,
 
-    #[validate(regex(
-        path = "RE_STREAM_SRC",
-        message = "Incorrect stream source",
-        code = "stream"
-    ))]
     #[serde(default = "default_stream")]
-    pub(crate) stream: String,
+    pub(crate) stream: StreamConfig,
 
     pub(crate) permitted_users: Option<Vec<String>>,
 
@@ -255,8 +304,8 @@ fn default_bind_port() -> u16 {
     8554
 }
 
-fn default_stream() -> String {
-    "both".to_string()
+fn default_stream() -> StreamConfig {
+    StreamConfig::All
 }
 
 fn default_certificate() -> Option<String> {

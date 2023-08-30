@@ -100,6 +100,9 @@ pub struct BcXml {
     /// Recieved AND send for the snap message
     #[yaserde(rename = "Snap")]
     pub snap: Option<Snap>,
+    /// Thre list of streams and their configuration
+    #[yaserde(rename = "StreamInfoList")]
+    pub stream_info_list: Option<StreamInfoList>,
 }
 
 impl BcXml {
@@ -187,6 +190,9 @@ pub struct DeviceInfo {
 pub struct VersionInfo {
     /// Name assigned to the camera
     pub name: String,
+    /// Model Name
+    #[yaserde(rename = "type")]
+    pub model: Option<String>,
     /// Camera's serial number
     pub serialNumber: String,
     /// The camera build day e.g. `"build 19110800"`
@@ -721,7 +727,7 @@ pub struct LinkType {
     pub link_type: String,
 }
 
-/// The Link Type contains the type of connection present
+/// The Snap contains the binary jpeg image details
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct Snap {
     #[yaserde(rename = "channelId")]
@@ -749,6 +755,56 @@ pub struct Snap {
     /// value is only set on recieve
     #[yaserde(rename = "pictureSize")]
     pub picture_size: Option<u32>,
+}
+
+/// The primary reply when asked about the stream info
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct StreamInfoList {
+    /// The stream infos. There is usually only one of these
+    #[yaserde(rename = "StreamInfo")]
+    pub stream_infos: Vec<StreamInfo>,
+}
+
+/// The individual reply about the stream info
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct StreamInfo {
+    /// Bits in the channel number. Observed values `1`
+    #[yaserde(rename = "channelBits")]
+    pub channel_bits: u32,
+    /// List of encode tabeles. These hold the actual stream data
+    #[yaserde(rename = "encodeTable")]
+    pub encode_tables: Vec<EncodeTable>,
+}
+
+/// The individual reply about the stream info
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
+pub struct EncodeTable {
+    /// The internal name of the stream observed values `"mainStream"`, `"subStream"`
+    #[yaserde(rename = "type")]
+    pub name: String,
+    /// The resolution of the stream
+    pub resolution: StreamResolution,
+    /// The default framerate. This is sometimes an index into the table
+    #[yaserde(rename = "defaultFramerate")]
+    pub default_framerate: u32,
+    /// The default bitrate. This is sometimes an index into the table
+    #[yaserde(rename = "defaultBitrate")]
+    pub default_bitrate: u32,
+    /// Table of valid framerates
+    #[yaserde(rename = "framerateTable")]
+    pub framerate_table: Vec<u32>,
+    /// Table of valid bitrates
+    #[yaserde(rename = "bitrateTable")]
+    pub bitrate_table: Vec<u32>,
+}
+
+/// The resolution of the stream
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
+pub struct StreamResolution {
+    /// Width of the stream
+    pub width: u32,
+    /// Height of the stream
+    pub height: u32,
 }
 
 /// Convience function to return the xml version used throughout the library

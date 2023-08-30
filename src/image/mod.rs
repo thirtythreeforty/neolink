@@ -22,6 +22,7 @@ use futures::stream::StreamExt;
 use log::*;
 use neolink_core::{bc_protocol::*, bcmedia::model::*};
 use tokio::{fs::File, io::AsyncWriteExt};
+use tokio_stream::wrappers::BroadcastStream;
 
 mod cmdline;
 mod gst;
@@ -46,8 +47,9 @@ pub(crate) async fn main(opt: Opt, config: Config, reactor: NeoReactor) -> Resul
         // Get one iframe at the start while also getting the the video type
         let buf;
         let vid_type;
+        let mut stream = BroadcastStream::new(stream_data.stream.resubscribe());
         loop {
-            if let Some(Ok(BcMedia::Iframe(frame))) = stream_data.next().await {
+            if let Some(Ok(BcMedia::Iframe(frame))) = stream.next().await {
                 vid_type = frame.video_type;
                 buf = frame.data;
                 break;
@@ -59,7 +61,7 @@ pub(crate) async fn main(opt: Opt, config: Config, reactor: NeoReactor) -> Resul
 
         // Keep sending both IFrame or PFrame until finished
         while sender.is_finished().await.is_none() {
-            let buf = match stream_data.next().await {
+            let buf = match stream.next().await {
                 Some(Ok(BcMedia::Iframe(frame))) => frame.data,
                 Some(Ok(BcMedia::Pframe(frame))) => frame.data,
                 _ => {
