@@ -17,10 +17,11 @@ use lazy_static::lazy_static;
 use local_ip_address::local_ip;
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::collections::{btree_map::Entry, BTreeMap, HashSet};
 use std::convert::TryInto;
 use std::net::{Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
+use tokio::time::MissedTickBehavior;
 use tokio::{
     net::UdpSocket,
     sync::{
@@ -59,20 +60,29 @@ struct UidLookupResults {
 
 const MTU: u32 = 1350;
 lazy_static! {
-    static ref P2P_RELAY_HOSTNAMES: [&'static str; 10] = [
+    static ref P2P_RELAY_HOSTNAMES: [&'static str; 12] = [
         "p2p.reolink.com",
         "p2p1.reolink.com",
         "p2p2.reolink.com",
         "p2p3.reolink.com",
+        "p2p4.reolink.com",
+        "p2p5.reolink.com",
         "p2p6.reolink.com",
         "p2p7.reolink.com",
         "p2p8.reolink.com",
         "p2p9.reolink.com",
-        "p2p14.reolink.com",
-        "p2p15.reolink.com",
+        "p2p10.reolink.com",
+        "p2p11.reolink.com",
+        // These following are all currently set to 127.0.0.1
+        // probably reserved for future use
+        // "p2p12.reolink.com",
+        // "p2p13.reolink.com",
+        // "p2p14.reolink.com",
+        // "p2p15.reolink.com",
+        // "p2p16.reolink.com",
     ];
     /// Maximum wait for a reply
-    static ref MAXIMUM_WAIT: Duration = Duration::from_secs(5);
+    static ref MAXIMUM_WAIT: Duration = Duration::from_secs(15);
     /// How long to wait before resending
     static ref RESEND_WAIT: Duration = Duration::from_millis(500);
 }
@@ -87,6 +97,18 @@ pub(crate) struct Discoverer {
     subsribers: Subscriber,
     handlers: Handlers,
     local_addr: SocketAddr,
+}
+
+fn valid_ip(ip: &str) -> bool {
+    !ip.is_empty() && matches!(ip.parse::<Ipv4Addr>(), Ok(addr) if addr.octets()[3] != 0)
+}
+
+fn valid_port(port: u16) -> bool {
+    port != 0
+}
+
+fn valid_addr(ip_port: &IpPort) -> bool {
+    valid_ip(&ip_port.ip) && valid_port(ip_port.port)
 }
 
 impl Discoverer {
@@ -243,6 +265,7 @@ impl Discoverer {
         let msg = BcUdp::Discovery(disc);
 
         let mut inter = interval(*RESEND_WAIT);
+        inter.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         let result = tokio::select! {
             v = async {
@@ -282,7 +305,8 @@ impl Discoverer {
             let target_tid = generate_tid();
             disc.tid = target_tid;
         }
-        let mut inter = interval(Duration::from_millis(50));
+        let mut inter = interval(*RESEND_WAIT);
+        inter.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let msg = BcUdp::Discovery(disc);
 
         for _i in 0..5 {
@@ -395,7 +419,7 @@ impl Discoverer {
                             m2c_q_r: Some(m2c_q_r),
                             ..
                         },
-                } if m2c_q_r.reg.port != 0 || !m2c_q_r.reg.ip.is_empty() => Some((m2c_q_r, addr)),
+                } if valid_addr(&m2c_q_r.reg) => Some((m2c_q_r, addr)),
                 _ => None,
             })
             .await?;
@@ -463,18 +487,9 @@ impl Discoverer {
                                     }),
                                 ..
                             },
-                    } if (dev
-                        .as_ref()
-                        .map(|d| !d.ip.is_empty() && d.port > 0)
-                        .unwrap_or(false)
-                        || dmap
-                            .as_ref()
-                            .map(|d| !d.ip.is_empty() && d.port > 0)
-                            .unwrap_or(false)
-                        || relay
-                            .as_ref()
-                            .map(|d| !d.ip.is_empty() && d.port > 0)
-                            .unwrap_or(false))
+                    } if (dev.as_ref().map(valid_addr).unwrap_or(false)
+                        || dmap.as_ref().map(valid_addr).unwrap_or(false)
+                        || relay.as_ref().map(valid_addr).unwrap_or(false))
                         && rsp != -1 =>
                     {
                         Some(Ok((sid, dev, dmap, relay)))
@@ -496,11 +511,11 @@ impl Discoverer {
                     //         },
                     // } if (dev
                     //     .as_ref()
-                    //     .map(|d| !d.ip.is_empty() && d.port > 0)
+                    //     .map(valid_addr)
                     //     .unwrap_or(false)
                     //     || dmap
                     //         .as_ref()
-                    //         .map(|d| !d.ip.is_empty() && d.port > 0)
+                    //         .map(valid_addr)
                     //         .unwrap_or(false)
                     //     || (relay.ip == format!("{}", socket.ip()) && relay.port == 0))
                     //     && rsp != -1 =>
@@ -524,18 +539,9 @@ impl Discoverer {
                                     }),
                                 ..
                             },
-                    } if (dev
-                        .as_ref()
-                        .map(|d| !d.ip.is_empty() && d.port > 0)
-                        .unwrap_or(false)
-                        || dmap
-                            .as_ref()
-                            .map(|d| !d.ip.is_empty() && d.port > 0)
-                            .unwrap_or(false)
-                        || relay
-                            .as_ref()
-                            .map(|d| !d.ip.is_empty() && d.port > 0)
-                            .unwrap_or(false))
+                    } if (dev.as_ref().map(valid_addr).unwrap_or(false)
+                        || dmap.as_ref().map(valid_addr).unwrap_or(false)
+                        || relay.as_ref().map(valid_addr).unwrap_or(false))
                         && rsp == -1 =>
                     {
                         Some(Err(Error::RegisterError))
@@ -1004,12 +1010,21 @@ impl Discovery {
     pub(crate) async fn get_registration(&self, uid: &str) -> Result<RegisterResult> {
         let lookups = self.discoverer.uid_lookup_all(uid).await?;
 
+        let checked_reg = Arc::new(RwLock::new(HashSet::new()));
         let reg_result = Box::pin(
             lookups
                 .then(|lookup| {
                     let discoverer = &self.discoverer;
                     let client_id = self.client_id;
+
+                    let thread_checked_reg = checked_reg.clone();
                     async move {
+                        let mut locked_checked_reg = thread_checked_reg.write().await;
+                        if locked_checked_reg.contains(&lookup.reg) {
+                            return Result::Err(Error::Other("Already checked."));
+                        }
+                        locked_checked_reg.insert(lookup.reg);
+                        drop(locked_checked_reg);
                         trace!("lookup: {:?}", lookup);
                         let reg_result = discoverer.register_address(uid, client_id, &lookup).await;
                         trace!("reg_result: {:?}", reg_result);
