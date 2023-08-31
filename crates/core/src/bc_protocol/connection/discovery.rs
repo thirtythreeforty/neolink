@@ -17,7 +17,7 @@ use lazy_static::lazy_static;
 use local_ip_address::local_ip;
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::collections::{btree_map::Entry, BTreeMap, HashSet};
 use std::convert::TryInto;
 use std::net::{Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
@@ -487,9 +487,9 @@ impl Discoverer {
                                     }),
                                 ..
                             },
-                    } if (dev.as_ref().map(|d| valid_addr(d)).unwrap_or(false)
-                        || dmap.as_ref().map(|d| valid_addr(d)).unwrap_or(false)
-                        || relay.as_ref().map(|d| valid_addr(d)).unwrap_or(false))
+                    } if (dev.as_ref().map(valid_addr).unwrap_or(false)
+                        || dmap.as_ref().map(valid_addr).unwrap_or(false)
+                        || relay.as_ref().map(valid_addr).unwrap_or(false))
                         && rsp != -1 =>
                     {
                         Some(Ok((sid, dev, dmap, relay)))
@@ -511,11 +511,11 @@ impl Discoverer {
                     //         },
                     // } if (dev
                     //     .as_ref()
-                    //     .map(|d| valid_addr(d))
+                    //     .map(valid_addr)
                     //     .unwrap_or(false)
                     //     || dmap
                     //         .as_ref()
-                    //         .map(|d| valid_addr(d))
+                    //         .map(valid_addr)
                     //         .unwrap_or(false)
                     //     || (relay.ip == format!("{}", socket.ip()) && relay.port == 0))
                     //     && rsp != -1 =>
@@ -539,9 +539,9 @@ impl Discoverer {
                                     }),
                                 ..
                             },
-                    } if (dev.as_ref().map(|d| valid_addr(d)).unwrap_or(false)
-                        || dmap.as_ref().map(|d| valid_addr(d)).unwrap_or(false)
-                        || relay.as_ref().map(|d| valid_addr(d)).unwrap_or(false))
+                    } if (dev.as_ref().map(valid_addr).unwrap_or(false)
+                        || dmap.as_ref().map(valid_addr).unwrap_or(false)
+                        || relay.as_ref().map(valid_addr).unwrap_or(false))
                         && rsp == -1 =>
                     {
                         Some(Err(Error::RegisterError))
@@ -1010,12 +1010,21 @@ impl Discovery {
     pub(crate) async fn get_registration(&self, uid: &str) -> Result<RegisterResult> {
         let lookups = self.discoverer.uid_lookup_all(uid).await?;
 
+        let checked_reg = Arc::new(RwLock::new(HashSet::new()));
         let reg_result = Box::pin(
             lookups
                 .then(|lookup| {
                     let discoverer = &self.discoverer;
                     let client_id = self.client_id;
+
+                    let thread_checked_reg = checked_reg.clone();
                     async move {
+                        let mut locked_checked_reg = thread_checked_reg.write().await;
+                        if locked_checked_reg.contains(&lookup.reg) {
+                            return Result::Err(Error::Other("Already checked."));
+                        }
+                        locked_checked_reg.insert(lookup.reg);
+                        drop(locked_checked_reg);
                         trace!("lookup: {:?}", lookup);
                         let reg_result = discoverer.register_address(uid, client_id, &lookup).await;
                         trace!("reg_result: {:?}", reg_result);

@@ -191,6 +191,13 @@ pub(crate) struct CameraConfig {
 
     #[serde(default = "default_false", alias = "verbose")]
     pub(crate) debug: bool,
+
+    #[serde(
+        default = "default_max_discovery_retries",
+        alias = "retries",
+        alias = "max_retries"
+    )]
+    pub(crate) max_discovery_retries: usize,
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]
@@ -363,6 +370,10 @@ fn default_smoothing() -> bool {
 
 fn default_buffer_size() -> usize {
     25
+}
+
+fn default_max_discovery_retries() -> usize {
+    10
 }
 
 pub(crate) static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];

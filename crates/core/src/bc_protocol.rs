@@ -90,6 +90,8 @@ pub struct BcCameraOpt {
     pub protocol: ConnectionProtocol,
     /// Discovery method to allow
     pub discovery: DiscoveryMethods,
+    /// Maximum number of retries for discovery
+    pub max_discovery_retries: usize,
     /// Credentials for login
     pub credentials: Credentials,
     /// Toggle debug print of underlying data
@@ -219,17 +221,17 @@ impl BcCamera {
                     // We loop infinitly and allow the caller to timeout at the
                     // interval they desire
                     let mut retry = 0;
-                    const MAX_RETRY: usize = 10;
+                    let max_retry: usize = options.max_discovery_retries;
                     loop {
                         tokio::task::yield_now().await;
                         if let Ok(result) = discovery.get_registration(uid).await {
                             reg_result = result;
                             break;
                         }
-                        if retry >= MAX_RETRY {
+                        if retry >= max_retry && max_retry > 0 {
                             return Err(Error::DiscoveryTimeout);
                         }
-                        log::info!("{}: Registration with reolink servers failed. Retrying: {}/{}", options.name, retry + 1, MAX_RETRY);
+                        log::info!("{}: Registration with reolink servers failed. Retrying: {}/{}", options.name, retry + 1, if max_retry > 0 {format!("{}", max_retry)} else {"infinite".to_string()});
                         retry += 1;
                         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                         // New discovery to get new client IDs

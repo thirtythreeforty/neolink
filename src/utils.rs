@@ -98,6 +98,7 @@ impl AddressOrUid {
                 password: camera_config.password.clone(),
             },
             debug: camera_config.debug,
+            max_discovery_retries: camera_config.max_discovery_retries,
         };
 
         trace!("Camera Info: {:?}", options);
