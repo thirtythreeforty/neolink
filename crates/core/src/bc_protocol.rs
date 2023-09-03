@@ -259,6 +259,7 @@ impl BcCamera {
                         }, if allow_remote => Ok(v),
                         Ok(v) = async {
                             let uid_map = uid.clone();
+                            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
                             info!("{}: Trying map discovery", options.name);
                             let result = discovery.map(&reg_result).await;
                             match result {
@@ -276,6 +277,7 @@ impl BcCamera {
                         }, if allow_map => Ok(v),
                         Ok(v) = async {
                             let uid_relay = uid.clone();
+                            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                             info!("{}: Trying relay discovery", options.name);
                             let result = discovery.relay(&reg_result).await;
                             match result {

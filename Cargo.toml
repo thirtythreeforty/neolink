@@ -13,7 +13,6 @@ members = [
 
 [dependencies]
 anyhow = "1.0.70"
-async-channel = "1.9.0"
 base64 = "0.21.2"
 byte-slice-cast = "1.2.2"
 clap = { version = "4.2.2", features = ["derive", "cargo"] }
@@ -26,8 +25,6 @@ gstreamer-app = "0.20.0"
 gstreamer-rtsp = "0.20.0"
 gstreamer-rtsp-server = { version = "0.20.3", features = ["v1_16"] }
 heck = "0.4.1"
-is_sorted = "0.1.1"
-itertools = "0.11.0"
 lazy_static = "1.4.0"
 log = { version = "0.4.17", features = [ "release_max_level_debug" ] }
 neolink_core = { path = "crates/core", version = "0.5.18" }
@@ -35,7 +32,6 @@ regex = "1.7.3"
 rumqttc = "0.22.0"
 serde = { version = "1.0.160", features = ["derive"] }
 serde_json = "1.0.96"
-time = "0.3.20"
 tokio = { version = "1.27.0", features = ["rt-multi-thread", "macros", "io-util", "tracing"] }
 tokio-stream = "0.1.12"
 tokio-util = { version = "0.7.7", features = ["full", "tracing"] }

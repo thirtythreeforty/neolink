@@ -4,19 +4,13 @@
 //! expect issues
 
 use super::AnyResult;
-use crate::common::{AudFormat, NeoReactor, StreamInstance, VidFormat};
-use anyhow::{anyhow, Context};
-use async_channel::{Receiver as AsyncReceiver, Sender as AsyncSender};
-use futures::stream::StreamExt;
 use gstreamer::glib::object_subclass;
 use gstreamer::glib::subclass::types::ObjectSubclass;
+use gstreamer::Element;
 use gstreamer::{
     glib::{self, Object},
-    prelude::*,
-    ClockTime, Structure,
+    Structure,
 };
-use gstreamer::{Bin, Caps, Element, ElementFactory};
-use gstreamer_app::{AppSrc, AppSrcCallbacks, AppStreamType};
 use gstreamer_rtsp::RTSPUrl;
 use gstreamer_rtsp_server::prelude::*;
 use gstreamer_rtsp_server::subclass::prelude::*;
@@ -24,21 +18,9 @@ use gstreamer_rtsp_server::RTSPMediaFactory;
 use gstreamer_rtsp_server::{RTSPSuspendMode, RTSPTransportMode};
 use gstreamer_rtsp_server::{RTSP_PERM_MEDIA_FACTORY_ACCESS, RTSP_PERM_MEDIA_FACTORY_CONSTRUCT};
 use log::*;
-use neolink_core::{bc_protocol::StreamKind, bcmedia::model::*};
 use std::collections::HashSet;
-use std::convert::TryInto;
 use std::sync::Arc;
-use tokio::{
-    sync::{
-        mpsc::{channel as mpsc, Sender as MpscSender},
-        oneshot::{channel as oneshot, Receiver as OneshotReceiver, Sender as OneshotSender},
-        Mutex, RwLock,
-    },
-    task::JoinSet,
-    time::Duration,
-};
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::sync::CancellationToken;
+use tokio::sync::Mutex;
 
 glib::wrapper! {
     /// The wrapped RTSPMediaFactory
@@ -112,6 +94,7 @@ unsafe impl Send for NeoMediaFactory {}
 unsafe impl Sync for NeoMediaFactory {}
 
 pub(crate) struct NeoMediaFactoryImpl {
+    #[allow(clippy::type_complexity)]
     call_back: Arc<Mutex<Option<Arc<dyn Fn(Element) -> AnyResult<Option<Element>> + Send + Sync>>>>,
 }
 
@@ -153,48 +136,4 @@ impl ObjectSubclass for NeoMediaFactoryImpl {
     const NAME: &'static str = "NeoMediaFactory";
     type Type = super::NeoMediaFactory;
     type ParentType = RTSPMediaFactory;
-}
-
-// Convenice funcion to make an element or provide a message
-// about what plugin is missing
-fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
-    ElementFactory::make_with_name(kind, Some(name)).with_context(|| {
-        let plugin = match kind {
-            "appsrc" => "app (gst-plugins-base)",
-            "audioconvert" => "audioconvert (gst-plugins-base)",
-            "adpcmdec" => "Required for audio",
-            "h264parse" => "videoparsersbad (gst-plugins-bad)",
-            "h265parse" => "videoparsersbad (gst-plugins-bad)",
-            "rtph264pay" => "rtp (gst-plugins-good)",
-            "rtph265pay" => "rtp (gst-plugins-good)",
-            "aacparse" => "audioparsers (gst-plugins-good)",
-            "rtpL16pay" => "rtp (gst-plugins-good)",
-            "x264enc" => "x264 (gst-plugins-ugly)",
-            "x265enc" => "x265 (gst-plugins-bad)",
-            "avdec_h264" => "libav (gst-libav)",
-            "avdec_h265" => "libav (gst-libav)",
-            "videotestsrc" => "videotestsrc (gst-plugins-base)",
-            "imagefreeze" => "imagefreeze (gst-plugins-good)",
-            "audiotestsrc" => "audiotestsrc (gst-plugins-base)",
-            "decodebin" => "playback (gst-plugins-good)",
-            _ => "Unknown",
-        };
-        format!(
-            "Missing required gstreamer plugin `{}` for `{}` element",
-            plugin, kind
-        )
-    })
-}
-
-fn make_queue(name: &str) -> AnyResult<Element> {
-    let queue = make_element("queue", name)?;
-    queue.set_property_from_str("leaky", "downstream");
-    queue.set_property("max-size-bytes", 0u32);
-    queue.set_property("max-size-buffers", 0u32);
-    queue.set_property(
-        "max-size-time",
-        std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
-            .unwrap_or(0),
-    );
-    Ok(queue)
 }

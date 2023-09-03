@@ -91,7 +91,7 @@ pub(crate) enum StreamConfig {
 }
 
 impl StreamConfig {
-    pub(crate) fn to_stream_kinds(&self) -> Vec<StreamKind> {
+    pub(crate) fn as_stream_kinds(&self) -> Vec<StreamKind> {
         match self {
             StreamConfig::All => {
                 vec![StreamKind::Main, StreamKind::Extern, StreamKind::Sub]
@@ -175,13 +175,6 @@ pub(crate) struct CameraConfig {
     ))]
     #[serde(default = "default_buffer_size", alias = "size", alias = "buffer")]
     pub(crate) buffer_size: usize,
-
-    #[serde(
-        default = "default_smoothing",
-        alias = "smoothing",
-        alias = "stretching"
-    )]
-    pub(crate) use_smoothing: bool,
 
     #[serde(default = "default_true", alias = "splash")]
     pub(crate) use_splash: bool,

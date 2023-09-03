@@ -130,6 +130,7 @@ impl NeoInstance {
         Ok(instance_rx.await?)
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn low_stream(&self) -> Result<Option<StreamInstance>> {
         let (instance_tx, instance_rx) = oneshot();
         self.camera_control
@@ -138,6 +139,7 @@ impl NeoInstance {
         Ok(instance_rx.await?)
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn high_stream(&self) -> Result<Option<StreamInstance>> {
         let (instance_tx, instance_rx) = oneshot();
         self.camera_control
@@ -146,6 +148,7 @@ impl NeoInstance {
         Ok(instance_rx.await?)
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn streams(&self) -> Result<Vec<StreamInstance>> {
         let (instance_tx, instance_rx) = oneshot();
         self.camera_control

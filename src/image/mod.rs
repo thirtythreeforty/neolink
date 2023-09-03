@@ -39,7 +39,7 @@ pub(crate) async fn main(opt: Opt, config: Config, reactor: NeoReactor) -> Resul
     let camera = reactor.get_or_insert(config.clone()).await?;
 
     if opt.use_stream {
-        let mut stream_data = camera
+        let stream_data = camera
             .stream(StreamKind::Main)
             .await
             .context("Failed to start video")?;
@@ -47,7 +47,8 @@ pub(crate) async fn main(opt: Opt, config: Config, reactor: NeoReactor) -> Resul
         // Get one iframe at the start while also getting the the video type
         let buf;
         let vid_type;
-        let mut stream = BroadcastStream::new(stream_data.stream.resubscribe());
+        let mut stream = BroadcastStream::new(stream_data.stream.resubscribe())
+            .filter(|f| futures::future::ready(f.is_ok())); // Filter to ignore lagged
         loop {
             if let Some(Ok(BcMedia::Iframe(frame))) = stream.next().await {
                 vid_type = frame.video_type;

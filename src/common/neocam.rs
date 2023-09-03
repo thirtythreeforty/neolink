@@ -11,13 +11,14 @@ use tokio::sync::{
     oneshot::{channel as oneshot, Sender as OneshotSender},
     watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
 };
-use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 
 use super::{NeoCamStreamThread, NeoCamThread, NeoInstance, StreamInstance, StreamRequest};
 use crate::{config::CameraConfig, AnyResult, Result};
 use neolink_core::bc_protocol::{BcCamera, StreamKind};
 
+#[allow(dead_code)]
 pub(crate) enum NeoCamCommand {
     HangUp,
     Instance(OneshotSender<Result<NeoInstance>>),

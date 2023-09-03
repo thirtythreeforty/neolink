@@ -161,10 +161,10 @@ impl NeoCamStreamThread {
                             sender
                         } => {
                             let config = self.instance.config().await?.borrow_and_update().clone();
-                            let streams = config.stream.to_stream_kinds();
+                            let streams = config.stream.as_stream_kinds();
                             for stream in streams.iter().copied() {
                                 if let Entry::Vacant(vac) = self.streams.entry(stream) {
-                                    let (tx, rx) = broadcast(1000);
+                                    let (tx, _) = broadcast(1000);
                                     vac.insert(
                                         StreamData::new(tx, stream, self.instance.subscribe().await?, config.strict)
                                             .await?,
@@ -207,6 +207,7 @@ impl Drop for NeoCamStreamThread {
 
 /// The kind of stream we want a async broadcast of
 pub(crate) enum StreamRequest {
+    #[allow(dead_code)]
     /// Get a currently loaded stream
     Get {
         name: StreamKind,

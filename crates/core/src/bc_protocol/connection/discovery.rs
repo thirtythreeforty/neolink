@@ -26,7 +26,7 @@ use tokio::{
     net::UdpSocket,
     sync::{
         mpsc::{channel, Receiver, Sender},
-        RwLock,
+        RwLock, Semaphore,
     },
     task::JoinSet,
     time::{interval, timeout, Duration},
@@ -83,14 +83,18 @@ lazy_static! {
     ];
     /// Maximum wait for a reply
     static ref MAXIMUM_WAIT: Duration = Duration::from_secs(15);
+    /// Wait for tcp connections
+    static ref TCP_WAIT: Duration = Duration::from_secs(4);
     /// How long to wait before resending
     static ref RESEND_WAIT: Duration = Duration::from_millis(500);
+
 }
 
 type Subscriber = Arc<RwLock<BTreeMap<u32, Sender<Result<(UdpDiscovery, SocketAddr)>>>>>;
 type Handlers = Arc<RwLock<Vec<Sender<Result<(UdpDiscovery, SocketAddr)>>>>>;
 type ArcFramedSocket = UdpFramed<BcUdpCodex, Arc<UdpSocket>>;
 pub(crate) struct Discoverer {
+    semaphore: Arc<Semaphore>,
     socket: Arc<UdpSocket>,
     handle: RwLock<JoinSet<()>>,
     writer: Sender<Result<(BcUdp, SocketAddr)>>,
@@ -172,6 +176,7 @@ impl Discoverer {
         });
 
         Ok(Discoverer {
+            semaphore: Arc::new(Semaphore::new(1)),
             socket,
             handle: RwLock::new(set),
             writer: sinker,
@@ -619,6 +624,12 @@ impl Discoverer {
             },
         };
 
+        let permit = self
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| Error::Other("Discovery already complete"))?;
         // Send and await confirm
         self.retry_send(msg, addr, |bc, _| {
             trace!("msg: {:?}", &bc);
@@ -675,6 +686,8 @@ impl Discoverer {
 
         self.keep_alive_device(local_tid, &result).await;
 
+        self.semaphore.close();
+        drop(permit);
         Ok(result)
     }
 
@@ -736,6 +749,12 @@ impl Discoverer {
             },
         };
 
+        let permit = self
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| Error::Other("Discovery already complete"))?;
         // Send and await confirm
         self.retry_send(msg, addr, |bc, _| {
             trace!("msg: {:?}", &bc);
@@ -792,6 +811,8 @@ impl Discoverer {
 
         self.keep_alive_device(local_tid, &result).await;
 
+        self.semaphore.close();
+        drop(permit);
         Ok(result)
     }
 
@@ -838,6 +859,12 @@ impl Discoverer {
             camera_id: local_did,
         };
 
+        let permit = self
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| Error::Other("Discovery already complete"))?;
         // Confirm local to register
         let msg = UdpDiscovery {
             tid: 0,
@@ -857,6 +884,8 @@ impl Discoverer {
 
         self.keep_alive_device(tid, &result).await;
 
+        self.semaphore.close();
+        drop(permit);
         Ok(result)
     }
 
@@ -880,6 +909,12 @@ impl Discoverer {
             },
         };
 
+        let permit = self
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| Error::Other("Discovery already complete"))?;
         let (final_addr, local_did) = self
             .retry_send(msg, relay_addr, |bc, addr| match bc {
                 UdpDiscovery {
@@ -933,6 +968,8 @@ impl Discoverer {
         self.keep_alive_device(tid, &result).await;
         // self.keep_alive_relay(tid, &result).await;
 
+        self.semaphore.close();
+        drop(permit);
         Ok(result)
     }
 
@@ -1048,11 +1085,8 @@ impl Discovery {
     pub(crate) async fn check_tcp(&self, addr: SocketAddr, channel_id: u8) -> Result<()> {
         let username = "admin";
         let password = Some("123456");
-        let mut tcp_source = timeout(
-            *MAXIMUM_WAIT,
-            TcpSource::new(addr, username, password, false),
-        )
-        .await??;
+        let mut tcp_source =
+            timeout(*TCP_WAIT, TcpSource::new(addr, username, password, false)).await??;
 
         let md5_username = md5_string(username, Md5Trunc::ZeroLast);
         let md5_password = password
@@ -1076,7 +1110,7 @@ impl Discovery {
             })
             .await?;
 
-        let _bc: Bc = timeout(*MAXIMUM_WAIT, tcp_source.next())
+        let _bc: Bc = timeout(*TCP_WAIT, tcp_source.next())
             .await?
             .ok_or(Error::CannotInitCamera)??; // Successful recv should mean a Bc packet if not then deser will fail
         Ok(())

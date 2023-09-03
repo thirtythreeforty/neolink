@@ -3,26 +3,22 @@
 //! We are now messing with gstreamer glib objects
 //! expect issues
 
-use super::{factory::*, AnyResult};
+use super::AnyResult;
 use crate::config::*;
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use gstreamer::glib::{self, object_subclass, subclass::types::ObjectSubclass, MainLoop, Object};
 use gstreamer_rtsp::RTSPAuthMethod;
 use gstreamer_rtsp_server::{
     gio::{TlsAuthenticationMode, TlsCertificate},
     prelude::*,
     subclass::prelude::*,
-    RTSPAuth, RTSPFilterResult, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
+    RTSPAuth, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
-use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
-    fs,
-    sync::Arc,
-};
+use std::{fs, sync::Arc};
 use tokio::{
-    sync::{mpsc::Sender, RwLock},
+    sync::RwLock,
     task::JoinSet,
     time::{timeout, Duration},
 };
@@ -43,14 +39,6 @@ impl NeoRtspServer {
         gstreamer::init().context("Gstreamer failed to initialise")?;
         let factory = Object::new::<NeoRtspServer>();
         Ok(factory)
-    }
-
-    pub(crate) async fn add_permitted_roles<T: Into<String>, U: AsRef<str>>(
-        &self,
-        tag: T,
-        permitted_users: &HashSet<U>,
-    ) -> AnyResult<()> {
-        self.imp().add_permitted_roles(tag, permitted_users).await
     }
 
     pub(crate) async fn run(&self, bind_addr: &str, bind_port: u16) -> AnyResult<()> {
@@ -104,14 +92,8 @@ impl NeoRtspServer {
 unsafe impl Send for NeoRtspServer {}
 unsafe impl Sync for NeoRtspServer {}
 
-struct FactoryData {
-    factory: NeoMediaFactory,
-    paths: HashSet<String>,
-}
-
 #[derive(Default)]
 pub(crate) struct NeoRtspServerImpl {
-    medias: RwLock<HashMap<String, FactoryData>>,
     threads: RwLock<JoinSet<AnyResult<()>>>,
     main_loop: RwLock<Option<Arc<MainLoop>>>,
 }
@@ -127,20 +109,6 @@ impl ObjectSubclass for NeoRtspServerImpl {
 }
 
 impl NeoRtspServerImpl {
-    pub(crate) async fn add_permitted_roles<T: Into<String>, U: AsRef<str>>(
-        &self,
-        tag: T,
-        permitted_users: &HashSet<U>,
-    ) -> AnyResult<()> {
-        let tag: String = tag.into();
-        if let Some(media) = self.medias.write().await.get_mut(&tag) {
-            media.factory.add_permitted_roles(permitted_users);
-            Ok(())
-        } else {
-            Err(anyhow!("No media with tag {} to add users to", &tag))
-        }
-    }
-
     pub(crate) fn set_credentials(&self, credentials: &[(&str, &str)]) -> AnyResult<()> {
         let auth = self.obj().auth().unwrap_or_else(RTSPAuth::new);
         auth.set_supported_methods(RTSPAuthMethod::Basic);

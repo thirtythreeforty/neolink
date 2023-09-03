@@ -53,29 +53,35 @@
 //   - `"none"`: Resends the last iframe the camera. This does not reencode at all.  **Most use cases should use this one as it has the least effort on the cpu and gives what you would expect**
 //
 use anyhow::{anyhow, Context, Result};
-use futures::stream::FuturesUnordered;
+use gstreamer::{Bin, Caps, ClockTime, Element, ElementFactory};
+use gstreamer_app::{AppSrc, AppSrcCallbacks, AppStreamType};
 use gstreamer_rtsp_server::prelude::*;
 use log::*;
-use neolink_core::bc_protocol::{BcCamera, StreamKind};
+use neolink_core::{bc_protocol::StreamKind, bcmedia::model::*};
 use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::time::{interval, Duration};
-use tokio_stream::{wrappers::IntervalStream, StreamExt};
+use tokio::{
+    sync::{
+        broadcast::channel as broadcast,
+        mpsc::{channel as mpsc, Sender as MpscSender},
+    },
+    task::JoinSet,
+    time::{sleep, Duration},
+};
+use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
 use tokio_util::sync::CancellationToken;
 
 mod cmdline;
 mod gst;
-mod spring;
 
 use crate::{
-    common::{NeoInstance, NeoReactor, VidFormat},
+    common::{AudFormat, NeoInstance, NeoReactor, StreamInstance, VidFormat},
     rtsp::gst::NeoMediaFactory,
 };
 
 use super::config::Config;
 pub(crate) use cmdline::Opt;
 use gst::NeoRtspServer;
-pub(crate) use spring::*;
 
 type AnyResult<T> = anyhow::Result<T, anyhow::Error>;
 
@@ -101,102 +107,23 @@ pub(crate) async fn main(_opt: Opt, mut config: Config, reactor: NeoReactor) -> 
 
     let global_cancel = CancellationToken::new();
 
-    let mut set = tokio::task::JoinSet::new();
-    for mut camera in cameras.drain(..) {
-        let stream_info = camera
-            .run_task(|cam| Box::pin(async move { Ok(cam.get_stream_info().await?) }))
-            .await?;
-
-        let supported_streams = {
-            stream_info
-                .stream_infos
-                .iter()
-                .flat_map(|stream_info| stream_info.encode_tables.clone())
-                .flat_map(|encode| match encode.name.as_str() {
-                    "mainStream" => Some(StreamKind::Main),
-                    "subStream" => Some(StreamKind::Sub),
-                    "externStream" => Some(StreamKind::Extern),
-                    new_stream_name => {
-                        log::debug!("New stream name {}", new_stream_name);
-                        None
-                    }
-                })
-                .collect::<HashSet<_>>()
-        };
-
+    let mut set = JoinSet::new();
+    for camera in cameras.drain(..) {
         let thread_global_cancel = global_cancel.clone();
         let thread_rtsp = rtsp.clone();
-        set.spawn(async move {
-            tokio::select!(
-                _ = thread_global_cancel.cancelled() => {
-                    AnyResult::Ok(())
-                },
-                v = async {
-                    let mut camera_config = camera.config().await?.clone();
-                    loop {
-                        let prev_stream_config = camera_config.borrow_and_update().stream.clone();
-                        let active_streams = prev_stream_config.to_stream_kinds().drain(..).collect::<HashSet<_>>();
-
-                        // This select is for changes to camera_config.stream
-                        break tokio::select!{
-                            v = camera_config.wait_for(|config| config.stream != prev_stream_config) => {
-                                if let Err(e) = v {
-                                    AnyResult::Err(e.into())
-                                } else {
-                                    // config.stream changed restart
-                                    continue;
-                                }
-                            },
-                            v = async {
-                                // This select handles enabling the right stream
-                                tokio::select! {
-                                    v = async {
-                                        let mut stream_instance = camera.stream(StreamKind::Main).await?;
-                                        loop {
-                                            // Wait for a valid stream format to be detected
-                                            stream_instance.config.wait_for(|config| !matches!(config.vid_format, VidFormat::None) && config.resolution[0] > 0 && config.resolution[1] > 0).await?;
-                                            let stream = stream_instance.stream.resubscribe();
-                                            let stream_name = match stream_instance.name {
-                                                StreamKind::Main => "main",
-                                                StreamKind::Sub => "sub",
-                                                StreamKind::Extern => "extern",
-                                            }
-                                            .to_string();
-                                            // This select ensures is for the streams config
-                                            break tokio::select!{
-                                                _ = stream_instance.config.changed() => {
-                                                    // If stream config changes we reload the stream
-                                                    continue;
-                                                },
-                                                v = async {
-                                                    // Finally ready to create the factory and connect the stream
-                                                    let mounts = thread_rtsp
-                                                        .mount_points()
-                                                        .ok_or(anyhow!("RTSP server lacks mount point"))?;
-                                                    let name = camera.config().await?.borrow().name.clone();
-                                                    let path = format!("/{}/{}", name, stream_name);
-                                                    log::info!("Path: {}", path);
-                                                    let factory = NeoMediaFactory::new_with_callback(move |element| {
-                                                        let stream_data = &stream;
-                                                        Ok(Some(element))
-                                                    }).await?;
-                                                    factory.add_permitted_roles(&["anonymous"].into());
-                                                    mounts.add_factory(&path, factory);
-                                                    AnyResult::Ok(())
-                                                } => v,
-                                            };
-                                        }
-                                     }, if active_streams.contains(&StreamKind::Main) && supported_streams.contains(&StreamKind::Main) => v,
-                                     else => {
-                                         futures::pending!();
-                                         AnyResult::Ok(())
-                                     }
-                                }
-                            } => v,
-                        };
-                    }
-                } => v,
-            )
+        set.spawn_blocking(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async move {
+                tokio::select!(
+                    _ = thread_global_cancel.cancelled() => {
+                        AnyResult::Ok(())
+                    },
+                    v = camera_main(camera, &thread_rtsp) => v,
+                )
+            })
         });
     }
     info!(
@@ -214,296 +141,716 @@ pub(crate) async fn main(_opt: Opt, mut config: Config, reactor: NeoReactor) -> 
         match &joined {
             Err(_) | Ok(Err(_)) => {
                 // Panicked or error in task
+                // Cancel all and await terminate
+                global_cancel.cancel();
                 rtsp.quit().await?;
             }
             Ok(Ok(_)) => {
                 // All good
             }
         }
-        joined??
     }
 
     Ok(())
 }
 
-enum CameraFailureKind {
-    Fatal(anyhow::Error),
-    Retry(anyhow::Error),
-}
+async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
+    let stream_info = camera
+        .run_task(|cam| Box::pin(async move { Ok(cam.get_stream_info().await?) }))
+        .await?;
 
-async fn camera_main(camera: NeoInstance, rtsp: NeoRtspServer) -> Result<(), CameraFailureKind> {
-    // Connect
-    let config = camera
-        .config()
-        .await
-        .map_err(CameraFailureKind::Fatal)?
-        .borrow_and_update()
-        .clone();
-    let name = config.name;
+    let supported_streams = {
+        stream_info
+            .stream_infos
+            .iter()
+            .flat_map(|stream_info| stream_info.encode_tables.clone())
+            .flat_map(|encode| match encode.name.as_str() {
+                "mainStream" => Some(StreamKind::Main),
+                "subStream" => Some(StreamKind::Sub),
+                "externStream" => Some(StreamKind::Extern),
+                new_stream_name => {
+                    log::debug!("New stream name {}", new_stream_name);
+                    None
+                }
+            })
+            .collect::<HashSet<_>>()
+    };
 
-    // Clear all buffers present
-    // Uncomment to clear buffers. This is now handlled in the buffer itself,
-    // instead of clearing it restamps it whenever there is a jump in the
-    // timestamps of >1s
-    //
-    // tags.iter()
-    //     .map(|tag| rtsp_thread.clear_buffer(tag))
-    //     .collect::<FuturesUnordered<_>>()
-    //     .collect::<Vec<_>>()
-    //     .await;
+    let mut camera_config = camera.config().await?.clone();
+    loop {
+        let prev_stream_config = camera_config.borrow_and_update().stream;
+        let active_streams = prev_stream_config
+            .as_stream_kinds()
+            .drain(..)
+            .collect::<HashSet<_>>();
 
-    // Start pulling data from the camera
-    // let mut streaming = loggedin
-    //     .stream()
-    //     .await
-    //     .with_context(|| format!("{}: Could not start stream", name))
-    //     .map_err(CameraFailureKind::Retry)?;
+        // This select is for changes to camera_config.stream
+        break tokio::select! {
+            v = camera_config.wait_for(|config| config.stream != prev_stream_config) => {
+                if let Err(e) = v {
+                    AnyResult::Err(e.into())
+                } else {
+                    // config.stream changed restart
+                    continue;
+                }
+            },
+            v = async {
+                // This select handles enabling the right stream
+                tokio::select! {
+                    v = async {
+                        let name = camera.config().await?.borrow().name.clone();
+                        stream_main(name, camera.stream(StreamKind::Main).await?, rtsp).await
+                    }, if active_streams.contains(&StreamKind::Main) && supported_streams.contains(&StreamKind::Main) => v,
+                    v = async {
+                        let name = camera.config().await?.borrow().name.clone();
+                        stream_main(name, camera.stream(StreamKind::Sub).await?, rtsp).await
+                    }, if active_streams.contains(&StreamKind::Sub) && supported_streams.contains(&StreamKind::Sub) => v,
+                    v = async {
+                        let name = camera.config().await?.borrow().name.clone();
+                        stream_main(name, camera.stream(StreamKind::Extern).await?, rtsp).await
+                    }, if active_streams.contains(&StreamKind::Extern) && supported_streams.contains(&StreamKind::Extern) => v,
+                    else => {
+                        // all disabled just wait here until config is changed
+                        futures::pending!();
+                        AnyResult::Ok(())
+                    }
+                }
+            } => v,
+        };
+    }?;
 
-    // // Wait for buffers to be prepared
-    // tokio::select! {
-    //     v = async {
-    //         let mut waiter = tokio::time::interval(Duration::from_micros(500));
-    //         loop {
-    //             waiter.tick().await;
-    //             if tags
-    //                 .iter()
-    //                 .map(|tag| rtsp_thread.buffer_ready(tag))
-    //                 .collect::<FuturesUnordered<_>>()
-    //                 .all(|f| f.unwrap_or(false))
-    //                 .await
-    //             {
-    //                 break;
-    //             }
-    //         }
-    //         Ok(())
-    //     } => v,
-    //     // Or for stream to error
-    //     v = streaming.join() => {v},
-    // }
-    // .with_context(|| format!("{}: Error while waiting for buffers", name))
-    // .map_err(CameraFailureKind::Retry)?;
-
-    // tags.iter()
-    //     .map(|tag| rtsp_thread.jump_to_live(tag))
-    //     .collect::<FuturesUnordered<_>>()
-    //     .collect::<Vec<_>>()
-    //     .await;
-
-    // // Clear "stream not ready" media to try and force a reconnect
-    // //   This shoud stop them from watching the "Stream Not Ready" thing
-    // debug!("Clearing not ready clients");
-    // tags.iter()
-    //     .map(|tag| rtsp_thread.clear_session_notready(tag))
-    //     .collect::<FuturesUnordered<_>>()
-    //     .collect::<Vec<_>>()
-    //     .await;
-    // log::info!("{}: Buffers prepared", name);
-
-    // let mut active_tags = streaming.shared.get_streams().clone();
-    // let mut motion_pause = false;
-    // loop {
-    //     // Wait for error or reason to pause
-    //     let change = tokio::select! {
-    //         v = async {
-    //         // Wait for error
-    //         streaming.join().await
-    //         }, if ! active_tags.is_empty() => {
-    //             info!("{}: Join Pause", name);
-    //             Ok(StreamChange::StreamError(v))
-    //         },
-    //         // Send pings
-    //         v = async {
-    //             let camera = streaming.get_camera();
-    //             let mut interval = IntervalStream::new(interval(Duration::from_secs(5)));
-    //             while let Some(_update) = interval.next().await {
-    //                 if camera.ping().await.is_err() {
-    //                     break;
-    //                 }
-    //             }
-    //             futures::pending!(); // Never actually finish, has to be aborted
-    //             Ok(())
-    //         } => Ok(StreamChange::StreamError(v)),
-    //         v = await_change(
-    //             streaming.get_camera(),
-    //             &streaming.shared,
-    //             &rtsp_thread,
-    //             &active_tags,
-    //             motion_pause,
-    //             &name,
-    //         ), if streaming.shared.get_config().pause.on_motion || streaming.shared.get_config().pause.on_disconnect => {
-    //             v.with_context(|| format!("{}: Error updating pause state", name))
-    //             .map_err(CameraFailureKind::Retry)
-    //         }
-    //     }?;
-
-    //     match change {
-    //         StreamChange::StreamError(res) => {
-    //             res.map_err(CameraFailureKind::Retry)?;
-    //         }
-    //         StreamChange::MotionStart => {
-    //             motion_pause = false;
-    //             let inactive_streams = streaming
-    //                 .shared
-    //                 .get_streams()
-    //                 .iter()
-    //                 .filter(|i| !active_tags.contains(i))
-    //                 .copied()
-    //                 .collect::<Vec<_>>();
-
-    //             if streaming.shared.get_config().pause.on_disconnect {
-    //                 // Pause on client is also on
-    //                 //
-    //                 // Only resume clients with active connections
-    //                 for stream in inactive_streams.iter() {
-    //                     if rtsp_thread
-    //                         .get_number_of_clients(streaming.shared.get_tag_for_stream(stream))
-    //                         .await
-    //                         .map(|n| n > 0)
-    //                         .unwrap_or(false)
-    //                     {
-    //                         streaming
-    //                             .start_stream(*stream)
-    //                             .await
-    //                             .map_err(CameraFailureKind::Retry)?;
-    //                         active_tags.insert(*stream);
-    //                         rtsp_thread
-    //                             .resume(streaming.shared.get_tag_for_stream(stream))
-    //                             .await
-    //                             .map_err(CameraFailureKind::Retry)?;
-    //                     }
-    //                 }
-    //             } else {
-    //                 // Pause on client is not on
-    //                 //
-    //                 // Resume all
-    //                 for stream in inactive_streams.iter() {
-    //                     streaming
-    //                         .start_stream(*stream)
-    //                         .await
-    //                         .map_err(CameraFailureKind::Retry)?;
-    //                     active_tags.insert(*stream);
-    //                     rtsp_thread
-    //                         .resume(streaming.shared.get_tag_for_stream(stream))
-    //                         .await
-    //                         .map_err(CameraFailureKind::Retry)?;
-    //                 }
-    //             }
-    //         }
-    //         StreamChange::MotionStop => {
-    //             motion_pause = true;
-    //             // Clear all streams
-    //             for stream in active_tags.drain() {
-    //                 rtsp_thread
-    //                     .pause(streaming.shared.get_tag_for_stream(&stream))
-    //                     .await
-    //                     .map_err(CameraFailureKind::Retry)?;
-    //                 streaming
-    //                     .stop_stream(stream)
-    //                     .await
-    //                     .map_err(CameraFailureKind::Retry)?;
-    //             }
-    //         }
-    //         StreamChange::ClientStart(stream) => {
-    //             if !streaming.shared.get_config().pause.on_motion || !motion_pause {
-    //                 streaming
-    //                     .start_stream(stream)
-    //                     .await
-    //                     .map_err(CameraFailureKind::Retry)?;
-    //                 active_tags.insert(stream);
-    //                 rtsp_thread
-    //                     .resume(streaming.shared.get_tag_for_stream(&stream))
-    //                     .await
-    //                     .map_err(CameraFailureKind::Retry)?;
-    //             }
-    //         }
-    //         StreamChange::ClientStop(stream) => {
-    //             if !streaming.shared.get_config().pause.on_motion || !motion_pause {
-    //                 rtsp_thread
-    //                     .pause(streaming.shared.get_tag_for_stream(&stream))
-    //                     .await
-    //                     .map_err(CameraFailureKind::Retry)?;
-    //                 streaming
-    //                     .stop_stream(stream)
-    //                     .await
-    //                     .map_err(CameraFailureKind::Retry)?;
-    //                 active_tags.remove(&stream);
-    //             }
-    //         }
-    //     }
-    // }
     Ok(())
 }
 
-enum StreamChange {
-    StreamError(Result<()>),
-    MotionStart,
-    MotionStop,
-    ClientStart(StreamKind),
-    ClientStop(StreamKind),
+#[derive(Debug, Clone)]
+enum StreamData {
+    Media { data: Vec<u8>, ts: Duration },
+    Seek { ts: Duration, reply: MpscSender<()> },
 }
-// async fn await_change(
-//     camera: &BcCamera,
-//     shared: &Shared,
-//     rtsp_thread: &NeoRtspServer,
-//     active_tags: &HashSet<StreamKind>,
-//     motion_pause: bool,
-//     name: &str,
-// ) -> Result<StreamChange> {
-//     tokio::select! {
-//             v = async {
-//                 // Wait for motion stop
-//                 let mut motion = camera.listen_on_motion().await?;
-//                 motion.await_stop(Duration::from_secs_f64(shared.get_config().pause.motion_timeout)).await
-//             }, if !motion_pause && shared.get_config().pause.on_motion => {
-//                 info!("{}: Motion Pause", name);
-//                 v.map_err(|e| anyhow!("Error while processing motion messages: {:?}", e))?;
-//                 Ok(StreamChange::MotionStop)
-//             },
-//             v = async {
-//                 // Wait for client to disconnect
-//                 let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
 
-//                 loop {
-//                     inter.tick().await;
-//                     for tag in active_tags.iter() {
-//                         if rtsp_thread.get_number_of_clients(shared.get_tag_for_stream(tag)).await.map(|n| n == 0).unwrap_or(true) {
-//                             return Result::<_,anyhow::Error>::Ok(StreamChange::ClientStop(*tag))
-//                         }
-//                     }
-//                 }
-//             }, if shared.get_config().pause.on_disconnect => {
-//                 if let Ok(StreamChange::ClientStop(tag)) = v.as_ref() {
-//                     info!("{}: Client Pause:: {:?}", name, tag);
-//                 }
-//                 v
-//             },
-//             v = async {
-//                 // Wait for motion start
-//                 let mut motion = camera.listen_on_motion().await?;
-//                 motion.await_start(Duration::ZERO).await
-//             }, if motion_pause && shared.get_config().pause.on_motion => {
-//                 info!("{}: Motion Resume", name);
-//                 v.with_context(|| "Error while processing motion messages")?;
-//                 Ok(StreamChange::MotionStart)
-//             },
-//             v = async {
-//                 // Wait for client to connect
-//                 let mut inter = tokio::time::interval(tokio::time::Duration::from_secs_f32(0.01));
-//                 let inactive_tags = shared.get_streams().iter().filter(|i| !active_tags.contains(i)).collect::<Vec<_>>();
-//                 trace!("inactive_tags: {:?}", inactive_tags);
-//                 loop {
-//                     inter.tick().await;
-//                     for tag in inactive_tags.iter() {
-//                         if rtsp_thread.get_number_of_clients(shared.get_tag_for_stream(tag)).await.map(|n| n > 0).unwrap_or(false) {
-//                             return Result::<_,anyhow::Error>::Ok(StreamChange::ClientStart(**tag))
-//                         }
-//                     }
-//                 }
-//             }, if shared.get_config().pause.on_disconnect => {
-//                 if let Ok(StreamChange::ClientStart(tag)) = v.as_ref() {
-//                     info!("{}: Client Resume:: {:?}", name, tag);
-//                 }
-//                 v
-//             },
-//         }.with_context(|| format!("{}: Error while streaming", name))
-// }
+async fn stream_main(
+    name: String,
+    mut stream_instance: StreamInstance,
+    rtsp: &NeoRtspServer,
+) -> Result<()> {
+    loop {
+        // Wait for a valid stream format to be detected
+        stream_instance
+            .config
+            .wait_for(|config| {
+                !matches!(config.vid_format, VidFormat::None)
+                    && config.resolution[0] > 0
+                    && config.resolution[1] > 0
+            })
+            .await?;
+        let stream = stream_instance.stream.resubscribe();
+        let stream_name = match stream_instance.name {
+            StreamKind::Main => "main",
+            StreamKind::Sub => "sub",
+            StreamKind::Extern => "extern",
+        }
+        .to_string();
+        let thread_stream_config = stream_instance.config.clone();
+        // This select ensures is for the streams config
+        break tokio::select! {
+            _ = stream_instance.config.changed() => {
+                // If stream config changes we reload the stream
+                continue;
+            },
+            v = async {
+                // Finally ready to create the factory and connect the stream
+                let mounts = rtsp
+                    .mount_points()
+                    .ok_or(anyhow!("RTSP server lacks mount point"))?;
+                let path = format!("/{}/{}", name, stream_name);
+                log::debug!("Path: {}", path);
+                let stream_config = thread_stream_config.clone();
+                // Create the factory
+                let (client_tx, mut client_rx) = mpsc(100);
+                let factory = {
+                    NeoMediaFactory::new_with_callback(move |element| {
+                        clear_bin(&element)?;
+                        let config = stream_config.borrow().clone();
+                        let (vid_seek_tx, vid_seek_rx) = mpsc(10);
+                        let (aud_seek_tx, aud_seek_rx) = mpsc(10);
+                        let vid = match config.vid_format {
+                            VidFormat::None => {
+                                build_unknown(&element)?;
+                                AnyResult::Ok(None)
+                            },
+                            VidFormat::H264 => {
+                                let app = build_h264(&element)?;
+                                app.set_callbacks(
+                                    AppSrcCallbacks::builder()
+                                        .seek_data(move |_, seek_pos| {
+                                            log::info!("seek_pos: {seek_pos:?}");
+                                            let (reply_tx, mut reply_rx) = mpsc(1);
+                                            vid_seek_tx.blocking_send(
+                                                    StreamData::Seek{
+                                                        ts: Duration::from_micros(seek_pos),
+                                                        reply: reply_tx,
+                                                    }).is_ok() && reply_rx.blocking_recv().is_some()
+                                        })
+                                        .build(),
+                                );
+                                AnyResult::Ok(Some(app))
+                            },
+                            VidFormat::H265 => {
+                                let app = build_h265(&element)?;
+                                app.set_callbacks(
+                                    AppSrcCallbacks::builder()
+                                        .seek_data(move |_, seek_pos| {
+                                            log::info!("seek_pos: {seek_pos:?}");
+                                            let (reply_tx, mut reply_rx) = mpsc(1);
+                                            vid_seek_tx.blocking_send(
+                                                    StreamData::Seek{
+                                                        ts: Duration::from_micros(seek_pos),
+                                                        reply: reply_tx,
+                                                    }).is_ok() && reply_rx.blocking_recv().is_some()
+                                        })
+                                        .build(),
+                                );
+                                AnyResult::Ok(Some(app))
+                            },
+                        }?;
+                        let aud = if matches!(config.vid_format, VidFormat::None) {
+                            None
+                        } else {
+                            match config.aud_format {
+                                AudFormat::None => {
+                                    AnyResult::Ok(None)
+                                },
+                                AudFormat::Aac => {
+                                    let app = build_aac(&element)?;
+                                    app.set_callbacks(
+                                        AppSrcCallbacks::builder()
+                                            .seek_data(move |_, seek_pos| {
+                                                log::info!("seek_pos: {seek_pos:?}");
+                                                let (reply_tx, mut reply_rx) = mpsc(1);
+                                                aud_seek_tx.blocking_send(
+                                                    StreamData::Seek{
+                                                        ts: Duration::from_micros(seek_pos),
+                                                        reply: reply_tx,
+                                                    }).is_ok() && reply_rx.blocking_recv().is_some()
+                                            })
+                                            .build(),
+                                    );
+                                    AnyResult::Ok(Some(app))
+                                },
+                                AudFormat::Adpcm(block_size) => {
+                                    let app = build_adpcm(&element, block_size)?;
+                                    app.set_callbacks(
+                                        AppSrcCallbacks::builder()
+                                            .seek_data(move |_, seek_pos| {
+                                                log::info!("seek_pos: {seek_pos:?}");
+                                                let (reply_tx, mut reply_rx) = mpsc(1);
+                                                aud_seek_tx.blocking_send(
+                                                    StreamData::Seek{
+                                                        ts: Duration::from_micros(seek_pos),
+                                                        reply: reply_tx,
+                                                    }).is_ok() && reply_rx.blocking_recv().is_some()
+                                            })
+                                            .build(),
+                                    );
+                                    AnyResult::Ok(Some(app))
+                                },
+                            }?
+                        };
+
+                        client_tx.blocking_send((vid, aud, vid_seek_rx, aud_seek_rx))?;
+                        Ok(Some(element))
+                    }).await
+                }?;
+
+                factory.add_permitted_roles(&["anonymous"].into());
+                mounts.add_factory(&path, factory);
+
+                // Done now sit on the receiver and push through the vid to the app sources
+                let stream_cancel = CancellationToken::new();
+                let mut set = JoinSet::new();
+                while let Some((vid, aud, mut vid_seek, mut aud_seek)) = client_rx.recv().await {
+                    log::trace!("New media");
+                    // New media created
+
+                    // This thread handles splitting the data into two streams
+                    let mut thread_stream = BroadcastStream::new(stream.resubscribe()).filter(|f| f.is_ok()); // Filter to ignore lagged
+                    // Use broadcast because of its overflow protection
+                    let (vid_data_tx, vid_data_rx) = broadcast(100);
+                    let (aud_data_tx, aud_data_rx) = broadcast(100);
+                    let thread_stream_cancel = stream_cancel.clone();
+                    let thread_vid = vid.clone();
+                    let thread_aud = aud.clone();
+                    let thread_vid_data_tx = vid_data_tx.clone();
+                    let thread_aud_data_tx = aud_data_tx.clone();
+                    set.spawn(async move {
+                        let r = tokio::select! {
+                            _ = thread_stream_cancel.cancelled() => {
+                                AnyResult::Ok(())
+                            },
+                            v = async {
+                                let mut prev_vid_ms: u32 = 0;
+                                // let prev_aud_ms: u32 = 0;
+                                let mut vid_time: u64 = 0;
+                                // let aud_time: u64 = 0;
+                                while let Some(Ok(data)) = thread_stream.next().await {
+                                    log::trace!("Media Frame Recieved");
+                                    match data {
+                                        BcMedia::Iframe(BcMediaIframe{data, microseconds, ..}) | BcMedia::Pframe(BcMediaPframe{data, microseconds,..}) => {
+                                            if let Some(app) = thread_vid.as_ref() {
+                                                check_live(app)?; // Stop if appsrc is dropped
+                                                let delta = if prev_vid_ms > microseconds {
+                                                    0
+                                                } else {
+                                                    microseconds - prev_vid_ms
+                                                };
+                                                prev_vid_ms = microseconds;
+                                                vid_time = vid_time.wrapping_add(delta as u64);
+                                                thread_vid_data_tx.send(
+                                                    StreamData::Media{
+                                                        data,
+                                                        ts: Duration::from_micros(vid_time)
+                                                })?;
+                                                log::trace!("Sent Vid Frame");
+                                            }
+                                        }
+                                        BcMedia::Aac(BcMediaAac{data, ..}) | BcMedia::Adpcm(BcMediaAdpcm{data,..}) => {
+                                            if let Some(app) = thread_aud.as_ref() {
+                                                check_live(app)?; // Stop if appsrc is dropped
+                                                thread_aud_data_tx.send(
+                                                    StreamData::Media{
+                                                        data,
+                                                        ts: Duration::from_micros(vid_time)
+                                                })?;
+                                                log::trace!("Sent Aud Frame");
+                                            }
+                                        }
+                                        _ => {},
+                                    }
+                                }
+                                AnyResult::Ok(())
+                            } => v,
+                        };
+                        log::trace!("Stream Thread End: {:?}", r);
+                        if let Some(app) = thread_vid.as_ref() {
+                            let _ = app.end_of_stream();
+                        }
+                        if let Some(app) = thread_aud.as_ref() {
+                            let _ = app.end_of_stream();
+                        }
+                        r
+                    });
+
+
+                    // Handles the seek commands
+                    set.spawn(async move {
+                        while let Some(data) = vid_seek.recv().await {
+                            vid_data_tx.send(data)?;
+                        }
+                        log::trace!("Stream Vid Seek End");
+                        AnyResult::Ok(())
+                    });
+                    set.spawn(async move {
+                        while let Some(data) = aud_seek.recv().await {
+                            aud_data_tx.send(data)?;
+                        }
+                        log::trace!("Stream Aud Seek End");
+                        AnyResult::Ok(())
+                    });
+
+                    // Handles the sending the video data into gstreamer
+                    let thread_stream_cancel = stream_cancel.clone();
+                    let vid_data_rx = BroadcastStream::new(vid_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
+                    set.spawn(async move {
+                        let r = tokio::select! {
+                            _ = thread_stream_cancel.cancelled() => {
+                                AnyResult::Ok(())
+                            },
+                            v = handle_data(vid.as_ref(), vid_data_rx) => v,
+                        };
+                        log::trace!("Vid Thread End: {:?}", r);
+                        r
+                    });
+
+                    // Handles the audio data
+                    let thread_stream_cancel = stream_cancel.clone();
+                    let aud_data_rx = BroadcastStream::new(aud_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
+                    set.spawn(async move {
+                        let r = tokio::select! {
+                            _ = thread_stream_cancel.cancelled() => {
+                                AnyResult::Ok(())
+                            },
+                            v = handle_data(aud.as_ref(), aud_data_rx) => v,
+                        };
+                        log::trace!("Aud Thread End: {:?}", r);
+                        r
+                    });
+                }
+                // At this point the factory has been destroyed
+                // Cancel any remaining threads that are trying to send data
+                // Although it should be finished already when the appsrcs are dropped
+                stream_cancel.cancel();
+                while set.join_next().await.is_some() {
+
+                }
+                log::trace!("Stream done");
+                AnyResult::Ok(())
+            } => v,
+        };
+    }
+}
+
+async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
+    app: Option<&AppSrc>,
+    mut data_rx: T,
+) -> Result<()> {
+    if let Some(app) = app {
+        let mut last_ft: Option<Duration> = None;
+        let mut ft = Duration::ZERO;
+        let mut last_rt: Option<Duration> = None;
+        let mut rt = Duration::ZERO;
+        while let Some(Ok(data)) = data_rx.next().await {
+            check_live(app)?; // Stop if appsrc is dropped
+                              // Cache the last runtime
+            match data {
+                StreamData::Seek { ts, reply } => {
+                    rt = ts;
+                    last_rt = None;
+                    let _ = reply.send(()).await;
+                }
+                StreamData::Media { data, ts: ft_i } => {
+                    log::info!("Frame recieved with ts: {ft_i:?}");
+                    // Update rt
+                    if let Some(rt_i) = get_runtime(app) {
+                        if let Some(last_rt) = last_rt {
+                            let delta_rt = rt_i - last_rt;
+                            rt += delta_rt;
+                        }
+                        last_rt = Some(rt_i);
+                    }
+                    // Update ft
+                    if let Some(last_ft) = last_ft {
+                        let delta_ft = ft_i - last_ft;
+                        ft += delta_ft;
+                    }
+                    last_ft = Some(ft_i);
+
+                    // Sync ft to rt if > 150ms difference
+                    const MAX_DELTA_T: Duration = Duration::from_millis(150);
+                    let delta_t = if rt > ft { rt - ft } else { ft - rt };
+                    if delta_t > MAX_DELTA_T {
+                        ft = rt;
+                    }
+
+                    // Send frame to app src on another thread
+                    let thread_app = app.clone();
+                    let thread_rt = rt;
+                    let thread_ft = ft;
+                    tokio::task::spawn(async move {
+                        check_live(&thread_app)?; // Stop if appsrc is dropped
+                        if ft > (rt + Duration::from_millis(50)) {
+                            let delta = ft - rt;
+                            sleep(delta).await;
+                        }
+                        let buf = {
+                            let mut gst_buf = gstreamer::Buffer::with_size(data.len()).unwrap();
+                            {
+                                let gst_buf_mut = gst_buf.get_mut().unwrap();
+                                log::info!("Setting PTS: {thread_ft:?}, Runtime: {thread_rt:?}");
+                                let time = ClockTime::from_useconds(thread_ft.as_micros() as u64);
+                                gst_buf_mut.set_dts(time);
+                                gst_buf_mut.set_pts(time);
+                                let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
+                                gst_buf_data.copy_from_slice(data.as_slice());
+                            }
+                            gst_buf
+                        };
+
+                        log::trace!("Pushing Data");
+                        let appsrc = thread_app.clone();
+                        tokio::task::spawn_blocking(move || {
+                            appsrc
+                                .push_buffer(buf.copy())
+                                .map(|_| ())
+                                .map_err(|_| anyhow!("Could not push buffer to appsrc"))
+                        })
+                        .await??;
+                        log::trace!("  Pushed Data");
+                        AnyResult::Ok(())
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_live(app: &AppSrc) -> Result<()> {
+    app.pads()
+        .iter()
+        .all(|pad| pad.is_linked())
+        .then_some(())
+        .ok_or(anyhow!("App source is closed"))
+}
+
+fn get_runtime(app: &AppSrc) -> Option<Duration> {
+    if let Some(clock) = app.clock() {
+        if let Some(time) = clock.time() {
+            if let Some(base_time) = app.base_time() {
+                let runtime = time.saturating_sub(base_time);
+                return Some(Duration::from_micros(runtime.useconds()));
+            }
+        }
+    }
+    None
+}
+
+fn clear_bin(bin: &Element) -> Result<()> {
+    let bin = bin
+        .clone()
+        .dynamic_cast::<Bin>()
+        .map_err(|_| anyhow!("Media source's element should be a bin"))?;
+    // Clear the autogenerated ones
+    log::debug!("Clearing old elements");
+    for element in bin.iterate_elements().into_iter().flatten() {
+        bin.remove(&element)?;
+    }
+
+    Ok(())
+}
+fn build_unknown(bin: &Element) -> Result<()> {
+    let bin = bin
+        .clone()
+        .dynamic_cast::<Bin>()
+        .map_err(|_| anyhow!("Media source's element should be a bin"))?;
+    log::debug!("Building Unknown Pipeline");
+    let source = make_element("videotestsrc", "testvidsrc")?;
+    source.set_property_from_str("pattern", "snow");
+    source.set_property("num-buffers", 500i32); // Send buffers then EOS
+    let queue = make_queue("queue0")?;
+
+    let overlay = make_element("textoverlay", "overlay")?;
+    overlay.set_property("text", "Stream not Ready");
+    overlay.set_property_from_str("valignment", "top");
+    overlay.set_property_from_str("halignment", "left");
+    overlay.set_property("font-desc", "Sans, 16");
+    let encoder = make_element("jpegenc", "encoder")?;
+    let payload = make_element("rtpjpegpay", "pay0")?;
+
+    bin.add_many(&[&source, &queue, &overlay, &encoder, &payload])?;
+    source.link_filtered(
+        &queue,
+        &Caps::builder("video/x-raw")
+            .field("format", "YUY2")
+            .field("width", 896i32)
+            .field("height", 512i32)
+            .field("framerate", gstreamer::Fraction::new(25, 1))
+            .build(),
+    )?;
+    Element::link_many(&[&queue, &overlay, &encoder, &payload])?;
+
+    Ok(())
+}
+
+fn build_h264(bin: &Element) -> Result<AppSrc> {
+    let bin = bin
+        .clone()
+        .dynamic_cast::<Bin>()
+        .map_err(|_| anyhow!("Media source's element should be a bin"))?;
+    log::debug!("Building H264 Pipeline");
+    let source = make_element("appsrc", "vidsrc")?
+        .dynamic_cast::<AppSrc>()
+        .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
+
+    source.set_is_live(true);
+    source.set_block(false);
+    source.set_property("emit-signals", false);
+    source.set_max_bytes(50000000u64); // 50MB
+    source.set_do_timestamp(false);
+    source.set_stream_type(AppStreamType::Seekable);
+
+    let source = source
+        .dynamic_cast::<Element>()
+        .map_err(|_| anyhow!("Cannot cast back"))?;
+    let queue = make_queue("source_queue")?;
+    let parser = make_element("h264parse", "parser")?;
+    let payload = make_element("rtph264pay", "pay0")?;
+    bin.add_many(&[&source, &queue, &parser, &payload])?;
+    Element::link_many(&[&source, &queue, &parser, &payload])?;
+
+    let source = source
+        .dynamic_cast::<AppSrc>()
+        .map_err(|_| anyhow!("Cannot convert appsrc"))?;
+    Ok(source)
+}
+
+fn build_h265(bin: &Element) -> Result<AppSrc> {
+    let bin = bin
+        .clone()
+        .dynamic_cast::<Bin>()
+        .map_err(|_| anyhow!("Media source's element should be a bin"))?;
+    log::debug!("Building H265 Pipeline");
+    let source = make_element("appsrc", "vidsrc")?
+        .dynamic_cast::<AppSrc>()
+        .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
+    source.set_is_live(true);
+    source.set_block(false);
+    source.set_property("emit-signals", false);
+    source.set_max_bytes(52428800);
+    source.set_do_timestamp(false);
+    source.set_stream_type(AppStreamType::Seekable);
+
+    let source = source
+        .dynamic_cast::<Element>()
+        .map_err(|_| anyhow!("Cannot cast back"))?;
+    let queue = make_queue("source_queue")?;
+    let parser = make_element("h265parse", "parser")?;
+    let payload = make_element("rtph265pay", "pay0")?;
+    bin.add_many(&[&source, &queue, &parser, &payload])?;
+    Element::link_many(&[&source, &queue, &parser, &payload])?;
+
+    let source = source
+        .dynamic_cast::<AppSrc>()
+        .map_err(|_| anyhow!("Cannot convert appsrc"))?;
+    Ok(source)
+}
+
+fn build_aac(bin: &Element) -> Result<AppSrc> {
+    let bin = bin
+        .clone()
+        .dynamic_cast::<Bin>()
+        .map_err(|_| anyhow!("Media source's element should be a bin"))?;
+    log::debug!("Building Aac pipeline");
+    let source = make_element("appsrc", "audsrc")?
+        .dynamic_cast::<AppSrc>()
+        .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
+
+    source.set_is_live(true);
+    source.set_block(false);
+    source.set_property("emit-signals", false);
+    source.set_max_bytes(52428800);
+    source.set_do_timestamp(false);
+    source.set_stream_type(AppStreamType::Seekable);
+
+    let source = source
+        .dynamic_cast::<Element>()
+        .map_err(|_| anyhow!("Cannot cast back"))?;
+
+    let queue = make_queue("audqueue")?;
+    let parser = make_element("aacparse", "audparser")?;
+    let decoder = match make_element("faad", "auddecoder_faad") {
+        Ok(ele) => Ok(ele),
+        Err(_) => make_element("avdec_aac", "auddecoder_avdec_aac"),
+    }?;
+    let encoder = make_element("audioconvert", "audencoder")?;
+    let payload = make_element("rtpL16pay", "pay1")?;
+
+    bin.add_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
+    Element::link_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
+
+    let source = source
+        .dynamic_cast::<AppSrc>()
+        .map_err(|_| anyhow!("Cannot convert appsrc"))?;
+    Ok(source)
+}
+
+fn build_adpcm(bin: &Element, block_size: u32) -> Result<AppSrc> {
+    let bin = bin
+        .clone()
+        .dynamic_cast::<Bin>()
+        .map_err(|_| anyhow!("Media source's element should be a bin"))?;
+    log::debug!("Building Adpcm pipeline");
+    // Original command line
+    // caps=audio/x-adpcm,layout=dvi,block_align={},channels=1,rate=8000
+    // ! queue silent=true max-size-bytes=10485760 min-threshold-bytes=1024
+    // ! adpcmdec
+    // ! audioconvert
+    // ! rtpL16pay name=pay1
+
+    let source = make_element("appsrc", "audsrc")?
+        .dynamic_cast::<AppSrc>()
+        .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
+    source.set_is_live(true);
+    source.set_block(false);
+    source.set_property("emit-signals", false);
+    source.set_max_bytes(52428800);
+    source.set_do_timestamp(false);
+    source.set_stream_type(AppStreamType::Seekable);
+
+    source.set_caps(Some(
+        &Caps::builder("audio/x-adpcm")
+            .field("layout", "div")
+            .field("block_align", block_size as i32)
+            .field("channels", 1i32)
+            .field("rate", 8000i32)
+            .build(),
+    ));
+
+    let source = source
+        .dynamic_cast::<Element>()
+        .map_err(|_| anyhow!("Cannot cast back"))?;
+
+    let queue = make_queue("audqueue")?;
+    let decoder = make_element("decodebin", "auddecoder")?;
+    let encoder = make_element("audioconvert", "audencoder")?;
+    let payload = make_element("rtpL16pay", "pay1")?;
+
+    bin.add_many(&[&source, &queue, &decoder, &encoder, &payload])?;
+    Element::link_many(&[&source, &queue, &decoder])?;
+    Element::link_many(&[&encoder, &payload])?;
+    decoder.connect_pad_added(move |_element, pad| {
+        debug!("Linking encoder to decoder: {:?}", pad.caps());
+        let sink_pad = encoder
+            .static_pad("sink")
+            .expect("Encoder is missing its pad");
+        pad.link(&sink_pad)
+            .expect("Failed to link ADPCM decoder to encoder");
+    });
+
+    let source = source
+        .dynamic_cast::<AppSrc>()
+        .map_err(|_| anyhow!("Cannot convert appsrc"))?;
+    Ok(source)
+}
+
+// Convenice funcion to make an element or provide a message
+// about what plugin is missing
+fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
+    ElementFactory::make_with_name(kind, Some(name)).with_context(|| {
+        let plugin = match kind {
+            "appsrc" => "app (gst-plugins-base)",
+            "audioconvert" => "audioconvert (gst-plugins-base)",
+            "adpcmdec" => "Required for audio",
+            "h264parse" => "videoparsersbad (gst-plugins-bad)",
+            "h265parse" => "videoparsersbad (gst-plugins-bad)",
+            "rtph264pay" => "rtp (gst-plugins-good)",
+            "rtph265pay" => "rtp (gst-plugins-good)",
+            "aacparse" => "audioparsers (gst-plugins-good)",
+            "rtpL16pay" => "rtp (gst-plugins-good)",
+            "x264enc" => "x264 (gst-plugins-ugly)",
+            "x265enc" => "x265 (gst-plugins-bad)",
+            "avdec_h264" => "libav (gst-libav)",
+            "avdec_h265" => "libav (gst-libav)",
+            "videotestsrc" => "videotestsrc (gst-plugins-base)",
+            "imagefreeze" => "imagefreeze (gst-plugins-good)",
+            "audiotestsrc" => "audiotestsrc (gst-plugins-base)",
+            "decodebin" => "playback (gst-plugins-good)",
+            _ => "Unknown",
+        };
+        format!(
+            "Missing required gstreamer plugin `{}` for `{}` element",
+            plugin, kind
+        )
+    })
+}
+fn make_queue(name: &str) -> AnyResult<Element> {
+    let queue = make_element("queue", name)?;
+    queue.set_property_from_str("leaky", "downstream");
+    queue.set_property("max-size-bytes", 0u32);
+    queue.set_property("max-size-buffers", 0u32);
+    queue.set_property(
+        "max-size-time",
+        std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
+            .unwrap_or(0),
+    );
+    Ok(queue)
+}

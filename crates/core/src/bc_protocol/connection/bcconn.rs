@@ -59,6 +59,7 @@ impl BcConnection {
         let thread_cancel = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
                 .build()
                 .unwrap();
             let result = runtime.block_on(async move {

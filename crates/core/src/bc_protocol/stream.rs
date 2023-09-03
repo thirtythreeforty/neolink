@@ -22,14 +22,13 @@ pub enum StreamKind {
     Extern,
 }
 
-impl StreamKind {
-    pub fn to_string(&self) -> String {
+impl std::fmt::Display for StreamKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            StreamKind::Main => "mainStream",
-            StreamKind::Sub => "subStream",
-            StreamKind::Extern => "externStream",
+            StreamKind::Main => write!(f, "mainStream"),
+            StreamKind::Sub => write!(f, "subStream"),
+            StreamKind::Extern => write!(f, "externStream"),
         }
-        .to_string()
     }
 }
 
