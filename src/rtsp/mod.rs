@@ -58,7 +58,7 @@ use gstreamer_app::{AppSrc, AppSrcCallbacks, AppStreamType};
 use gstreamer_rtsp_server::prelude::*;
 use log::*;
 use neolink_core::{bc_protocol::StreamKind, bcmedia::model::*};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::{
     sync::{
@@ -88,60 +88,133 @@ type AnyResult<T> = anyhow::Result<T, anyhow::Error>;
 /// Entry point for the rtsp subcommand
 ///
 /// Opt is the command line options
-pub(crate) async fn main(_opt: Opt, mut config: Config, reactor: NeoReactor) -> Result<()> {
+pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
     let rtsp = Arc::new(NeoRtspServer::new()?);
-
-    rtsp.set_up_tls(&config);
-
-    rtsp.set_up_users(&config.users);
-
-    if config.certificate.is_none() && !config.users.is_empty() {
-        warn!(
-            "Without a server certificate, usernames and passwords will be exchanged in plaintext!"
-        )
-    }
-    let mut cameras = vec![];
-    for camera_config in config.cameras.drain(..).filter(|c| c.enabled) {
-        cameras.push(reactor.get_or_insert(camera_config).await?);
-    }
 
     let global_cancel = CancellationToken::new();
 
     let mut set = JoinSet::new();
-    for camera in cameras.drain(..) {
-        let thread_global_cancel = global_cancel.clone();
-        let thread_rtsp = rtsp.clone();
-        set.spawn_blocking(|| {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            runtime.block_on(async move {
-                tokio::select!(
-                    _ = thread_global_cancel.cancelled() => {
-                        AnyResult::Ok(())
-                    },
-                    v = camera_main(camera, &thread_rtsp) => v,
-                )
-            })
-        });
-    }
+
+    // Thread for the TLS from the config
+    let mut thread_config = reactor.config().await?;
+    let thread_cancel = global_cancel.clone();
+    let thread_rtsp = rtsp.clone();
+    thread_rtsp.set_up_tls(&thread_config.borrow_and_update().clone())?;
+    set.spawn(async move {
+        tokio::select! {
+            _ = thread_cancel.cancelled() => AnyResult::Ok(()),
+            v = async {
+                loop {
+                    thread_config.changed().await?;
+                    if let Err(e) = thread_rtsp.set_up_tls(&thread_config.borrow().clone()) {
+                        log::error!("Could not seup TLS: {e}");
+                    }
+                }
+            } => v
+        }
+    });
+
+    // Thread for the Users from the config
+    let mut thread_config = reactor.config().await?;
+    let thread_cancel = global_cancel.clone();
+    let thread_rtsp = rtsp.clone();
+    apply_users(&thread_rtsp, &thread_config.borrow_and_update().clone()).await?;
+    set.spawn(async move {
+        tokio::select! {
+            _ = thread_cancel.cancelled() => AnyResult::Ok(()),
+            v = async {
+                loop {
+                    thread_config.changed().await?;
+                    let config = thread_config.borrow().clone();
+                    if let Err(e) = apply_users(&thread_rtsp, &config.clone()).await {
+                        log::error!("Could not seup TLS: {e}");
+                    }
+                }
+            } => v
+        }
+    });
+
+    // Startup and stop cameras as they are added/removed to the config
+    let mut thread_config = reactor.config().await?;
+    let thread_cancel = global_cancel.clone();
+    let thread_rtsp = rtsp.clone();
+    let thread_reactor = reactor.clone();
+    set.spawn(async move {
+        let mut set = JoinSet::<AnyResult<()>>::new();
+        let thread_cancel2 = thread_cancel.clone();
+        tokio::select!{
+            _ = thread_cancel.cancelled() => AnyResult::Ok(()),
+            v = async {
+                let mut cameras: HashMap<String, CancellationToken> = Default::default();
+                let mut config_names = HashSet::new();
+                loop {
+                    thread_config.wait_for(|config| {
+                        let current_names = config.cameras.iter().filter(|a| a.enabled).map(|cam_config| cam_config.name.clone()).collect::<HashSet<_>>();
+                        current_names != config_names
+                    }).await.with_context(|| "Camera Config Watcher")?;
+                    config_names = thread_config.borrow().clone().cameras.iter().filter(|a| a.enabled).map(|cam_config| cam_config.name.clone()).collect::<HashSet<_>>();
+
+                    for name in config_names.iter().cloned() {
+                        log::info!("{name}: Rtsp Staring");
+                        if ! cameras.contains_key(&name) {
+                            let local_cancel = CancellationToken::new();
+                            cameras.insert(name.clone(),local_cancel.clone() );
+                            let thread_global_cancel = thread_cancel2.clone();
+                            let thread_rtsp2 = thread_rtsp.clone();
+                            let thread_reactor2 = thread_reactor.clone();
+                            set.spawn_blocking(|| {
+                                let runtime = tokio::runtime::Builder::new_current_thread()
+                                    .enable_all()
+                                    .build()
+                                    .unwrap();
+                                runtime.block_on(async move {
+                                    let camera = thread_reactor2.get(&name).await?;
+                                    tokio::select!(
+                                        _ = thread_global_cancel.cancelled() => {
+                                            AnyResult::Ok(())
+                                        },
+                                        _ = local_cancel.cancelled() => {
+                                            AnyResult::Ok(())
+                                        },
+                                        v = camera_main(camera, &thread_rtsp2) => v,
+                                    )
+                                })
+                            });
+                        }
+                    }
+
+                    for (running_name, token) in cameras.iter() {
+                        if ! config_names.contains(running_name) {
+                            token.cancel();
+                        }
+                    }
+                }
+            } => v,
+        }
+    });
+
+    let rtsp_config = reactor.config().await?.borrow().clone();
     info!(
         "Starting RTSP Server at {}:{}",
-        &config.bind_addr, config.bind_port,
+        &rtsp_config.bind_addr, rtsp_config.bind_port,
     );
 
-    let bind_addr = config.bind_addr.clone();
-    let bind_port = config.bind_port;
+    let bind_addr = rtsp_config.bind_addr.clone();
+    let bind_port = rtsp_config.bind_port;
     rtsp.run(&bind_addr, bind_port).await?;
     let thread_rtsp = rtsp.clone();
     set.spawn(async move { thread_rtsp.join().await });
 
-    while let Some(joined) = set.join_next().await {
+    while let Some(joined) = set
+        .join_next()
+        .await
+        .map(|s| s.map_err(anyhow::Error::from))
+    {
         match &joined {
-            Err(_) | Ok(Err(_)) => {
+            Err(e) | Ok(Err(e)) => {
                 // Panicked or error in task
                 // Cancel all and await terminate
+                log::error!("Error: {e}");
                 global_cancel.cancel();
                 rtsp.quit().await?;
             }
@@ -151,6 +224,26 @@ pub(crate) async fn main(_opt: Opt, mut config: Config, reactor: NeoReactor) -> 
         }
     }
 
+    Ok(())
+}
+
+async fn apply_users(rtsp: &NeoRtspServer, config: &Config) -> AnyResult<()> {
+    // Add those missing
+    for user in config.users.iter() {
+        rtsp.add_user(&user.name, &user.pass).await?;
+    }
+    // Remove unused
+    let rtsp_users = rtsp.get_users().await?;
+    for user in rtsp_users {
+        if config.users.iter().any(|a| a.name == user) {
+            rtsp.remove_user(&user).await?;
+        }
+    }
+    if config.certificate.is_none() && !config.users.is_empty() {
+        warn!(
+            "Without a server certificate, usernames and passwords will be exchanged in plaintext!"
+        )
+    }
     Ok(())
 }
 
@@ -179,6 +272,7 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
     let mut camera_config = camera.config().await?.clone();
     loop {
         let prev_stream_config = camera_config.borrow_and_update().stream;
+        let prev_stream_users = camera_config.borrow().permitted_users.clone();
         let active_streams = prev_stream_config
             .as_stream_kinds()
             .drain(..)
@@ -186,7 +280,7 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
 
         // This select is for changes to camera_config.stream
         break tokio::select! {
-            v = camera_config.wait_for(|config| config.stream != prev_stream_config) => {
+            v = camera_config.wait_for(|config| config.stream != prev_stream_config || config.permitted_users != prev_stream_users) => {
                 if let Err(e) = v {
                     AnyResult::Err(e.into())
                 } else {
@@ -196,18 +290,32 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
             },
             v = async {
                 // This select handles enabling the right stream
+                let all_users = rtsp.get_users().await?.iter().filter(|a| *a != "anyone" && *a != "anonymous").cloned().collect::<HashSet<_>>();
+                let permitted_users: HashSet<String> = match &prev_stream_users {
+                    // If in the camera config there is the user "anyone", or if none is specified but users
+                    // are defined at all, then we add all users to the camera's allowed list.
+                    Some(p) if p.iter().any(|u| u == "anyone") => all_users,
+                    None if !all_users.is_empty() => all_users,
+
+                    // The user specified permitted_users
+                    Some(p) => p.iter().cloned().collect(),
+
+                    // The user didn't specify permitted_users, and there are none defined anyway
+                    None => ["anonymous".to_string()].iter().cloned().collect(),
+                };
+
                 tokio::select! {
                     v = async {
                         let name = camera.config().await?.borrow().name.clone();
-                        stream_main(name, camera.stream(StreamKind::Main).await?, rtsp).await
+                        stream_main(name, camera.stream(StreamKind::Main).await?, rtsp, &permitted_users).await
                     }, if active_streams.contains(&StreamKind::Main) && supported_streams.contains(&StreamKind::Main) => v,
                     v = async {
                         let name = camera.config().await?.borrow().name.clone();
-                        stream_main(name, camera.stream(StreamKind::Sub).await?, rtsp).await
+                        stream_main(name, camera.stream(StreamKind::Sub).await?, rtsp, &permitted_users).await
                     }, if active_streams.contains(&StreamKind::Sub) && supported_streams.contains(&StreamKind::Sub) => v,
                     v = async {
                         let name = camera.config().await?.borrow().name.clone();
-                        stream_main(name, camera.stream(StreamKind::Extern).await?, rtsp).await
+                        stream_main(name, camera.stream(StreamKind::Extern).await?, rtsp, &permitted_users).await
                     }, if active_streams.contains(&StreamKind::Extern) && supported_streams.contains(&StreamKind::Extern) => v,
                     else => {
                         // all disabled just wait here until config is changed
@@ -232,6 +340,7 @@ async fn stream_main(
     name: String,
     mut stream_instance: StreamInstance,
     rtsp: &NeoRtspServer,
+    users: &HashSet<String>,
 ) -> Result<()> {
     loop {
         // Wait for a valid stream format to be detected
@@ -362,7 +471,7 @@ async fn stream_main(
                     }).await
                 }?;
 
-                factory.add_permitted_roles(&["anonymous"].into());
+                factory.add_permitted_roles(users);
                 mounts.add_factory(&path, factory);
 
                 // Done now sit on the receiver and push through the vid to the app sources

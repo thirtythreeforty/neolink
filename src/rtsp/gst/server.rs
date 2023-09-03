@@ -16,7 +16,11 @@ use gstreamer_rtsp_server::{
     RTSPAuth, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
-use std::{fs, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    sync::Arc,
+};
 use tokio::{
     sync::RwLock,
     task::JoinSet,
@@ -38,6 +42,17 @@ impl NeoRtspServer {
     pub(crate) fn new() -> AnyResult<Self> {
         gstreamer::init().context("Gstreamer failed to initialise")?;
         let factory = Object::new::<NeoRtspServer>();
+
+        // Setup auth
+        let auth = factory.auth().unwrap_or_else(RTSPAuth::new);
+        auth.set_supported_methods(RTSPAuthMethod::Basic);
+        let mut un_authtoken = RTSPToken::new(&[
+            //RTSP_TOKEN_MEDIA_FACTORY_ROLE: Means look inside the media factory settings and use the same permissions this user (`"anonymous"`) has
+            (RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"anonymous"),
+        ]);
+        auth.set_default_token(Some(&mut un_authtoken));
+        factory.set_auth(Some(&auth));
+
         Ok(factory)
     }
 
@@ -80,12 +95,20 @@ impl NeoRtspServer {
         Ok(())
     }
 
-    pub(crate) fn set_up_tls(&self, config: &Config) {
+    pub(crate) fn set_up_tls(&self, config: &Config) -> AnyResult<()> {
         self.imp().set_up_tls(config)
     }
 
-    pub(crate) fn set_up_users(&self, users: &[UserConfig]) {
-        self.imp().set_up_users(users)
+    pub(crate) async fn add_user(&self, username: &str, password: &str) -> AnyResult<()> {
+        self.imp().add_user(username, password).await
+    }
+
+    pub(crate) async fn remove_user(&self, username: &str) -> AnyResult<()> {
+        self.imp().remove_user(username).await
+    }
+
+    pub(crate) async fn get_users(&self) -> AnyResult<HashSet<String>> {
+        self.imp().get_users().await
     }
 }
 
@@ -95,6 +118,7 @@ unsafe impl Sync for NeoRtspServer {}
 #[derive(Default)]
 pub(crate) struct NeoRtspServerImpl {
     threads: RwLock<JoinSet<AnyResult<()>>>,
+    users: RwLock<HashMap<String, String>>,
     main_loop: RwLock<Option<Arc<MainLoop>>>,
 }
 
@@ -109,25 +133,6 @@ impl ObjectSubclass for NeoRtspServerImpl {
 }
 
 impl NeoRtspServerImpl {
-    pub(crate) fn set_credentials(&self, credentials: &[(&str, &str)]) -> AnyResult<()> {
-        let auth = self.obj().auth().unwrap_or_else(RTSPAuth::new);
-        auth.set_supported_methods(RTSPAuthMethod::Basic);
-
-        let mut un_authtoken = RTSPToken::new(&[(RTSP_TOKEN_MEDIA_FACTORY_ROLE, &"anonymous")]);
-        auth.set_default_token(Some(&mut un_authtoken));
-
-        for credential in credentials {
-            let (user, pass) = credential;
-            trace!("Setting credentials for user {}", user);
-            let token = RTSPToken::new(&[(RTSP_TOKEN_MEDIA_FACTORY_ROLE, user)]);
-            let basic = RTSPAuth::make_basic(user, pass);
-            auth.add_basic(basic.as_str(), &token);
-        }
-
-        self.obj().set_auth(Some(&auth));
-        Ok(())
-    }
-
     pub(crate) fn set_tls(
         &self,
         cert_file: &str,
@@ -147,7 +152,7 @@ impl NeoRtspServerImpl {
         Ok(())
     }
 
-    pub(crate) fn set_up_tls(&self, config: &Config) {
+    pub(crate) fn set_up_tls(&self, config: &Config) -> AnyResult<()> {
         let tls_client_auth = match &config.tls_client_auth as &str {
             "request" => TlsAuthenticationMode::Requested,
             "require" => TlsAuthenticationMode::Required,
@@ -156,17 +161,48 @@ impl NeoRtspServerImpl {
         };
         if let Some(cert_path) = &config.certificate {
             self.set_tls(cert_path, tls_client_auth)
-                .expect("Failed to set up TLS");
+                .with_context(|| "Failed to set up TLS")?;
         }
+        Ok(())
     }
 
-    pub(crate) fn set_up_users(&self, users: &[UserConfig]) {
-        // Setting up users
-        let credentials: Vec<_> = users
-            .iter()
-            .map(|user| (&*user.name, &*user.pass))
-            .collect();
-        self.set_credentials(&credentials)
-            .expect("Failed to set up users");
+    pub(crate) async fn add_user(&self, username: &str, password: &str) -> AnyResult<()> {
+        let mut locked_users = self.users.write().await;
+        let auth = self.obj().auth().unwrap();
+
+        let token = RTSPToken::new(&[(RTSP_TOKEN_MEDIA_FACTORY_ROLE, &username)]);
+        let basic = RTSPAuth::make_basic(username, password);
+
+        if let Some(old_basic) = locked_users.get(username) {
+            if basic.as_str() == old_basic {
+                // Password is the same
+                return Ok(());
+            } else {
+                // Different password
+                auth.remove_basic(old_basic);
+            }
+        }
+
+        auth.add_basic(basic.as_str(), &token);
+
+        locked_users.insert(username.to_string(), basic.to_string());
+        Ok(())
+    }
+
+    pub(crate) async fn remove_user(&self, username: &str) -> AnyResult<()> {
+        let mut locked_users = self.users.write().await;
+        let auth = self.obj().auth().unwrap();
+
+        if let Some(old_basic) = locked_users.get(username) {
+            auth.remove_basic(old_basic);
+        }
+
+        locked_users.remove(username);
+        Ok(())
+    }
+
+    pub(crate) async fn get_users(&self) -> AnyResult<HashSet<String>> {
+        let locked_users = self.users.read().await;
+        Ok(locked_users.keys().cloned().collect())
     }
 }

@@ -190,6 +190,7 @@ impl NeoCam {
         )
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn update_config(&self, config: CameraConfig) -> Result<()> {
         self.config_watch.send(config)?;
         Ok(())

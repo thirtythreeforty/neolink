@@ -46,19 +46,6 @@ pub(crate) struct Config {
     pub(crate) users: Vec<UserConfig>,
 }
 
-impl Config {
-    pub(crate) fn get_camera_config(&self, name: &str) -> Result<&CameraConfig, anyhow::Error> {
-        self.cameras
-            .iter()
-            .filter(|c| c.enabled)
-            .find(|cam| cam.name == name)
-            .ok_or(anyhow::anyhow!(
-                "Camera with name `{}` not found in the config",
-                name
-            ))
-    }
-}
-
 #[derive(Debug, Deserialize, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum StreamConfig {
     #[serde(alias = "none")]

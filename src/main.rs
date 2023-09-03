@@ -87,7 +87,7 @@ async fn main() -> Result<()> {
         tokio_console_enable();
     }
 
-    let neo_reactor = NeoReactor::new().await;
+    let neo_reactor = NeoReactor::new(config.clone()).await;
 
     match opt.cmd {
         None => {
@@ -95,19 +95,19 @@ async fn main() -> Result<()> {
                 "Deprecated command line option. Please use: `neolink rtsp --config={:?}`",
                 config
             );
-            rtsp::main(rtsp::Opt {}, config, neo_reactor.clone()).await?;
+            rtsp::main(rtsp::Opt {}, neo_reactor.clone()).await?;
         }
         Some(Command::Rtsp(opts)) => {
-            rtsp::main(opts, config, neo_reactor.clone()).await?;
+            rtsp::main(opts, neo_reactor.clone()).await?;
         }
         Some(Command::StatusLight(opts)) => {
-            statusled::main(opts, config, neo_reactor.clone()).await?;
+            statusled::main(opts, neo_reactor.clone()).await?;
         }
         Some(Command::Reboot(opts)) => {
-            reboot::main(opts, config, neo_reactor.clone()).await?;
+            reboot::main(opts, neo_reactor.clone()).await?;
         }
         Some(Command::Pir(opts)) => {
-            pir::main(opts, config, neo_reactor.clone()).await?;
+            pir::main(opts, neo_reactor.clone()).await?;
         }
         Some(Command::Ptz(opts)) => {
             ptz::main(opts, config).await?;
@@ -119,10 +119,10 @@ async fn main() -> Result<()> {
             mqtt::main(opts, config).await?;
         }
         Some(Command::Image(opts)) => {
-            image::main(opts, config, neo_reactor.clone()).await?;
+            image::main(opts, neo_reactor.clone()).await?;
         }
         Some(Command::Battery(opts)) => {
-            battery::main(opts, config, neo_reactor.clone()).await?;
+            battery::main(opts, neo_reactor.clone()).await?;
         }
     }
 
