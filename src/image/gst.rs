@@ -3,7 +3,6 @@ use std::path::Path;
 use anyhow::{anyhow, Context, Result};
 use gstreamer::{parse_launch, prelude::*, ClockTime, MessageView, Pipeline, State};
 use gstreamer_app::AppSrc;
-use neolink_core::bcmedia::model::VideoType;
 use tokio::{
     sync::{
         self,

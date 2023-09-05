@@ -147,9 +147,7 @@ impl NeoCamStreamThread {
                             }
                             let mut streams = self.streams.iter_mut().filter_map(|(name, stream)| if streams.contains(name) {
                                     Some(async move {
-                                        Result::<_, anyhow::Error>::Ok(
-                                            StreamInstance::new(&stream).await?
-                                        )
+                                        StreamInstance::new(stream).await
                                     })
                                 } else {
                                     None
@@ -391,6 +389,10 @@ impl StreamInstance {
     pub(crate) async fn deactivate(&mut self) -> Result<()> {
         self.in_use.deactivate().await
     }
+
+    pub(crate) async fn activator_handle(&mut self) -> CountUses {
+        self.in_use.subscribe()
+    }
 }
 
 impl Drop for StreamInstance {
@@ -574,13 +576,12 @@ impl StreamData {
                                                     _ => {},
                                                 }
                                             }
-                                            Result::<(),anyhow::Error>::Ok(())
                                         }.await;
                                         Ok(res)
                                     })
                                 }) => {
                                 match result {
-                                    Ok(Ok(())) => {
+                                    Ok(AnyResult::Ok(())) => {
                                         log::debug!("Video Stream Stopped due to no listeners");
                                         break Ok(());
                                     },

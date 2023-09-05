@@ -57,7 +57,7 @@ use gstreamer::{Bin, Caps, ClockTime, Element, ElementFactory};
 use gstreamer_app::{AppSrc, AppSrcCallbacks, AppStreamType};
 use gstreamer_rtsp_server::prelude::*;
 use log::*;
-use neolink_core::{bc_protocol::StreamKind, bcmedia::model::*};
+use neolink_core::bc_protocol::StreamKind;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::{
@@ -401,6 +401,8 @@ async fn stream_main(
     users: &HashSet<String>,
     paths: &[String],
 ) -> Result<()> {
+    let mut camera_config = camera.config().await?.clone();
+    let mut curr_pause;
     loop {
         // Wait for a valid stream format to be detected
         stream_instance
@@ -412,14 +414,36 @@ async fn stream_main(
             })
             .await?;
 
+        stream_instance.activate().await?;
+
+        curr_pause = camera_config.borrow().pause.clone();
+
         let vid = stream_instance.vid.resubscribe();
         let aud = stream_instance.aud.resubscribe();
         let thread_stream_config = stream_instance.config.clone();
         let mut thread_stream_config2 = stream_instance.config.clone();
 
+        let mut set = JoinSet::<AnyResult<()>>::new();
         // Handles the on off of the stream with the client pause
         let client_counter = UseCounter::new().await;
         let client_count = client_counter.create_deactivated().await?;
+        if curr_pause.on_disconnect {
+            // Take over activation
+            let mut client_activator = stream_instance.activator_handle().await;
+            client_activator.activate().await?;
+            stream_instance.deactivate().await?;
+            let client_count = client_counter.create_deactivated().await?;
+            set.spawn(async move {
+                loop {
+                    log::trace!("Activating Client");
+                    client_activator.activate().await?;
+                    client_count.dropped_users().await?;
+                    log::trace!("Pausing Client");
+                    client_activator.deactivate().await?;
+                    client_count.aquired_users().await?;
+                }
+            });
+        }
 
         // This select is for the streams config updates
         break tokio::select! {
@@ -427,22 +451,10 @@ async fn stream_main(
                 // If stream config changes we reload the stream
                 continue;
             },
-            v = async {
-                let client_count = client_counter.create_deactivated().await?;
-                while let Ok(()) = {
-                    log::trace!("Activating Client");
-                    stream_instance.activate().await?;
-                    client_count.dropped_users().await?;
-                    log::trace!("Pausing Client");
-                    stream_instance.deactivate().await?;
-                    client_count.aquired_users().await?;
-                    AnyResult::Ok(())
-                } {}
-                AnyResult::Ok(())
-            } => {
-                log::trace!("Client Pause: {v:?}");
+            _ = camera_config.wait_for(|new_conf| new_conf.pause != curr_pause ) => {
+                // If pause config changes restart
                 continue;
-            }
+            },
             v = stream_run(vid, aud, rtsp, thread_stream_config.borrow().clone(), users, paths, client_count) => v,
         };
     }

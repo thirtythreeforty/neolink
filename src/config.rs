@@ -260,7 +260,7 @@ fn default_maxenc() -> String {
     "Aes".to_string()
 }
 
-#[derive(Debug, Deserialize, Validate, Clone)]
+#[derive(Debug, Deserialize, Validate, Clone, PartialEq)]
 pub(crate) struct PauseConfig {
     #[serde(default = "default_on_motion")]
     pub(crate) on_motion: bool,

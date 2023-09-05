@@ -20,7 +20,7 @@
 use anyhow::{Context, Result};
 use futures::stream::StreamExt;
 use log::*;
-use neolink_core::{bc_protocol::*, bcmedia::model::*};
+use neolink_core::bc_protocol::*;
 use tokio::{fs::File, io::AsyncWriteExt};
 use tokio_stream::wrappers::BroadcastStream;
 
