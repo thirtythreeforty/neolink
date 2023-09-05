@@ -29,6 +29,8 @@ impl NeoCamThread {
     async fn run_camera(&mut self, config: &CameraConfig) -> Result<()> {
         let camera = Arc::new(connect_and_login(config).await?);
 
+        update_camera_time(&camera, &config.name, config.update_time).await?;
+
         self.camera_watch.send_replace(Arc::downgrade(&camera));
 
         let cancel_check = self.cancel.clone();
@@ -141,4 +143,40 @@ impl Drop for NeoCamThread {
         log::debug!("Cancel:: NeoCamThread::drop");
         self.cancel.cancel();
     }
+}
+
+async fn update_camera_time(camera: &BcCamera, name: &str, update_time: bool) -> Result<()> {
+    let cam_time = camera.get_time().await?;
+    let mut update = false;
+    if let Some(time) = cam_time {
+        log::info!("{}: Camera time is already set: {}", name, time);
+        if update_time {
+            update = true;
+        }
+    } else {
+        update = true;
+        log::warn!("{}: Camera has no time set, Updating", name);
+    }
+    if update {
+        use std::time::SystemTime;
+        let new_time = SystemTime::now();
+
+        log::info!("{}: Setting time to {:?}", name, new_time);
+        match camera.set_time(new_time.into()).await {
+            Ok(_) => {
+                let cam_time = camera.get_time().await?;
+                if let Some(time) = cam_time {
+                    log::info!("{}: Camera time is now set: {}", name, time);
+                }
+            }
+            Err(e) => {
+                log::error!(
+                    "{}: Camera did not accept new time (is user an admin?): Error: {:?}",
+                    name,
+                    e
+                );
+            }
+        }
+    }
+    Ok(())
 }

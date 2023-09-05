@@ -62,8 +62,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::{
     sync::{
-        broadcast::channel as broadcast,
-        mpsc::{channel as mpsc, Sender as MpscSender},
+        broadcast::{channel as broadcast, Receiver as BroadcastReceiver},
+        mpsc::{channel as mpsc, Receiver as MpscReceiver, Sender as MpscSender},
     },
     task::JoinSet,
     time::{sleep, Duration},
@@ -74,8 +74,9 @@ use tokio_util::sync::CancellationToken;
 mod cmdline;
 mod gst;
 
+use crate::common::StampedData;
 use crate::{
-    common::{AudFormat, NeoInstance, NeoReactor, StreamInstance, VidFormat},
+    common::{AudFormat, NeoInstance, NeoReactor, StreamConfig, StreamInstance, VidFormat},
     rtsp::gst::NeoMediaFactory,
 };
 
@@ -154,14 +155,15 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
                     }).await.with_context(|| "Camera Config Watcher")?;
                     config_names = thread_config.borrow().clone().cameras.iter().filter(|a| a.enabled).map(|cam_config| cam_config.name.clone()).collect::<HashSet<_>>();
 
-                    for name in config_names.iter().cloned() {
+                    for name in config_names.iter() {
                         log::info!("{name}: Rtsp Staring");
-                        if ! cameras.contains_key(&name) {
+                        if ! cameras.contains_key(name) {
                             let local_cancel = CancellationToken::new();
                             cameras.insert(name.clone(),local_cancel.clone() );
                             let thread_global_cancel = thread_cancel2.clone();
                             let thread_rtsp2 = thread_rtsp.clone();
                             let thread_reactor2 = thread_reactor.clone();
+                            let name = name.clone();
                             set.spawn_blocking(|| {
                                 let runtime = tokio::runtime::Builder::new_current_thread()
                                     .enable_all()
@@ -179,7 +181,7 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
                                         v = camera_main(camera, &thread_rtsp2) => v,
                                     )
                                 })
-                            });
+                            }) ;
                         }
                     }
 
@@ -227,6 +229,7 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
     Ok(())
 }
 
+/// This keeps the users in rtsp and the config in sync
 async fn apply_users(rtsp: &NeoRtspServer, config: &Config) -> AnyResult<()> {
     // Add those missing
     for user in config.users.iter() {
@@ -247,6 +250,9 @@ async fn apply_users(rtsp: &NeoRtspServer, config: &Config) -> AnyResult<()> {
     Ok(())
 }
 
+/// Top level camera entry point
+///
+/// It checks which streams are supported and then starts them
 async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
     let stream_info = camera
         .run_task(|cam| Box::pin(async move { Ok(cam.get_stream_info().await?) }))
@@ -290,6 +296,8 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
             },
             v = async {
                 // This select handles enabling the right stream
+
+                // and setting up the users
                 let all_users = rtsp.get_users().await?.iter().filter(|a| *a != "anyone" && *a != "anonymous").cloned().collect::<HashSet<_>>();
                 let permitted_users: HashSet<String> = match &prev_stream_users {
                     // If in the camera config there is the user "anyone", or if none is specified but users
@@ -307,15 +315,54 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
                 tokio::select! {
                     v = async {
                         let name = camera.config().await?.borrow().name.clone();
-                        stream_main(name, camera.stream(StreamKind::Main).await?, rtsp, &permitted_users).await
+                        let mut paths = vec![
+                            format!("/{name}/main"),
+                            format!("/{name}/Main"),
+                            format!("/{name}/mainStream"),
+                            format!("/{name}/MainStream"),
+                            format!("/{name}/Mainstream"),
+                            format!("/{name}/mainstream"),
+                        ];
+                        if camera.high_stream().await?.map(|s| s.name == StreamKind::Main).unwrap_or(false) {
+                            paths.push(
+                                format!("/{name}")
+                            );
+                        }
+                        stream_main(camera.stream(StreamKind::Main).await?, camera.clone(), rtsp, &permitted_users, &paths).await
                     }, if active_streams.contains(&StreamKind::Main) && supported_streams.contains(&StreamKind::Main) => v,
                     v = async {
                         let name = camera.config().await?.borrow().name.clone();
-                        stream_main(name, camera.stream(StreamKind::Sub).await?, rtsp, &permitted_users).await
+                        let mut paths = vec![
+                            format!("/{name}/sub"),
+                            format!("/{name}/Sub"),
+                            format!("/{name}/subStream"),
+                            format!("/{name}/SubStream"),
+                            format!("/{name}/Substream"),
+                            format!("/{name}/substream"),
+                        ];
+                        if camera.high_stream().await?.map(|s| s.name == StreamKind::Sub).unwrap_or(false) {
+                            paths.push(
+                                format!("/{name}")
+                            );
+                        }
+                        stream_main(camera.stream(StreamKind::Sub).await?,camera.clone(), rtsp, &permitted_users, &paths).await
                     }, if active_streams.contains(&StreamKind::Sub) && supported_streams.contains(&StreamKind::Sub) => v,
                     v = async {
                         let name = camera.config().await?.borrow().name.clone();
-                        stream_main(name, camera.stream(StreamKind::Extern).await?, rtsp, &permitted_users).await
+                        let mut paths = vec![
+                            format!("/{name}/extern"),
+                            format!("/{name}/Extern"),
+                            format!("/{name}/externStream"),
+                            format!("/{name}/ExternStream"),
+                            format!("/{name}/Externstream"),
+                            format!("/{name}/externstream"),
+                        ];
+                        if camera.high_stream().await?.map(|s| s.name == StreamKind::Extern).unwrap_or(false) {
+                            paths.push(
+                                format!("/{name}")
+                            );
+                        }
+                        stream_main(camera.stream(StreamKind::Extern).await?,camera.clone(), rtsp, &permitted_users, &paths).await
                     }, if active_streams.contains(&StreamKind::Extern) && supported_streams.contains(&StreamKind::Extern) => v,
                     else => {
                         // all disabled just wait here until config is changed
@@ -330,17 +377,29 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 enum StreamData {
     Media { data: Vec<u8>, ts: Duration },
     Seek { ts: Duration, reply: MpscSender<()> },
 }
 
+struct ClientSourceData {
+    app: AppSrc,
+    msg: MpscReceiver<StreamData>,
+}
+
+struct ClientData {
+    vid: Option<ClientSourceData>,
+    aud: Option<ClientSourceData>,
+}
+
+/// This handles the stream itself by creating the factory and pushing messages into it
 async fn stream_main(
-    name: String,
     mut stream_instance: StreamInstance,
+    camera: NeoInstance,
     rtsp: &NeoRtspServer,
     users: &HashSet<String>,
+    paths: &[String],
 ) -> Result<()> {
     loop {
         // Wait for a valid stream format to be detected
@@ -352,260 +411,306 @@ async fn stream_main(
                     && config.resolution[1] > 0
             })
             .await?;
-        let stream = stream_instance.stream.resubscribe();
-        let stream_name = match stream_instance.name {
-            StreamKind::Main => "main",
-            StreamKind::Sub => "sub",
-            StreamKind::Extern => "extern",
-        }
-        .to_string();
+
+        let vid = stream_instance.vid.resubscribe();
+        let aud = stream_instance.aud.resubscribe();
         let thread_stream_config = stream_instance.config.clone();
-        // This select ensures is for the streams config
+        // This select is for the streams config updates
         break tokio::select! {
             _ = stream_instance.config.changed() => {
                 // If stream config changes we reload the stream
                 continue;
             },
-            v = async {
-                // Finally ready to create the factory and connect the stream
-                let mounts = rtsp
-                    .mount_points()
-                    .ok_or(anyhow!("RTSP server lacks mount point"))?;
-                let path = format!("/{}/{}", name, stream_name);
-                log::debug!("Path: {}", path);
-                let stream_config = thread_stream_config.clone();
-                // Create the factory
-                let (client_tx, mut client_rx) = mpsc(100);
-                let factory = {
-                    NeoMediaFactory::new_with_callback(move |element| {
-                        clear_bin(&element)?;
-                        let config = stream_config.borrow().clone();
-                        let (vid_seek_tx, vid_seek_rx) = mpsc(10);
-                        let (aud_seek_tx, aud_seek_rx) = mpsc(10);
-                        let vid = match config.vid_format {
-                            VidFormat::None => {
-                                build_unknown(&element)?;
-                                AnyResult::Ok(None)
-                            },
-                            VidFormat::H264 => {
-                                let app = build_h264(&element)?;
-                                app.set_callbacks(
-                                    AppSrcCallbacks::builder()
-                                        .seek_data(move |_, seek_pos| {
-                                            log::info!("seek_pos: {seek_pos:?}");
-                                            let (reply_tx, mut reply_rx) = mpsc(1);
-                                            vid_seek_tx.blocking_send(
-                                                    StreamData::Seek{
-                                                        ts: Duration::from_micros(seek_pos),
-                                                        reply: reply_tx,
-                                                    }).is_ok() && reply_rx.blocking_recv().is_some()
-                                        })
-                                        .build(),
-                                );
-                                AnyResult::Ok(Some(app))
-                            },
-                            VidFormat::H265 => {
-                                let app = build_h265(&element)?;
-                                app.set_callbacks(
-                                    AppSrcCallbacks::builder()
-                                        .seek_data(move |_, seek_pos| {
-                                            log::info!("seek_pos: {seek_pos:?}");
-                                            let (reply_tx, mut reply_rx) = mpsc(1);
-                                            vid_seek_tx.blocking_send(
-                                                    StreamData::Seek{
-                                                        ts: Duration::from_micros(seek_pos),
-                                                        reply: reply_tx,
-                                                    }).is_ok() && reply_rx.blocking_recv().is_some()
-                                        })
-                                        .build(),
-                                );
-                                AnyResult::Ok(Some(app))
-                            },
-                        }?;
-                        let aud = if matches!(config.vid_format, VidFormat::None) {
-                            None
-                        } else {
-                            match config.aud_format {
-                                AudFormat::None => {
-                                    AnyResult::Ok(None)
-                                },
-                                AudFormat::Aac => {
-                                    let app = build_aac(&element)?;
-                                    app.set_callbacks(
-                                        AppSrcCallbacks::builder()
-                                            .seek_data(move |_, seek_pos| {
-                                                log::info!("seek_pos: {seek_pos:?}");
-                                                let (reply_tx, mut reply_rx) = mpsc(1);
-                                                aud_seek_tx.blocking_send(
-                                                    StreamData::Seek{
-                                                        ts: Duration::from_micros(seek_pos),
-                                                        reply: reply_tx,
-                                                    }).is_ok() && reply_rx.blocking_recv().is_some()
-                                            })
-                                            .build(),
-                                    );
-                                    AnyResult::Ok(Some(app))
-                                },
-                                AudFormat::Adpcm(block_size) => {
-                                    let app = build_adpcm(&element, block_size)?;
-                                    app.set_callbacks(
-                                        AppSrcCallbacks::builder()
-                                            .seek_data(move |_, seek_pos| {
-                                                log::info!("seek_pos: {seek_pos:?}");
-                                                let (reply_tx, mut reply_rx) = mpsc(1);
-                                                aud_seek_tx.blocking_send(
-                                                    StreamData::Seek{
-                                                        ts: Duration::from_micros(seek_pos),
-                                                        reply: reply_tx,
-                                                    }).is_ok() && reply_rx.blocking_recv().is_some()
-                                            })
-                                            .build(),
-                                    );
-                                    AnyResult::Ok(Some(app))
-                                },
-                            }?
-                        };
+            v = stream_run(vid, aud, rtsp, thread_stream_config.borrow().clone(), users, paths) => v,
+        };
+    }
+}
 
-                        client_tx.blocking_send((vid, aud, vid_seek_rx, aud_seek_rx))?;
-                        Ok(Some(element))
-                    }).await
-                }?;
+async fn stream_run(
+    vidstream: BroadcastReceiver<StampedData>,
+    audstream: BroadcastReceiver<StampedData>,
+    rtsp: &NeoRtspServer,
+    stream_config: StreamConfig,
+    users: &HashSet<String>,
+    paths: &[String],
+) -> AnyResult<()> {
+    // Finally ready to create the factory and connect the stream
+    let mounts = rtsp
+        .mount_points()
+        .ok_or(anyhow!("RTSP server lacks mount point"))?;
+    // Create the factory
+    let (factory, mut client_rx) = make_factory(&stream_config).await?;
 
-                factory.add_permitted_roles(users);
-                mounts.add_factory(&path, factory);
+    factory.add_permitted_roles(users);
 
-                // Done now sit on the receiver and push through the vid to the app sources
-                let stream_cancel = CancellationToken::new();
-                let mut set = JoinSet::new();
-                while let Some((vid, aud, mut vid_seek, mut aud_seek)) = client_rx.recv().await {
-                    log::trace!("New media");
-                    // New media created
+    for path in paths.iter() {
+        log::debug!("Path: {}", path);
+        mounts.add_factory(path, factory.clone());
+    }
 
-                    // This thread handles splitting the data into two streams
-                    let mut thread_stream = BroadcastStream::new(stream.resubscribe()).filter(|f| f.is_ok()); // Filter to ignore lagged
-                    // Use broadcast because of its overflow protection
-                    let (vid_data_tx, vid_data_rx) = broadcast(100);
-                    let (aud_data_tx, aud_data_rx) = broadcast(100);
-                    let thread_stream_cancel = stream_cancel.clone();
-                    let thread_vid = vid.clone();
-                    let thread_aud = aud.clone();
-                    let thread_vid_data_tx = vid_data_tx.clone();
-                    let thread_aud_data_tx = aud_data_tx.clone();
-                    set.spawn(async move {
-                        let r = tokio::select! {
-                            _ = thread_stream_cancel.cancelled() => {
-                                AnyResult::Ok(())
-                            },
-                            v = async {
-                                let mut prev_vid_ms: u32 = 0;
-                                // let prev_aud_ms: u32 = 0;
-                                let mut vid_time: u64 = 0;
-                                // let aud_time: u64 = 0;
-                                while let Some(Ok(data)) = thread_stream.next().await {
-                                    log::trace!("Media Frame Recieved");
-                                    match data {
-                                        BcMedia::Iframe(BcMediaIframe{data, microseconds, ..}) | BcMedia::Pframe(BcMediaPframe{data, microseconds,..}) => {
-                                            if let Some(app) = thread_vid.as_ref() {
-                                                check_live(app)?; // Stop if appsrc is dropped
-                                                let delta = if prev_vid_ms > microseconds {
-                                                    0
-                                                } else {
-                                                    microseconds - prev_vid_ms
-                                                };
-                                                prev_vid_ms = microseconds;
-                                                vid_time = vid_time.wrapping_add(delta as u64);
-                                                thread_vid_data_tx.send(
-                                                    StreamData::Media{
-                                                        data,
-                                                        ts: Duration::from_micros(vid_time)
-                                                })?;
-                                                log::trace!("Sent Vid Frame");
-                                            }
-                                        }
-                                        BcMedia::Aac(BcMediaAac{data, ..}) | BcMedia::Adpcm(BcMediaAdpcm{data,..}) => {
-                                            if let Some(app) = thread_aud.as_ref() {
-                                                check_live(app)?; // Stop if appsrc is dropped
-                                                thread_aud_data_tx.send(
-                                                    StreamData::Media{
-                                                        data,
-                                                        ts: Duration::from_micros(vid_time)
-                                                })?;
-                                                log::trace!("Sent Aud Frame");
-                                            }
-                                        }
-                                        _ => {},
-                                    }
+    // Done now sit on the receiver and push through the vid to the app sources
+    let stream_cancel = CancellationToken::new();
+    let mut set = JoinSet::new();
+    while let Some(mut client_data) = client_rx.recv().await {
+        log::trace!("New media");
+        // New media created
+        let (vid, mut vid_seek) = client_data
+            .vid
+            .take()
+            .map_or((None, None), |data| (Some(data.app), Some(data.msg)));
+        let (aud, mut aud_seek) = client_data
+            .aud
+            .take()
+            .map_or((None, None), |data| (Some(data.app), Some(data.msg)));
+
+        // This is the data that gets sent to gstreamer thread
+        // It represents the combination of the camera stream and the appsrc seek messages
+        let (aud_data_tx, aud_data_rx) = broadcast(100);
+        let (vid_data_tx, vid_data_rx) = broadcast(100);
+
+        // This thread takes the video data from the cam and passed it into the stream
+        let mut vidstream = BroadcastStream::new(vidstream.resubscribe());
+        let thread_vid_data_tx = vid_data_tx.clone();
+        let thread_stream_cancel = stream_cancel.clone();
+        set.spawn(async move {
+            let r = tokio::select! {
+                _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
+                v = async {
+                    while let Some(data) = vidstream.next().await {
+                        if let Ok(data) = data {
+                            thread_vid_data_tx.send(
+                                StreamData::Media {
+                                    data: data.data,
+                                    ts: data.ts
                                 }
-                                AnyResult::Ok(())
-                            } => v,
-                        };
-                        log::trace!("Stream Thread End: {:?}", r);
-                        if let Some(app) = thread_vid.as_ref() {
-                            let _ = app.end_of_stream();
+                            )?;
                         }
-                        if let Some(app) = thread_aud.as_ref() {
-                            let _ = app.end_of_stream();
+                        // Ignore broadcast lag errors
+                    }
+                    AnyResult::Ok(())
+                } => v
+            };
+            log::trace!("Stream Vid Media End {r:?}");
+            AnyResult::Ok(())
+        });
+
+        // This thread takes the audio data from the cam and passed it into the stream
+        let mut audstream = BroadcastStream::new(audstream.resubscribe());
+        let thread_stream_cancel = stream_cancel.clone();
+        let thread_aud_data_tx = aud_data_tx.clone();
+        set.spawn(async move {
+            let r = tokio::select! {
+                _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
+                v = async {
+                    while let Some(data) = audstream.next().await {
+                        if let Ok(data) = data {
+                            thread_aud_data_tx.send(
+                                StreamData::Media {
+                                    data: data.data,
+                                    ts: data.ts
+                                }
+                            )?;
                         }
-                        r
-                    });
+                        // Ignore broadcast lag errors
+                    }
+                    AnyResult::Ok(())
+                } => v,
+            };
+            log::trace!("Stream Aud Media End: {r:?}");
+            AnyResult::Ok(())
+        });
 
-
-                    // Handles the seek commands
-                    set.spawn(async move {
+        // This thread takes the seek data for the vid and passed it into the stream
+        let thread_stream_cancel = stream_cancel.clone();
+        set.spawn(async move {
+            let r = tokio::select! {
+                _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
+                v = async {
+                    if let Some(vid_seek) = vid_seek.as_mut() {
                         while let Some(data) = vid_seek.recv().await {
                             vid_data_tx.send(data)?;
                         }
-                        log::trace!("Stream Vid Seek End");
-                        AnyResult::Ok(())
-                    });
-                    set.spawn(async move {
+                    }
+                    AnyResult::Ok(())
+                } => v,
+            };
+            log::trace!("Stream Vid Seek End: {r:?}");
+            r
+        });
+
+        // This thread takes the seek data for the aud and passed it into the stream
+        let thread_stream_cancel = stream_cancel.clone();
+        set.spawn(async move {
+            let r = tokio::select! {
+                _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
+                v = async {
+                    if let Some(aud_seek) = aud_seek.as_mut() {
                         while let Some(data) = aud_seek.recv().await {
                             aud_data_tx.send(data)?;
                         }
-                        log::trace!("Stream Aud Seek End");
-                        AnyResult::Ok(())
-                    });
+                    }
+                    AnyResult::Ok(())
+                } => v
+            };
+            log::trace!("Stream Aud Seek End: {r:?}");
+            r
+        });
 
-                    // Handles the sending the video data into gstreamer
-                    let thread_stream_cancel = stream_cancel.clone();
-                    let vid_data_rx = BroadcastStream::new(vid_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
-                    set.spawn(async move {
-                        let r = tokio::select! {
-                            _ = thread_stream_cancel.cancelled() => {
-                                AnyResult::Ok(())
-                            },
-                            v = handle_data(vid.as_ref(), vid_data_rx) => v,
-                        };
-                        log::trace!("Vid Thread End: {:?}", r);
-                        r
-                    });
+        // Handles sending the video data into gstreamer
+        let thread_stream_cancel = stream_cancel.clone();
+        let vid_data_rx = BroadcastStream::new(vid_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
+        let thread_vid = vid.clone();
+        set.spawn(async move {
+            let r = tokio::select! {
+                _ = thread_stream_cancel.cancelled() => {
+                    AnyResult::Ok(())
+                },
+                v = handle_data(thread_vid.as_ref(), vid_data_rx) => v,
+            };
+            log::trace!("Vid Thread End: {:?}", r);
+            r
+        });
 
-                    // Handles the audio data
-                    let thread_stream_cancel = stream_cancel.clone();
-                    let aud_data_rx = BroadcastStream::new(aud_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
-                    set.spawn(async move {
-                        let r = tokio::select! {
-                            _ = thread_stream_cancel.cancelled() => {
-                                AnyResult::Ok(())
-                            },
-                            v = handle_data(aud.as_ref(), aud_data_rx) => v,
-                        };
-                        log::trace!("Aud Thread End: {:?}", r);
-                        r
-                    });
-                }
-                // At this point the factory has been destroyed
-                // Cancel any remaining threads that are trying to send data
-                // Although it should be finished already when the appsrcs are dropped
-                stream_cancel.cancel();
-                while set.join_next().await.is_some() {
-
-                }
-                log::trace!("Stream done");
-                AnyResult::Ok(())
-            } => v,
-        };
+        // Handles the audio data into gstreamer
+        let thread_stream_cancel = stream_cancel.clone();
+        let aud_data_rx = BroadcastStream::new(aud_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
+        let thread_aud = aud.clone();
+        set.spawn(async move {
+            let r = tokio::select! {
+                _ = thread_stream_cancel.cancelled() => {
+                    AnyResult::Ok(())
+                },
+                v = handle_data(thread_aud.as_ref(), aud_data_rx) => v,
+            };
+            log::trace!("Aud Thread End: {:?}", r);
+            r
+        });
     }
+    // At this point the factory has been destroyed
+    // Cancel any remaining threads that are trying to send data
+    // Although it should be finished already when the appsrcs are dropped
+    stream_cancel.cancel();
+    while set.join_next().await.is_some() {}
+    log::trace!("Stream done");
+    AnyResult::Ok(())
+}
+
+async fn make_factory(
+    stream_config: &StreamConfig,
+) -> AnyResult<(NeoMediaFactory, MpscReceiver<ClientData>)> {
+    let (client_tx, client_rx) = mpsc(100);
+    let factory = {
+        let stream_config = stream_config.clone();
+        NeoMediaFactory::new_with_callback(move |element| {
+            clear_bin(&element)?;
+            let (vid_seek_tx, vid_seek_rx) = mpsc(10);
+            let (aud_seek_tx, aud_seek_rx) = mpsc(10);
+            let vid = match stream_config.vid_format {
+                VidFormat::None => {
+                    build_unknown(&element)?;
+                    AnyResult::Ok(None)
+                }
+                VidFormat::H264 => {
+                    let app = build_h264(&element)?;
+                    app.set_callbacks(
+                        AppSrcCallbacks::builder()
+                            .seek_data(move |_, seek_pos| {
+                                log::info!("seek_pos: {seek_pos:?}");
+                                let (reply_tx, mut reply_rx) = mpsc(1);
+                                vid_seek_tx
+                                    .blocking_send(StreamData::Seek {
+                                        ts: Duration::from_micros(seek_pos),
+                                        reply: reply_tx,
+                                    })
+                                    .is_ok()
+                                    && reply_rx.blocking_recv().is_some()
+                            })
+                            .build(),
+                    );
+                    AnyResult::Ok(Some(app))
+                }
+                VidFormat::H265 => {
+                    let app = build_h265(&element)?;
+                    app.set_callbacks(
+                        AppSrcCallbacks::builder()
+                            .seek_data(move |_, seek_pos| {
+                                log::info!("seek_pos: {seek_pos:?}");
+                                let (reply_tx, mut reply_rx) = mpsc(1);
+                                vid_seek_tx
+                                    .blocking_send(StreamData::Seek {
+                                        ts: Duration::from_micros(seek_pos),
+                                        reply: reply_tx,
+                                    })
+                                    .is_ok()
+                                    && reply_rx.blocking_recv().is_some()
+                            })
+                            .build(),
+                    );
+                    AnyResult::Ok(Some(app))
+                }
+            }?;
+            let aud = if matches!(stream_config.vid_format, VidFormat::None) {
+                None
+            } else {
+                match stream_config.aud_format {
+                    AudFormat::None => AnyResult::Ok(None),
+                    AudFormat::Aac => {
+                        let app = build_aac(&element)?;
+                        app.set_callbacks(
+                            AppSrcCallbacks::builder()
+                                .seek_data(move |_, seek_pos| {
+                                    log::info!("seek_pos: {seek_pos:?}");
+                                    let (reply_tx, mut reply_rx) = mpsc(1);
+                                    aud_seek_tx
+                                        .blocking_send(StreamData::Seek {
+                                            ts: Duration::from_micros(seek_pos),
+                                            reply: reply_tx,
+                                        })
+                                        .is_ok()
+                                        && reply_rx.blocking_recv().is_some()
+                                })
+                                .build(),
+                        );
+                        AnyResult::Ok(Some(app))
+                    }
+                    AudFormat::Adpcm(block_size) => {
+                        let app = build_adpcm(&element, block_size)?;
+                        app.set_callbacks(
+                            AppSrcCallbacks::builder()
+                                .seek_data(move |_, seek_pos| {
+                                    log::info!("seek_pos: {seek_pos:?}");
+                                    let (reply_tx, mut reply_rx) = mpsc(1);
+                                    aud_seek_tx
+                                        .blocking_send(StreamData::Seek {
+                                            ts: Duration::from_micros(seek_pos),
+                                            reply: reply_tx,
+                                        })
+                                        .is_ok()
+                                        && reply_rx.blocking_recv().is_some()
+                                })
+                                .build(),
+                        );
+                        AnyResult::Ok(Some(app))
+                    }
+                }?
+            };
+
+            client_tx.blocking_send(ClientData {
+                vid: match (vid, vid_seek_rx) {
+                    (Some(app), msg) => Some(ClientSourceData { app, msg }),
+                    _ => None,
+                },
+                aud: match (aud, aud_seek_rx) {
+                    (Some(app), msg) => Some(ClientSourceData { app, msg }),
+                    _ => None,
+                },
+            })?;
+            Ok(Some(element))
+        })
+        .await
+    }?;
+
+    Ok((factory, client_rx))
 }
 
 async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(

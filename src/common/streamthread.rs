@@ -13,20 +13,18 @@ use tokio::{
         broadcast::{
             channel as broadcast, Receiver as BroadcastReceiver, Sender as BroadcastSender,
         },
-        mpsc::Receiver as MpscReceiver,
+        mpsc::{channel as mpsc, Receiver as MpscReceiver, Sender as MpscSender},
         oneshot::Sender as OneshotSender,
         watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
     },
     task::JoinHandle,
+    time::Duration,
 };
 use tokio_util::sync::CancellationToken;
 
 use super::NeoInstance;
-use crate::Result;
-use neolink_core::{
-    bc_protocol::StreamKind,
-    bcmedia::model::{BcMedia, VideoType},
-};
+use crate::{AnyResult, Result};
+use neolink_core::{bc_protocol::StreamKind, bcmedia::model::*};
 
 pub(crate) struct NeoCamStreamThread {
     streams: HashMap<StreamKind, StreamData>,
@@ -51,23 +49,21 @@ impl NeoCamStreamThread {
     pub(crate) async fn run(&mut self) -> Result<()> {
         let thread_cancel = self.cancel.clone();
         tokio::select! {
-            _ = thread_cancel.cancelled() => Ok(()),
+            _ = thread_cancel.cancelled() => {
+                for (_, mut data) in self.streams.drain() {
+                    let _ = data.shutdown().await;
+                }
+                Ok(())
+            },
             v = async {
                 while let Some(request) = self.stream_request_rx.recv().await {
                     match request {
                         StreamRequest::Get {
                             name, sender
                         } => {
-                          if let Entry::Occupied(mut occ) = self.streams.entry(name) {
-                              let sub = occ.get().sender.subscribe();
-                                occ.get_mut().ensure_running().await?;
-
-                                let _ = sender.send(Some(
-                                    StreamInstance {
-                                        name,
-                                        stream: sub,
-                                        config: occ.get().config.subscribe(),
-                                    }));
+                          if let Entry::Occupied(occ) = self.streams.entry(name) {
+                            let _ = sender.send(Some(
+                                StreamInstance::new(occ.get()).await?));
                           } else {
                               let _ = sender.send(None);
                           }
@@ -76,34 +72,26 @@ impl NeoCamStreamThread {
                             name, sender, strict
                         } => {
                             match self.streams.entry(name) {
-                                Entry::Occupied(mut occ) => {
-                                    let sub = occ.get().sender.subscribe();
-                                    occ.get_mut().ensure_running().await?;
+                                Entry::Occupied(occ) => {
                                     let _ = sender
-                                        .send(StreamInstance {
-                                            name,
-                                            stream: sub,
-                                            config: occ.get().config.subscribe(),
-                                        });
+                                        .send(StreamInstance::new(occ.get()).await?);
                                 }
                                 Entry::Vacant(vac) => {
                                     // Make a new streaming instance
 
-                                    let (sender_tx, stream_rx) = broadcast(1000);
-                                    let mut data = StreamData::new(
-                                        sender_tx,
+                                    let data = StreamData::new(
                                         name,
                                         self.instance.subscribe().await?,
                                         strict,
                                     ).await?;
-                                    data.ensure_running().await?;
                                     let config = data.config.subscribe();
-                                    vac.insert(data);
-                                    let _ = sender.send(StreamInstance {
-                                        name,
-                                        stream: stream_rx,
-                                        config,
-                                    });
+                                    let vid = data.vid.subscribe();
+                                    let aud = data.aud.subscribe();
+                                    let in_use = data.users.activated().await?;
+
+                                    let data = vac.insert(data);
+
+                                    let _ = sender.send(StreamInstance::new(data).await?);
                                 }
                             }
                         },
@@ -117,16 +105,9 @@ impl NeoCamStreamThread {
                                 StreamKind::Sub,
                             ];
                             for name in streams.drain(..) {
-                                if let Entry::Occupied(mut occ) = self.streams.entry(name) {
-                                    let sub = occ.get().sender.subscribe();
-                                        occ.get_mut().ensure_running().await?;
-
+                                if let Entry::Occupied(occ) = self.streams.entry(name) {
                                         result = Some(
-                                            StreamInstance {
-                                                name,
-                                                stream: sub,
-                                                config: occ.get().config.subscribe(),
-                                            });
+                                            StreamInstance::new(occ.get()).await?);
                                         break;
                                 }
                             }
@@ -142,15 +123,14 @@ impl NeoCamStreamThread {
                                 StreamKind::Main,
                             ];
                             for name in streams.drain(..) {
-                                if let Entry::Occupied(mut occ) = self.streams.entry(name) {
-                                    let sub = occ.get().sender.subscribe();
-                                        occ.get_mut().ensure_running().await?;
-
+                                if let Entry::Occupied(occ) = self.streams.entry(name) {
                                         result = Some(
                                             StreamInstance {
                                                 name,
-                                                stream: sub,
+                                                vid: occ.get().vid.subscribe(),
+                                                aud: occ.get().aud.subscribe(),
                                                 config: occ.get().config.subscribe(),
+                                                in_use: occ.get().users.activated().await?,
                                             });
                                         break;
                                 }
@@ -164,23 +144,17 @@ impl NeoCamStreamThread {
                             let streams = config.stream.as_stream_kinds();
                             for stream in streams.iter().copied() {
                                 if let Entry::Vacant(vac) = self.streams.entry(stream) {
-                                    let (tx, _) = broadcast(1000);
                                     vac.insert(
-                                        StreamData::new(tx, stream, self.instance.subscribe().await?, config.strict)
+                                        StreamData::new(stream, self.instance.subscribe().await?, config.strict)
                                             .await?,
                                     );
                                 }
                             }
                             let mut streams = self.streams.iter_mut().filter_map(|(name, stream)| if streams.contains(name) {
                                     Some(async move {
-                                        let sub = stream.sender.subscribe();
-                                        stream.ensure_running().await?;
                                         Result::<_, anyhow::Error>::Ok(
-                                            StreamInstance {
-                                                name: *name,
-                                                stream: sub,
-                                                config: stream.config.subscribe(),
-                                            })
+                                            StreamInstance::new(&stream).await?
+                                        )
                                     })
                                 } else {
                                     None
@@ -235,15 +209,129 @@ pub(crate) enum StreamRequest {
     },
 }
 
+/// Counts the active users of the stream
+pub(crate) struct UseCounter {
+    value: WatchReceiver<u32>,
+    notifier_tx: MpscSender<bool>,
+    cancel: CancellationToken,
+}
+
+impl UseCounter {
+    async fn new() -> Self {
+        let (notifier_tx, mut notifier) = mpsc(100);
+        let (value_tx, value) = watch(0);
+        let cancel = CancellationToken::new();
+
+        let thread_cancel = cancel.clone();
+        tokio::task::spawn(async move {
+            tokio::select! {
+                _ = thread_cancel.cancelled() => {
+                    AnyResult::Ok(())
+                },
+                v = async {
+                    while let Some(noti) = notifier.recv().await {
+                        value_tx.send_modify(|value| {
+                            if noti {
+                                *value += 1;
+                            } else {
+                                *value -= 1;
+                            }
+                        });
+                    }
+                    AnyResult::Ok(())
+                } => v,
+            }
+        });
+        Self {
+            value,
+            notifier_tx,
+            cancel,
+        }
+    }
+
+    async fn activated(&self) -> Result<CountUses> {
+        let mut res = CountUses::new(self);
+        res.activate().await?;
+        Ok(res)
+    }
+
+    async fn deactivated(&self) -> Result<CountUses> {
+        Ok(CountUses::new(self))
+    }
+}
+
+impl Drop for UseCounter {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+    }
+}
+
+pub(crate) struct CountUses {
+    is_active: bool,
+    value: WatchReceiver<u32>,
+    notifier: MpscSender<bool>,
+}
+
+impl CountUses {
+    fn new(source: &UseCounter) -> Self {
+        Self {
+            is_active: false,
+            value: source.value.clone(),
+            notifier: source.notifier_tx.clone(),
+        }
+    }
+
+    pub(crate) async fn activate(&mut self) -> Result<()> {
+        if !self.is_active {
+            self.is_active = true;
+            self.notifier.send(self.is_active).await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn deactivate(&mut self) -> Result<()> {
+        if self.is_active {
+            self.is_active = false;
+            self.notifier.send(self.is_active).await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn aquired_users(&self) -> Result<()> {
+        self.value.clone().wait_for(|curr| *curr > 0).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn dropped_users(&self) -> Result<()> {
+        self.value.clone().wait_for(|curr| *curr == 0).await?;
+        Ok(())
+    }
+}
+
+impl Drop for CountUses {
+    fn drop(&mut self) {
+        if self.is_active {
+            self.is_active = false;
+            tokio::task::block_in_place(move || {
+                tokio::runtime::Handle::current().block_on(async move {
+                    let _ = self.notifier.send(self.is_active).await;
+                });
+            });
+        }
+    }
+}
+
 /// The data of a running stream
 pub(crate) struct StreamData {
-    sender: BroadcastSender<BcMedia>,
+    vid: BroadcastSender<StampedData>,
+    aud: BroadcastSender<StampedData>,
     config: Arc<WatchSender<StreamConfig>>,
     name: StreamKind,
     instance: NeoInstance,
     cancel: CancellationToken,
     handle: Option<JoinHandle<Result<()>>>,
     strict: bool,
+    users: UseCounter,
 }
 
 #[derive(Eq, PartialEq, Clone)]
@@ -266,19 +354,42 @@ pub(crate) struct StreamConfig {
     pub(crate) aud_format: AudFormat,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct StampedData {
+    pub(crate) data: Vec<u8>,
+    pub(crate) ts: Duration,
+}
+
 pub(crate) struct StreamInstance {
     pub(crate) name: StreamKind,
-    pub(crate) stream: BroadcastReceiver<BcMedia>,
+    pub(crate) vid: BroadcastReceiver<StampedData>,
+    pub(crate) aud: BroadcastReceiver<StampedData>,
     pub(crate) config: WatchReceiver<StreamConfig>,
+    in_use: CountUses,
+}
+
+impl StreamInstance {
+    pub async fn new(data: &StreamData) -> Result<Self> {
+        Ok(Self {
+            name: data.name,
+            vid: data.vid.subscribe(),
+            aud: data.aud.subscribe(),
+            config: data.config.subscribe(),
+            in_use: data.users.activated().await?,
+        })
+    }
+    pub(crate) async fn activate(&mut self) -> Result<()> {
+        self.in_use.activate().await
+    }
+    pub(crate) async fn deactivate(&mut self) -> Result<()> {
+        self.in_use.activate().await
+    }
 }
 
 impl StreamData {
-    async fn new(
-        sender: BroadcastSender<BcMedia>,
-        name: StreamKind,
-        instance: NeoInstance,
-        strict: bool,
-    ) -> Result<Self> {
+    async fn new(name: StreamKind, instance: NeoInstance, strict: bool) -> Result<Self> {
+        let (vid, _) = broadcast::<StampedData>(100);
+        let (aud, _) = broadcast::<StampedData>(100);
         let resolution = instance
             .run_task(|cam| {
                 Box::pin(async move {
@@ -304,164 +415,175 @@ impl StreamData {
             vid_format: VidFormat::None,
             aud_format: AudFormat::None,
         });
-        let me = Self {
+        let mut me = Self {
             name,
             cancel: CancellationToken::new(),
             config: Arc::new(config_tx),
-            sender,
+            vid,
+            aud,
             instance,
             handle: None,
             strict,
+            users: UseCounter::new().await,
         };
-        Ok(me)
-    }
 
-    async fn ensure_running(&mut self) -> Result<()> {
-        if self.cancel.is_cancelled()
-            || self
-                .handle
-                .as_ref()
-                .map(|handle| handle.is_finished())
-                .unwrap_or(true)
-        {
-            log::debug!("Restart stream");
-            self.restart().await?;
-        }
-        Ok(())
-    }
+        let cancel = me.cancel.clone();
+        let vid = me.vid.clone();
+        let aud = me.aud.clone();
+        let instance = me.instance.subscribe().await?;
+        let name = me.name;
+        let strict = me.strict;
+        let config = me.config.clone();
+        let thread_inuse = me.users.deactivated().await?;
 
-    async fn restart(&mut self) -> Result<()> {
-        self.shutdown().await?;
-        self.cancel = CancellationToken::new();
-
-        let cancel = self.cancel.clone();
-        let sender = self.sender.clone();
-        let instance = self.instance.subscribe().await?;
-        let name = self.name;
-        let strict = self.strict;
-        let config = self.config.clone();
-        self.handle = Some(tokio::task::spawn(async move {
+        me.handle = Some(tokio::task::spawn(async move {
             tokio::select! {
                 _ = cancel.cancelled() => {
                     Result::<(), anyhow::Error>::Ok(())
                 },
                 v = async {
                     loop {
-                        let result = instance.run_task(|camera| {
-                            let stream_tx = sender.clone();
-                            let stream_config = config.clone();
-                            Box::pin(async move {
-                                let res = async {
-                                    let mut stream_data = camera.start_video(name, 0, strict).await?;
-                                    loop {
-                                        let data = stream_data.get_data().await??;
+                        tokio::select! {
+                            v = thread_inuse.dropped_users() => {
+                                // Handles the stop and restart when no active users
+                                v?;
+                                thread_inuse.aquired_users().await?; // Wait for new users of the stream
+                                AnyResult::Ok(())
+                            },
+                            result = instance.run_task(|camera| {
+                                    let vid_tx = vid.clone();
+                                    let aud_tx = aud.clone();
+                                    let stream_config = config.clone();
+                                    Box::pin(async move {
+                                        let res = async {
+                                            let mut prev_ts = Duration::ZERO;
+                                            let mut stream_data = camera.start_video(name, 0, strict).await?;
+                                            loop {
+                                                let data = stream_data.get_data().await??;
 
-                                        // Update the stream config with any information
-                                        match &data {
-                                            BcMedia::InfoV1(info) => {
-                                                stream_config.send_if_modified(|state| {
-                                                    if state.resolution[0] != info.video_width || state.resolution[1] != info.video_height {
-                                                        state.resolution[0] = info.video_width;
-                                                        state.resolution[1] = info.video_height;
-                                                        true
-                                                    } else {
-                                                        false
+                                                // Update the stream config with any information
+                                                match &data {
+                                                    BcMedia::InfoV1(info) => {
+                                                        stream_config.send_if_modified(|state| {
+                                                            if state.resolution[0] != info.video_width || state.resolution[1] != info.video_height {
+                                                                state.resolution[0] = info.video_width;
+                                                                state.resolution[1] = info.video_height;
+                                                                true
+                                                            } else {
+                                                                false
+                                                            }
+                                                        });
+                                                    },
+                                                    BcMedia::InfoV2(info) => {
+                                                        stream_config.send_if_modified(|state| {
+                                                            if state.resolution[0] != info.video_width || state.resolution[1] != info.video_height {
+                                                                state.resolution[0] = info.video_width;
+                                                                state.resolution[1] = info.video_height;
+                                                                true
+                                                            } else {
+                                                                false
+                                                            }
+                                                        });
+                                                    },
+                                                    BcMedia::Iframe(frame) => {
+                                                        stream_config.send_if_modified(|state| {
+                                                            let expected = match frame.video_type {
+                                                                VideoType::H264 => VidFormat::H264,
+                                                                VideoType::H265 => VidFormat::H265,
+                                                            };
+                                                            if state.vid_format != expected {
+                                                                state.vid_format = expected;
+                                                                true
+                                                            } else {
+                                                                false
+                                                            }
+                                                        });
                                                     }
-                                                });
-                                            },
-                                            BcMedia::InfoV2(info) => {
-                                                stream_config.send_if_modified(|state| {
-                                                    if state.resolution[0] != info.video_width || state.resolution[1] != info.video_height {
-                                                        state.resolution[0] = info.video_width;
-                                                        state.resolution[1] = info.video_height;
-                                                        true
-                                                    } else {
-                                                        false
+                                                    BcMedia::Pframe(frame) => {
+                                                        stream_config.send_if_modified(|state| {
+                                                            let expected = match frame.video_type {
+                                                                VideoType::H264 => VidFormat::H264,
+                                                                VideoType::H265 => VidFormat::H265,
+                                                            };
+                                                            if state.vid_format != expected {
+                                                                state.vid_format = expected;
+                                                                true
+                                                            } else {
+                                                                false
+                                                            }
+                                                        });
+                                                    },
+                                                    BcMedia::Aac(_) => {
+                                                        stream_config.send_if_modified(|state| {
+                                                            if state.aud_format != AudFormat::Aac {
+                                                                state.aud_format = AudFormat::Aac;
+                                                                true
+                                                            } else {
+                                                                false
+                                                            }
+                                                        });
                                                     }
-                                                });
-                                            },
-                                            BcMedia::Iframe(frame) => {
-                                                stream_config.send_if_modified(|state| {
-                                                    let expected = match frame.video_type {
-                                                        VideoType::H264 => VidFormat::H264,
-                                                        VideoType::H265 => VidFormat::H265,
-                                                    };
-                                                    if state.vid_format != expected {
-                                                        state.vid_format = expected;
-                                                        true
-                                                    } else {
-                                                        false
+                                                    BcMedia::Adpcm(aud) => {
+                                                        stream_config.send_if_modified(|state| {
+                                                            let expected = AudFormat::Adpcm(aud.data.len() as u32 - 4);
+                                                            if state.aud_format != expected {
+                                                                state.aud_format = expected;
+                                                                true
+                                                            } else {
+                                                                false
+                                                            }
+                                                        });
                                                     }
-                                                });
-                                            }
-                                            BcMedia::Pframe(frame) => {
-                                                stream_config.send_if_modified(|state| {
-                                                    let expected = match frame.video_type {
-                                                        VideoType::H264 => VidFormat::H264,
-                                                        VideoType::H265 => VidFormat::H265,
-                                                    };
-                                                    if state.vid_format != expected {
-                                                        state.vid_format = expected;
-                                                        true
-                                                    } else {
-                                                        false
-                                                    }
-                                                });
-                                            },
-                                            BcMedia::Aac(_) => {
-                                                stream_config.send_if_modified(|state| {
-                                                    if state.aud_format != AudFormat::Aac {
-                                                        state.aud_format = AudFormat::Aac;
-                                                        true
-                                                    } else {
-                                                        false
-                                                    }
-                                                });
-                                            }
-                                            BcMedia::Adpcm(aud) => {
-                                                stream_config.send_if_modified(|state| {
-                                                    let expected = AudFormat::Adpcm(aud.data.len() as u32 - 4);
-                                                    if state.aud_format != expected {
-                                                        state.aud_format = expected;
-                                                        true
-                                                    } else {
-                                                        false
-                                                    }
-                                                });
-                                            }
-                                        }
+                                                }
 
-                                        // Send the stream data onwards
-                                        if stream_tx.send(data).is_err() {
-                                            // If noone is listening for the stream we error and stop here
-                                            break;
-                                        };
-                                    }
-                                    Result::<(),anyhow::Error>::Ok(())
-                                }.await;
-                                Ok(res)
-                            })
-                        }).await;
-                        match result {
-                            Ok(Ok(())) => {
-                                log::debug!("Video Stream Stopped due to no listeners");
-                                break;
+                                                match data {
+                                                    BcMedia::Iframe(BcMediaIframe{data, microseconds, ..}) | BcMedia::Pframe(BcMediaPframe{data, microseconds,..}) => {
+                                                        prev_ts = Duration::from_micros(microseconds as u64);
+                                                        let _ = vid_tx.send(
+                                                            StampedData{
+                                                                data,
+                                                                ts: prev_ts
+                                                        });
+                                                        log::trace!("Sent Vid Frame");
+                                                    }
+                                                    BcMedia::Aac(BcMediaAac{data, ..}) | BcMedia::Adpcm(BcMediaAdpcm{data,..}) => {
+                                                        let _ = aud_tx.send(
+                                                            StampedData{
+                                                                data,
+                                                                ts: prev_ts,
+                                                        })?;
+                                                        log::trace!("Sent Aud Frame");
+                                                    },
+                                                    _ => {},
+                                                }
+                                            }
+                                            Result::<(),anyhow::Error>::Ok(())
+                                        }.await;
+                                        Ok(res)
+                                    })
+                                }) => {
+                                match result {
+                                    Ok(Ok(())) => {
+                                        log::debug!("Video Stream Stopped due to no listeners");
+                                        break Ok(());
+                                    },
+                                    Ok(Err(e)) => {
+                                        log::debug!("Video Stream Restarting Due to Error: {:?}", e);
+                                        AnyResult::Ok(())
+                                    },
+                                    Err(e) => {
+                                        log::debug!("Video Stream Stopped Due to Instance Error: {:?}", e);
+                                        break Err(e);
+                                    },
+                                }
                             },
-                            Ok(Err(e)) => {
-                                log::debug!("Video Stream Restarting Due to Error: {:?}", e);
-                            },
-                            Err(e) => {
-                                log::debug!("Video Stream Stopped Due to Instance Error: {:?}", e);
-                                break;
-                            },
-                        }
+                        }?;
                     }
-                    Ok(())
                 }    => v,
             }
         }));
 
-        Ok(())
+        Ok(me)
     }
 
     async fn shutdown(&mut self) -> Result<()> {

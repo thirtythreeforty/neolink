@@ -163,9 +163,6 @@ pub(crate) struct CameraConfig {
     #[serde(default = "default_buffer_size", alias = "size", alias = "buffer")]
     pub(crate) buffer_size: usize,
 
-    #[serde(default = "default_true", alias = "splash")]
-    pub(crate) use_splash: bool,
-
     #[serde(default = "default_true", alias = "enable")]
     pub(crate) enabled: bool,
 
@@ -342,10 +339,6 @@ fn default_pause() -> PauseConfig {
         motion_timeout: default_motion_timeout(),
         mode: default_pause_mode(),
     }
-}
-
-fn default_smoothing() -> bool {
-    true
 }
 
 fn default_buffer_size() -> usize {

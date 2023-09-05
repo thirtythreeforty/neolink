@@ -27,7 +27,7 @@ use tokio_stream::wrappers::BroadcastStream;
 mod cmdline;
 mod gst;
 
-use crate::common::NeoReactor;
+use crate::common::{NeoReactor, StampedData, VidFormat};
 pub(crate) use cmdline::Opt;
 
 /// Entry point for the image subcommand
@@ -43,17 +43,19 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
             .context("Failed to start video")?;
 
         // Get one iframe at the start while also getting the the video type
-        let buf;
-        let vid_type;
-        let mut stream = BroadcastStream::new(stream_data.stream.resubscribe())
+        let mut stream_config = stream_data.config.clone();
+        let vid_type = stream_config
+            .wait_for(|config| config.vid_format != VidFormat::None)
+            .await?
+            .vid_format
+            .clone();
+        let mut stream = BroadcastStream::new(stream_data.vid.resubscribe())
             .filter(|f| futures::future::ready(f.is_ok())); // Filter to ignore lagged
-        loop {
-            if let Some(Ok(BcMedia::Iframe(frame))) = stream.next().await {
-                vid_type = frame.video_type;
-                buf = frame.data;
-                break;
+        let buf = loop {
+            if let Some(Ok(StampedData { data, ts: _ })) = stream.next().await {
+                break data;
             }
-        }
+        };
 
         let mut sender = gst::from_input(vid_type, &opt.file_path).await?;
         sender.send(buf).await?; // Send first iframe
@@ -61,8 +63,7 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
         // Keep sending both IFrame or PFrame until finished
         while sender.is_finished().await.is_none() {
             let buf = match stream.next().await {
-                Some(Ok(BcMedia::Iframe(frame))) => frame.data,
-                Some(Ok(BcMedia::Pframe(frame))) => frame.data,
+                Some(Ok(StampedData { data, .. })) => data,
                 _ => {
                     continue;
                 }
