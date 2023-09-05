@@ -321,7 +321,7 @@ impl UdpPayloadInner {
         let mut socket_in_rx = ReceiverStream::new(socket_in_rx);
         let thread_camera_addr = camera_addr;
         tokio::task::spawn_blocking(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
+            let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
                 .unwrap();
@@ -350,7 +350,7 @@ impl UdpPayloadInner {
         let thread_camera_id = camera_id;
         let mut ack_socket_in_tx = PollSender::new(socket_in_tx.clone());
         tokio::task::spawn_blocking(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
+            let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
                 .unwrap();
@@ -389,7 +389,7 @@ impl UdpPayloadInner {
         let get_cancel = cancel.clone();
         let mut socket_out_tx = PollSender::new(socket_out_tx);
         tokio::task::spawn_blocking(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
+            let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
                 .unwrap();
@@ -593,7 +593,7 @@ impl UdpPayloadSource {
 
         let thread_cancel_token = cancel_token.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
+            let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
                 .unwrap();

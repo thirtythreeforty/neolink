@@ -84,11 +84,6 @@ impl NeoCamStreamThread {
                                         self.instance.subscribe().await?,
                                         strict,
                                     ).await?;
-                                    let config = data.config.subscribe();
-                                    let vid = data.vid.subscribe();
-                                    let aud = data.aud.subscribe();
-                                    let in_use = data.users.activated().await?;
-
                                     let data = vac.insert(data);
 
                                     let _ = sender.send(StreamInstance::new(data).await?);
@@ -130,7 +125,7 @@ impl NeoCamStreamThread {
                                                 vid: occ.get().vid.subscribe(),
                                                 aud: occ.get().aud.subscribe(),
                                                 config: occ.get().config.subscribe(),
-                                                in_use: occ.get().users.activated().await?,
+                                                in_use: occ.get().users.create_activated().await?,
                                             });
                                         break;
                                 }
@@ -217,14 +212,14 @@ pub(crate) struct UseCounter {
 }
 
 impl UseCounter {
-    async fn new() -> Self {
+    pub(crate) async fn new() -> Self {
         let (notifier_tx, mut notifier) = mpsc(100);
         let (value_tx, value) = watch(0);
         let cancel = CancellationToken::new();
 
         let thread_cancel = cancel.clone();
         tokio::task::spawn(async move {
-            tokio::select! {
+            let r = tokio::select! {
                 _ = thread_cancel.cancelled() => {
                     AnyResult::Ok(())
                 },
@@ -232,15 +227,19 @@ impl UseCounter {
                     while let Some(noti) = notifier.recv().await {
                         value_tx.send_modify(|value| {
                             if noti {
+                                log::trace!("Usecounter: {}->{}", *value, (*value) + 1);
                                 *value += 1;
                             } else {
+                                log::trace!("Usecounter: {}->{}", *value, (*value) - 1);
                                 *value -= 1;
                             }
                         });
                     }
                     AnyResult::Ok(())
                 } => v,
-            }
+            };
+            log::trace!("End Use Counter: {r:?}");
+            r
         });
         Self {
             value,
@@ -249,13 +248,13 @@ impl UseCounter {
         }
     }
 
-    async fn activated(&self) -> Result<CountUses> {
+    pub(crate) async fn create_activated(&self) -> Result<CountUses> {
         let mut res = CountUses::new(self);
         res.activate().await?;
         Ok(res)
     }
 
-    async fn deactivated(&self) -> Result<CountUses> {
+    pub(crate) async fn create_deactivated(&self) -> Result<CountUses> {
         Ok(CountUses::new(self))
     }
 }
@@ -273,6 +272,14 @@ pub(crate) struct CountUses {
 }
 
 impl CountUses {
+    pub(crate) fn subscribe(&self) -> Self {
+        Self {
+            is_active: false,
+            value: self.value.clone(),
+            notifier: self.notifier.clone(),
+        }
+    }
+
     fn new(source: &UseCounter) -> Self {
         Self {
             is_active: false,
@@ -375,14 +382,24 @@ impl StreamInstance {
             vid: data.vid.subscribe(),
             aud: data.aud.subscribe(),
             config: data.config.subscribe(),
-            in_use: data.users.activated().await?,
+            in_use: data.users.create_activated().await?,
         })
     }
     pub(crate) async fn activate(&mut self) -> Result<()> {
         self.in_use.activate().await
     }
     pub(crate) async fn deactivate(&mut self) -> Result<()> {
-        self.in_use.activate().await
+        self.in_use.deactivate().await
+    }
+}
+
+impl Drop for StreamInstance {
+    fn drop(&mut self) {
+        tokio::task::block_in_place(move || {
+            tokio::runtime::Handle::current().block_on(async move {
+                let _ = self.in_use.deactivate().await;
+            });
+        });
     }
 }
 
@@ -434,7 +451,7 @@ impl StreamData {
         let name = me.name;
         let strict = me.strict;
         let config = me.config.clone();
-        let thread_inuse = me.users.deactivated().await?;
+        let thread_inuse = me.users.create_deactivated().await?;
 
         me.handle = Some(tokio::task::spawn(async move {
             tokio::select! {

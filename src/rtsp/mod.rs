@@ -74,7 +74,7 @@ use tokio_util::sync::CancellationToken;
 mod cmdline;
 mod gst;
 
-use crate::common::StampedData;
+use crate::common::{CountUses, StampedData, UseCounter};
 use crate::{
     common::{AudFormat, NeoInstance, NeoReactor, StreamConfig, StreamInstance, VidFormat},
     rtsp::gst::NeoMediaFactory,
@@ -165,7 +165,7 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
                             let thread_reactor2 = thread_reactor.clone();
                             let name = name.clone();
                             set.spawn_blocking(|| {
-                                let runtime = tokio::runtime::Builder::new_current_thread()
+                                let runtime = tokio::runtime::Builder::new_multi_thread()
                                     .enable_all()
                                     .build()
                                     .unwrap();
@@ -415,13 +415,35 @@ async fn stream_main(
         let vid = stream_instance.vid.resubscribe();
         let aud = stream_instance.aud.resubscribe();
         let thread_stream_config = stream_instance.config.clone();
+        let mut thread_stream_config2 = stream_instance.config.clone();
+
+        // Handles the on off of the stream with the client pause
+        let client_counter = UseCounter::new().await;
+        let client_count = client_counter.create_deactivated().await?;
+
         // This select is for the streams config updates
         break tokio::select! {
-            _ = stream_instance.config.changed() => {
+            _ = thread_stream_config2.changed() => {
                 // If stream config changes we reload the stream
                 continue;
             },
-            v = stream_run(vid, aud, rtsp, thread_stream_config.borrow().clone(), users, paths) => v,
+            v = async {
+                let client_count = client_counter.create_deactivated().await?;
+                while let Ok(()) = {
+                    log::trace!("Activating Client");
+                    stream_instance.activate().await?;
+                    client_count.dropped_users().await?;
+                    log::trace!("Pausing Client");
+                    stream_instance.deactivate().await?;
+                    client_count.aquired_users().await?;
+                    AnyResult::Ok(())
+                } {}
+                AnyResult::Ok(())
+            } => {
+                log::trace!("Client Pause: {v:?}");
+                continue;
+            }
+            v = stream_run(vid, aud, rtsp, thread_stream_config.borrow().clone(), users, paths, client_count) => v,
         };
     }
 }
@@ -433,6 +455,7 @@ async fn stream_run(
     stream_config: StreamConfig,
     users: &HashSet<String>,
     paths: &[String],
+    client_count: CountUses,
 ) -> AnyResult<()> {
     // Finally ready to create the factory and connect the stream
     let mounts = rtsp
@@ -448,9 +471,9 @@ async fn stream_run(
         mounts.add_factory(path, factory.clone());
     }
 
-    // Done now sit on the receiver and push through the vid to the app sources
     let stream_cancel = CancellationToken::new();
     let mut set = JoinSet::new();
+    // Wait for new media client data to come in from the factory
     while let Some(mut client_data) = client_rx.recv().await {
         log::trace!("New media");
         // New media created
@@ -560,13 +583,16 @@ async fn stream_run(
         let thread_stream_cancel = stream_cancel.clone();
         let vid_data_rx = BroadcastStream::new(vid_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
         let thread_vid = vid.clone();
+        let mut thread_client_count = client_count.subscribe();
         set.spawn(async move {
+            thread_client_count.activate().await?;
             let r = tokio::select! {
                 _ = thread_stream_cancel.cancelled() => {
                     AnyResult::Ok(())
                 },
                 v = handle_data(thread_vid.as_ref(), vid_data_rx) => v,
             };
+            drop(thread_client_count);
             log::trace!("Vid Thread End: {:?}", r);
             r
         });
