@@ -11,7 +11,7 @@ use tokio::sync::{
 };
 use tokio_util::sync::CancellationToken;
 
-use super::{NeoCamCommand, StreamInstance};
+use super::{MdState, NeoCamCommand, StreamInstance};
 use crate::{config::CameraConfig, Result};
 use neolink_core::bc_protocol::{BcCamera, StreamKind};
 
@@ -153,6 +153,14 @@ impl NeoInstance {
         let (instance_tx, instance_rx) = oneshot();
         self.camera_control
             .send(NeoCamCommand::Streams(instance_tx))
+            .await?;
+        Ok(instance_rx.await?)
+    }
+
+    pub(crate) async fn motion(&self) -> Result<WatchReceiver<MdState>> {
+        let (instance_tx, instance_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::Motion(instance_tx))
             .await?;
         Ok(instance_rx.await?)
     }

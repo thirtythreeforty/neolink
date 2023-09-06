@@ -66,7 +66,7 @@ use tokio::{
         mpsc::{channel as mpsc, Receiver as MpscReceiver, Sender as MpscSender},
     },
     task::JoinSet,
-    time::{sleep, Duration},
+    time::{sleep, Duration, Instant},
 };
 use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
 use tokio_util::sync::CancellationToken;
@@ -441,6 +441,25 @@ async fn stream_main(
                     log::trace!("Pausing Client");
                     client_activator.deactivate().await?;
                     client_count.aquired_users().await?;
+                }
+            });
+        }
+
+        // Handles on motion pausing
+        if curr_pause.on_motion {
+            // Take over activation
+            let mut client_activator = stream_instance.activator_handle().await;
+            stream_instance.deactivate().await?;
+            let mut motion = camera.motion().await?;
+            let delta = Duration::from_secs_f64(curr_pause.motion_timeout);
+            set.spawn(async move {
+                loop {
+                    log::trace!("Activating Motion");
+                    client_activator.activate().await?;
+                    motion.wait_for(|md| matches!(md, crate::common::MdState::Stop(_))).await?;
+                    log::trace!("Pausing Motion");
+                    client_activator.deactivate().await?;
+                    motion.wait_for(|md| matches!(md, crate::common::MdState::Start(n) if (*n - Instant::now())>delta)).await?;
                 }
             });
         }
