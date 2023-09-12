@@ -5,10 +5,9 @@
 use anyhow::{Context, Result};
 use heck::ToTitleCase;
 use log::*;
-use std::sync::Arc;
 
-use super::mqttc::MqttSender;
-use crate::config::{CameraConfig, MqttDiscoveryConfig};
+use super::mqttc::MqttInstance;
+use crate::{common::NeoInstance, config::MqttDiscoveryConfig};
 use serde::{Deserialize, Serialize, Serializer};
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq, Copy, Hash)]
@@ -200,9 +199,10 @@ struct DiscoverySensor {
 /// Enables MQTT discovery for a camera. See docs at https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
 pub(crate) async fn enable_discovery(
     discovery_config: &MqttDiscoveryConfig,
-    mqtt_sender: &MqttSender,
-    cam_config: &Arc<CameraConfig>,
+    mqtt: &MqttInstance,
+    camera: &NeoInstance,
 ) -> Result<()> {
+    let cam_config = camera.config().await?.borrow().clone();
     debug!("Enabling MQTT discovery for {}", cam_config.name);
 
     let mut connections = vec![];
@@ -269,25 +269,23 @@ pub(crate) async fn enable_discovery(
                 };
 
                 // Each feature needs to be individually registered
-                mqtt_sender
-                    .send_message_with_root_topic(
-                        &format!(
-                            "{}/light/{}",
-                            discovery_config.topic, &config_data.unique_id
-                        ),
-                        "config",
-                        &serde_json::to_string(&config_data).with_context(|| {
-                            "Cound not serialise discovery light config into json"
-                        })?,
-                        true,
+                mqtt.send_message_with_root_topic(
+                    &format!(
+                        "{}/light/{}",
+                        discovery_config.topic, &config_data.unique_id
+                    ),
+                    "config",
+                    &serde_json::to_string(&config_data)
+                        .with_context(|| "Cound not serialise discovery light config into json")?,
+                    true,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to publish floodlight auto-discover data on over MQTT for {}",
+                        cam_config.name
                     )
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Failed to publish floodlight auto-discover data on over MQTT for {}",
-                            cam_config.name
-                        )
-                    })?;
+                })?;
             }
             Discoveries::Camera => {
                 let config_data = DiscoveryCamera {
@@ -306,25 +304,23 @@ pub(crate) async fn enable_discovery(
                 };
 
                 // Each feature needs to be individually registered
-                mqtt_sender
-                    .send_message_with_root_topic(
-                        &format!(
-                            "{}/camera/{}",
-                            discovery_config.topic, &config_data.unique_id
-                        ),
-                        "config",
-                        &serde_json::to_string(&config_data).with_context(|| {
-                            "Cound not serialise discovery camera config into json"
-                        })?,
-                        true,
+                mqtt.send_message_with_root_topic(
+                    &format!(
+                        "{}/camera/{}",
+                        discovery_config.topic, &config_data.unique_id
+                    ),
+                    "config",
+                    &serde_json::to_string(&config_data)
+                        .with_context(|| "Cound not serialise discovery camera config into json")?,
+                    true,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to publish camera auto-discover data on over MQTT for {}",
+                        cam_config.name
                     )
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Failed to publish camera auto-discover data on over MQTT for {}",
-                            cam_config.name
-                        )
-                    })?;
+                })?;
             }
             Discoveries::Led => {
                 let config_data = DiscoverySwitch {
@@ -347,25 +343,23 @@ pub(crate) async fn enable_discovery(
                 };
 
                 // Each feature needs to be individually registered
-                mqtt_sender
-                    .send_message_with_root_topic(
-                        &format!(
-                            "{}/switch/{}",
-                            discovery_config.topic, &config_data.unique_id
-                        ),
-                        "config",
-                        &serde_json::to_string(&config_data).with_context(|| {
-                            "Cound not serialise discovery led config into json"
-                        })?,
-                        true,
+                mqtt.send_message_with_root_topic(
+                    &format!(
+                        "{}/switch/{}",
+                        discovery_config.topic, &config_data.unique_id
+                    ),
+                    "config",
+                    &serde_json::to_string(&config_data)
+                        .with_context(|| "Cound not serialise discovery led config into json")?,
+                    true,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to publish led auto-discover data on over MQTT for {}",
+                        cam_config.name
                     )
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Failed to publish led auto-discover data on over MQTT for {}",
-                            cam_config.name
-                        )
-                    })?;
+                })?;
             }
             Discoveries::Ir => {
                 let config_data = DiscoverySelect {
@@ -385,25 +379,23 @@ pub(crate) async fn enable_discovery(
                 };
 
                 // Each feature needs to be individually registered
-                mqtt_sender
-                    .send_message_with_root_topic(
-                        &format!(
-                            "{}/select/{}",
-                            discovery_config.topic, &config_data.unique_id
-                        ),
-                        "config",
-                        &serde_json::to_string(&config_data).with_context(|| {
-                            "Cound not serialise discovery led config into json"
-                        })?,
-                        true,
+                mqtt.send_message_with_root_topic(
+                    &format!(
+                        "{}/select/{}",
+                        discovery_config.topic, &config_data.unique_id
+                    ),
+                    "config",
+                    &serde_json::to_string(&config_data)
+                        .with_context(|| "Cound not serialise discovery led config into json")?,
+                    true,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to publish led auto-discover data on over MQTT for {}",
+                        cam_config.name
                     )
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Failed to publish led auto-discover data on over MQTT for {}",
-                            cam_config.name
-                        )
-                    })?;
+                })?;
             }
             Discoveries::Motion => {
                 let config_data = DiscoveryBinarySensor {
@@ -423,25 +415,23 @@ pub(crate) async fn enable_discovery(
                 };
 
                 // Each feature needs to be individually registered
-                mqtt_sender
-                    .send_message_with_root_topic(
-                        &format!(
-                            "{}/binary_sensor/{}",
-                            discovery_config.topic, &config_data.unique_id
-                        ),
-                        "config",
-                        &serde_json::to_string(&config_data).with_context(|| {
-                            "Cound not serialise discovery motion config into json"
-                        })?,
-                        true,
+                mqtt.send_message_with_root_topic(
+                    &format!(
+                        "{}/binary_sensor/{}",
+                        discovery_config.topic, &config_data.unique_id
+                    ),
+                    "config",
+                    &serde_json::to_string(&config_data)
+                        .with_context(|| "Cound not serialise discovery motion config into json")?,
+                    true,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to publish motion auto-discover data on over MQTT for {}",
+                        cam_config.name
                     )
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Failed to publish motion auto-discover data on over MQTT for {}",
-                            cam_config.name
-                        )
-                    })?;
+                })?;
             }
             Discoveries::Reboot => {
                 let config_data = DiscoveryButton {
@@ -460,25 +450,23 @@ pub(crate) async fn enable_discovery(
                 };
 
                 // Each feature needs to be individually registered
-                mqtt_sender
-                    .send_message_with_root_topic(
-                        &format!(
-                            "{}/button/{}",
-                            discovery_config.topic, &config_data.unique_id
-                        ),
-                        "config",
-                        &serde_json::to_string(&config_data).with_context(|| {
-                            "Cound not serialise discovery reboot config into json"
-                        })?,
-                        true,
+                mqtt.send_message_with_root_topic(
+                    &format!(
+                        "{}/button/{}",
+                        discovery_config.topic, &config_data.unique_id
+                    ),
+                    "config",
+                    &serde_json::to_string(&config_data)
+                        .with_context(|| "Cound not serialise discovery reboot config into json")?,
+                    true,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to publish reboot auto-discover data on over MQTT for {}",
+                        cam_config.name
                     )
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Failed to publish reboot auto-discover data on over MQTT for {}",
-                            cam_config.name
-                        )
-                    })?;
+                })?;
             }
             Discoveries::Pt => {
                 for dir in ["left", "right", "up", "down"] {
@@ -498,25 +486,23 @@ pub(crate) async fn enable_discovery(
                     };
 
                     // Each feature needs to be individually registered
-                    mqtt_sender
-                        .send_message_with_root_topic(
-                            &format!(
-                                "{}/button/{}",
-                                discovery_config.topic, &config_data.unique_id
-                            ),
-                            "config",
-                            &serde_json::to_string(&config_data).with_context(|| {
-                                "Cound not serialise discovery pt config into json"
-                            })?,
-                            true,
+                    mqtt.send_message_with_root_topic(
+                        &format!(
+                            "{}/button/{}",
+                            discovery_config.topic, &config_data.unique_id
+                        ),
+                        "config",
+                        &serde_json::to_string(&config_data)
+                            .with_context(|| "Cound not serialise discovery pt config into json")?,
+                        true,
+                    )
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to publish pt auto-discover data on over MQTT for {}",
+                            cam_config.name
                         )
-                        .await
-                        .with_context(|| {
-                            format!(
-                                "Failed to publish pt auto-discover data on over MQTT for {}",
-                                cam_config.name
-                            )
-                        })?;
+                    })?;
                 }
             }
             Discoveries::Battery => {
@@ -537,25 +523,24 @@ pub(crate) async fn enable_discovery(
                 };
 
                 // Each feature needs to be individually registered
-                mqtt_sender
-                    .send_message_with_root_topic(
-                        &format!(
-                            "{}/sensor/{}",
-                            discovery_config.topic, &config_data.unique_id
-                        ),
-                        "config",
-                        &serde_json::to_string(&config_data).with_context(|| {
-                            "Cound not serialise discovery battery config into json"
-                        })?,
-                        true,
+                mqtt.send_message_with_root_topic(
+                    &format!(
+                        "{}/sensor/{}",
+                        discovery_config.topic, &config_data.unique_id
+                    ),
+                    "config",
+                    &serde_json::to_string(&config_data).with_context(|| {
+                        "Cound not serialise discovery battery config into json"
+                    })?,
+                    true,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to publish battery auto-discover data on over MQTT for {}",
+                        cam_config.name
                     )
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Failed to publish battery auto-discover data on over MQTT for {}",
-                            cam_config.name
-                        )
-                    })?;
+                })?;
             }
         }
     }

@@ -2,6 +2,7 @@ use super::{BcCamera, Error, Result};
 use crate::bc::{model::*, xml::*};
 
 /// Directions used for Ptz
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Direction {
     /// To move the camera Up
     Up,

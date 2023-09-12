@@ -33,6 +33,9 @@ pub(crate) struct Config {
     #[serde(default = "default_certificate")]
     pub(crate) certificate: Option<String>,
 
+    #[serde(default = "Default::default")]
+    pub(crate) mqtt: Option<MqttServerConfig>,
+
     #[validate(regex(
         path = "RE_TLS_CLIENT_AUTH",
         message = "Incorrect tls auth",
@@ -44,6 +47,24 @@ pub(crate) struct Config {
     #[validate]
     #[serde(default)]
     pub(crate) users: Vec<UserConfig>,
+}
+
+#[derive(Debug, Deserialize, Clone, Validate, PartialEq, Eq)]
+#[validate(schema(function = "validate_mqtt_server", skip_on_field_errors = true))]
+pub(crate) struct MqttServerConfig {
+    #[serde(alias = "server")]
+    pub(crate) broker_addr: String,
+
+    pub(crate) port: u16,
+
+    #[serde(default)]
+    pub(crate) credentials: Option<(String, String)>,
+
+    #[serde(default)]
+    pub(crate) ca: Option<std::path::PathBuf>,
+
+    #[serde(default)]
+    pub(crate) client_auth: Option<(std::path::PathBuf, std::path::PathBuf)>,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, Eq, PartialEq)]
@@ -102,7 +123,7 @@ impl StreamConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Validate, Clone)]
+#[derive(Debug, Deserialize, Validate, Clone, PartialEq)]
 #[validate(schema(function = "validate_camera_config"))]
 pub(crate) struct CameraConfig {
     pub(crate) name: String,
@@ -177,7 +198,7 @@ pub(crate) struct CameraConfig {
     pub(crate) max_discovery_retries: usize,
 }
 
-#[derive(Debug, Deserialize, Validate, Clone)]
+#[derive(Debug, Deserialize, Validate, Clone, PartialEq, Eq)]
 pub(crate) struct UserConfig {
     #[validate(custom = "validate_username")]
     #[serde(alias = "username")]
@@ -187,23 +208,8 @@ pub(crate) struct UserConfig {
     pub(crate) pass: String,
 }
 
-#[derive(Debug, Deserialize, Clone, Validate)]
-#[validate(schema(function = "validate_mqtt_config", skip_on_field_errors = true))]
+#[derive(Debug, Deserialize, Clone, Validate, PartialEq, Eq)]
 pub(crate) struct MqttConfig {
-    #[serde(alias = "server")]
-    pub(crate) broker_addr: String,
-
-    pub(crate) port: u16,
-
-    #[serde(default)]
-    pub(crate) credentials: Option<(String, String)>,
-
-    #[serde(default)]
-    pub(crate) ca: Option<std::path::PathBuf>,
-
-    #[serde(default)]
-    pub(crate) client_auth: Option<(std::path::PathBuf, std::path::PathBuf)>,
-
     #[serde(default = "default_true")]
     pub(crate) enable_motion: bool,
     #[serde(default = "default_true")]
@@ -219,14 +225,14 @@ pub(crate) struct MqttConfig {
     pub(crate) discovery: Option<MqttDiscoveryConfig>,
 }
 
-#[derive(Debug, Deserialize, Clone, Validate)]
+#[derive(Debug, Deserialize, Clone, Validate, PartialEq, Eq)]
 pub(crate) struct MqttDiscoveryConfig {
     pub(crate) topic: String,
 
     pub(crate) features: HashSet<Discoveries>,
 }
 
-fn validate_mqtt_config(config: &MqttConfig) -> Result<(), ValidationError> {
+fn validate_mqtt_server(config: &MqttServerConfig) -> Result<(), ValidationError> {
     if config.ca.is_some() && config.client_auth.is_some() {
         Err(ValidationError::new(
             "Cannot have both ca and client_auth set",

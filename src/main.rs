@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
             talk::main(opts, config).await?;
         }
         Some(Command::Mqtt(opts)) => {
-            mqtt::main(opts, config).await?;
+            mqtt::main(opts, neo_reactor.clone()).await?;
         }
         Some(Command::Image(opts)) => {
             image::main(opts, neo_reactor.clone()).await?;

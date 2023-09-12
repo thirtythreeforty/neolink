@@ -2,7 +2,6 @@
 //! data using an ordinary std::io::Write interface.
 
 mod factory;
-mod sender;
 mod server;
 mod shared;
 

@@ -102,7 +102,7 @@ pub struct BcCameraOpt {
 ///
 /// Currently this is just the format of battery levels but if we ever got more status
 /// messages then they will also use this information
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PrintFormat {
     /// None, don't print
     None,

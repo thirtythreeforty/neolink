@@ -11,7 +11,7 @@ use std::{
 ///
 /// This is used for UID lookup, it is unused with
 /// TPC/known ip address cameras
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DiscoveryMethods {
     /// Forbid all discovery methods. Only TCP connections with known addresses will work
     #[serde(alias = "none")]

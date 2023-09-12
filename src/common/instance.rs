@@ -172,4 +172,8 @@ impl NeoInstance {
             .await?;
         Ok(instance_rx.await?)
     }
+
+    pub(crate) fn camera(&self) -> WatchReceiver<Weak<BcCamera>> {
+        self.camera_watch.clone()
+    }
 }
