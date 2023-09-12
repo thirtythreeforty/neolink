@@ -99,11 +99,24 @@ impl NeoCamStreamThread {
                                 StreamKind::Extern,
                                 StreamKind::Sub,
                             ];
+                            let config = self.instance.config().await?.borrow().clone();
+                            let config_streams = config.stream.as_stream_kinds();
                             for name in streams.drain(..) {
-                                if let Entry::Occupied(occ) = self.streams.entry(name) {
-                                        result = Some(
-                                            StreamInstance::new(occ.get()).await?);
-                                        break;
+                                if config_streams.contains(&name) {
+                                    // Fill it in
+                                    if let Entry::Vacant(vac) = self.streams.entry(name) {
+                                        vac.insert(
+                                            StreamData::new(name, self.instance.subscribe().await?, config.strict)
+                                                .await?,
+                                        );
+                                    }
+
+                                    // Grab it
+                                    if let Entry::Occupied(occ) = self.streams.entry(name) {
+                                            result = Some(
+                                                StreamInstance::new(occ.get()).await?);
+                                            break;
+                                    }
                                 }
                             }
                             let _ = sender.send(result);
@@ -117,17 +130,30 @@ impl NeoCamStreamThread {
                                 StreamKind::Extern,
                                 StreamKind::Main,
                             ];
+                            let config = self.instance.config().await?.borrow().clone();
+                            let config_streams = config.stream.as_stream_kinds();
                             for name in streams.drain(..) {
-                                if let Entry::Occupied(occ) = self.streams.entry(name) {
-                                        result = Some(
-                                            StreamInstance {
-                                                name,
-                                                vid: occ.get().vid.subscribe(),
-                                                aud: occ.get().aud.subscribe(),
-                                                config: occ.get().config.subscribe(),
-                                                in_use: occ.get().users.create_activated().await?,
-                                            });
-                                        break;
+                                if config_streams.contains(&name) {
+                                    // Fill it in
+                                    if let Entry::Vacant(vac) = self.streams.entry(name) {
+                                        vac.insert(
+                                            StreamData::new(name, self.instance.subscribe().await?, config.strict)
+                                                .await?,
+                                        );
+                                    }
+
+                                    // Grab it
+                                    if let Entry::Occupied(occ) = self.streams.entry(name) {
+                                            result = Some(
+                                                StreamInstance {
+                                                    name,
+                                                    vid: occ.get().vid.subscribe(),
+                                                    aud: occ.get().aud.subscribe(),
+                                                    config: occ.get().config.subscribe(),
+                                                    in_use: occ.get().users.create_activated().await?,
+                                                });
+                                            break;
+                                    }
                                 }
                             }
                             let _ = sender.send(result);
