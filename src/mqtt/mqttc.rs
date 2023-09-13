@@ -250,6 +250,7 @@ impl Drop for Mqtt {
                 let _ = self.outgoing_tx.send(MqttRequest::HangUp(tx)).await;
                 let _ = rx.await;
 
+                log::debug!("Mqtt::drop Cancel");
                 self.cancel.cancel();
                 while self.set.join_next().await.is_some() {}
                 AnyResult::Ok(())

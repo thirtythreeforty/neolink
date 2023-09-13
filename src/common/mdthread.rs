@@ -33,14 +33,13 @@ impl NeoCamMdThread {
     pub(crate) async fn new(
         md_request_rx: MpscReceiver<MdRequest>,
         instance: NeoInstance,
-        cancel: CancellationToken,
     ) -> Result<Self> {
         let (md_watcher, _) = watch(MdState::Unknown);
         let md_watcher = Arc::new(md_watcher);
         Ok(Self {
             md_watcher,
             md_request_rx,
-            cancel,
+            cancel: CancellationToken::new(),
             instance,
         })
     }
@@ -94,6 +93,7 @@ impl NeoCamMdThread {
 
 impl Drop for NeoCamMdThread {
     fn drop(&mut self) {
+        log::debug!("NeoCamMdThread::drop Cancel");
         self.cancel.cancel();
     }
 }

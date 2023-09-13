@@ -269,6 +269,7 @@ pub(crate) struct UdpPayloadSource {
 
 impl Drop for UdpPayloadSource {
     fn drop(&mut self) {
+        log::debug!("UdpPayloadSource::drop Cancel");
         self.cancel_token.cancel();
         self.handle.abort();
     }
@@ -298,7 +299,7 @@ struct UdpPayloadInner {
 }
 impl UdpPayloadInner {
     fn new(
-        inner: BcUdpSource,
+        mut inner: BcUdpSource,
         thread_stream: PollSender<IoResult<Vec<u8>>>,
         thread_sink: ReceiverStream<Vec<u8>>,
         client_id: i32,
@@ -314,12 +315,15 @@ impl UdpPayloadInner {
 
         let (socket_in_tx, socket_in_rx) = channel::<BcUdp>(1000);
         let (socket_out_tx, socket_out_rx) = channel::<(BcUdp, SocketAddr)>(1000);
-        let (mut socket_tx, mut socket_rx) = inner.split();
+        // let (mut socket_tx, mut socket_rx) = inner.split();
 
         // Send to socket
         let send_cancel = cancel.clone();
         let mut socket_in_rx = ReceiverStream::new(socket_in_rx);
         let thread_camera_addr = camera_addr;
+        let mut socket_out_tx = PollSender::new(socket_out_tx);
+        const TIME_OUT: u64 = 10;
+        let mut recv_timeout = Box::pin(sleep(Duration::from_secs(TIME_OUT)));
         tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -331,12 +335,30 @@ impl UdpPayloadInner {
                         Result::Ok(())
                     },
                     v = async {
-                        while let Some(packet) = socket_in_rx.next().await {
-                            socket_tx.send((packet, thread_camera_addr)).await?;
-                        }
+                        loop {
+                            break tokio::select!{
+                                _ = recv_timeout.as_mut() => {
+                                    log::trace!("DroppedConnection: Timeout");
+                                    Err(Error::DroppedConnection)
+                                }
+                                packet = inner.next() => {
+                                    let packet = packet.ok_or(Error::DroppedConnection)??;
+                                    recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(TIME_OUT));
+                                    // let packet = socket_rx.next().await.ok_or(Error::DroppedConnection)??;
+                                    socket_out_tx.send(packet).await?;
+                                    continue;
+                                },
+                                packet = socket_in_rx.next() => {
+                                    let packet = packet.ok_or(Error::DroppedConnection)?;
+                                    inner.send((packet, thread_camera_addr)).await?;
+                                    continue;
+                                }
+                            }
+                        }?;
                         Ok(())
                     } => v,
                 };
+                log::debug!("UdpPayloadInner::new SendToSocket Cancel");
                 send_cancel.cancel();
                 result
             })
@@ -344,11 +366,11 @@ impl UdpPayloadInner {
 
         // Queue up ack packets
         let ack_cancel = cancel.clone();
-        let mut ack_interval = interval(Duration::from_millis(100)); // Offical Client does ack every 10ms
-        ack_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut ack_interval = interval(Duration::from_millis(10)); // Offical Client does ack every 10ms
+        ack_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let (ack_tx, mut ack_rx) = channel(1000);
         let thread_camera_id = camera_id;
-        let mut ack_socket_in_tx = PollSender::new(socket_in_tx.clone());
+        let ack_socket_in_tx = socket_in_tx.clone();
         tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -369,6 +391,7 @@ impl UdpPayloadInner {
                                         ack_packet = v;
                                         Ok(())
                                     } else {
+                                        log::trace!("ack_rx.recv() Error::DroppedConnection");
                                         Err(Error::DroppedConnection)
                                     }
                                 },
@@ -383,52 +406,6 @@ impl UdpPayloadInner {
                     } => v,
                 }
             })
-        });
-
-        // Get from socket
-        let get_cancel = cancel.clone();
-        let mut socket_out_tx = PollSender::new(socket_out_tx);
-        tokio::task::spawn_blocking(move || {
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-
-            // A packet of ANY kind must be recieved in the 10 last second
-            // This is based on the official client which also seems to take 10s timeout
-            const TIME_OUT: u64 = 10;
-            let mut recv_timeout = Box::pin(sleep(Duration::from_secs(TIME_OUT)));
-
-            runtime.block_on(async {
-                let res = tokio::select! {
-                    _ = get_cancel.cancelled() => {
-                        Result::Ok(())
-                    },
-                    v = async {
-                        loop {
-                            let packet = tokio::select! {
-                                v = async {
-                                    socket_rx.next().await.ok_or(Error::DroppedConnection)
-                                } => {
-                                    log::trace!("Got packet");
-                                    recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(TIME_OUT));
-                                    v
-                                }
-                                _ = recv_timeout.as_mut() => {
-                                    log::trace!("Timeout");
-                                    Err(Error::DroppedConnection)
-                                }
-                            }??;
-                            // let packet = socket_rx.next().await.ok_or(Error::DroppedConnection)??;
-                            socket_out_tx.send(packet).await?;
-                        }
-                    } => v,
-                };
-                log::trace!("GetSocket: {res:?}");
-                res
-            })?;
-
-            Result::Ok(())
         });
 
         Self {
@@ -464,6 +441,9 @@ impl UdpPayloadInner {
                 log::trace!("App->Camera");
                 // Incomming from application
                 // Outgoing on socket
+                if v.is_none() {
+                    log::trace!("DroppedConnection: self.thread_sink.next(): {:?}", v);
+                }
                 let item = v.ok_or(Error::DroppedConnection)?;
 
                 for chunk in item.chunks(MTU - UDPDATA_HEADER_SIZE) {
@@ -482,6 +462,9 @@ impl UdpPayloadInner {
                 log::trace!("Camera->App");
                 // Incomming from socket
                 // Outgoing to application
+                if v.is_none() {
+                    log::trace!("DroppedConnection: self.socket_out.next()");
+                }
                 let (item, addr) = v.ok_or(Error::DroppedConnection)?;
                 if addr == camera_addr {
                     match item {
@@ -574,6 +557,7 @@ impl UdpPayloadInner {
 
 impl Drop for UdpPayloadInner {
     fn drop(&mut self) {
+        log::debug!("UdpPayloadInner::drop Cancel");
         self.cancel.cancel();
     }
 }
@@ -603,6 +587,7 @@ impl UdpPayloadSource {
                     v = async {
                         loop {
                             if payload_inner.thread_stream.is_closed() {
+                                log::trace!("payload_inner.thread_stream.is_closed");
                                 payload_inner.thread_sink.close();
                                 return Err(Error::DroppedConnection);
                             }

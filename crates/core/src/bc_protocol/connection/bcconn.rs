@@ -197,6 +197,7 @@ impl BcConnection {
 
     pub async fn shutdown(&self) -> Result<()> {
         let _ = self.poll_commander.send(PollCommand::Disconnect).await;
+        log::debug!("BcConnection::shutdown Cancel");
         self.cancel.cancel();
         let mut locked_threads = self.rx_thread.write().await;
         while locked_threads.join_next().await.is_some() {}
@@ -206,6 +207,7 @@ impl BcConnection {
 
 impl Drop for BcConnection {
     fn drop(&mut self) {
+        log::debug!("BcConnection::drop Cancel");
         self.cancel.cancel();
     }
 }

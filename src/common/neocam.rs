@@ -68,13 +68,16 @@ impl NeoCam {
         tokio::task::spawn(async move {
             let thread_cancel = sender_cancel.clone();
             let res = tokio::select! {
-                _ = sender_cancel.cancelled() => Result::Ok(()),
+                _ = sender_cancel.cancelled() => {
+                    log::debug!("Control thread Cancelled");
+                    Result::Ok(())
+                },
                 v = async {
                     while let Some(command) = commander_rx.next().await {
                         match command {
                             NeoCamCommand::HangUp => {
-                                sender_cancel.cancel();
                                 log::debug!("Cancel:: NeoCamCommand::HangUp");
+                                sender_cancel.cancel();
                                 return Result::<(), anyhow::Error>::Ok(());
                             }
                             NeoCamCommand::Instance(result) => {
@@ -127,6 +130,7 @@ impl NeoCam {
                             }
                         }
                     }
+                    log::debug!("Control thread Senders dropped");
                     Ok(())
                 } => v
             };
@@ -152,15 +156,24 @@ impl NeoCam {
         // This thread maintains the streams
         let stream_instance = instance.subscribe().await?;
         let stream_cancel = me.cancel.clone();
-        let mut stream_thread =
-            NeoCamStreamThread::new(stream_request_rx, stream_instance, stream_cancel).await?;
-        tokio::task::spawn(async move { stream_thread.run().await });
+        let mut stream_thread = NeoCamStreamThread::new(stream_request_rx, stream_instance).await?;
+        tokio::task::spawn(async move {
+            tokio::select! {
+                _ = stream_cancel.cancelled() => AnyResult::Ok(()),
+                v = stream_thread.run() => v,
+            }
+        });
 
         // This thread monitors the motion
         let md_instance = instance.subscribe().await?;
         let md_cancel = me.cancel.clone();
-        let mut md_thread = NeoCamMdThread::new(md_request_rx, md_instance, md_cancel).await?;
-        tokio::task::spawn(async move { md_thread.run().await });
+        let mut md_thread = NeoCamMdThread::new(md_request_rx, md_instance).await?;
+        tokio::task::spawn(async move {
+            tokio::select! {
+                _ = md_cancel.cancelled() => AnyResult::Ok(()),
+                v = md_thread.run() => v,
+            }
+        });
 
         // This thread just does a one time report on camera info
         let report_instance = instance.subscribe().await?;

@@ -37,9 +37,13 @@ impl NeoCamThread {
         // Now we wait for a disconnect
         tokio::select! {
             _ = cancel_check.cancelled() => {
+                log::debug!("Camera Cancelled");
                 Ok(())
             }
-            v = camera.join() => v,
+            v = camera.join() => {
+                log::debug!("Camera Join: {:?}", v);
+                v
+            },
             v = async {
                 let mut interval = interval(Duration::from_secs(5));
                 loop {
@@ -48,7 +52,7 @@ impl NeoCamThread {
                         Ok(_) => continue,
                         Err(neolink_core::Error::UnintelligibleReply { .. }) => {
                             // Camera does not support pings just wait forever
-                            futures::pending!();
+                            futures::future::pending().await
                         },
                         Err(e) => return Err(e),
                     }
@@ -121,6 +125,7 @@ impl NeoCamThread {
                         Some(neolink_core::Error::CameraLoginFail) => {
                             // Fatal
                             log::error!("Login credentials were not accepted");
+                            log::debug!("NeoCamThread::run Login Cancel");
                             self.cancel.cancel();
                             return Err(e);
                         }

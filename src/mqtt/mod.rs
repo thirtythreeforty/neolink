@@ -150,6 +150,7 @@ pub(crate) async fn main(_: Opt, reactor: NeoReactor) -> Result<()> {
 
                     for (running_name, token) in cameras.iter() {
                         if ! config_names.contains(running_name) {
+                            log::debug!("Mqtt::main Cancel");
                             token.cancel();
                         }
                     }
@@ -393,6 +394,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
         };
     }?;
 
+    log::debug!("Mqtt::listen_on_camera Cancel");
     cancel.cancel();
     Ok(())
 }

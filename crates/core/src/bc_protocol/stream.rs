@@ -49,11 +49,13 @@ impl StreamData {
     pub async fn get_data(&mut self) -> Result<Result<BcMedia>> {
         if let Some(handle) = self.handle.as_mut() {
             if handle.is_finished() {
+                log::debug!("SteamData::get_data Cancel1");
                 self.abort_handle.cancel();
                 handle.await??;
                 return Err(Error::DroppedConnection);
             }
         } else {
+            log::debug!("SteamData::get_data Cancel2");
             self.abort_handle.cancel();
             return Err(Error::DroppedConnection);
         }
@@ -65,6 +67,7 @@ impl StreamData {
             }
             None => {
                 // debug!("StreamData: Drop");
+                log::debug!("SteamData::get_data Cancel3");
                 self.abort_handle.cancel();
                 Err(Error::DroppedConnection)
             }
@@ -74,6 +77,7 @@ impl StreamData {
     /// Attempts to gracefully shutdown this will cancel the background task and send
     /// the Stop command to the camera
     pub async fn shutdown(&mut self) -> Result<()> {
+        log::debug!("SteamData::shutdown Cancel");
         self.abort_handle.cancel();
         if let Some(handle) = self.handle.take() {
             let _ = handle.await?;
@@ -84,6 +88,7 @@ impl StreamData {
 
 impl Drop for StreamData {
     fn drop(&mut self) {
+        log::debug!("SteamData::drop Cancel");
         self.abort_handle.cancel();
     }
 }

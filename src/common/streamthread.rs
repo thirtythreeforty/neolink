@@ -37,12 +37,11 @@ impl NeoCamStreamThread {
     pub(crate) async fn new(
         stream_request_rx: MpscReceiver<StreamRequest>,
         instance: NeoInstance,
-        cancel: CancellationToken,
     ) -> Result<Self> {
         Ok(Self {
             streams: Default::default(),
             stream_request_rx,
-            cancel,
+            cancel: CancellationToken::new(),
             instance,
         })
     }
@@ -191,6 +190,7 @@ impl NeoCamStreamThread {
 
 impl Drop for NeoCamStreamThread {
     fn drop(&mut self) {
+        log::debug!("NeoCamStreamThread::drop Cancel");
         self.cancel.cancel();
         for stream in self.streams.values() {
             stream.cancel.cancel()
@@ -285,6 +285,7 @@ impl UseCounter {
 
 impl Drop for UseCounter {
     fn drop(&mut self) {
+        log::debug!("UseCounter::drop Cancel");
         self.cancel.cancel();
     }
 }
@@ -329,12 +330,24 @@ impl CountUses {
     }
 
     pub(crate) async fn aquired_users(&self) -> Result<()> {
-        self.value.clone().wait_for(|curr| *curr > 0).await?;
+        self.value
+            .clone()
+            .wait_for(|curr| {
+                log::trace!("aquired_users: {}", *curr);
+                *curr > 0
+            })
+            .await?;
         Ok(())
     }
 
     pub(crate) async fn dropped_users(&self) -> Result<()> {
-        self.value.clone().wait_for(|curr| *curr == 0).await?;
+        self.value
+            .clone()
+            .wait_for(|curr| {
+                log::trace!("dropped_users: {}", *curr);
+                *curr == 0
+            })
+            .await?;
         Ok(())
     }
 }
@@ -631,6 +644,7 @@ impl StreamData {
     }
 
     async fn shutdown(&mut self) -> Result<()> {
+        log::debug!("StreamData::shutdown Cancel");
         self.cancel.cancel();
         if let Some(handle) = self.handle.take() {
             let _ = handle.await;

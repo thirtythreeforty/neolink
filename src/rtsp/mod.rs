@@ -187,6 +187,7 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
 
                     for (running_name, token) in cameras.iter() {
                         if ! config_names.contains(running_name) {
+                            log::debug!("Rtsp::main Cancel1");
                             token.cancel();
                         }
                     }
@@ -217,6 +218,7 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
                 // Panicked or error in task
                 // Cancel all and await terminate
                 log::error!("Error: {e}");
+                log::debug!("Rtsp::main Cancel2");
                 global_cancel.cancel();
                 rtsp.quit().await?;
             }
@@ -366,8 +368,7 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
                     }, if active_streams.contains(&StreamKind::Extern) && supported_streams.contains(&StreamKind::Extern) => v,
                     else => {
                         // all disabled just wait here until config is changed
-                        futures::pending!();
-                        AnyResult::Ok(())
+                        futures::future::pending().await
                     }
                 }
             } => v,
@@ -805,8 +806,8 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                     }
                     last_ft = Some(ft_i);
 
-                    // Sync ft to rt if > 150ms difference
-                    const MAX_DELTA_T: Duration = Duration::from_millis(150);
+                    // Sync ft to rt if > 1500ms difference
+                    const MAX_DELTA_T: Duration = Duration::from_millis(1500);
                     let delta_t = if rt > ft { rt - ft } else { ft - rt };
                     if delta_t > MAX_DELTA_T {
                         ft = rt;
