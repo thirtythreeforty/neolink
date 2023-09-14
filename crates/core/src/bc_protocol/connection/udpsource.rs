@@ -62,6 +62,7 @@ impl UdpSource {
     ) -> Result<Self> {
         // Ensure that the discovery keep alive are all stopped here
         // We now handle all coms in UdpSource
+        discovery.socket.set_broadcast(false)?;
         Self::new_from_socket(
             discovery.socket,
             discovery.addr,
@@ -351,7 +352,7 @@ impl UdpPayloadInner {
                                 },
                                 packet = socket_in_rx.next() => {
                                     let packet = packet.ok_or(Error::DroppedConnection)?;
-                                    match tokio::time::timeout(tokio::time::Duration::from_millis(200), inner.send((packet, thread_camera_addr))).await {
+                                    match tokio::time::timeout(tokio::time::Duration::from_millis(250), inner.send((packet, thread_camera_addr))).await {
                                         Ok(written) => {
                                             written?;
                                         }
@@ -359,8 +360,8 @@ impl UdpPayloadInner {
                                             // Socket is (maybe) broken
                                             // Seems to happen with network reconnects like over
                                             // a lossy cellular network
-                                            log::info!("Reconnect: Due to socket failure");
-                                            let stream = Arc::new(connect().await?);
+                                            log::debug!("Quick reconnect: Due to socket timeout");
+                                            let stream = Arc::new(connect_try_port(inner.inner.get_ref().local_addr()?.port()).await?);
                                             inner = BcUdpSource::new_from_socket(stream, inner.addr).await?;
                                         }
                                     }
@@ -753,6 +754,21 @@ async fn connect() -> Result<UdpSocket> {
 
     let addrs: Vec<_> = ports
         .iter()
+        .map(|&port| SocketAddr::from(([0, 0, 0, 0], port)))
+        .collect();
+    let socket = UdpSocket::bind(&addrs[..]).await?;
+
+    Ok(socket)
+}
+
+async fn connect_try_port(port: u16) -> Result<UdpSocket> {
+    let mut ports: Vec<u16> = (53500..54000).collect();
+    let mut rng = thread_rng();
+    ports.shuffle(&mut rng);
+
+    let addrs: Vec<_> = vec![port]
+        .iter()
+        .chain(ports.iter())
         .map(|&port| SocketAddr::from(([0, 0, 0, 0], port)))
         .collect();
     let socket = UdpSocket::bind(&addrs[..]).await?;
