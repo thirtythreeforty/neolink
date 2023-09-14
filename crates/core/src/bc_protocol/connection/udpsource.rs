@@ -2,14 +2,14 @@ use super::DiscoveryResult;
 use crate::bc::codex::BcCodex;
 use crate::bc::model::*;
 use crate::bcudp::codex::BcUdpCodex;
-use crate::bcudp::model::*;
+use crate::bcudp::{model::*, xml::*};
 use crate::{Credentials, Error, Result};
 use delegate::delegate;
 use futures::{
     sink::{Sink, SinkExt},
     stream::{IntoAsyncRead, Stream, StreamExt, TryStreamExt},
 };
-use rand::{seq::SliceRandom, thread_rng};
+use rand::{seq::SliceRandom, thread_rng, Rng};
 use std::collections::BTreeMap;
 use std::io::{Error as IoError, ErrorKind, Result as IoResult};
 use std::net::SocketAddr;
@@ -317,7 +317,7 @@ impl UdpPayloadInner {
         let (socket_out_tx, socket_out_rx) = channel::<(BcUdp, SocketAddr)>(1000);
         // let (mut socket_tx, mut socket_rx) = inner.split();
 
-        // Send to socket
+        // Send/Recv on the socket
         let send_cancel = cancel.clone();
         let mut socket_in_rx = ReceiverStream::new(socket_in_rx);
         let thread_camera_addr = camera_addr;
@@ -342,6 +342,7 @@ impl UdpPayloadInner {
                                     Err(Error::DroppedConnection)
                                 }
                                 packet = inner.next() => {
+                                    log::trace!("Cam->App");
                                     let packet = packet.ok_or(Error::DroppedConnection)??;
                                     recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(TIME_OUT));
                                     // let packet = socket_rx.next().await.ok_or(Error::DroppedConnection)??;
@@ -350,7 +351,21 @@ impl UdpPayloadInner {
                                 },
                                 packet = socket_in_rx.next() => {
                                     let packet = packet.ok_or(Error::DroppedConnection)?;
-                                    inner.send((packet, thread_camera_addr)).await?;
+                                    match tokio::time::timeout(tokio::time::Duration::from_millis(200), inner.send((packet, thread_camera_addr))).await {
+                                        Ok(written) => {
+                                            written?;
+                                        }
+                                        Err(_) => {
+                                            // Socket is (maybe) broken
+                                            // Seems to happen with network reconnects like over
+                                            // a lossy cellular network
+                                            log::info!("Reconnect: Due to socket failure");
+                                            let stream = Arc::new(connect().await?);
+                                            inner = BcUdpSource::new_from_socket(stream, inner.addr).await?;
+                                        }
+                                    }
+
+                                    log::trace!("Send Packet");
                                     continue;
                                 }
                             }
@@ -406,6 +421,39 @@ impl UdpPayloadInner {
                     } => v,
                 }
             })
+        });
+
+        // Queue up Hb packets
+        let thread_client_id = client_id;
+        let thread_camera_id = camera_id;
+        let thread_sender = socket_in_tx.clone();
+        let mut thread_interval = interval(Duration::from_secs(1));
+        let thread_cancel = cancel.clone();
+        tokio::task::spawn(async move {
+            tokio::select! {
+                _ = thread_cancel.cancelled() => Result::Ok(()),
+                v = async {
+                    loop {
+                        thread_interval.tick().await;
+                        let msg = BcUdp::Discovery(UdpDiscovery {
+                            tid: {
+                                let mut rng = thread_rng();
+                                (rng.gen::<u8>()) as u32
+                            },
+                            payload: UdpXml {
+                                c2d_hb: Some(C2dHb {
+                                    cid: thread_client_id,
+                                    did: thread_camera_id,
+                                }),
+                                ..Default::default()
+                            },
+                        });
+                        if thread_sender.send(msg).await.is_err() {
+                            break Result::Ok(());
+                        }
+                    }
+                } => v,
+            }
         });
 
         Self {

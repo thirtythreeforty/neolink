@@ -378,20 +378,20 @@ pub(crate) struct StreamData {
     users: UseCounter,
 }
 
-#[derive(Eq, PartialEq, Clone)]
+#[derive(Eq, PartialEq, Clone, Debug)]
 pub(crate) enum VidFormat {
     None,
     H264,
     H265,
 }
-#[derive(Eq, PartialEq, Clone)]
+#[derive(Eq, PartialEq, Clone, Debug)]
 pub(crate) enum AudFormat {
     None,
     Aac,
     Adpcm(u32),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) struct StreamConfig {
     pub(crate) resolution: [u32; 2],
     pub(crate) vid_format: VidFormat,

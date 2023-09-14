@@ -32,6 +32,7 @@ use tokio::{
     time::{interval, timeout, Duration},
 };
 use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::sync::CancellationToken;
 use tokio_util::udp::UdpFramed;
 
 #[derive(Debug, Clone)]
@@ -96,11 +97,12 @@ type ArcFramedSocket = UdpFramed<BcUdpCodex, Arc<UdpSocket>>;
 pub(crate) struct Discoverer {
     semaphore: Arc<Semaphore>,
     socket: Arc<UdpSocket>,
-    handle: RwLock<JoinSet<()>>,
+    handle: RwLock<JoinSet<Result<()>>>,
     writer: Sender<Result<(BcUdp, SocketAddr)>>,
     subsribers: Subscriber,
     handlers: Handlers,
     local_addr: SocketAddr,
+    cancel: CancellationToken,
 }
 
 fn valid_ip(ip: &str) -> bool {
@@ -120,6 +122,7 @@ impl Discoverer {
         let socket = Arc::new(connect().await?);
         let local_addr = socket.local_addr()?;
         let inner: ArcFramedSocket = UdpFramed::new(socket.clone(), BcUdpCodex::new());
+        let cancel = CancellationToken::new();
 
         let (mut writer, mut reader) = inner.split();
         let mut set = JoinSet::new();
@@ -128,50 +131,63 @@ impl Discoverer {
 
         let thread_subscriber = subsribers.clone();
         let thread_handlers = handlers.clone();
+        let thread_cancel = cancel.clone();
         set.spawn(async move {
-            loop {
-                tokio::task::yield_now().await;
-                match reader.next().await {
-                    Some(Ok((BcUdp::Discovery(bcudp), addr))) => {
-                        let tid = bcudp.tid;
-                        let mut needs_removal = false;
-                        if let (Some(sender), true) =
-                            (thread_subscriber.read().await.get(&tid), tid > 0)
-                        {
-                            if sender.send(Ok((bcudp, addr))).await.is_err() {
-                                needs_removal = true;
+            tokio::select! {
+                _ = thread_cancel.cancelled() => Result::Ok(()),
+                v = async {
+                    loop {
+                        tokio::task::yield_now().await;
+                        match reader.next().await {
+                            Some(Ok((BcUdp::Discovery(bcudp), addr))) => {
+                                let tid = bcudp.tid;
+                                let mut needs_removal = false;
+                                if let (Some(sender), true) =
+                                    (thread_subscriber.read().await.get(&tid), tid > 0)
+                                {
+                                    if sender.send(Ok((bcudp, addr))).await.is_err() {
+                                        needs_removal = true;
+                                    }
+                                } else {
+                                    for sender in thread_handlers.write().await.iter_mut() {
+                                        let _ = sender.send(Ok((bcudp.clone(), addr))).await;
+                                    }
+                                }
+                                if needs_removal {
+                                    thread_subscriber.write().await.remove(&tid);
+                                }
                             }
-                        } else {
-                            for sender in thread_handlers.write().await.iter_mut() {
-                                let _ = sender.send(Ok((bcudp.clone(), addr))).await;
+                            Some(Ok(bcudp)) => {
+                                // Only discovery packets should be possible atm
+                                trace!("Got non Discovery during discovery: {:?}", bcudp);
                             }
-                        }
-                        if needs_removal {
-                            thread_subscriber.write().await.remove(&tid);
+                            Some(Err(e)) => {
+                                let mut locked_sub = thread_subscriber.write().await;
+                                for (_, sub) in locked_sub.iter() {
+                                    let _ = sub.send(Err(e.clone())).await;
+                                }
+                                locked_sub.clear();
+                                break Result::Ok(());
+                            }
+                            None => break Result::Ok(()),
                         }
                     }
-                    Some(Ok(bcudp)) => {
-                        // Only discovery packets should be possible atm
-                        trace!("Got non Discovery during discovery: {:?}", bcudp);
-                    }
-                    Some(Err(e)) => {
-                        let mut locked_sub = thread_subscriber.write().await;
-                        for (_, sub) in locked_sub.iter() {
-                            let _ = sub.send(Err(e.clone())).await;
-                        }
-                        locked_sub.clear();
-                        break;
-                    }
-                    None => break,
-                }
+                }=> v,
             }
         });
 
         let (sinker, sinker_rx) = channel::<Result<(BcUdp, SocketAddr)>>(100);
+        let thread_cancel = cancel.clone();
         set.spawn(async move {
-            let mut sinker_rx = ReceiverStream::new(sinker_rx);
-            while let Some(Ok(packet)) = sinker_rx.next().await {
-                let _ = writer.send(packet).await;
+            tokio::select! {
+                _ = thread_cancel.cancelled() => Result::Ok(()),
+                v = async {
+                    let mut sinker_rx = ReceiverStream::new(sinker_rx);
+                    while let Some(Ok(packet)) = sinker_rx.next().await {
+                        let _ = writer.send(packet).await;
+                    }
+                    Result::Ok(())
+                } => v,
             }
         });
 
@@ -183,6 +199,7 @@ impl Discoverer {
             subsribers,
             handlers,
             local_addr,
+            cancel,
         })
     }
 
@@ -979,23 +996,29 @@ impl Discoverer {
         let addr = connect_result.addr;
         let mut sender = ArcFramedSocket::new(self.socket.clone(), BcUdpCodex::new());
         let mut interval = interval(Duration::from_secs(1));
+        let thread_cancel = self.cancel.clone();
         self.handle.write().await.spawn(async move {
-            loop {
-                tokio::task::yield_now().await;
-                interval.tick().await;
-                let msg = BcUdp::Discovery(UdpDiscovery {
-                    tid,
-                    payload: UdpXml {
-                        c2d_hb: Some(C2dHb {
-                            cid: client_id,
-                            did: camera_id,
-                        }),
-                        ..Default::default()
-                    },
-                });
-                if sender.send((msg, addr)).await.is_err() {
-                    return;
-                }
+            tokio::select! {
+                _ = thread_cancel.cancelled() => Result::Ok(()),
+                v = async {
+                    loop {
+                        tokio::task::yield_now().await;
+                        interval.tick().await;
+                        let msg = BcUdp::Discovery(UdpDiscovery {
+                            tid,
+                            payload: UdpXml {
+                                c2d_hb: Some(C2dHb {
+                                    cid: client_id,
+                                    did: camera_id,
+                                }),
+                                ..Default::default()
+                            },
+                        });
+                        if sender.send((msg, addr)).await.is_err() {
+                            break Result::Ok(());
+                        }
+                    }
+                } => v,
             }
         });
     }
@@ -1008,26 +1031,38 @@ impl Discoverer {
         let addr = connect_result.addr;
         let mut sender = ArcFramedSocket::new(self.socket.clone(), BcUdpCodex::new());
         let mut interval = interval(Duration::from_secs(1));
+        let thread_cancel = self.cancel.clone();
         self.handle.write().await.spawn(async move {
-            loop {
-                tokio::task::yield_now().await;
-                interval.tick().await;
-                let msg = BcUdp::Discovery(UdpDiscovery {
-                    tid,
-                    payload: UdpXml {
-                        c2r_hb: Some(C2rHb {
-                            sid,
-                            cid: client_id,
-                            did: camera_id,
-                        }),
-                        ..Default::default()
-                    },
-                });
-                if sender.send((msg, addr)).await.is_err() {
-                    return;
-                }
+            tokio::select! {
+                _ = thread_cancel.cancelled() => Result::Ok(()),
+                v = async {
+                    loop {
+                        tokio::task::yield_now().await;
+                        interval.tick().await;
+                        let msg = BcUdp::Discovery(UdpDiscovery {
+                            tid,
+                            payload: UdpXml {
+                                c2r_hb: Some(C2rHb {
+                                    sid,
+                                    cid: client_id,
+                                    did: camera_id,
+                                }),
+                                ..Default::default()
+                            },
+                        });
+                        if sender.send((msg, addr)).await.is_err() {
+                            break Result::Ok(());
+                        }
+                    }
+                } => v,
             }
         });
+    }
+}
+
+impl Drop for Discoverer {
+    fn drop(&mut self) {
+        self.cancel.cancel();
     }
 }
 

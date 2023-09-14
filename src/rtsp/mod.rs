@@ -403,9 +403,14 @@ async fn stream_main(
     paths: &[String],
 ) -> Result<()> {
     let mut camera_config = camera.config().await?.clone();
+    let name = camera_config.borrow().name.clone();
     let mut curr_pause;
     loop {
+        log::trace!("{}: Activating Stream", &name);
+        stream_instance.activate().await?;
+
         // Wait for a valid stream format to be detected
+        log::trace!("{}: Waiting for Valid Stream", &name);
         stream_instance
             .config
             .wait_for(|config| {
@@ -415,31 +420,49 @@ async fn stream_main(
             })
             .await?;
 
-        stream_instance.activate().await?;
+        // After vid give it 1s to look for audio
+        // Ignore timeout but check err
+        if let Ok(v) = tokio::time::timeout(
+            Duration::from_secs(1),
+            stream_instance.config.wait_for(|config| {
+                !matches!(config.vid_format, VidFormat::None)
+                    && !matches!(config.aud_format, AudFormat::None)
+                    && config.resolution[0] > 0
+                    && config.resolution[1] > 0
+            }),
+        )
+        .await
+        {
+            v?;
+        }
 
         curr_pause = camera_config.borrow().pause.clone();
 
         let vid = stream_instance.vid.resubscribe();
         let aud = stream_instance.aud.resubscribe();
-        let thread_stream_config = stream_instance.config.clone();
-        let mut thread_stream_config2 = stream_instance.config.clone();
+
+        let last_stream_config = stream_instance.config.borrow().clone();
+        let mut thread_stream_config = stream_instance.config.clone();
 
         let mut set = JoinSet::<AnyResult<()>>::new();
+        log::trace!("{}: Creating Client Counters", &name);
         // Handles the on off of the stream with the client pause
         let client_counter = UseCounter::new().await;
         let client_count = client_counter.create_deactivated().await?;
         if curr_pause.on_disconnect {
+            log::trace!("{}: Enabling Client Pause", &name);
             // Take over activation
             let mut client_activator = stream_instance.activator_handle().await;
             client_activator.activate().await?;
             stream_instance.deactivate().await?;
             let client_count = client_counter.create_deactivated().await?;
+            let thread_name = name.clone();
             set.spawn(async move {
                 loop {
-                    log::trace!("Activating Client");
+                    log::info!("{}: Activating Client", thread_name);
                     client_activator.activate().await?;
                     client_count.dropped_users().await?;
-                    log::trace!("Pausing Client");
+                    log::info!("{}: Pausing Client", thread_name);
                     client_activator.deactivate().await?;
                     client_count.aquired_users().await?;
                 }
@@ -448,17 +471,19 @@ async fn stream_main(
 
         // Handles on motion pausing
         if curr_pause.on_motion {
+            log::trace!("{}: Activating Motion Pause", &name);
             // Take over activation
             let mut client_activator = stream_instance.activator_handle().await;
             stream_instance.deactivate().await?;
             let mut motion = camera.motion().await?;
             let delta = Duration::from_secs_f64(curr_pause.motion_timeout);
+            let thread_name = name.clone();
             set.spawn(async move {
                 loop {
-                    log::trace!("Activating Motion");
+                    log::info!("{}: Enabling Motion", thread_name);
                     client_activator.activate().await?;
                     motion.wait_for(|md| matches!(md, crate::common::MdState::Stop(_))).await?;
-                    log::trace!("Pausing Motion");
+                    log::info!("{}: Pausing Motion", thread_name);
                     client_activator.deactivate().await?;
                     motion.wait_for(|md| matches!(md, crate::common::MdState::Start(n) if (*n - Instant::now())>delta)).await?;
                 }
@@ -466,25 +491,33 @@ async fn stream_main(
         }
 
         // This select is for the streams config updates
+        log::trace!("{}: Stream Activated", &name);
         break tokio::select! {
-            _ = thread_stream_config2.changed() => {
+            v = thread_stream_config.wait_for(|new_conf| new_conf != &last_stream_config) => {
+                let v = v?;
                 // If stream config changes we reload the stream
+                log::info!("{}: Stream Configuration Changed. Reloading Streams", &name);
+                log::trace!("    From {:?} to {:?}", last_stream_config, v.clone());
                 continue;
             },
-            _ = camera_config.wait_for(|new_conf| new_conf.pause != curr_pause ) => {
+            v = camera_config.wait_for(|new_conf| new_conf.pause != curr_pause ) => {
+                v?;
                 // If pause config changes restart
+                log::info!("{}: Pause Configuration Changed. Reloading Streams", &name);
                 continue;
             },
-            v = stream_run(vid, aud, rtsp, thread_stream_config.borrow().clone(), users, paths, client_count) => v,
+            v = stream_run(&name, vid, aud, rtsp, &last_stream_config, users, paths, client_count) => v,
         };
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Seriously clippy needs to be done
 async fn stream_run(
+    name: &str,
     vidstream: BroadcastReceiver<StampedData>,
     audstream: BroadcastReceiver<StampedData>,
     rtsp: &NeoRtspServer,
-    stream_config: StreamConfig,
+    stream_config: &StreamConfig,
     users: &HashSet<String>,
     paths: &[String],
     client_count: CountUses,
@@ -494,7 +527,7 @@ async fn stream_run(
         .mount_points()
         .ok_or(anyhow!("RTSP server lacks mount point"))?;
     // Create the factory
-    let (factory, mut client_rx) = make_factory(&stream_config).await?;
+    let (factory, mut client_rx) = make_factory(stream_config).await?;
 
     factory.add_permitted_roles(users);
 
@@ -502,6 +535,7 @@ async fn stream_run(
         log::debug!("Path: {}", path);
         mounts.add_factory(path, factory.clone());
     }
+    log::info!("{}: Avaliable at {:?}", name, paths);
 
     let stream_cancel = CancellationToken::new();
     let mut set = JoinSet::new();
@@ -673,7 +707,7 @@ async fn make_factory(
                     app.set_callbacks(
                         AppSrcCallbacks::builder()
                             .seek_data(move |_, seek_pos| {
-                                log::info!("seek_pos: {seek_pos:?}");
+                                log::trace!("seek_pos: {seek_pos:?}");
                                 let (reply_tx, mut reply_rx) = mpsc(1);
                                 vid_seek_tx
                                     .blocking_send(StreamData::Seek {
@@ -692,7 +726,7 @@ async fn make_factory(
                     app.set_callbacks(
                         AppSrcCallbacks::builder()
                             .seek_data(move |_, seek_pos| {
-                                log::info!("seek_pos: {seek_pos:?}");
+                                log::trace!("seek_pos: {seek_pos:?}");
                                 let (reply_tx, mut reply_rx) = mpsc(1);
                                 vid_seek_tx
                                     .blocking_send(StreamData::Seek {
@@ -717,7 +751,7 @@ async fn make_factory(
                         app.set_callbacks(
                             AppSrcCallbacks::builder()
                                 .seek_data(move |_, seek_pos| {
-                                    log::info!("seek_pos: {seek_pos:?}");
+                                    log::trace!("seek_pos: {seek_pos:?}");
                                     let (reply_tx, mut reply_rx) = mpsc(1);
                                     aud_seek_tx
                                         .blocking_send(StreamData::Seek {
@@ -736,7 +770,7 @@ async fn make_factory(
                         app.set_callbacks(
                             AppSrcCallbacks::builder()
                                 .seek_data(move |_, seek_pos| {
-                                    log::info!("seek_pos: {seek_pos:?}");
+                                    log::trace!("seek_pos: {seek_pos:?}");
                                     let (reply_tx, mut reply_rx) = mpsc(1);
                                     aud_seek_tx
                                         .blocking_send(StreamData::Seek {
@@ -790,7 +824,7 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                     let _ = reply.send(()).await;
                 }
                 StreamData::Media { data, ts: ft_i } => {
-                    log::info!("Frame recieved with ts: {ft_i:?}");
+                    log::trace!("Frame recieved with ts: {ft_i:?}");
                     // Update rt
                     if let Some(rt_i) = get_runtime(app) {
                         if let Some(last_rt) = last_rt {
@@ -827,7 +861,7 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                             let mut gst_buf = gstreamer::Buffer::with_size(data.len()).unwrap();
                             {
                                 let gst_buf_mut = gst_buf.get_mut().unwrap();
-                                log::info!("Setting PTS: {thread_ft:?}, Runtime: {thread_rt:?}");
+                                log::trace!("Setting PTS: {thread_ft:?}, Runtime: {thread_rt:?}");
                                 let time = ClockTime::from_useconds(thread_ft.as_micros() as u64);
                                 gst_buf_mut.set_dts(time);
                                 gst_buf_mut.set_pts(time);
