@@ -323,6 +323,8 @@ impl UdpPayloadInner {
         let mut socket_in_rx = ReceiverStream::new(socket_in_rx);
         let thread_camera_addr = camera_addr;
         let mut socket_out_tx = PollSender::new(socket_out_tx);
+        let thread_client_id = client_id;
+        let thread_camera_id = camera_id;
         const TIME_OUT: u64 = 10;
         let mut recv_timeout = Box::pin(sleep(Duration::from_secs(TIME_OUT)));
         tokio::task::spawn_blocking(move || {
@@ -363,6 +365,25 @@ impl UdpPayloadInner {
                                             log::debug!("Quick reconnect: Due to socket timeout");
                                             let stream = Arc::new(connect_try_port(inner.inner.get_ref().local_addr()?.port()).await?);
                                             inner = BcUdpSource::new_from_socket(stream, inner.addr).await?;
+
+                                            // Inform the camera that we are the same client
+                                            //
+                                            // At least I think that is what this is for.
+                                            // Might also have to do this for the relay but not sure
+                                            let msg = BcUdp::Discovery(UdpDiscovery {
+                                                tid: {
+                                                    let mut rng = thread_rng();
+                                                    (rng.gen::<u8>()) as u32
+                                                },
+                                                payload: UdpXml {
+                                                    c2d_hb: Some(C2dHb {
+                                                        cid: thread_client_id,
+                                                        did: thread_camera_id,
+                                                    }),
+                                                    ..Default::default()
+                                                },
+                                            });
+                                            let _ = tokio::time::timeout(Duration::from_millis(250), inner.send((msg, thread_camera_addr))).await;
                                         }
                                     }
 
