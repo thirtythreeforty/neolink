@@ -2,7 +2,7 @@ use crate::mqtt::Discoveries;
 use lazy_static::lazy_static;
 use neolink_core::bc_protocol::{DiscoveryMethods, PrintFormat, StreamKind};
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::clone::Clone;
 use std::collections::HashSet;
 use validator::{Validate, ValidationError};
@@ -15,7 +15,7 @@ lazy_static! {
         Regex::new(r"^([nN]one|[Aa][Ee][Ss]|[Bb][Cc][Ee][Nn][Cc][Rr][Yy][Pp][Tt])$").unwrap();
 }
 
-#[derive(Debug, Deserialize, Validate, Clone)]
+#[derive(Debug, Deserialize, Serialize, Validate, Clone, PartialEq)]
 pub(crate) struct Config {
     #[validate]
     pub(crate) cameras: Vec<CameraConfig>,
@@ -49,7 +49,7 @@ pub(crate) struct Config {
     pub(crate) users: Vec<UserConfig>,
 }
 
-#[derive(Debug, Deserialize, Clone, Validate, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Validate, PartialEq, Eq)]
 #[validate(schema(function = "validate_mqtt_server", skip_on_field_errors = true))]
 pub(crate) struct MqttServerConfig {
     #[serde(alias = "server")]
@@ -67,7 +67,7 @@ pub(crate) struct MqttServerConfig {
     pub(crate) client_auth: Option<(std::path::PathBuf, std::path::PathBuf)>,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum StreamConfig {
     #[serde(alias = "none")]
     None,
@@ -123,7 +123,7 @@ impl StreamConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Validate, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Validate, Clone, PartialEq)]
 #[validate(schema(function = "validate_camera_config"))]
 pub(crate) struct CameraConfig {
     pub(crate) name: String,
@@ -148,7 +148,7 @@ pub(crate) struct CameraConfig {
 
     #[validate]
     #[serde(default = "default_mqtt")]
-    pub(crate) mqtt: Option<MqttConfig>,
+    pub(crate) mqtt: MqttConfig,
 
     #[validate]
     #[serde(default = "default_pause")]
@@ -198,7 +198,7 @@ pub(crate) struct CameraConfig {
     pub(crate) max_discovery_retries: usize,
 }
 
-#[derive(Debug, Deserialize, Validate, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Validate, Clone, PartialEq, Eq)]
 pub(crate) struct UserConfig {
     #[validate(custom = "validate_username")]
     #[serde(alias = "username")]
@@ -208,7 +208,7 @@ pub(crate) struct UserConfig {
     pub(crate) pass: String,
 }
 
-#[derive(Debug, Deserialize, Clone, Validate, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Validate, PartialEq, Eq)]
 pub(crate) struct MqttConfig {
     #[serde(default = "default_true")]
     pub(crate) enable_motion: bool,
@@ -218,14 +218,30 @@ pub(crate) struct MqttConfig {
     pub(crate) enable_light: bool,
     #[serde(default = "default_true")]
     pub(crate) enable_battery: bool,
+    /// Update time in ms
+    #[serde(default = "default_2000")]
+    #[validate(range(
+        min = 500,
+        message = "Update ms should be > 500",
+        code = "battery_update"
+    ))]
+    pub(crate) battery_update: u64,
     #[serde(default = "default_true")]
     pub(crate) enable_preview: bool,
+    /// Update time in ms
+    #[validate(range(
+        min = 500,
+        message = "Update ms should be > 500",
+        code = "preview_update"
+    ))]
+    #[serde(default = "default_2000")]
+    pub(crate) preview_update: u64,
 
     #[serde(default)]
     pub(crate) discovery: Option<MqttDiscoveryConfig>,
 }
 
-#[derive(Debug, Deserialize, Clone, Validate, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Validate, PartialEq, Eq)]
 pub(crate) struct MqttDiscoveryConfig {
     pub(crate) topic: String,
 
@@ -250,8 +266,17 @@ const fn default_false() -> bool {
     false
 }
 
-fn default_mqtt() -> Option<MqttConfig> {
-    None
+fn default_mqtt() -> MqttConfig {
+    MqttConfig {
+        enable_pings: true,
+        enable_motion: true,
+        enable_light: true,
+        enable_battery: true,
+        battery_update: 2000,
+        enable_preview: true,
+        preview_update: 2000,
+        discovery: Default::default(),
+    }
 }
 
 fn default_print() -> PrintFormat {
@@ -266,7 +291,7 @@ fn default_maxenc() -> String {
     "Aes".to_string()
 }
 
-#[derive(Debug, Deserialize, Validate, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Validate, Clone, PartialEq)]
 pub(crate) struct PauseConfig {
     #[serde(default = "default_on_motion")]
     pub(crate) on_motion: bool,
@@ -353,6 +378,10 @@ fn default_buffer_size() -> usize {
 
 fn default_max_discovery_retries() -> usize {
     10
+}
+
+fn default_2000() -> u64 {
+    2000
 }
 
 pub(crate) static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];

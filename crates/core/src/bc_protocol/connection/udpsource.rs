@@ -504,7 +504,7 @@ impl UdpPayloadInner {
                 for (_, resend) in self.sent.iter() {
                     self.socket_in.feed(BcUdp::Data(resend.clone())).await?;
                 }
-                self.ack_tx.send(self.build_send_ack()).await?; // Ensure we update this sometimes too
+                self.ack_tx.send(self.build_send_ack()).await?; // Ensure we update the ack packet sometimes too
                 Result::Ok(())
             },
             v = self.thread_sink.next() => {

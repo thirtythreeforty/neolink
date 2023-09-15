@@ -380,7 +380,7 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
 
 #[derive(Clone, Debug)]
 enum StreamData {
-    Media { data: Vec<u8>, ts: Duration },
+    Media { data: Arc<Vec<u8>>, ts: Duration },
     Seek { ts: Duration, reply: MpscSender<()> },
 }
 
@@ -569,7 +569,7 @@ async fn stream_run(
                         if let Ok(data) = data {
                             thread_vid_data_tx.send(
                                 StreamData::Media {
-                                    data: data.data,
+                                    data: Arc::new(data.data),
                                     ts: data.ts
                                 }
                             )?;
@@ -595,7 +595,7 @@ async fn stream_run(
                         if let Ok(data) = data {
                             thread_aud_data_tx.send(
                                 StreamData::Media {
-                                    data: data.data,
+                                    data: Arc::new(data.data),
                                     ts: data.ts
                                 }
                             )?;
@@ -828,14 +828,14 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                     // Update rt
                     if let Some(rt_i) = get_runtime(app) {
                         if let Some(last_rt) = last_rt {
-                            let delta_rt = rt_i - last_rt;
+                            let delta_rt = rt_i.saturating_sub(last_rt);
                             rt += delta_rt;
                         }
                         last_rt = Some(rt_i);
                     }
                     // Update ft
                     if let Some(last_ft) = last_ft {
-                        let delta_ft = ft_i - last_ft;
+                        let delta_ft = ft_i.saturating_sub(last_ft);
                         ft += delta_ft;
                     }
                     last_ft = Some(ft_i);
@@ -902,7 +902,7 @@ fn get_runtime(app: &AppSrc) -> Option<Duration> {
     if let Some(clock) = app.clock() {
         if let Some(time) = clock.time() {
             if let Some(base_time) = app.base_time() {
-                let runtime = time.saturating_sub(base_time);
+                let runtime = timesaturating_sub(base_time);
                 return Some(Duration::from_micros(runtime.useconds()));
             }
         }

@@ -159,6 +159,41 @@ pub(crate) async fn main(_: Opt, reactor: NeoReactor) -> Result<()> {
         }
     });
 
+    // This threads prints the config
+    let mut thread_config = config.clone();
+    let thread_instance = mqtt.subscribe("").await?;
+    set.spawn(async move {
+        let mut curr_config = thread_config.borrow().clone();
+        let str = toml::to_string(&curr_config)?;
+        thread_instance.send_message("config", &str, false).await?;
+        loop {
+            curr_config = thread_config
+                .wait_for(|new_conf| new_conf != &curr_config)
+                .await?
+                .clone();
+            let str = toml::to_string(&curr_config)?;
+            thread_instance.send_message("config", &str, false).await?;
+        }
+    });
+
+    // This threads checks for config changes on the mqtt
+    let mut thread_config = config.clone();
+    let mut thread_instance = mqtt.subscribe("").await?;
+    set.spawn(async move {
+        while let Ok(msg) = {
+            log::info!("Trying to pull msg");
+            let v = thread_instance.recv().await;
+            if let Err(e) = &v {
+                log::info!("{:?}", e);
+            }
+            v
+        } {
+            log::info!("{}", msg.topic);
+        }
+        log::info!("Shuting down MQTT Config Updater");
+        AnyResult::Ok(())
+    });
+
     while let Some(result) = set.join_next().await {
         result??;
     }
@@ -179,6 +214,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                 continue;
             }
             v = async {
+                //Publish initial states
                 mqtt_instance
                         .send_message("status", "disconnected", true)
                         .await
@@ -188,207 +224,203 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                     .await
                     .with_context(|| format!("Failed to publish motion unknown for {}", camera_name))?;
 
-                if let Some(config) = config.as_ref() {
-                    //Publish initial states
-                    if let Some(discovery_config) = config.discovery.as_ref() {
-                        enable_discovery(discovery_config, &mqtt_instance, &camera).await?;
-                    }
+                if let Some(discovery_config) = config.discovery.as_ref() {
+                    enable_discovery(discovery_config, &mqtt_instance, &camera).await?;
+                }
 
-                    let camera_msg = camera.clone();
-                    let mut mqtt_msg = mqtt_instance.resubscribe().await?;
-                    let cancel_msg = cancel.clone();
-                    let mut set_msg = JoinSet::new();
+                let camera_msg = camera.clone();
+                let mut mqtt_msg = mqtt_instance.resubscribe().await?;
+                let cancel_msg = cancel.clone();
+                let mut set_msg = JoinSet::new();
 
-                    let mut camera_watch = camera.camera();
-                    let mqtt_watch = mqtt_instance.resubscribe().await?;
+                let mut camera_watch = camera.camera();
+                let mqtt_watch = mqtt_instance.resubscribe().await?;
 
-                    let camera_floodlight = camera.clone();
-                    let mqtt_floodlight = mqtt_instance.resubscribe().await?;
+                let camera_floodlight = camera.clone();
+                let mqtt_floodlight = mqtt_instance.resubscribe().await?;
 
-                    let camera_motion = camera.clone();
-                    let mqtt_motion = mqtt_instance.resubscribe().await?;
+                let camera_motion = camera.clone();
+                let mqtt_motion = mqtt_instance.resubscribe().await?;
 
-                    let camera_snap = camera.clone();
-                    let mqtt_snap = mqtt_instance.resubscribe().await?;
+                let camera_snap = camera.clone();
+                let mqtt_snap = mqtt_instance.resubscribe().await?;
 
-                    let camera_battery = camera.clone();
-                    let mqtt_battery = mqtt_instance.resubscribe().await?;
+                let camera_battery = camera.clone();
+                let mqtt_battery = mqtt_instance.resubscribe().await?;
 
-                    tokio::select! {
-                        _ = cancel.cancelled() => AnyResult::Ok(()),
-                        // Handles incomming requests
-                        v  = async {
-                            let (tx, mut rx) = mpsc(1);
-                            tokio::select! {
-                                v = async {
-                                    while let Ok(msg) = mqtt_msg.recv().await {
-                                        let mqtt_msg = mqtt_msg.resubscribe().await?;
-                                        let camera_msg = camera_msg.clone();
-                                        let tx = tx.clone();
-                                        let cancel_msg = cancel_msg.clone();
-                                        set_msg.spawn(async move {
-                                            tokio::select!{
-                                                _ = cancel_msg.cancelled() => AnyResult::Ok(()),
-                                                v = async {
-                                                    let res = handle_mqtt_message(msg, &mqtt_msg, &camera_msg).await;
-                                                    if res.is_err() {
-                                                        tx.send(res).await?;
-                                                    }
-                                                    AnyResult::Ok(())
-                                                } => v,
-                                            }
-                                        });
-                                    }
-                                    AnyResult::Ok(())
-                                } => v,
-                                v = rx.recv() => {
-                                    v.ok_or(anyhow!("All error senders were dropped"))?
-                                },
-                            }?;
-                            AnyResult::Ok(())
-                        } => v,
-                        // Handle camera disconnect/connect
-                        v = async {
-                            loop {
-                                camera_watch.wait_for(|cam| cam.upgrade().is_some()).await.with_context(|| {
-                                    format!("{}: Online Watch Dropped", camera_name)
-                                })?;
-                                mqtt_watch.send_message("status", "online", true).await.with_context(|| {
-                                    format!("{}: Failed to publish Online", camera_name)
-                                })?;
-                                camera_watch.wait_for(|cam| cam.upgrade().is_none()).await.with_context(|| {
-                                    format!("{}: Disconnect Watch Dropped", camera_name)
-                                })?;
-                                mqtt_watch.send_message("status", "disconnected", true).await.with_context(|| {
-                                    format!("{}: Failed to publish disconnected", camera_name)
-                                })?;
-                            }
-                        } => v,
-                        // Handle the floodlight
-                        v = async {
-                            let (tx, mut rx) = mpsc(100);
-                            tokio::select! {
-                                v = camera_floodlight.run_task(|cam| {
+                tokio::select! {
+                    _ = cancel.cancelled() => AnyResult::Ok(()),
+                    // Handles incomming requests
+                    v  = async {
+                        let (tx, mut rx) = mpsc(1);
+                        tokio::select! {
+                            v = async {
+                                while let Ok(msg) = mqtt_msg.recv().await {
+                                    let mqtt_msg = mqtt_msg.resubscribe().await?;
+                                    let camera_msg = camera_msg.clone();
                                     let tx = tx.clone();
-                                    Box::pin(
-                                        async move {
-                                            let mut reciever = tokio_stream::wrappers::ReceiverStream::new(cam.listen_on_flightlight().await?);
-                                            while let Some(flights) = reciever.next().await {
-                                                for flight in flights.floodlight_status_list.iter() {
-                                                    if flight.status == 0 {
-                                                        tx.send(false).await?;
-                                                    } else {
-                                                        tx.send(true).await?;
-                                                    }
+                                    let cancel_msg = cancel_msg.clone();
+                                    set_msg.spawn(async move {
+                                        tokio::select!{
+                                            _ = cancel_msg.cancelled() => AnyResult::Ok(()),
+                                            v = async {
+                                                let res = handle_mqtt_message(msg, &mqtt_msg, &camera_msg).await;
+                                                if res.is_err() {
+                                                    tx.send(res).await?;
+                                                }
+                                                AnyResult::Ok(())
+                                            } => v,
+                                        }
+                                    });
+                                }
+                                AnyResult::Ok(())
+                            } => v,
+                            v = rx.recv() => {
+                                v.ok_or(anyhow!("All error senders were dropped"))?
+                            },
+                        }?;
+                        AnyResult::Ok(())
+                    } => v,
+                    // Handle camera disconnect/connect
+                    v = async {
+                        loop {
+                            camera_watch.wait_for(|cam| cam.upgrade().is_some()).await.with_context(|| {
+                                format!("{}: Online Watch Dropped", camera_name)
+                            })?;
+                            log::info!("Publish online");
+                            mqtt_watch.send_message("status", "online", true).await.with_context(|| {
+                                format!("{}: Failed to publish Online", camera_name)
+                            })?;
+                            camera_watch.wait_for(|cam| cam.upgrade().is_none()).await.with_context(|| {
+                                format!("{}: Disconnect Watch Dropped", camera_name)
+                            })?;
+                            mqtt_watch.send_message("status", "disconnected4", true).await.with_context(|| {
+                                format!("{}: Failed to publish disconnected", camera_name)
+                            })?;
+                        }
+                    } => v,
+                    // Handle the floodlight
+                    v = async {
+                        let (tx, mut rx) = mpsc(100);
+                        tokio::select! {
+                            v = camera_floodlight.run_task(|cam| {
+                                let tx = tx.clone();
+                                Box::pin(
+                                    async move {
+                                        let mut reciever = tokio_stream::wrappers::ReceiverStream::new(cam.listen_on_flightlight().await?);
+                                        while let Some(flights) = reciever.next().await {
+                                            for flight in flights.floodlight_status_list.iter() {
+                                                if flight.status == 0 {
+                                                    tx.send(false).await?;
+                                                } else {
+                                                    tx.send(true).await?;
                                                 }
                                             }
-                                            AnyResult::Ok(())
                                         }
-                                    )
-                                }) => v,
-                                v = async {
-                                    while let Some(on) = rx.recv().await {
-                                        if on {
-                                            mqtt_floodlight.send_message("status/floodlight", "on", true).await?;
-                                        } else {
-                                            mqtt_floodlight.send_message("status/floodlight", "off", true).await?;
-                                        }
+                                        AnyResult::Ok(())
                                     }
-                                    AnyResult::Ok(())
-                                } => v,
+                                )
+                            }) => v,
+                            v = async {
+                                while let Some(on) = rx.recv().await {
+                                    if on {
+                                        mqtt_floodlight.send_message("status/floodlight", "on", true).await?;
+                                    } else {
+                                        mqtt_floodlight.send_message("status/floodlight", "off", true).await?;
+                                    }
+                                }
+                                AnyResult::Ok(())
+                            } => v,
+                        }?;
+                        AnyResult::Ok(())
+                    } => v,
+                    // Handle the motion messages
+                    v = async {
+                        let mut md = camera_motion.motion().await?;
+                        loop {
+                            md.wait_for(|state| matches!(state, MdState::Start(_))).await.with_context(|| {
+                                format!("{}: MdStart Watch Dropped", camera_name)
+                            })?;
+                            mqtt_motion.send_message("status/motion", "on", true).await.with_context(|| {
+                                format!("{}: Failed to publish motion start", camera_name)
+                            })?;
+                            md.wait_for(|state| matches!(state, MdState::Stop(_))).await.with_context(|| {
+                                format!("{}: MdStop Watch Dropped", camera_name)
+                            })?;
+                            mqtt_motion.send_message("status/motion", "off", true).await.with_context(|| {
+                                format!("{}: Failed to publish motion stop", camera_name)
+                            })?;
+                        }
+                    } => v,
+                    // Handle the SNAP (image preview)
+                    v = async {
+                        let mut wait = IntervalStream::new({
+                            let mut i = interval(Duration::from_millis(config.preview_update));
+                            i.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                            i
+                        });
+                        while wait.next().await.is_some() {
+                            let image = camera_snap.run_task(|cam| {
+                                Box::pin(async move {
+                                    let image = cam.get_snapshot().await?;
+                                    AnyResult::Ok(image)
+                                })
+                            }).await;
+                            let image = match image {
+                                Err(e) => match e.downcast::<neolink_core::Error>() {
+                                    Ok(neolink_core::Error::CameraServiceUnavaliable) => {
+                                        log::debug!("Image not supported");
+                                        futures::future::pending().await
+                                    },
+                                    Ok(e) => Err(e.into()),
+                                    Err(e) => Err(e),
+                                }
+                                n => n,
                             }?;
-                            AnyResult::Ok(())
-                        } => v,
-                        // Handle the motion messages
-                        v = async {
-                            let mut md = camera_motion.motion().await?;
-                            loop {
-                                md.wait_for(|state| matches!(state, MdState::Start(_))).await.with_context(|| {
-                                    format!("{}: MdStart Watch Dropped", camera_name)
-                                })?;
-                                mqtt_motion.send_message("status/motion", "on", true).await.with_context(|| {
-                                    format!("{}: Failed to publish motion start", camera_name)
-                                })?;
-                                md.wait_for(|state| matches!(state, MdState::Stop(_))).await.with_context(|| {
-                                    format!("{}: MdStop Watch Dropped", camera_name)
-                                })?;
-                                mqtt_motion.send_message("status/motion", "off", true).await.with_context(|| {
-                                    format!("{}: Failed to publish motion stop", camera_name)
-                                })?;
-                            }
-                        } => v,
-                        // Handle the SNAP (image preview)
-                        v = async {
-                            let mut wait = IntervalStream::new({
-                                let mut i = interval(Duration::from_millis(500));
-                                i.set_missed_tick_behavior(MissedTickBehavior::Skip);
-                                i
-                            });
-                            while wait.next().await.is_some() {
-                                let image = camera_snap.run_task(|cam| {
-                                    Box::pin(async move {
-                                        let image = cam.get_snapshot().await?;
-                                        AnyResult::Ok(image)
-                                    })
-                                }).await;
-                                let image = match image {
-                                    Err(e) => match e.downcast::<neolink_core::Error>() {
-                                        Ok(neolink_core::Error::CameraServiceUnavaliable) => {
-                                            log::debug!("Image not supported");
-                                            futures::future::pending().await
-                                        },
-                                        Ok(e) => Err(e.into()),
-                                        Err(e) => Err(e),
-                                    }
-                                    n => n,
-                                }?;
-                                mqtt_snap
-                                        .send_message("status/preview", BASE64.encode(image).as_str(), true)
-                                        .await
-                                        .with_context(|| {
-                                            format!("{}: Failed to publish preview", camera_name)
-                                        })?;
-                            }
-                            AnyResult::Ok(())
-                        } => v,
-                        // Handle the battery publish
-                        v = async {
-                            let mut wait = IntervalStream::new({
-                                let mut i = interval(Duration::from_millis(5000));
-                                i.set_missed_tick_behavior(MissedTickBehavior::Skip);
-                                i
-                            });
-                            while wait.next().await.is_some() {
-                                let xml = camera_battery.run_task(|cam| {
-                                    Box::pin(async move {
-                                        let xml = cam.battery_info().await?;
-                                        AnyResult::Ok(xml)
-                                    })
-                                }).await;
-                                let xml = match xml {
-                                    Err(e) => match e.downcast::<neolink_core::Error>() {
-                                        Ok(neolink_core::Error::CameraServiceUnavaliable) => {
-                                            log::debug!("Battery not supported");
-                                            futures::future::pending().await
-                                        },
-                                        Ok(e) => Err(e.into()),
-                                        Err(e) => Err(e),
-                                    }
-                                    n => n,
-                                }?;
-                                mqtt_battery
-                                        .send_message("status/battery_level", format!("{}", xml.battery_percent).as_str(), true)
-                                        .await
-                                        .with_context(|| {
-                                            format!("{}: Failed to publish battery", camera_name)
-                                        })?;
-                            }
-                            AnyResult::Ok(())
-                        } => v
-                    }?;
-                } else {
-                    futures::future::pending().await
-                }
+                            mqtt_snap
+                                    .send_message("status/preview", BASE64.encode(image).as_str(), true)
+                                    .await
+                                    .with_context(|| {
+                                        format!("{}: Failed to publish preview", camera_name)
+                                    })?;
+                        }
+                        AnyResult::Ok(())
+                    } => v,
+                    // Handle the battery publish
+                    v = async {
+                        let mut wait = IntervalStream::new({
+                            let mut i = interval(Duration::from_millis(config.preview_update));
+                            i.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                            i
+                        });
+                        while wait.next().await.is_some() {
+                            let xml = camera_battery.run_task(|cam| {
+                                Box::pin(async move {
+                                    let xml = cam.battery_info().await?;
+                                    AnyResult::Ok(xml)
+                                })
+                            }).await;
+                            let xml = match xml {
+                                Err(e) => match e.downcast::<neolink_core::Error>() {
+                                    Ok(neolink_core::Error::CameraServiceUnavaliable) => {
+                                        log::debug!("Battery not supported");
+                                        futures::future::pending().await
+                                    },
+                                    Ok(e) => Err(e.into()),
+                                    Err(e) => Err(e),
+                                }
+                                n => n,
+                            }?;
+                            mqtt_battery
+                                    .send_message("status/battery_level", format!("{}", xml.battery_percent).as_str(), true)
+                                    .await
+                                    .with_context(|| {
+                                        format!("{}: Failed to publish battery", camera_name)
+                                    })?;
+                        }
+                        AnyResult::Ok(())
+                    } => v
+                }?;
                 AnyResult::Ok(())
             } => v,
         };

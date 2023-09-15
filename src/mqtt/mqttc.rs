@@ -176,6 +176,7 @@ async fn run_mqtt_server(
                             "disconnected".to_string(),
                         ).await?;
                         let _ = reply.send(());
+                        return Err(anyhow!("Disconneting"));
                     }
                     MqttRequest::Subscribe(name, reply) => {
                         let instance = MqttInstance {
@@ -199,13 +200,13 @@ async fn run_mqtt_server(
                 match notification {
                     Event::Incoming(Incoming::ConnAck(connected)) => {
                         if ConnectReturnCode::Success == connected.code {
-                            // Publish disconnected at first then wait for connect from the camera insances
+                            // Publish connected now that we are online
                             client
                             .publish(
                                 "neolink/status".to_string(),
                                 QoS::AtLeastOnce,
                                 true,
-                                "disconnected",
+                                "connected",
                             )
                             .await?;
                             // We succesfully logged in. Now ask for the cameras subscription.
@@ -215,10 +216,12 @@ async fn run_mqtt_server(
                         }
                     }
                     Event::Incoming(Incoming::Publish(published_message)) => {
+                        log::info!("Got MQTT message: {:?}", published_message);
                         if let Some(sub_topic) = published_message
                             .topic
                             .strip_prefix("neolink/")
                         {
+
                             let _ = incomming_tx
                                 .send(MqttReply {
                                     topic: sub_topic.to_string(),

@@ -10,7 +10,7 @@ use super::mqttc::MqttInstance;
 use crate::{common::NeoInstance, config::MqttDiscoveryConfig};
 use serde::{Deserialize, Serialize, Serializer};
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Copy, Hash)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Copy, Hash)]
 pub(crate) enum Discoveries {
     #[serde(alias = "floodlight", alias = "light")]
     Floodlight,
