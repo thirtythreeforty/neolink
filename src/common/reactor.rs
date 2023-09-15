@@ -19,6 +19,7 @@ use crate::{config::Config, Result};
 enum NeoReactorCommand {
     HangUp,
     Config(OneshotSender<WatchReceiver<Config>>),
+    UpdateConfig(Config, OneshotSender<Result<()>>),
     Get(String, OneshotSender<Result<Option<NeoInstance>>>),
 }
 
@@ -92,6 +93,10 @@ impl NeoReactor {
                                 log::debug!("Got instance from reactor");
                                 let _ = sender.send(new);
                             },
+                            NeoReactorCommand::UpdateConfig(new_conf, reply) => {
+                                let _ = config_tx.send_replace(new_conf);
+                                let _ = reply.send(Ok(()));
+                            }
                         }
                     }
                     Ok(())
@@ -123,6 +128,15 @@ impl NeoReactor {
             .await?;
 
         Ok(sender_rx.await?)
+    }
+
+    pub(crate) async fn update_config(&self, new_config: Config) -> Result<()> {
+        let (sender_tx, sender_rx) = oneshot();
+        self.commander
+            .send(NeoReactorCommand::UpdateConfig(new_config, sender_tx))
+            .await?;
+
+        sender_rx.await?
     }
 
     pub(crate) async fn shutdown(&self) {

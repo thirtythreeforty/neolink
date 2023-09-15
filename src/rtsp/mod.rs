@@ -902,7 +902,7 @@ fn get_runtime(app: &AppSrc) -> Option<Duration> {
     if let Some(clock) = app.clock() {
         if let Some(time) = clock.time() {
             if let Some(base_time) = app.base_time() {
-                let runtime = timesaturating_sub(base_time);
+                let runtime = time.saturating_sub(base_time);
                 return Some(Duration::from_micros(runtime.useconds()));
             }
         }

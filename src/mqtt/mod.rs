@@ -66,6 +66,7 @@ use tokio::{
 };
 use tokio_stream::{wrappers::IntervalStream, StreamExt};
 use tokio_util::sync::CancellationToken;
+use validator::Validate;
 
 use neolink_core::bc_protocol::{Direction as BcDirection, LightState};
 
@@ -75,6 +76,7 @@ mod mqttc;
 
 use crate::{
     common::{MdState, NeoInstance, NeoReactor},
+    config::Config,
     AnyResult,
 };
 use anyhow::{anyhow, Context, Result};
@@ -177,20 +179,43 @@ pub(crate) async fn main(_: Opt, reactor: NeoReactor) -> Result<()> {
     });
 
     // This threads checks for config changes on the mqtt
-    let mut thread_config = config.clone();
+    let thread_config = config.clone();
     let mut thread_instance = mqtt.subscribe("").await?;
+    let thread_reactor = reactor.clone();
     set.spawn(async move {
-        while let Ok(msg) = {
-            log::info!("Trying to pull msg");
-            let v = thread_instance.recv().await;
-            if let Err(e) = &v {
-                log::info!("{:?}", e);
+        while let Ok(msg) = thread_instance.recv().await {
+            if msg.topic == "config" {
+                let config: Result<Config> = toml::from_str(&msg.message).with_context(|| {
+                    format!("Failed to parse the MQTT {:?} config file", msg.topic)
+                });
+                if let Err(e) = config {
+                    thread_instance
+                        .send_message("config/status", &format!("{:?}", e), false)
+                        .await?;
+                    continue;
+                }
+                let config = config?;
+
+                let validate = config.validate().with_context(|| {
+                    format!("Failed to validate the MQTT {:?} config file", msg.topic)
+                });
+                if let Err(e) = validate {
+                    thread_instance
+                        .send_message("config/status", &format!("{:?}", e), false)
+                        .await?;
+                    continue;
+                }
+
+                if (*thread_config.borrow()) == config {
+                    continue;
+                }
+
+                let result = thread_reactor.update_config(config).await;
+                thread_instance
+                    .send_message("config/status", &format!("{:?}", result), false)
+                    .await?;
             }
-            v
-        } {
-            log::info!("{}", msg.topic);
         }
-        log::info!("Shuting down MQTT Config Updater");
         AnyResult::Ok(())
     });
 

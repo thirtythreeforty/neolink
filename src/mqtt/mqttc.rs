@@ -211,17 +211,15 @@ async fn run_mqtt_server(
                             .await?;
                             // We succesfully logged in. Now ask for the cameras subscription.
                             client
-                            .subscribe("neolink/".to_string(), QoS::AtMostOnce)
+                            .subscribe("neolink/#".to_string(), QoS::AtMostOnce)
                             .await?;
                         }
                     }
                     Event::Incoming(Incoming::Publish(published_message)) => {
-                        log::info!("Got MQTT message: {:?}", published_message);
                         if let Some(sub_topic) = published_message
                             .topic
                             .strip_prefix("neolink/")
                         {
-
                             let _ = incomming_tx
                                 .send(MqttReply {
                                     topic: sub_topic.to_string(),
@@ -332,7 +330,7 @@ impl MqttInstance {
 
     pub(crate) async fn recv(&mut self) -> AnyResult<MqttReply> {
         Ok(loop {
-            let msg = self
+            let mut msg = self
                 .incomming_rx
                 .next()
                 .await
@@ -342,12 +340,13 @@ impl MqttInstance {
             if self.name.is_empty() {
                 break msg;
             } else {
-                let topics = msg.topic.split('/').collect::<Vec<_>>();
-                if topics
-                    .get(2)
+                let mut topics = msg.topic.split('/');
+                let sub_topic = topics.next();
+                if sub_topic
                     .map(|subtopic| *subtopic == self.name)
                     .unwrap_or(false)
                 {
+                    msg.topic = topics.collect::<Vec<_>>().join("/");
                     break msg;
                 }
             }
