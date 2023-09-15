@@ -231,6 +231,10 @@ impl NeoCam {
         let _ = self.commander.send(NeoCamCommand::HangUp).await;
         self.cancel.cancelled().await
     }
+
+    pub(crate) fn get_config_watch(&self) -> &WatchSender<CameraConfig> {
+        &self.config_watch
+    }
 }
 
 impl Drop for NeoCam {

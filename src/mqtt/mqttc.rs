@@ -89,6 +89,7 @@ async fn run_mqtt_server(
     outgoing_tx: MpscSender<MqttRequest>,
     config: &MqttServerConfig,
 ) -> AnyResult<()> {
+    log::trace!("Run MQTT Server");
     let mut mqttoptions = MqttOptions::new("Neolink".to_string(), &config.broker_addr, config.port);
     let max_size = 100 * (1024 * 1024);
     mqttoptions.set_max_packet_size(max_size, max_size);
@@ -135,7 +136,7 @@ async fn run_mqtt_server(
         true,
     ));
 
-    let (client, mut connection) = AsyncClient::new(mqttoptions, 10);
+    let (client, mut connection) = AsyncClient::new(mqttoptions, 100);
 
     let client = Arc::new(client);
     let send_client = client.clone();
@@ -147,26 +148,47 @@ async fn run_mqtt_server(
             "connected".to_string(),
         )
         .await?;
+    log::debug!("MQTT Published Startup");
     loop {
         let r = tokio::select! {
             v = async {
                 let msg = outgoing_rx.recv().await.ok_or(anyhow!("All outgoing MQTT channels closed"))?;
                 match msg {
-                    MqttRequest::Send(msg) =>  {
-                        send_client.publish(
-                            msg.topic,
+                    MqttRequest::Send(msg, tx) =>  {
+                        let v = send_client.publish(
+                            msg.topic.clone(),
                             QoS::AtLeastOnce,
                             false,
-                            msg.message,
-                        ).await?;
+                            msg.message.clone(),
+                        ).await;
+                        match &v {
+                            Ok(()) => {
+                                let _ = tx.send(Ok(()));
+                            },
+                            Err(rumqttc::ClientError::Request(_)) | Err(rumqttc::ClientError::TryRequest(_)) => {
+                                // Requeue it
+                                outgoing_tx.send(MqttRequest::Send(msg, tx)).await?;
+                            }
+                        };
+                        v?;
                     }
-                    MqttRequest::SendRetained(msg) =>  {
-                        send_client.publish(
-                            msg.topic,
+                    MqttRequest::SendRetained(msg, tx) =>  {
+                        let v = send_client.publish(
+                            msg.topic.clone(),
                             QoS::AtLeastOnce,
                             true,
-                            msg.message,
-                        ).await?;
+                            msg.message.clone(),
+                        ).await;
+                        match &v {
+                            Ok(()) => {
+                                let _ = tx.send(Ok(()));
+                            },
+                            Err(rumqttc::ClientError::Request(_)) | Err(rumqttc::ClientError::TryRequest(_)) => {
+                                // Requeue it
+                                outgoing_tx.send(MqttRequest::Send(msg, tx)).await?;
+                            }
+                        };
+                        v?;
                     }
                     MqttRequest::HangUp(reply) => {
                         send_client.publish(
@@ -197,39 +219,46 @@ async fn run_mqtt_server(
                     .poll()
                     .await
                     .with_context(|| "MQTT connection dropped")?;
-                match notification {
-                    Event::Incoming(Incoming::ConnAck(connected)) => {
-                        if ConnectReturnCode::Success == connected.code {
-                            // Publish connected now that we are online
-                            client
-                            .publish(
-                                "neolink/status".to_string(),
-                                QoS::AtLeastOnce,
-                                true,
-                                "connected",
-                            )
-                            .await?;
-                            // We succesfully logged in. Now ask for the cameras subscription.
-                            client
-                            .subscribe("neolink/#".to_string(), QoS::AtMostOnce)
-                            .await?;
+
+                // Handle message on another thread so that we can keep polling
+                let client = client.clone();
+                let incomming_tx = incomming_tx.clone();
+                tokio::task::spawn(async move {
+                    match notification {
+                        Event::Incoming(Incoming::ConnAck(connected)) => {
+                            if ConnectReturnCode::Success == connected.code {
+                                // Publish connected now that we are online
+                                client
+                                .publish(
+                                    "neolink/status".to_string(),
+                                    QoS::AtLeastOnce,
+                                    true,
+                                    "connected",
+                                )
+                                .await?;
+                                // We succesfully logged in. Now ask for the cameras subscription.
+                                client
+                                .subscribe("neolink/#".to_string(), QoS::AtMostOnce)
+                                .await?;
+                            }
                         }
-                    }
-                    Event::Incoming(Incoming::Publish(published_message)) => {
-                        if let Some(sub_topic) = published_message
-                            .topic
-                            .strip_prefix("neolink/")
-                        {
-                            let _ = incomming_tx
-                                .send(MqttReply {
-                                    topic: sub_topic.to_string(),
-                                    message: String::from_utf8_lossy(published_message.payload.as_ref())
-                                        .into_owned(),
-                                });
+                        Event::Incoming(Incoming::Publish(published_message)) => {
+                            if let Some(sub_topic) = published_message
+                                .topic
+                                .strip_prefix("neolink/")
+                            {
+                                let _ = incomming_tx
+                                    .send(MqttReply {
+                                        topic: sub_topic.to_string(),
+                                        message: String::from_utf8_lossy(published_message.payload.as_ref())
+                                            .into_owned(),
+                                    });
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
-                }
+                    AnyResult::Ok(())
+                });
                 AnyResult::Ok(())
             } => {
                 v
@@ -300,19 +329,29 @@ impl MqttInstance {
         .cloned()
         .collect::<Vec<_>>();
         if retain {
+            let (tx, rx) = oneshot();
             self.outgoing_tx
-                .send(MqttRequest::SendRetained(MqttReply {
-                    topic: topics.join("/"),
-                    message: message.to_string(),
-                }))
+                .send(MqttRequest::SendRetained(
+                    MqttReply {
+                        topic: topics.join("/"),
+                        message: message.to_string(),
+                    },
+                    tx,
+                ))
                 .await?;
+            rx.await??;
         } else {
+            let (tx, rx) = oneshot();
             self.outgoing_tx
-                .send(MqttRequest::Send(MqttReply {
-                    topic: topics.join("/"),
-                    message: message.to_string(),
-                }))
+                .send(MqttRequest::Send(
+                    MqttReply {
+                        topic: topics.join("/"),
+                        message: message.to_string(),
+                    },
+                    tx,
+                ))
                 .await?;
+            rx.await??;
         }
         Ok(())
     }
@@ -375,8 +414,8 @@ pub(crate) struct MqttReplyRef<'a> {
 }
 
 enum MqttRequest {
-    Send(MqttReply),
-    SendRetained(MqttReply),
+    Send(MqttReply, OneshotSender<Result<()>>),
+    SendRetained(MqttReply, OneshotSender<Result<()>>),
     HangUp(OneshotSender<()>),
     Subscribe(String, OneshotSender<Result<MqttInstance>>),
 }

@@ -175,6 +175,7 @@ pub(crate) async fn main(_: Opt, reactor: NeoReactor) -> Result<()> {
                 .clone();
             let str = toml::to_string(&curr_config)?;
             thread_instance.send_message("config", &str, false).await?;
+            log::trace!("UpdatedPosted config");
         }
     });
 
@@ -214,6 +215,7 @@ pub(crate) async fn main(_: Opt, reactor: NeoReactor) -> Result<()> {
                 thread_instance
                     .send_message("config/status", &format!("{:?}", result), false)
                     .await?;
+                log::info!("Updated config");
             }
         }
         AnyResult::Ok(())
@@ -312,7 +314,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                             camera_watch.wait_for(|cam| cam.upgrade().is_some()).await.with_context(|| {
                                 format!("{}: Online Watch Dropped", camera_name)
                             })?;
-                            log::info!("Publish online");
+                            log::trace!("Publish online");
                             mqtt_watch.send_message("status", "online", true).await.with_context(|| {
                                 format!("{}: Failed to publish Online", camera_name)
                             })?;

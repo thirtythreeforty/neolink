@@ -198,7 +198,7 @@ pub(crate) struct CameraConfig {
     pub(crate) max_discovery_retries: usize,
 }
 
-#[derive(Debug, Deserialize, Serialize, Validate, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Validate, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct UserConfig {
     #[validate(custom = "validate_username")]
     #[serde(alias = "username")]

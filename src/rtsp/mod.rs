@@ -80,7 +80,7 @@ use crate::{
     rtsp::gst::NeoMediaFactory,
 };
 
-use super::config::Config;
+use super::config::UserConfig;
 pub(crate) use cmdline::Opt;
 use gst::NeoRtspServer;
 
@@ -119,16 +119,26 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
     let mut thread_config = reactor.config().await?;
     let thread_cancel = global_cancel.clone();
     let thread_rtsp = rtsp.clone();
-    apply_users(&thread_rtsp, &thread_config.borrow_and_update().clone()).await?;
     set.spawn(async move {
         tokio::select! {
             _ = thread_cancel.cancelled() => AnyResult::Ok(()),
             v = async {
+                let mut curr_users = HashSet::new();
                 loop {
-                    thread_config.changed().await?;
+
+                    curr_users = thread_config.wait_for(|new_config|
+                        new_config.users.iter().cloned().collect::<HashSet<_>>() != curr_users
+                    ).await?.users.iter().cloned().collect::<HashSet<_>>();
+
                     let config = thread_config.borrow().clone();
-                    if let Err(e) = apply_users(&thread_rtsp, &config.clone()).await {
+                    if let Err(e) = apply_users(&thread_rtsp, &curr_users).await {
                         log::error!("Could not seup TLS: {e}");
+                    }
+
+                    if config.certificate.is_none() && !curr_users.is_empty() {
+                        warn!(
+                            "Without a server certificate, usernames and passwords will be exchanged in plaintext!"
+                        )
                     }
                 }
             } => v
@@ -149,11 +159,10 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
                 let mut cameras: HashMap<String, CancellationToken> = Default::default();
                 let mut config_names = HashSet::new();
                 loop {
-                    thread_config.wait_for(|config| {
+                    config_names = thread_config.wait_for(|config| {
                         let current_names = config.cameras.iter().filter(|a| a.enabled).map(|cam_config| cam_config.name.clone()).collect::<HashSet<_>>();
                         current_names != config_names
-                    }).await.with_context(|| "Camera Config Watcher")?;
-                    config_names = thread_config.borrow().clone().cameras.iter().filter(|a| a.enabled).map(|cam_config| cam_config.name.clone()).collect::<HashSet<_>>();
+                    }).await.with_context(|| "Camera Config Watcher")?.clone().cameras.iter().filter(|a| a.enabled).map(|cam_config| cam_config.name.clone()).collect::<HashSet<_>>();
 
                     for name in config_names.iter() {
                         log::info!("{name}: Rtsp Staring");
@@ -232,22 +241,17 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
 }
 
 /// This keeps the users in rtsp and the config in sync
-async fn apply_users(rtsp: &NeoRtspServer, config: &Config) -> AnyResult<()> {
+async fn apply_users(rtsp: &NeoRtspServer, curr_users: &HashSet<UserConfig>) -> AnyResult<()> {
     // Add those missing
-    for user in config.users.iter() {
+    for user in curr_users.iter() {
         rtsp.add_user(&user.name, &user.pass).await?;
     }
     // Remove unused
     let rtsp_users = rtsp.get_users().await?;
     for user in rtsp_users {
-        if config.users.iter().any(|a| a.name == user) {
+        if curr_users.iter().any(|a| a.name == user) {
             rtsp.remove_user(&user).await?;
         }
-    }
-    if config.certificate.is_none() && !config.users.is_empty() {
-        warn!(
-            "Without a server certificate, usernames and passwords will be exchanged in plaintext!"
-        )
     }
     Ok(())
 }

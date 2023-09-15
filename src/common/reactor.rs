@@ -94,7 +94,18 @@ impl NeoReactor {
                                 let _ = sender.send(new);
                             },
                             NeoReactorCommand::UpdateConfig(new_conf, reply) => {
+                                // Shutdown or Notify instances of a change
+                                let mut names = new_conf.cameras.iter().filter_map(|cam_conf| cam_conf.enabled.then(|| (cam_conf.name.clone(), cam_conf.clone()))).collect::<HashMap<_,_>>();
+                                for (name, instance) in instances.iter() {
+                                    if let Some(conf) = names.remove(name) {
+                                        let _ = instance.get_config_watch().send_replace(conf);
+                                    } else {
+                                        instance.shutdown().await;
+                                    }
+                                }
+                                // Set the new conf
                                 let _ = config_tx.send_replace(new_conf);
+                                // Reply that we are done
                                 let _ = reply.send(Ok(()));
                             }
                         }
@@ -102,7 +113,6 @@ impl NeoReactor {
                     Ok(())
                 } => v,
             };
-            log::info!("Neoreactor thread done: {r:?}");
             r
         });
 

@@ -118,6 +118,12 @@ async fn main() -> Result<()> {
         Some(Command::Mqtt(opts)) => {
             mqtt::main(opts, neo_reactor.clone()).await?;
         }
+        Some(Command::MqttRtsp(opts)) => {
+            tokio::select! {
+                v = mqtt::main(opts, neo_reactor.clone()) => v,
+                v = rtsp::main(rtsp::Opt {}, neo_reactor.clone()) => v,
+            }?;
+        }
         Some(Command::Image(opts)) => {
             image::main(opts, neo_reactor.clone()).await?;
         }
