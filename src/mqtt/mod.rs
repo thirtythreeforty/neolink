@@ -96,6 +96,7 @@ use self::{
 pub(crate) async fn main(_: Opt, reactor: NeoReactor) -> Result<()> {
     let mut set = tokio::task::JoinSet::new();
     let global_cancel = CancellationToken::new();
+    let cancel_drop = global_cancel.clone().drop_guard();
     let config = reactor.config().await?;
     let mqtt = Mqtt::new(config.clone()).await;
 
@@ -164,18 +165,24 @@ pub(crate) async fn main(_: Opt, reactor: NeoReactor) -> Result<()> {
     // This threads prints the config
     let mut thread_config = config.clone();
     let thread_instance = mqtt.subscribe("").await?;
+    let thread_cancel = global_cancel.clone();
     set.spawn(async move {
-        let mut curr_config = thread_config.borrow().clone();
-        let str = toml::to_string(&curr_config)?;
-        thread_instance.send_message("config", &str, false).await?;
-        loop {
-            curr_config = thread_config
-                .wait_for(|new_conf| new_conf != &curr_config)
-                .await?
-                .clone();
-            let str = toml::to_string(&curr_config)?;
-            thread_instance.send_message("config", &str, false).await?;
-            log::trace!("UpdatedPosted config");
+        tokio::select! {
+            _ = thread_cancel.cancelled() => AnyResult::Ok(()),
+            v = async {
+                let mut curr_config = thread_config.borrow().clone();
+                let str = toml::to_string(&curr_config)?;
+                thread_instance.send_message("config", &str, true).await?;
+                loop {
+                    curr_config = thread_config
+                        .wait_for(|new_conf| new_conf != &curr_config)
+                        .await?
+                        .clone();
+                    let str = toml::to_string(&curr_config)?;
+                    thread_instance.send_message("config", &str, true).await?;
+                    log::trace!("UpdatedPosted config");
+                }
+            } => v,
         }
     });
 
@@ -183,48 +190,58 @@ pub(crate) async fn main(_: Opt, reactor: NeoReactor) -> Result<()> {
     let thread_config = config.clone();
     let mut thread_instance = mqtt.subscribe("").await?;
     let thread_reactor = reactor.clone();
+    let thread_cancel = global_cancel.clone();
     set.spawn(async move {
-        while let Ok(msg) = thread_instance.recv().await {
-            if msg.topic == "config" {
-                let config: Result<Config> = toml::from_str(&msg.message).with_context(|| {
-                    format!("Failed to parse the MQTT {:?} config file", msg.topic)
-                });
-                if let Err(e) = config {
-                    thread_instance
-                        .send_message("config/status", &format!("{:?}", e), false)
-                        .await?;
-                    continue;
-                }
-                let config = config?;
+        tokio::select! {
+            _ = thread_cancel.cancelled() => AnyResult::Ok(()),
+            v = async {
+                while let Ok(msg) = thread_instance.recv().await {
+                    if msg.topic == "config" {
+                        let config: Result<Config> = toml::from_str(&msg.message).with_context(|| {
+                            format!("Failed to parse the MQTT {:?} config file", msg.topic)
+                        });
+                        if let Err(e) = config {
+                            thread_instance
+                                .send_message("config/status", &format!("{:?}", e), false)
+                                .await?;
+                            continue;
+                        }
+                        let config = config?;
 
-                let validate = config.validate().with_context(|| {
-                    format!("Failed to validate the MQTT {:?} config file", msg.topic)
-                });
-                if let Err(e) = validate {
-                    thread_instance
-                        .send_message("config/status", &format!("{:?}", e), false)
-                        .await?;
-                    continue;
-                }
+                        let validate = config.validate().with_context(|| {
+                            format!("Failed to validate the MQTT {:?} config file", msg.topic)
+                        });
+                        if let Err(e) = validate {
+                            thread_instance
+                                .send_message("config/status", &format!("{:?}", e), false)
+                                .await?;
+                            continue;
+                        }
 
-                if (*thread_config.borrow()) == config {
-                    continue;
-                }
+                        if (*thread_config.borrow()) == config {
+                            continue;
+                        }
 
-                let result = thread_reactor.update_config(config).await;
-                thread_instance
-                    .send_message("config/status", &format!("{:?}", result), false)
-                    .await?;
-                log::info!("Updated config");
-            }
+                        let result = thread_reactor.update_config(config).await;
+                        thread_instance
+                            .send_message("config/status", &format!("{:?}", result), false)
+                            .await?;
+                        log::info!("Updated config");
+                    }
+                }
+                AnyResult::Ok(())
+            } => v,
         }
-        AnyResult::Ok(())
     });
 
     while let Some(result) = set.join_next().await {
-        result??;
+        if let Err(_) | Ok(Err(_)) = &result {
+            global_cancel.cancel();
+            result??;
+        }
     }
 
+    drop(cancel_drop);
     Ok(())
 }
 
@@ -233,6 +250,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
     let camera_name = watch_config.borrow().name.clone();
     let mut config;
     let cancel = CancellationToken::new();
+    let drop_cancel = cancel.clone().drop_guard();
     loop {
         config = watch_config.borrow().clone().mqtt;
         break tokio::select! {
@@ -454,7 +472,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
     }?;
 
     log::debug!("Mqtt::listen_on_camera Cancel");
-    cancel.cancel();
+    drop(drop_cancel);
     Ok(())
 }
 
