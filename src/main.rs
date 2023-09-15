@@ -110,10 +110,10 @@ async fn main() -> Result<()> {
             pir::main(opts, neo_reactor.clone()).await?;
         }
         Some(Command::Ptz(opts)) => {
-            ptz::main(opts, config).await?;
+            ptz::main(opts, neo_reactor.clone()).await?;
         }
         Some(Command::Talk(opts)) => {
-            talk::main(opts, config).await?;
+            talk::main(opts, neo_reactor.clone()).await?;
         }
         Some(Command::Mqtt(opts)) => {
             mqtt::main(opts, neo_reactor.clone()).await?;

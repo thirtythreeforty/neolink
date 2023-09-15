@@ -463,7 +463,7 @@ pub struct AlarmHandleItem {
 }
 
 /// TalkConfig xml
-#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize, Clone)]
 pub struct TalkConfig {
     /// XML Version
     #[yaserde(attribute)]

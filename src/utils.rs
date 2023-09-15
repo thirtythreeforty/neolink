@@ -2,7 +2,7 @@
 //!
 use log::*;
 
-use super::config::{CameraConfig, Config};
+use super::config::CameraConfig;
 use anyhow::{anyhow, Context, Error, Result};
 use neolink_core::bc_protocol::{
     BcCamera, BcCameraOpt, ConnectionProtocol, Credentials, DiscoveryMethods, MaxEncryption,
@@ -107,11 +107,6 @@ impl AddressOrUid {
     }
 }
 
-pub(crate) async fn find_and_connect(config: &Config, name: &str) -> Result<BcCamera> {
-    let camera_config = find_camera_by_name(config, name)?;
-    connect_and_login(camera_config).await
-}
-
 pub(crate) async fn connect_and_login(camera_config: &CameraConfig) -> Result<BcCamera> {
     let camera_addr = AddressOrUid::new(
         &camera_config.camera_addr,
@@ -148,13 +143,4 @@ pub(crate) async fn connect_and_login(camera_config: &CameraConfig) -> Result<Bc
     info!("{}: Connected and logged in", camera_config.name);
 
     Ok(camera)
-}
-
-pub(crate) fn find_camera_by_name<'a>(config: &'a Config, name: &str) -> Result<&'a CameraConfig> {
-    config
-        .cameras
-        .iter()
-        .filter(|c| c.enabled)
-        .find(|c| c.name == name)
-        .ok_or_else(|| anyhow!("Camera {} not found in the config file", name))
 }

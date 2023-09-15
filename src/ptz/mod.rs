@@ -23,32 +23,44 @@ use tokio::time::{sleep, Duration};
 
 mod cmdline;
 
-use super::config::Config;
+use crate::common::NeoReactor;
 use crate::ptz::cmdline::CmdDirection;
 use crate::ptz::cmdline::PtzCommand;
-use crate::utils::find_and_connect;
 pub(crate) use cmdline::Opt;
 use neolink_core::bc_protocol::Direction;
 
 /// Entry point for the ptz subcommand
 ///
 /// Opt is the command line options
-pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
-    let camera = find_and_connect(&config, &opt.camera).await?;
+pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
+    let camera = reactor.get(&opt.camera).await?;
 
     match opt.cmd {
         PtzCommand::Preset { preset_id } => {
             if let Some(preset_id) = preset_id {
                 camera
-                    .moveto_ptz_preset(preset_id)
-                    .await
-                    .context("Unable to set PTZ preset")
-                    .expect("TODO: panic message");
+                    .run_task(|cam| {
+                        Box::pin(async move {
+                            cam.moveto_ptz_preset(preset_id)
+                                .await
+                                .context("Unable to move to PTZ preset")?;
+                            Ok(())
+                        })
+                    })
+                    .await?;
             } else {
                 let preset_list = camera
-                    .get_ptz_preset()
-                    .await
-                    .context("Unable to get PTZ presets")?;
+                    .run_task(|cam| {
+                        Box::pin(async move {
+                            let preset_list = cam
+                                .get_ptz_preset()
+                                .await
+                                .context("Unable to get PTZ presets")?;
+                            Ok(preset_list)
+                        })
+                    })
+                    .await?;
+
                 println!("Available presets:\nID Name");
                 for preset in preset_list.preset_list.preset {
                     println!("{:<2} {:?}", preset.id, preset.name);
@@ -57,10 +69,16 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
         }
         PtzCommand::Assign { preset_id, name } => {
             camera
-                .set_ptz_preset(preset_id, name)
-                .await
-                .context("Unable to set PTZ preset")
-                .expect("TODO: panic message");
+                .run_task(|cam| {
+                    let name = name.clone();
+                    Box::pin(async move {
+                        cam.set_ptz_preset(preset_id, name)
+                            .await
+                            .context("Unable to set PTZ preset")?;
+                        Ok(())
+                    })
+                })
+                .await?;
         }
         PtzCommand::Control {
             amount,
@@ -80,19 +98,31 @@ pub(crate) async fn main(opt: Opt, config: Config) -> Result<()> {
             let seconds = amount as f32 / speed;
             let duration = Duration::from_secs_f32(seconds);
             camera
-                .send_ptz(direction, speed)
-                .await
-                .context("Unable to execute PTZ move command")?;
+                .run_task(|cam| {
+                    Box::pin(async move {
+                        cam.send_ptz(direction, speed)
+                            .await
+                            .context("Unable to execute PTZ move command")?;
+                        Ok(())
+                    })
+                })
+                .await?;
+
             sleep(duration).await;
             camera
-                .send_ptz(Direction::Stop, 0_f32)
-                .await
-                .context("Unable to execute PTZ move command")?;
+                .run_task(|cam| {
+                    Box::pin(async move {
+                        cam.send_ptz(Direction::Stop, 0_f32)
+                            .await
+                            .context("Unable to execute PTZ move command")?;
+                        Ok(())
+                    })
+                })
+                .await?;
         }
     };
 
-    let _ = camera.logout().await;
-    camera.shutdown().await?;
+    camera.shutdown().await;
 
     Ok(())
 }
