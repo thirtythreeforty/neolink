@@ -522,7 +522,7 @@ impl StreamData {
                             },
                             v = async {
                                 loop {
-                                    let check_timeout = timeout(Duration::from_secs(5), watchdog_rx.recv()).await;
+                                    let check_timeout = timeout(Duration::from_secs(2), watchdog_rx.recv()).await;
                                     if let Err(_)| Ok(None) = check_timeout {
                                         // Timeout
                                         // Reply with Ok to trigger the restart
