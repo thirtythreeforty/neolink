@@ -88,8 +88,11 @@ impl StreamData {
 
 impl Drop for StreamData {
     fn drop(&mut self) {
-        log::debug!("SteamData::drop Cancel");
-        self.abort_handle.cancel();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let _ = self.shutdown().await;
+            });
+        });
     }
 }
 

@@ -5,7 +5,7 @@
 
 use futures::stream::{FuturesUnordered, StreamExt};
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, HashMap, VecDeque},
     sync::Arc,
 };
 use tokio::{
@@ -18,7 +18,7 @@ use tokio::{
         watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
     },
     task::JoinHandle,
-    time::Duration,
+    time::{timeout, Duration},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -144,13 +144,8 @@ impl NeoCamStreamThread {
                                     // Grab it
                                     if let Entry::Occupied(occ) = self.streams.entry(name) {
                                             result = Some(
-                                                StreamInstance {
-                                                    name,
-                                                    vid: occ.get().vid.subscribe(),
-                                                    aud: occ.get().aud.subscribe(),
-                                                    config: occ.get().config.subscribe(),
-                                                    in_use: occ.get().users.create_activated().await?,
-                                                });
+                                                StreamInstance::new(occ.get()).await?
+                                            );
                                             break;
                                     }
                                 }
@@ -369,6 +364,8 @@ impl Drop for CountUses {
 pub(crate) struct StreamData {
     vid: BroadcastSender<StampedData>,
     aud: BroadcastSender<StampedData>,
+    vid_history: Arc<WatchSender<VecDeque<StampedData>>>,
+    aud_history: Arc<WatchSender<VecDeque<StampedData>>>,
     config: Arc<WatchSender<StreamConfig>>,
     name: StreamKind,
     instance: NeoInstance,
@@ -400,14 +397,16 @@ pub(crate) struct StreamConfig {
 
 #[derive(Debug, Clone)]
 pub(crate) struct StampedData {
-    pub(crate) data: Vec<u8>,
+    pub(crate) data: Arc<Vec<u8>>,
     pub(crate) ts: Duration,
 }
 
 pub(crate) struct StreamInstance {
     pub(crate) name: StreamKind,
     pub(crate) vid: BroadcastReceiver<StampedData>,
+    pub(crate) vid_history: WatchReceiver<VecDeque<StampedData>>,
     pub(crate) aud: BroadcastReceiver<StampedData>,
+    pub(crate) aud_history: WatchReceiver<VecDeque<StampedData>>,
     pub(crate) config: WatchReceiver<StreamConfig>,
     in_use: CountUses,
 }
@@ -417,7 +416,9 @@ impl StreamInstance {
         Ok(Self {
             name: data.name,
             vid: data.vid.subscribe(),
+            vid_history: data.vid_history.subscribe(),
             aud: data.aud.subscribe(),
+            aud_history: data.aud_history.subscribe(),
             config: data.config.subscribe(),
             in_use: data.users.create_activated().await?,
         })
@@ -448,6 +449,10 @@ impl StreamData {
     async fn new(name: StreamKind, instance: NeoInstance, strict: bool) -> Result<Self> {
         let (vid, _) = broadcast::<StampedData>(100);
         let (aud, _) = broadcast::<StampedData>(100);
+        let (vid_history, _) = watch::<VecDeque<StampedData>>(VecDeque::new());
+        let vid_history = Arc::new(vid_history);
+        let (aud_history, _) = watch::<VecDeque<StampedData>>(VecDeque::new());
+        let aud_history = Arc::new(aud_history);
         let resolution = instance
             .run_task(|cam| {
                 Box::pin(async move {
@@ -478,7 +483,9 @@ impl StreamData {
             cancel: CancellationToken::new(),
             config: Arc::new(config_tx),
             vid,
+            vid_history,
             aud,
+            aud_history,
             instance,
             handle: None,
             strict,
@@ -493,30 +500,52 @@ impl StreamData {
         let strict = me.strict;
         let config = me.config.clone();
         let thread_inuse = me.users.create_deactivated().await?;
+        let vid_history = me.vid_history.clone();
+        let aud_history = me.aud_history.clone();
 
         me.handle = Some(tokio::task::spawn(async move {
-            tokio::select! {
+            let r = tokio::select! {
                 _ = cancel.cancelled() => {
                     Result::<(), anyhow::Error>::Ok(())
                 },
                 v = async {
                     loop {
+                        let (watchdog_tx, mut watchdog_rx) = mpsc(1);
                         tokio::select! {
                             v = thread_inuse.dropped_users() => {
                                 // Handles the stop and restart when no active users
+                                log::debug!("Streaming STOP");
                                 v?;
                                 thread_inuse.aquired_users().await?; // Wait for new users of the stream
+                                log::debug!("Streaming START");
                                 AnyResult::Ok(())
                             },
+                            v = async {
+                                loop {
+                                    let check_timeout = timeout(Duration::from_secs(5), watchdog_rx.recv()).await;
+                                    if let Err(_)| Ok(None) = check_timeout {
+                                        // Timeout
+                                        // Reply with Ok to trigger the restart
+                                        log::debug!("Watchdog kicking the stream");
+                                        break AnyResult::Ok(());
+                                    }
+                                }
+                            } => v,
                             result = instance.run_task(|camera| {
                                     let vid_tx = vid.clone();
                                     let aud_tx = aud.clone();
                                     let stream_config = config.clone();
+                                    let vid_history = vid_history.clone();
+                                    let aud_history = aud_history.clone();
+                                    let watchdog_tx = watchdog_tx.clone();
+                                    log::debug!("Running Stream Instance Task");
                                     Box::pin(async move {
                                         let res = async {
+                                            watchdog_tx.send(()).await?; // Feed the watchdog
                                             let mut prev_ts = Duration::ZERO;
                                             let mut stream_data = camera.start_video(name, 0, strict).await?;
                                             loop {
+                                                watchdog_tx.send(()).await?;  // Feed the watchdog
                                                 let data = stream_data.get_data().await??;
 
                                                 // Update the stream config with any information
@@ -597,19 +626,31 @@ impl StreamData {
                                                 match data {
                                                     BcMedia::Iframe(BcMediaIframe{data, microseconds, ..}) | BcMedia::Pframe(BcMediaPframe{data, microseconds,..}) => {
                                                         prev_ts = Duration::from_micros(microseconds as u64);
-                                                        let _ = vid_tx.send(
-                                                            StampedData{
-                                                                data,
+                                                        let d = StampedData{
+                                                                data: Arc::new(data),
                                                                 ts: prev_ts
+                                                        };
+                                                        let _ = vid_tx.send(d.clone());
+                                                        vid_history.send_modify(|history| {
+                                                           history.push_back(d);
+                                                           while history.len() > 100 {
+                                                               history.pop_front();
+                                                           }
                                                         });
                                                         log::trace!("Sent Vid Frame");
                                                     }
                                                     BcMedia::Aac(BcMediaAac{data, ..}) | BcMedia::Adpcm(BcMediaAdpcm{data,..}) => {
-                                                        let _ = aud_tx.send(
-                                                            StampedData{
-                                                                data,
+                                                        let d = StampedData{
+                                                                data: Arc::new(data),
                                                                 ts: prev_ts,
-                                                        })?;
+                                                        };
+                                                        let _ = aud_tx.send(d.clone())?;
+                                                        aud_history.send_modify(|history| {
+                                                           history.push_back(d);
+                                                           while history.len() > 100 {
+                                                               history.pop_front();
+                                                           }
+                                                        });
                                                         log::trace!("Sent Aud Frame");
                                                     },
                                                     _ => {},
@@ -636,8 +677,10 @@ impl StreamData {
                             },
                         }?;
                     }
-                }    => v,
-            }
+                } => v,
+            };
+            log::debug!("Stream Thead Stopped: {:?}", r);
+            r
         }));
 
         Ok(me)

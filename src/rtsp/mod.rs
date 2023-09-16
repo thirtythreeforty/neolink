@@ -62,7 +62,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::{
     sync::{
-        broadcast::{channel as broadcast, Receiver as BroadcastReceiver},
+        broadcast::channel as broadcast,
         mpsc::{channel as mpsc, Receiver as MpscReceiver, Sender as MpscSender},
     },
     task::JoinSet,
@@ -74,7 +74,7 @@ use tokio_util::sync::CancellationToken;
 mod cmdline;
 mod gst;
 
-use crate::common::{CountUses, StampedData, UseCounter};
+use crate::common::{CountUses, UseCounter};
 use crate::{
     common::{AudFormat, NeoInstance, NeoReactor, StreamConfig, StreamInstance, VidFormat},
     rtsp::gst::NeoMediaFactory,
@@ -410,25 +410,27 @@ async fn stream_main(
     let name = camera_config.borrow().name.clone();
     let mut curr_pause;
     loop {
-        log::trace!("{}: Activating Stream", &name);
+        log::debug!("{}: Activating Stream", &name);
         stream_instance.activate().await?;
 
         // Wait for a valid stream format to be detected
-        log::trace!("{}: Waiting for Valid Stream", &name);
+        log::debug!("{}: Waiting for Valid Stream", &name);
         stream_instance
             .config
             .wait_for(|config| {
+                log::debug!("{:?}", config);
                 !matches!(config.vid_format, VidFormat::None)
                     && config.resolution[0] > 0
                     && config.resolution[1] > 0
             })
             .await?;
-
+        log::debug!("{}: Waiting for Valid Audio", &name);
         // After vid give it 1s to look for audio
         // Ignore timeout but check err
         if let Ok(v) = tokio::time::timeout(
             Duration::from_secs(1),
             stream_instance.config.wait_for(|config| {
+                log::debug!("{:?}", config);
                 !matches!(config.vid_format, VidFormat::None)
                     && !matches!(config.aud_format, AudFormat::None)
                     && config.resolution[0] > 0
@@ -442,19 +444,16 @@ async fn stream_main(
 
         curr_pause = camera_config.borrow().pause.clone();
 
-        let vid = stream_instance.vid.resubscribe();
-        let aud = stream_instance.aud.resubscribe();
-
         let last_stream_config = stream_instance.config.borrow().clone();
         let mut thread_stream_config = stream_instance.config.clone();
 
         let mut set = JoinSet::<AnyResult<()>>::new();
-        log::trace!("{}: Creating Client Counters", &name);
+        log::debug!("{}: Creating Client Counters", &name);
         // Handles the on off of the stream with the client pause
         let client_counter = UseCounter::new().await;
         let client_count = client_counter.create_deactivated().await?;
         if curr_pause.on_disconnect {
-            log::trace!("{}: Enabling Client Pause", &name);
+            log::debug!("{}: Enabling Client Pause", &name);
             // Take over activation
             let mut client_activator = stream_instance.activator_handle().await;
             client_activator.activate().await?;
@@ -475,7 +474,7 @@ async fn stream_main(
 
         // Handles on motion pausing
         if curr_pause.on_motion {
-            log::trace!("{}: Activating Motion Pause", &name);
+            log::debug!("{}: Activating Motion Pause", &name);
             // Take over activation
             let mut client_activator = stream_instance.activator_handle().await;
             stream_instance.deactivate().await?;
@@ -494,8 +493,18 @@ async fn stream_main(
             });
         }
 
-        // This select is for the streams config updates
-        log::trace!("{}: Stream Activated", &name);
+        // This thread jsut keeps it active for 2s after an initial start to build the buffer
+        let mut init_activator = stream_instance.activator_handle().await;
+        set.spawn(async move {
+            init_activator.activate().await?;
+            sleep(Duration::from_secs(2)).await;
+            init_activator.deactivate().await?;
+            AnyResult::Ok(())
+        });
+
+        // This runs the actual stream.
+        // The select will restart if the stream's config updates
+        log::debug!("{}: Stream Activated", &name);
         break tokio::select! {
             v = thread_stream_config.wait_for(|new_conf| new_conf != &last_stream_config) => {
                 let v = v?;
@@ -510,7 +519,7 @@ async fn stream_main(
                 log::info!("{}: Pause Configuration Changed. Reloading Streams", &name);
                 continue;
             },
-            v = stream_run(&name, vid, aud, rtsp, &last_stream_config, users, paths, client_count) => v,
+            v = stream_run(&name, &stream_instance, rtsp, &last_stream_config, users, paths, client_count) => v,
         };
     }
 }
@@ -518,14 +527,18 @@ async fn stream_main(
 #[allow(clippy::too_many_arguments)] // Seriously clippy needs to be done
 async fn stream_run(
     name: &str,
-    vidstream: BroadcastReceiver<StampedData>,
-    audstream: BroadcastReceiver<StampedData>,
+    stream_instance: &StreamInstance,
     rtsp: &NeoRtspServer,
     stream_config: &StreamConfig,
     users: &HashSet<String>,
     paths: &[String],
     client_count: CountUses,
 ) -> AnyResult<()> {
+    let vidstream = stream_instance.vid.resubscribe();
+    let audstream = stream_instance.aud.resubscribe();
+    let vid_history = stream_instance.vid_history.clone();
+    let aud_history = stream_instance.aud_history.clone();
+
     // Finally ready to create the factory and connect the stream
     let mounts = rtsp
         .mount_points()
@@ -565,15 +578,27 @@ async fn stream_run(
         let mut vidstream = BroadcastStream::new(vidstream.resubscribe());
         let thread_vid_data_tx = vid_data_tx.clone();
         let thread_stream_cancel = stream_cancel.clone();
+        let thread_vid_history = vid_history.clone();
         set.spawn(async move {
             let r = tokio::select! {
                 _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
                 v = async {
+                    // Send Initial
+                    for data in thread_vid_history.borrow().iter() {
+                        thread_vid_data_tx.send(
+                            StreamData::Media {
+                                data: data.data.clone(),
+                                ts: Duration::ZERO,
+                            }
+                        )?;
+                    }
+
+                    // Send new
                     while let Some(data) = vidstream.next().await {
                         if let Ok(data) = data {
                             thread_vid_data_tx.send(
                                 StreamData::Media {
-                                    data: Arc::new(data.data),
+                                    data: data.data,
                                     ts: data.ts
                                 }
                             )?;
@@ -591,15 +616,26 @@ async fn stream_run(
         let mut audstream = BroadcastStream::new(audstream.resubscribe());
         let thread_stream_cancel = stream_cancel.clone();
         let thread_aud_data_tx = aud_data_tx.clone();
+        let thread_aud_history = aud_history.clone();
         set.spawn(async move {
             let r = tokio::select! {
                 _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
                 v = async {
+                    // Send Initial
+                    for data in thread_aud_history.borrow().iter() {
+                        thread_aud_data_tx.send(
+                            StreamData::Media {
+                                data: data.data.clone(),
+                                ts: Duration::ZERO,
+                            }
+                        )?;
+                    }
+                    // Send new
                     while let Some(data) = audstream.next().await {
                         if let Ok(data) = data {
                             thread_aud_data_tx.send(
                                 StreamData::Media {
-                                    data: Arc::new(data.data),
+                                    data: data.data,
                                     ts: data.ts
                                 }
                             )?;
@@ -615,13 +651,32 @@ async fn stream_run(
 
         // This thread takes the seek data for the vid and passed it into the stream
         let thread_stream_cancel = stream_cancel.clone();
+        let thread_vid_history = vid_history.clone();
         set.spawn(async move {
             let r = tokio::select! {
                 _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
                 v = async {
                     if let Some(vid_seek) = vid_seek.as_mut() {
                         while let Some(data) = vid_seek.recv().await {
+                            let seek_ts = if let StreamData::Seek{ts, ..} = &data {
+                                Some(*ts)
+                            } else {
+                                None
+                            };
+                            // Send seek
                             vid_data_tx.send(data)?;
+                            // Send initial buffer
+                            if let Some(seek_ts) = seek_ts {
+                                // Send Initial
+                                for data in thread_vid_history.borrow().iter() {
+                                    vid_data_tx.send(
+                                        StreamData::Media {
+                                            data: data.data.clone(),
+                                            ts: seek_ts,
+                                        }
+                                    )?;
+                                }
+                            }
                         }
                     }
                     AnyResult::Ok(())
@@ -633,13 +688,31 @@ async fn stream_run(
 
         // This thread takes the seek data for the aud and passed it into the stream
         let thread_stream_cancel = stream_cancel.clone();
+        let thread_aud_history = aud_history.clone();
         set.spawn(async move {
             let r = tokio::select! {
                 _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
                 v = async {
                     if let Some(aud_seek) = aud_seek.as_mut() {
                         while let Some(data) = aud_seek.recv().await {
+                            let seek_ts = if let StreamData::Seek{ts, ..} = &data {
+                                Some(*ts)
+                            } else {
+                                None
+                            };
                             aud_data_tx.send(data)?;
+                            // Send initial buffer
+                            if let Some(seek_ts) = seek_ts {
+                                // Send Initial
+                                for data in thread_aud_history.borrow().iter() {
+                                    aud_data_tx.send(
+                                        StreamData::Media {
+                                            data: data.data.clone(),
+                                            ts: seek_ts,
+                                        }
+                                    )?;
+                                }
+                            }
                         }
                     }
                     AnyResult::Ok(())

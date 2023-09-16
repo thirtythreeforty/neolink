@@ -15,7 +15,7 @@ use crate::common::VidFormat;
 
 #[derive(Debug)]
 enum GstControl {
-    Data(Vec<u8>),
+    Data(std::sync::Arc<Vec<u8>>),
     Eos,
 }
 
@@ -26,7 +26,7 @@ pub(super) struct GstSender {
 }
 
 impl GstSender {
-    pub(super) async fn send(&self, buf: Vec<u8>) -> Result<()> {
+    pub(super) async fn send(&self, buf: std::sync::Arc<Vec<u8>>) -> Result<()> {
         self.sender
             .send(GstControl::Data(buf))
             .await
