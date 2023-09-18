@@ -29,15 +29,18 @@ bind = "0.0.0.0"
 # name = "someone"
 # pass = "someonepass"
 
+# Uncomment to enable MQTT
+#[mqtt]
+# mqtt.broker_addr = "192.168.1.122"
+# mqtt.port = 1883
+# mqtt.credentials = ["mqtt_user", "mqtt_password"]
+
 
 [[cameras]]
 name = "driveway"
 username = "admin"
 password = "12345678"
 address = "192.168.1.187:9000"
-# mqtt.broker_addr = "192.168.1.122"
-# mqtt.port = 1883
-# mqtt.credentials = ["mqtt_user", "mqtt_password"]
 # MQTT Discovery: https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
 # mqtt.discovery.topic = "homeassistant" # Uncomment to enable
 # If using discovery, _ characters are replaced with spaces in the name and title case is applied
@@ -80,22 +83,6 @@ address = "192.168.1.187:9000"
 # - Xml
 #
 # print_format = "None"
-
-# Internally neolink uses a buffer to improve delivery of frames at their actual times
-# A large buffer can work even for large interupts in the connection with the camera
-# A small buffer will reduce the latency introduced
-# buffer_size: 100
-
-# Over long periods of time the camera buffer can exhaust with no means of recovery
-# to combat this a time stretching stratery is employed where the stream is slowed
-# as the buffer is exhausted and sped up when full
-# this can keep the camera and rtsp streams in sync and reduce buffer exhaustions
-#
-# HOWEVER if there is real latency issues (such as too high a bitrate)
-# then smoothing can result in a stream appearing in slow motion
-#
-# you can disable and enable this feature here
-# use_smoothing: true
 
 
 [[cameras]]

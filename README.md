@@ -164,18 +164,25 @@ To use mqtt you will need to adjust your config file as such:
 ```toml
 bind = "0.0.0.0"
 
+[[mqtt]]
+server = "127.0.0.1" # Address of the mqtt server
+port = 1883 # mqtt servers port
+credentials = ["username", "password"] # mqtt server login details
+
 [[cameras]]
 name = "Camera01"
 username = "admin"
 password = "password"
 uid = "ABCDEF0123456789"
-  [cameras.mqtt]
-  server = "127.0.0.1" # Address of the mqtt server
-  port = 1883 # mqtt servers port
-  credentials = ["username", "password"] # mqtt server login details
 ```
 
-Then to start the mqtt connection run the following:
+Then to start the mqtt+rtsp connection run the following:
+
+```bash
+./neolink mqtt-rtsp --config=neolink.toml
+```
+
+OR for only mqtt
 
 ```bash
 ./neolink mqtt --config=neolink.toml
@@ -183,7 +190,16 @@ Then to start the mqtt connection run the following:
 
 Neolink will publish these messages:
 
-Messages are prefixed with `neolink/{CAMERANAME}`
+Messages that are prefixed with `neolink/`
+
+- `/status` Tracks the connection of neolink, `online` for ready `offline`
+  for not ready this is a LastWill message
+- `/config` The configuration file used to start neolink, you can publish to
+  this to **temporarily** alter the live configuration
+- `/config/status` If you publish to `/config` then any errors from your
+  publish config will show here, or `Ok(())` if no errors and finished loading
+
+Messages that are prefixed with `neolink/{CAMERANAME}`
 
 Control messages:
 
@@ -200,27 +216,68 @@ Control messages:
 
 Status Messages:
 
-- `/status offline` Sent when the neolink goes offline this is a LastWill
-  message
 - `/status disconnected` Sent when the camera goes offline
 - `/status/battery` Sent in reply to a `/query/battery` an XML encoded version
   of the battery status
-- `/status/battery_level` A simple % value of current battery level
+- `/status/battery_level` A simple % value of current battery level, only
+  published when `enable_battery` is true in the config
 - `/status/pir` Sent in reply to a `/query/pir` an XML encoded version of the
   pir status
 - `/status/motion` Contains the motion detection alarm status. `on` for motion
-  and `off` for still
+  and `off` for still, only published when `enable_moton` is true in the config
 - `/status/ptz/preset` Sent in reply to a `/query/ptz/preset` an XML encoded
   version of the PTZ presets
-- `/status/preview` a base64 encoded camera image updated every 0.5s. Not
+- `/status/preview` a base64 encoded camera image updated every 2s. Not
   every camera supports the snapshot command needed for this. In such cases
-  there will be no `/status/preview` message.
+  there will be no `/status/preview` message. Only published when
+  `enable_preview` is true in the config
 
 Query Messages:
 
 - `/query/battery` Request that the camera reports its battery level
 - `/query/pir` Request that the camera reports its pir status
 - `/query/ptz/preset` Request that the camera reports its PTZ presets
+
+### Controlling RTSP from MQTT
+
+If neolink is started with `mqtt-rtsp` then the `/neolink/config` can be used
+to control the RTSP
+
+Changes made to the config by publishing to `/neolink/config` should be
+reflected in the rtsp
+
+These include changing the:
+
+- Avaliable users
+
+```toml
+[[users]]
+  name = "me"
+  pass = "mepass"
+```
+
+- Permitted users on a camera
+
+```toml
+[[cameras]]
+  permitted_users = [ "me" ]
+```
+
+- Avaliable streams
+
+```toml
+[[cameras]]
+  stream = "Main"
+```
+
+Setting a value of `None` will disable the stream
+
+- Disable the entire camera (mqtt updates and all)
+
+```toml
+[[cameras]]
+  enabled = false
+```
 
 ### MQTT Disable Features
 
@@ -229,19 +286,36 @@ you can disable them with the following config options.
 Disabling these may help to conserve battery
 
 ```toml
+bind = "0.0.0.0"
+
+[[mqtt]]
+server = "127.0.0.1" # Address of the mqtt server
+port = 1883 # mqtt servers port
+credentials = ["username", "password"] # mqtt server login details
+
+[[cameras]]
+name = "Camera01"
+username = "admin"
+password = "password"
+uid = "ABCDEF0123456789"
+[cameras.mqtt]
 enable_motion = false  # motion detection
                        # (limited battery drain since it
                        # is a passive listening connection)
-
+                       #
 enable_pings = false   # keep alive pings that keep the camera connected
-
+                       #
 enable_light = false   # flood lights only avaliable on some camera
                        # (limited battery drain since it
                        # is a passive listening connection)
-
+                       #
 enable_battery = false # battery updates in `/status/battery_level`
-
+                       #
 enable_preview = false # preview image in `/status/preview`
+                       #
+battery_update = 2000  # Number of ms between `/status/battery_level` updates
+                       #
+preview_update = 2000  # Number of ms between `/status/preview` updates
 ```
 
 #### MQTT Discovery
@@ -299,20 +373,6 @@ Then start the rtsp server as usual:
 ./neolink rtsp --config=neolink.toml
 ```
 
-### Battery Levels
-
-If you have a battery camera and would like to see the battery messages in the
-log, add the following to your config
-
-```toml
-[[cameras]]
-# Usual camera options like uid etc
-print_format = "Human"
-```
-
-You can also print into xml format with `print_format = "Xml"` which can then
-be passed by a script for processing.
-
 ### Docker
 
 [Docker](https://hub.docker.com/r/quantumentangledandy/neolink) builds are also
@@ -351,6 +411,83 @@ on the camera. If this is the case with your camera you can try the
 `--use-stream` option which will instead create a jpeg by transcoding the video
 stream.
 
+### Battery Levels
+
+You can get the battery level and status using
+
+```bash
+neolink battery --config=config.toml CameraName
+```
+
+This will produce an xml formatted battery status on stdout for processing
+
+### PIR
+
+You can control pir using
+
+```bash
+neolink pir --config=config.toml CameraName [on|off]
+```
+
+This will turn the PIR on or off
+
+### Reboot
+
+You can reboot a camera using
+
+```bash
+neolink reboot --config=config.toml CameraName
+```
+
+### Status LED
+
+You can control the status LED using
+
+```bash
+neolink status-light --config=config.toml CameraName [on|off]
+```
+
+### Talk
+
+You can talk over the camera using
+
+```bash
+neolink talk --config=config.toml --adpcm-file=data.adpc\
+               --sample-rate=16000 --block-size=512 CameraName
+```
+
+Where the sounds is ADPCM encoded
+
+or
+
+```bash
+neolink talk --config=config.toml --microphone  CameraName
+```
+
+Which uses the default microphone which depends on
+[gstreamer](https://gstreamer.freedesktop.org/documentation/autodetect/autoaudiosrc.html?gi-language=c#autoaudiosrc-page)
+
+### PTZ
+
+You can control the PTZ using
+
+```bash
+neolink ptz --config=config.toml CameraName control 32 [left|right|up|down|in|out]
+```
+
+Where 32 is the speed. Not all cameras support speed
+
+Some cameras also support preset positions
+
+```bash
+# Print the list of preset positions
+neolink ptz --config=config.toml CameraName preset
+# Move the camera to preset ID 0
+neolink ptz --config=config.toml CameraName preset 0
+# Save the current position as preset ID 0 with name PresetName
+neolink ptz --config=config.toml CameraName assign 0 PresetName
+```
+
 ## License
 
 Neolink is free software, released under the GNU Affero General Public License
@@ -359,7 +496,7 @@ v3.
 This means that if you incorporate it into a piece of software available over
 the network, you must offer that software's source code to your users.
 
-# Donations
+## Donations
 
 If you find this code helpful please consider supporting development.
 
