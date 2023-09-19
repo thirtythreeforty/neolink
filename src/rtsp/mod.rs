@@ -64,10 +64,12 @@ use tokio::{
     sync::{
         broadcast::channel as broadcast,
         mpsc::{channel as mpsc, Receiver as MpscReceiver, Sender as MpscSender},
+        watch::channel as watch,
     },
     task::JoinSet,
-    time::{sleep, Duration, Instant},
+    time::{interval, sleep, Duration, Instant},
 };
+use tokio_stream::wrappers::IntervalStream;
 use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
 use tokio_util::sync::CancellationToken;
 
@@ -165,8 +167,8 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
                     }).await.with_context(|| "Camera Config Watcher")?.clone().cameras.iter().filter(|a| a.enabled).map(|cam_config| cam_config.name.clone()).collect::<HashSet<_>>();
 
                     for name in config_names.iter() {
-                        log::info!("{name}: Rtsp Staring");
                         if ! cameras.contains_key(name) {
+                            log::info!("{name}: Rtsp Staring");
                             let local_cancel = CancellationToken::new();
                             cameras.insert(name.clone(),local_cancel.clone() );
                             let thread_global_cancel = thread_cancel2.clone();
@@ -260,26 +262,46 @@ async fn apply_users(rtsp: &NeoRtspServer, curr_users: &HashSet<UserConfig>) -> 
 ///
 /// It checks which streams are supported and then starts them
 async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
-    let stream_info = camera
-        .run_task(|cam| Box::pin(async move { Ok(cam.get_stream_info().await?) }))
-        .await?;
+    let name = camera.config().await?.borrow().name.clone();
+    log::debug!("{name}: Camera Main");
+    let later_camera = camera.clone();
+    let (supported_streams_tx, supported_streams) = watch(HashSet::<StreamKind>::new());
 
-    let supported_streams = {
-        stream_info
-            .stream_infos
-            .iter()
-            .flat_map(|stream_info| stream_info.encode_tables.clone())
-            .flat_map(|encode| match encode.name.as_str() {
-                "mainStream" => Some(StreamKind::Main),
-                "subStream" => Some(StreamKind::Sub),
-                "externStream" => Some(StreamKind::Extern),
-                new_stream_name => {
-                    log::debug!("New stream name {}", new_stream_name);
-                    None
+    let mut set = JoinSet::new();
+    set.spawn(async move {
+        let mut i = IntervalStream::new(interval(Duration::from_secs(15)));
+        while i.next().await.is_some() {
+            let stream_info = later_camera
+                .run_task(|cam| Box::pin(async move { Ok(cam.get_stream_info().await?) }))
+                .await?;
+
+            let new_supported_streams = stream_info
+                .stream_infos
+                .iter()
+                .flat_map(|stream_info| stream_info.encode_tables.clone())
+                .flat_map(|encode| match encode.name.as_str() {
+                    "mainStream" => Some(StreamKind::Main),
+                    "subStream" => Some(StreamKind::Sub),
+                    "externStream" => Some(StreamKind::Extern),
+                    new_stream_name => {
+                        log::debug!("New stream name {}", new_stream_name);
+                        None
+                    }
+                })
+                .collect::<HashSet<_>>();
+            supported_streams_tx.send_if_modified(|old| {
+                if *old != new_supported_streams {
+                    *old = new_supported_streams;
+                    true
+                } else {
+                    false
                 }
-            })
-            .collect::<HashSet<_>>()
-    };
+            });
+        }
+        AnyResult::Ok(())
+    });
+
+    log::debug!("{name}: Camera Main::Loop");
 
     let mut camera_config = camera.config().await?.clone();
     loop {
@@ -302,7 +324,7 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
             },
             v = async {
                 // This select handles enabling the right stream
-
+                log::debug!("{name}: Camera Main::Select Stream");
                 // and setting up the users
                 let all_users = rtsp.get_users().await?.iter().filter(|a| *a != "anyone" && *a != "anonymous").cloned().collect::<HashSet<_>>();
                 let permitted_users: HashSet<String> = match &prev_stream_users {
@@ -318,8 +340,12 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
                     None => ["anonymous".to_string()].iter().cloned().collect(),
                 };
 
+                let mut supported_streams_1 = supported_streams.clone();
+                let mut supported_streams_2 = supported_streams.clone();
+                let mut supported_streams_3 = supported_streams.clone();
                 tokio::select! {
                     v = async {
+                        log::debug!("{name}: Camera Main::Select Main");
                         let name = camera.config().await?.borrow().name.clone();
                         let mut paths = vec![
                             format!("/{name}/main"),
@@ -329,14 +355,35 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
                             format!("/{name}/Mainstream"),
                             format!("/{name}/mainstream"),
                         ];
-                        if camera.high_stream().await?.map(|s| s.name == StreamKind::Main).unwrap_or(false) {
-                            paths.push(
-                                format!("/{name}")
-                            );
+                        paths.push(
+                            format!("/{name}")
+                        );
+                        // Create a dummy factory so that the URL will not return 404 while waiting
+                        // for configuration to compete
+                        //
+                        // This is for BI since it will give up forever on a 404 rather then retry
+                        //
+                        let mounts = rtsp
+                            .mount_points()
+                            .ok_or(anyhow!("RTSP server lacks mount point"))?;
+                        // Create the dummy factory
+                        let dummy_factory = NeoMediaFactory::new_with_callback(move |element| {
+                            clear_bin(&element)?;
+                            Ok(None)
+                        })
+                        .await?;
+                        dummy_factory.add_permitted_roles(&permitted_users);
+                        for path in paths.iter() {
+                            log::debug!("Path: {}", path);
+                            mounts.add_factory(path, dummy_factory.clone());
                         }
+                        log::debug!("{}: Preparing at {}", name, paths.join(", "));
+
+                        supported_streams_1.wait_for(|ss| ss.contains(&StreamKind::Main)).await?;
                         stream_main(camera.stream(StreamKind::Main).await?, camera.clone(), rtsp, &permitted_users, &paths).await
-                    }, if active_streams.contains(&StreamKind::Main) && supported_streams.contains(&StreamKind::Main) => v,
+                    }, if active_streams.contains(&StreamKind::Main) => v,
                     v = async {
+                        log::debug!("{name}: Camera Main::Select Sub");
                         let name = camera.config().await?.borrow().name.clone();
                         let mut paths = vec![
                             format!("/{name}/sub"),
@@ -346,14 +393,38 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
                             format!("/{name}/Substream"),
                             format!("/{name}/substream"),
                         ];
-                        if camera.high_stream().await?.map(|s| s.name == StreamKind::Sub).unwrap_or(false) {
+                        if ! active_streams.contains(&StreamKind::Main) {
                             paths.push(
                                 format!("/{name}")
                             );
                         }
+
+                        // Create a dummy factory so that the URL will not return 404 while waiting
+                        // for configuration to compete
+                        //
+                        // This is for BI since it will give up forever on a 404 rather then retry
+                        //
+                        let mounts = rtsp
+                            .mount_points()
+                            .ok_or(anyhow!("RTSP server lacks mount point"))?;
+                        // Create the dummy factory
+                        let dummy_factory = NeoMediaFactory::new_with_callback(move |element| {
+                            clear_bin(&element)?;
+                            Ok(None)
+                        })
+                        .await?;
+                        dummy_factory.add_permitted_roles(&permitted_users);
+                        for path in paths.iter() {
+                            log::debug!("Path: {}", path);
+                            mounts.add_factory(path, dummy_factory.clone());
+                        }
+                        log::debug!("{}: Preparing at {}", name, paths.join(", "));
+
+                        supported_streams_2.wait_for(|ss| ss.contains(&StreamKind::Sub)).await?;
                         stream_main(camera.stream(StreamKind::Sub).await?,camera.clone(), rtsp, &permitted_users, &paths).await
-                    }, if active_streams.contains(&StreamKind::Sub) && supported_streams.contains(&StreamKind::Sub) => v,
+                    }, if active_streams.contains(&StreamKind::Sub) => v,
                     v = async {
+                        log::debug!("{name}: Camera Main::Select Extern");
                         let name = camera.config().await?.borrow().name.clone();
                         let mut paths = vec![
                             format!("/{name}/extern"),
@@ -363,13 +434,36 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
                             format!("/{name}/Externstream"),
                             format!("/{name}/externstream"),
                         ];
-                        if camera.high_stream().await?.map(|s| s.name == StreamKind::Extern).unwrap_or(false) {
+                        if ! active_streams.contains(&StreamKind::Main) && ! active_streams.contains(&StreamKind::Sub) {
                             paths.push(
                                 format!("/{name}")
                             );
                         }
+
+                        // Create a dummy factory so that the URL will not return 404 while waiting
+                        // for configuration to compete
+                        //
+                        // This is for BI since it will give up forever on a 404 rather then retry
+                        //
+                        let mounts = rtsp
+                            .mount_points()
+                            .ok_or(anyhow!("RTSP server lacks mount point"))?;
+                        // Create the dummy factory
+                        let dummy_factory = NeoMediaFactory::new_with_callback(move |element| {
+                            clear_bin(&element)?;
+                            Ok(None)
+                        })
+                        .await?;
+                        dummy_factory.add_permitted_roles(&permitted_users);
+                        for path in paths.iter() {
+                            log::debug!("Path: {}", path);
+                            mounts.add_factory(path, dummy_factory.clone());
+                        }
+                        log::debug!("{}: Preparing at {}", name, paths.join(", "));
+
+                        supported_streams_3.wait_for(|ss| ss.contains(&StreamKind::Extern)).await?;
                         stream_main(camera.stream(StreamKind::Extern).await?,camera.clone(), rtsp, &permitted_users, &paths).await
-                    }, if active_streams.contains(&StreamKind::Extern) && supported_streams.contains(&StreamKind::Extern) => v,
+                    }, if active_streams.contains(&StreamKind::Extern) => v,
                     else => {
                         // all disabled just wait here until config is changed
                         futures::future::pending().await
@@ -408,27 +502,6 @@ async fn stream_main(
 ) -> Result<()> {
     let mut camera_config = camera.config().await?.clone();
     let name = camera_config.borrow().name.clone();
-
-    // Create a dummy factory so that the URL will not return 404 while waiting
-    // for configuration to compete
-    //
-    // This is for BI since it will give up forever on a 404 rather then retry
-    //
-    let mounts = rtsp
-        .mount_points()
-        .ok_or(anyhow!("RTSP server lacks mount point"))?;
-    // Create the dummy factory
-    let dummy_factory = NeoMediaFactory::new_with_callback(move |element| {
-        clear_bin(&element)?;
-        Err(anyhow!("Not yet ready"))
-    })
-    .await?;
-    dummy_factory.add_permitted_roles(users);
-    for path in paths.iter() {
-        log::debug!("Path: {}", path);
-        mounts.add_factory(path, dummy_factory.clone());
-    }
-    log::debug!("{}: Preparing at {}", name, paths.join(", "));
 
     let mut curr_pause;
     loop {

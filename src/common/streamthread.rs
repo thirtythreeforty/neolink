@@ -412,6 +412,7 @@ pub(crate) struct StampedData {
 }
 
 pub(crate) struct StreamInstance {
+    #[allow(dead_code)]
     pub(crate) name: StreamKind,
     pub(crate) vid: BroadcastReceiver<StampedData>,
     pub(crate) vid_history: WatchReceiver<VecDeque<StampedData>>,
@@ -532,7 +533,7 @@ impl StreamData {
                             },
                             v = async {
                                 loop {
-                                    let check_timeout = timeout(Duration::from_secs(2), watchdog_rx.recv()).await;
+                                    let check_timeout = timeout(Duration::from_secs(3), watchdog_rx.recv()).await;
                                     if let Err(_)| Ok(None) = check_timeout {
                                         // Timeout
                                         // Reply with Ok to trigger the restart
@@ -554,6 +555,7 @@ impl StreamData {
                                             watchdog_tx.send(()).await?; // Feed the watchdog
                                             let mut prev_ts = Duration::ZERO;
                                             let mut stream_data = camera.start_video(name, 0, strict).await?;
+                                            watchdog_tx.send(()).await?; // Feed the watchdog
                                             loop {
                                                 watchdog_tx.send(()).await?;  // Feed the watchdog
                                                 let data = stream_data.get_data().await??;
