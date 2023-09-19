@@ -408,6 +408,28 @@ async fn stream_main(
 ) -> Result<()> {
     let mut camera_config = camera.config().await?.clone();
     let name = camera_config.borrow().name.clone();
+
+    // Create a dummy factory so that the URL will not return 404 while waiting
+    // for configuration to compete
+    //
+    // This is for BI since it will give up forever on a 404 rather then retry
+    //
+    let mounts = rtsp
+        .mount_points()
+        .ok_or(anyhow!("RTSP server lacks mount point"))?;
+    // Create the dummy factory
+    let dummy_factory = NeoMediaFactory::new_with_callback(move |element| {
+        clear_bin(&element)?;
+        Err(anyhow!("Not yet ready"))
+    })
+    .await?;
+    dummy_factory.add_permitted_roles(users);
+    for path in paths.iter() {
+        log::debug!("Path: {}", path);
+        mounts.add_factory(path, dummy_factory.clone());
+    }
+    log::debug!("{}: Preparing at {}", name, paths.join(", "));
+
     let mut curr_pause;
     loop {
         log::debug!("{}: Activating Stream", &name);
@@ -524,7 +546,6 @@ async fn stream_main(
     }
 }
 
-#[allow(clippy::too_many_arguments)] // Seriously clippy needs to be done
 async fn stream_run(
     name: &str,
     stream_instance: &StreamInstance,
@@ -552,7 +573,7 @@ async fn stream_run(
         log::debug!("Path: {}", path);
         mounts.add_factory(path, factory.clone());
     }
-    log::info!("{}: Avaliable at {:?}", name, paths);
+    log::info!("{}: Avaliable at {}", name, paths.join(", "));
 
     let stream_cancel = CancellationToken::new();
     let mut set = JoinSet::new();
