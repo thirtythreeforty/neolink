@@ -6,10 +6,13 @@
 //!    Clonable interface to share amongst threadsanyhow::anyhow;
 use futures::stream::StreamExt;
 use std::sync::Weak;
-use tokio::sync::{
-    mpsc::{channel as mpsc, Sender as MpscSender},
-    oneshot::{channel as oneshot, Sender as OneshotSender},
-    watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
+use tokio::{
+    sync::{
+        mpsc::{channel as mpsc, Sender as MpscSender},
+        oneshot::{channel as oneshot, Sender as OneshotSender},
+        watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
+    },
+    task::JoinSet,
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
@@ -38,6 +41,7 @@ pub(crate) struct NeoCam {
     config_watch: WatchSender<CameraConfig>,
     commander: MpscSender<NeoCamCommand>,
     camera_watch: WatchReceiver<Weak<BcCamera>>,
+    set: JoinSet<AnyResult<()>>,
 }
 
 impl NeoCam {
@@ -48,11 +52,13 @@ impl NeoCam {
         let (stream_request_tx, stream_request_rx) = mpsc(100);
         let (md_request_tx, md_request_rx) = mpsc(100);
 
-        let me = Self {
+        let set = JoinSet::new();
+        let mut me = Self {
             cancel: CancellationToken::new(),
             config_watch: watch_config_tx,
             commander: commander_tx.clone(),
             camera_watch: camera_watch_rx.clone(),
+            set,
         };
 
         // This thread recieves messages from the instances
@@ -65,7 +71,7 @@ impl NeoCam {
         let strict = config.strict;
         let thread_commander_tx = commander_tx.clone();
         let thread_watch_config_rx = watch_config_rx.clone();
-        tokio::task::spawn(async move {
+        me.set.spawn(async move {
             let thread_cancel = sender_cancel.clone();
             let res = tokio::select! {
                 _ = sender_cancel.cancelled() => {
@@ -151,13 +157,13 @@ impl NeoCam {
         let thread_watch_config_rx = watch_config_rx.clone();
         let mut cam_thread =
             NeoCamThread::new(thread_watch_config_rx, camera_watch_tx, me.cancel.clone()).await;
-        tokio::task::spawn(async move { cam_thread.run().await });
+        me.set.spawn(async move { cam_thread.run().await });
 
         // This thread maintains the streams
         let stream_instance = instance.subscribe().await?;
         let stream_cancel = me.cancel.clone();
         let mut stream_thread = NeoCamStreamThread::new(stream_request_rx, stream_instance).await?;
-        tokio::task::spawn(async move {
+        me.set.spawn(async move {
             tokio::select! {
                 _ = stream_cancel.cancelled() => AnyResult::Ok(()),
                 v = stream_thread.run() => v,
@@ -168,7 +174,7 @@ impl NeoCam {
         let md_instance = instance.subscribe().await?;
         let md_cancel = me.cancel.clone();
         let mut md_thread = NeoCamMdThread::new(md_request_rx, md_instance).await?;
-        tokio::task::spawn(async move {
+        me.set.spawn(async move {
             tokio::select! {
                 _ = md_cancel.cancelled() => AnyResult::Ok(()),
                 v = md_thread.run() => v,
@@ -179,7 +185,7 @@ impl NeoCam {
         let report_instance = instance.subscribe().await?;
         let report_cancel = me.cancel.clone();
         let report_name = config.name.clone();
-        tokio::task::spawn(async move {
+        me.set.spawn(async move {
             tokio::select! {
                 _ = report_cancel.cancelled() => {
                     AnyResult::Ok(())
@@ -227,9 +233,10 @@ impl NeoCam {
         Ok(())
     }
 
-    pub(crate) async fn shutdown(&self) {
+    async fn shutdown(&mut self) -> AnyResult<()> {
         let _ = self.commander.send(NeoCamCommand::HangUp).await;
-        self.cancel.cancelled().await
+        self.set.shutdown().await;
+        AnyResult::Ok(())
     }
 
     pub(crate) fn get_config_watch(&self) -> &WatchSender<CameraConfig> {
@@ -239,7 +246,13 @@ impl NeoCam {
 
 impl Drop for NeoCam {
     fn drop(&mut self) {
-        log::debug!("Cancel:: NeoCam::drop");
-        self.cancel.cancel();
+        log::trace!("Drop NeoCam");
+        tokio::task::block_in_place(move || {
+            let _ = tokio::runtime::Handle::current().block_on(async move {
+                let _ = self.shutdown().await;
+                AnyResult::Ok(())
+            });
+        });
+        log::trace!("Dropped NeoCam");
     }
 }

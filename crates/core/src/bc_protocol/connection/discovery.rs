@@ -1062,7 +1062,15 @@ impl Discoverer {
 
 impl Drop for Discoverer {
     fn drop(&mut self) {
+        log::trace!("Drop Discoverer");
         self.cancel.cancel();
+        tokio::task::block_in_place(move || {
+            let _ = tokio::runtime::Handle::current().block_on(async move {
+                while self.handle.get_mut().join_next().await.is_some() {}
+                Result::Ok(())
+            });
+        });
+        log::trace!("Dropped Discoverer");
     }
 }
 

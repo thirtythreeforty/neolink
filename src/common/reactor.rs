@@ -5,15 +5,18 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     sync::Arc,
 };
-use tokio::sync::{
-    mpsc::{channel as mpsc, Sender as MpscSender},
-    oneshot::{channel as oneshot, Sender as OneshotSender},
-    watch::{channel as watch, Receiver as WatchReceiver},
+use tokio::{
+    sync::{
+        mpsc::{channel as mpsc, Sender as MpscSender},
+        oneshot::{channel as oneshot, Sender as OneshotSender},
+        watch::{channel as watch, Receiver as WatchReceiver},
+    },
+    task::JoinSet,
 };
 use tokio_util::sync::CancellationToken;
 
 use super::{NeoCam, NeoInstance};
-use crate::{config::Config, Result};
+use crate::{config::Config, AnyResult, Result};
 
 #[allow(clippy::large_enum_variant)]
 enum NeoReactorCommand {
@@ -28,40 +31,32 @@ enum NeoReactorCommand {
 pub(crate) struct NeoReactor {
     cancel: CancellationToken,
     commander: MpscSender<NeoReactorCommand>,
-    arc: Arc<()>,
+    set: Option<Arc<JoinSet<AnyResult<()>>>>,
 }
 
 impl NeoReactor {
     pub(crate) async fn new(config: Config) -> Self {
         let (commad_tx, mut command_rx) = mpsc(100);
-        let me = Self {
-            cancel: CancellationToken::new(),
-            commander: commad_tx,
-            arc: Arc::new(()),
-        };
-
+        let cancel = CancellationToken::new();
         let (config_tx, _) = watch(config);
+        let mut set = JoinSet::new();
 
-        let cancel = me.cancel.clone();
-        let cancel2 = me.cancel.clone();
+        let cancel1 = cancel.clone();
+        let cancel2 = cancel.clone();
         let config_tx = Arc::new(config_tx);
-        tokio::task::spawn(async move {
+        set.spawn(async move {
             let mut instances: HashMap<String, NeoCam> = Default::default();
 
             let r = tokio::select! {
-                _ = cancel.cancelled() => {
-                    for instance in instances.values() {
-                        instance.shutdown().await;
-                    }
+                _ = cancel1.cancelled() => {
+                    instances.clear();
                     Ok(())
                 },
                 v = async {
                     while let Some(command) = command_rx.recv().await {
                         match command {
                             NeoReactorCommand::HangUp =>  {
-                                for instance in instances.values() {
-                                    instance.shutdown().await;
-                                }
+                                instances.clear();
                                 log::debug!("Cancel:: NeoReactorCommand::HangUp");
                                 cancel2.cancel();
                                 return Result::<(), anyhow::Error>::Ok(());
@@ -96,13 +91,14 @@ impl NeoReactor {
                             NeoReactorCommand::UpdateConfig(new_conf, reply) => {
                                 // Shutdown or Notify instances of a change
                                 let mut names = new_conf.cameras.iter().filter_map(|cam_conf| cam_conf.enabled.then(|| (cam_conf.name.clone(), cam_conf.clone()))).collect::<HashMap<_,_>>();
+                                // Remove those no longer in the config
+                                instances.retain(|name, _| names.contains_key(name));
                                 for (name, instance) in instances.iter() {
                                     if let Some(conf) = names.remove(name) {
                                         let _ = instance.get_config_watch().send_replace(conf);
-                                    } else {
-                                        instance.shutdown().await;
                                     }
                                 }
+
                                 // Set the new conf
                                 let _ = config_tx.send_replace(new_conf);
                                 // Reply that we are done
@@ -116,7 +112,11 @@ impl NeoReactor {
             r
         });
 
-        me
+        Self {
+            cancel,
+            commander: commad_tx,
+            set: Some(Arc::new(set)),
+        }
     }
 
     /// Get camera by name but do not create
@@ -148,18 +148,23 @@ impl NeoReactor {
 
         sender_rx.await?
     }
-
-    pub(crate) async fn shutdown(&self) {
-        let _ = self.commander.send(NeoReactorCommand::HangUp).await;
-        self.cancel.cancelled().await;
-    }
 }
 
 impl Drop for NeoReactor {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.arc) == 1 {
-            log::debug!("Cancel:: NeoReactor::drop");
-            self.cancel.cancel();
+        if let Some(set) = self.set.take() {
+            if let Ok(mut set) = Arc::try_unwrap(set) {
+                log::trace!("Drop NeoReactor");
+                self.cancel.cancel();
+                tokio::task::block_in_place(move || {
+                    let _ = tokio::runtime::Handle::current().block_on(async move {
+                        let _ = self.commander.send(NeoReactorCommand::HangUp).await;
+                        while set.join_next().await.is_some() {}
+                        AnyResult::Ok(())
+                    });
+                });
+                log::trace!("Dropped NeoReactor");
+            }
         }
     }
 }

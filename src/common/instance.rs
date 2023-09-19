@@ -52,11 +52,6 @@ impl NeoInstance {
         instance_rx.await?
     }
 
-    pub(crate) async fn shutdown(&self) {
-        let _ = self.camera_control.send(NeoCamCommand::HangUp).await;
-        self.cancel.cancelled().await
-    }
-
     /// This is a helpful convience function
     ///
     /// Given an async task it will:

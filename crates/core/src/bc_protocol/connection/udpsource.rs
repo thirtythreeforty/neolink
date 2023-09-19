@@ -19,7 +19,7 @@ use std::task::{Context, Poll};
 use tokio::sync::mpsc::channel;
 use tokio::{
     net::UdpSocket,
-    task::JoinHandle,
+    task::JoinSet,
     time::{interval, sleep, Duration, Instant, Interval},
 };
 use tokio_stream::wrappers::ReceiverStream;
@@ -264,15 +264,21 @@ impl AckLatency {
 pub(crate) struct UdpPayloadSource {
     inner_stream: ReceiverStream<IoResult<Vec<u8>>>,
     inner_sink: PollSender<Vec<u8>>,
-    handle: JoinHandle<Result<()>>,
+    set: JoinSet<Result<()>>,
     cancel_token: CancellationToken,
 }
 
 impl Drop for UdpPayloadSource {
     fn drop(&mut self) {
-        log::debug!("UdpPayloadSource::drop Cancel");
+        log::trace!("Drop UdpPayloadSource");
         self.cancel_token.cancel();
-        self.handle.abort();
+        tokio::task::block_in_place(|| {
+            let _ = tokio::runtime::Handle::current().block_on(async {
+                while self.set.join_next().await.is_some() {}
+                Result::Ok(())
+            });
+        });
+        log::trace!("Dropped UdpPayloadSource");
     }
 }
 
@@ -297,6 +303,7 @@ struct UdpPayloadInner {
     resend_interval: Interval,
     ack_latency: AckLatency,
     cancel: CancellationToken,
+    set: JoinSet<Result<()>>,
 }
 impl UdpPayloadInner {
     fn new(
@@ -306,6 +313,7 @@ impl UdpPayloadInner {
         client_id: i32,
         camera_id: i32,
     ) -> Self {
+        let mut set = JoinSet::new();
         let camera_addr = inner.addr;
         let cancel = CancellationToken::new();
         // Data in this needs to be passed into the socket regularly
@@ -327,7 +335,7 @@ impl UdpPayloadInner {
         let thread_camera_id = camera_id;
         const TIME_OUT: u64 = 10;
         let mut recv_timeout = Box::pin(sleep(Duration::from_secs(TIME_OUT)));
-        tokio::task::spawn_blocking(move || {
+        set.spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
@@ -408,7 +416,7 @@ impl UdpPayloadInner {
         let (ack_tx, mut ack_rx) = channel(1000);
         let thread_camera_id = camera_id;
         let ack_socket_in_tx = socket_in_tx.clone();
-        tokio::task::spawn_blocking(move || {
+        set.spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
@@ -451,7 +459,7 @@ impl UdpPayloadInner {
         let thread_sender = socket_in_tx.clone();
         let mut thread_interval = interval(Duration::from_secs(1));
         let thread_cancel = cancel.clone();
-        tokio::task::spawn(async move {
+        set.spawn(async move {
             tokio::select! {
                 _ = thread_cancel.cancelled() => Result::Ok(()),
                 v = async {
@@ -494,6 +502,7 @@ impl UdpPayloadInner {
             resend_interval: interval(Duration::from_millis(500)), // Offical Client does resend every 500ms
             ack_latency: Default::default(),
             cancel,
+            set,
         }
     }
     async fn run(&mut self) -> Result<()> {
@@ -623,12 +632,25 @@ impl UdpPayloadInner {
         }
         self.ack_latency.feed_ack();
     }
+
+    async fn shutdown(&mut self) -> Result<()> {
+        self.cancel.cancel();
+        while self.set.join_next().await.is_some() {}
+        Ok(())
+    }
 }
 
 impl Drop for UdpPayloadInner {
     fn drop(&mut self) {
-        log::debug!("UdpPayloadInner::drop Cancel");
+        log::trace!("Drop UdpPayloadInner");
         self.cancel.cancel();
+        tokio::task::block_in_place(move || {
+            let _ = tokio::runtime::Handle::current().block_on(async move {
+                self.shutdown().await?;
+                Result::Ok(())
+            });
+        });
+        log::trace!("Dropped UdpPayloadInner");
     }
 }
 impl UdpPayloadSource {
@@ -646,7 +668,8 @@ impl UdpPayloadSource {
         let cancel_token = tokio_util::sync::CancellationToken::new();
 
         let thread_cancel_token = cancel_token.clone();
-        let handle = tokio::task::spawn_blocking(move || {
+        let mut set = JoinSet::new();
+        set.spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
@@ -686,7 +709,7 @@ impl UdpPayloadSource {
         UdpPayloadSource {
             inner_stream: ReceiverStream::new(inner_stream),
             inner_sink: PollSender::new(inner_sink),
-            handle,
+            set,
             cancel_token,
         }
     }

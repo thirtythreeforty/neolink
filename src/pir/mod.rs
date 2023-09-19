@@ -54,7 +54,5 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
         println!("{}", pir_ser);
     }
 
-    camera.shutdown().await;
-
     Ok(())
 }

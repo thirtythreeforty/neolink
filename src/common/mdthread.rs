@@ -93,8 +93,9 @@ impl NeoCamMdThread {
 
 impl Drop for NeoCamMdThread {
     fn drop(&mut self) {
-        log::debug!("NeoCamMdThread::drop Cancel");
+        log::trace!("Drop NeoCamMdThread");
         self.cancel.cancel();
+        log::trace!("Dropped NeoCamMdThread");
     }
 }
 

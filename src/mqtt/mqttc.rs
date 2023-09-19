@@ -92,6 +92,7 @@ impl Mqtt {
 
 impl Drop for Mqtt {
     fn drop(&mut self) {
+        log::trace!("Drop MQTT");
         tokio::task::block_in_place(move || {
             let _ = tokio::runtime::Handle::current().block_on(async move {
                 let (tx, rx) = oneshot();
@@ -104,6 +105,7 @@ impl Drop for Mqtt {
                 AnyResult::Ok(())
             });
         });
+        log::trace!("Dropped MQTT");
     }
 }
 

@@ -57,7 +57,7 @@ impl BcConnection {
         let mut rx_thread = JoinSet::<Result<()>>::new();
         let thread_poll_commander = poll_commander.clone();
         let thread_cancel = cancel.clone();
-        let handle = tokio::task::spawn_blocking(move || {
+        rx_thread.spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
@@ -78,16 +78,6 @@ impl BcConnection {
             });
             log::trace!("PollSender Bc {:?}", result);
             result
-        });
-        let thread_cancel = cancel.clone();
-        rx_thread.spawn(async move {
-            tokio::select! {
-                _ = thread_cancel.cancelled() => Result::Ok(()),
-                v = async {
-                    handle.await??;
-                    Ok(())
-                } => v
-            }
         });
 
         let thread_cancel = cancel.clone();
@@ -207,8 +197,15 @@ impl BcConnection {
 
 impl Drop for BcConnection {
     fn drop(&mut self) {
-        log::debug!("BcConnection::drop Cancel");
+        log::trace!("Drop BcConnection");
         self.cancel.cancel();
+        tokio::task::block_in_place(move || {
+            let _ = tokio::runtime::Handle::current().block_on(async move {
+                let _ = self.shutdown().await;
+                Result::Ok(())
+            });
+        });
+        log::trace!("Dropped BcConnection");
     }
 }
 

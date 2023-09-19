@@ -70,7 +70,7 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
         ));
     }
 
-    let rx = match (&opt.file_path, &opt.microphone) {
+    let (mut set, rx) = match (&opt.file_path, &opt.microphone) {
         (Some(path), false) => gst::from_input(
             &format!(
                 "filesrc location={}",
@@ -98,7 +98,8 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
         .await
         .context("Talk stream ended early")?;
 
-    camera.shutdown().await;
+    drop(rx);
+    while set.join_next().await.is_some() {}
 
     Ok(())
 }

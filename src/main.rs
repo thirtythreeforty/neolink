@@ -132,7 +132,5 @@ async fn main() -> Result<()> {
         }
     }
 
-    neo_reactor.shutdown().await;
-
     Ok(())
 }

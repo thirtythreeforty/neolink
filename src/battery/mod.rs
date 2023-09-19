@@ -42,7 +42,5 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
     .expect("Should be UTF8");
     println!("{}", ser);
 
-    camera.shutdown().await;
-
     Ok(())
 }

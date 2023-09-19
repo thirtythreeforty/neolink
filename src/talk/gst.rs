@@ -1,3 +1,4 @@
+use crate::AnyResult;
 use anyhow::{anyhow, Context, Result};
 use crossbeam_channel::{bounded, Receiver, Sender};
 use gstreamer::{
@@ -5,30 +6,34 @@ use gstreamer::{
     Pipeline, ResourceError, State,
 };
 use gstreamer_app::{AppSink, AppSinkCallbacks};
+use tokio::task::JoinSet;
 
 use byte_slice_cast::*;
 
+#[allow(clippy::type_complexity)]
 pub(super) fn from_input(
     input_src: &str,
     volume: f32,
     block_align: u16,
     sample_rate: u16,
-) -> Result<Receiver<Vec<u8>>> {
+) -> Result<(JoinSet<AnyResult<()>>, Receiver<Vec<u8>>)> {
     let pipeline = create_pipeline(input_src, volume, block_align, sample_rate)?;
     input(pipeline)
 }
 
-fn input(pipeline: Pipeline) -> Result<Receiver<Vec<u8>>> {
+#[allow(clippy::type_complexity)]
+fn input(pipeline: Pipeline) -> Result<(JoinSet<AnyResult<()>>, Receiver<Vec<u8>>)> {
     let appsink = get_sink(&pipeline)?;
     let (tx, rx) = bounded(30);
-
+    let mut set = JoinSet::<AnyResult<()>>::new();
     set_data_channel(&appsink, tx);
 
-    std::thread::spawn(move || {
+    set.spawn_blocking(move || {
         let _ = start_pipeline(pipeline);
+        AnyResult::Ok(())
     });
 
-    Ok(rx)
+    Ok((set, rx))
 }
 
 fn start_pipeline(pipeline: Pipeline) -> Result<()> {

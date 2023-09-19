@@ -3,6 +3,7 @@ use crate::bc::{model::*, xml::*};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{channel, error::TryRecvError, Receiver};
 use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 
 /// Motion Status that the callback can send
 #[derive(Clone, Copy, Debug)]
@@ -20,6 +21,7 @@ pub enum MotionStatus {
 /// When this object is dropped the motion events are stopped
 pub struct MotionData {
     handle: JoinSet<Result<()>>,
+    cancel: CancellationToken,
     rx: Receiver<Result<MotionStatus>>,
     last_update: MotionStatus,
 }
@@ -212,60 +214,68 @@ impl BcCamera {
 
         let mut set = JoinSet::new();
         let channel_id = self.channel_id;
+        let cancel = CancellationToken::new();
+        let thread_cancel = cancel.clone();
         set.spawn(async move {
-            let mut sub = connection.subscribe_to_id(MSG_ID_MOTION).await?;
+            tokio::select! {
+                _ = thread_cancel.cancelled() => Result::Ok(()),
+                v = async {
+                    let mut sub = connection.subscribe_to_id(MSG_ID_MOTION).await?;
 
-            loop {
-                tokio::task::yield_now().await;
-                let msg = sub.recv().await;
-                let status = match msg {
-                    Ok(motion_msg) => {
-                        if let BcBody::ModernMsg(ModernMsg {
-                            payload:
-                                Some(BcPayloads::BcXml(BcXml {
-                                    alarm_event_list: Some(alarm_event_list),
+                    loop {
+                        tokio::task::yield_now().await;
+                        let msg = sub.recv().await;
+                        let status = match msg {
+                            Ok(motion_msg) => {
+                                if let BcBody::ModernMsg(ModernMsg {
+                                    payload:
+                                        Some(BcPayloads::BcXml(BcXml {
+                                            alarm_event_list: Some(alarm_event_list),
+                                            ..
+                                        })),
                                     ..
-                                })),
-                            ..
-                        }) = motion_msg.body
-                        {
-                            let mut result = MotionStatus::NoChange(Instant::now());
-                            for alarm_event in &alarm_event_list.alarm_events {
-                                if alarm_event.channel_id == channel_id {
-                                    if alarm_event.status != "none"
-                                        || alarm_event
-                                            .ai_type
-                                            .as_ref()
-                                            .map(|ai_type| ai_type != "none")
-                                            .unwrap_or(false)
-                                    {
-                                        result = MotionStatus::Start(Instant::now());
-                                        break;
-                                    } else {
-                                        result = MotionStatus::Stop(Instant::now());
-                                        break;
+                                }) = motion_msg.body
+                                {
+                                    let mut result = MotionStatus::NoChange(Instant::now());
+                                    for alarm_event in &alarm_event_list.alarm_events {
+                                        if alarm_event.channel_id == channel_id {
+                                            if alarm_event.status != "none"
+                                                || alarm_event
+                                                    .ai_type
+                                                    .as_ref()
+                                                    .map(|ai_type| ai_type != "none")
+                                                    .unwrap_or(false)
+                                            {
+                                                result = MotionStatus::Start(Instant::now());
+                                                break;
+                                            } else {
+                                                result = MotionStatus::Stop(Instant::now());
+                                                break;
+                                            }
+                                        }
                                     }
+                                    Ok(result)
+                                } else {
+                                    Ok(MotionStatus::NoChange(Instant::now()))
                                 }
                             }
-                            Ok(result)
-                        } else {
-                            Ok(MotionStatus::NoChange(Instant::now()))
+                            // On connection drop we stop
+                            Err(e) => Err(e),
+                        };
+
+                        if tx.send(status).await.is_err() {
+                            // Motion reciever has been dropped
+                            break;
                         }
                     }
-                    // On connection drop we stop
-                    Err(e) => Err(e),
-                };
-
-                if tx.send(status).await.is_err() {
-                    // Motion reciever has been dropped
-                    break;
-                }
+                    Ok(())
+                } => v,
             }
-            Ok(())
         });
 
         Ok(MotionData {
             handle: set,
+            cancel,
             rx,
             last_update: MotionStatus::NoChange(Instant::now()),
         })
@@ -274,6 +284,14 @@ impl BcCamera {
 
 impl Drop for MotionData {
     fn drop(&mut self) {
-        self.handle.abort_all();
+        log::trace!("Drop MotionData");
+        self.cancel.cancel();
+        tokio::task::block_in_place(move || {
+            let _ = tokio::runtime::Handle::current().block_on(async move {
+                while self.handle.join_next().await.is_some() {}
+                Result::Ok(())
+            });
+        });
+        log::trace!("Dropped MotionData");
     }
 }

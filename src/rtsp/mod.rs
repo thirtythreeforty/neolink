@@ -908,6 +908,7 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
     mut data_rx: T,
 ) -> Result<()> {
     if let Some(app) = app {
+        let mut set = JoinSet::<AnyResult<()>>::new();
         let mut last_ft: Option<Duration> = None;
         let mut ft = Duration::ZERO;
         let mut last_rt: Option<Duration> = None;
@@ -949,7 +950,7 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                     let thread_app = app.clone();
                     let thread_rt = rt;
                     let thread_ft = ft;
-                    tokio::task::spawn(async move {
+                    set.spawn(async move {
                         check_live(&thread_app)?; // Stop if appsrc is dropped
                         if ft > (rt + Duration::from_millis(50)) {
                             let delta = ft - rt;
@@ -971,13 +972,15 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
 
                         log::trace!("Pushing Data");
                         let appsrc = thread_app.clone();
-                        tokio::task::spawn_blocking(move || {
+                        let mut inner_set = JoinSet::new();
+                        inner_set.spawn_blocking(move || {
                             appsrc
                                 .push_buffer(buf.copy())
                                 .map(|_| ())
                                 .map_err(|_| anyhow!("Could not push buffer to appsrc"))
-                        })
-                        .await??;
+                        });
+                        inner_set.join_next().await.unwrap()??;
+                        while inner_set.join_next().await.is_some() {}
                         log::trace!("  Pushed Data");
                         AnyResult::Ok(())
                     });

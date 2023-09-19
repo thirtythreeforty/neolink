@@ -90,7 +90,5 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
         buffer.write_all(jpeg_data.as_slice()).await?;
     }
 
-    camera.shutdown().await;
-
     Ok(())
 }

@@ -17,7 +17,7 @@ use tokio::{
         oneshot::Sender as OneshotSender,
         watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
     },
-    task::JoinHandle,
+    task::{JoinHandle, JoinSet},
     time::{timeout, Duration},
 };
 use tokio_util::sync::CancellationToken;
@@ -228,6 +228,7 @@ pub(crate) struct UseCounter {
     value: WatchReceiver<u32>,
     notifier_tx: MpscSender<bool>,
     cancel: CancellationToken,
+    set: JoinSet<AnyResult<()>>,
 }
 
 impl UseCounter {
@@ -235,9 +236,10 @@ impl UseCounter {
         let (notifier_tx, mut notifier) = mpsc(100);
         let (value_tx, value) = watch(0);
         let cancel = CancellationToken::new();
+        let mut set = JoinSet::new();
 
         let thread_cancel = cancel.clone();
-        tokio::task::spawn(async move {
+        set.spawn(async move {
             let r = tokio::select! {
                 _ = thread_cancel.cancelled() => {
                     AnyResult::Ok(())
@@ -264,6 +266,7 @@ impl UseCounter {
             value,
             notifier_tx,
             cancel,
+            set,
         }
     }
 
@@ -280,8 +283,15 @@ impl UseCounter {
 
 impl Drop for UseCounter {
     fn drop(&mut self) {
-        log::debug!("UseCounter::drop Cancel");
+        log::trace!("Drop UseCounter");
         self.cancel.cancel();
+        tokio::task::block_in_place(move || {
+            let _ = tokio::runtime::Handle::current().block_on(async move {
+                while self.set.join_next().await.is_some() {}
+                AnyResult::Ok(())
+            });
+        });
+        log::trace!("Dropped UseCounter");
     }
 }
 
@@ -698,7 +708,16 @@ impl StreamData {
 
 impl Drop for StreamData {
     fn drop(&mut self) {
-        log::debug!("Cancel:: StreamData::drop");
+        log::trace!("Drop StreamData");
         self.cancel.cancel();
+        tokio::task::block_in_place(move || {
+            let _ = tokio::runtime::Handle::current().block_on(async move {
+                if let Some(h) = self.handle.take() {
+                    let _ = h.await;
+                }
+                AnyResult::Ok(())
+            });
+        });
+        log::trace!("Dropped StreamData");
     }
 }

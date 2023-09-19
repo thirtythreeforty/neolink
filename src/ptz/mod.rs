@@ -122,7 +122,5 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
         }
     };
 
-    camera.shutdown().await;
-
     Ok(())
 }
