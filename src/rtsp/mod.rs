@@ -1172,7 +1172,7 @@ fn build_h265(bin: &Element) -> Result<AppSrc> {
     let source = make_element("appsrc", "vidsrc")?
         .dynamic_cast::<AppSrc>()
         .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
-    source.set_is_live(true);
+    source.set_is_live(false);
     source.set_block(false);
     source.set_property("emit-signals", false);
     source.set_max_bytes(52428800);
@@ -1206,7 +1206,7 @@ fn build_aac(bin: &Element) -> Result<AppSrc> {
         .dynamic_cast::<AppSrc>()
         .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
 
-    source.set_is_live(true);
+    source.set_is_live(false);
     source.set_block(false);
     source.set_property("emit-signals", false);
     source.set_max_bytes(52428800);
@@ -1251,7 +1251,7 @@ fn build_adpcm(bin: &Element, block_size: u32) -> Result<AppSrc> {
     let source = make_element("appsrc", "audsrc")?
         .dynamic_cast::<AppSrc>()
         .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
-    source.set_is_live(true);
+    source.set_is_live(false);
     source.set_block(false);
     source.set_property("emit-signals", false);
     source.set_max_bytes(52428800);
@@ -1326,8 +1326,18 @@ fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
     })
 }
 fn make_queue(name: &str) -> AnyResult<Element> {
-    let queue = make_element("queue", name)?;
-    queue.set_property_from_str("leaky", "downstream");
+    // let queue = make_element("queue", name)?;
+    // queue.set_property_from_str("leaky", "downstream");
+    // queue.set_property("max-size-bytes", 0u32);
+    // queue.set_property("max-size-buffers", 0u32);
+    // queue.set_property(
+    //     "max-size-time",
+    //     std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
+    //         .unwrap_or(0),
+    // );
+    // Ok(queue)
+
+    let queue = make_element("queue2", name)?;
     queue.set_property("max-size-bytes", 0u32);
     queue.set_property("max-size-buffers", 0u32);
     queue.set_property(
@@ -1335,5 +1345,6 @@ fn make_queue(name: &str) -> AnyResult<Element> {
         std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
             .unwrap_or(0),
     );
+    queue.set_property("use-buffering", true);
     Ok(queue)
 }
