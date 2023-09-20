@@ -532,6 +532,7 @@ impl StreamData {
                                 AnyResult::Ok(())
                             },
                             v = async {
+                                watchdog_rx.recv().await; // Wait forever for the first feed
                                 loop {
                                     let check_timeout = timeout(Duration::from_secs(3), watchdog_rx.recv()).await;
                                     if let Err(_)| Ok(None) = check_timeout {
@@ -552,13 +553,12 @@ impl StreamData {
                                     log::debug!("Running Stream Instance Task");
                                     Box::pin(async move {
                                         let res = async {
-                                            watchdog_tx.send(()).await?; // Feed the watchdog
                                             let mut prev_ts = Duration::ZERO;
                                             let mut stream_data = camera.start_video(name, 0, strict).await?;
-                                            watchdog_tx.send(()).await?; // Feed the watchdog
                                             loop {
                                                 watchdog_tx.send(()).await?;  // Feed the watchdog
                                                 let data = stream_data.get_data().await??;
+                                                watchdog_tx.send(()).await?;  // Feed the watchdog
 
                                                 // Update the stream config with any information
                                                 match &data {

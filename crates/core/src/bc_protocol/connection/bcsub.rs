@@ -1,14 +1,14 @@
 use super::BcConnection;
 use crate::bcmedia::codex::BcMediaCodex;
-use crate::{bc::model::*, Error, Result};
-use futures::stream::{IntoAsyncRead, Stream, StreamExt, TryStreamExt};
+use crate::{bc::model::*, bcmedia::model::*, Error, Result};
+use futures::stream::{Stream, TryStreamExt};
 use std::io::{Error as IoError, ErrorKind, Result as IoResult};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc::Receiver;
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tokio_util::codec::FramedRead;
-use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt};
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 pub struct BcSubscription<'a> {
     rx: ReceiverStream<Result<Bc>>,
@@ -34,57 +34,6 @@ impl<'a> Stream for BcStream<'a> {
         }
     }
 }
-
-pub struct BcPayloadStream<'a> {
-    rx: &'a mut ReceiverStream<Result<Bc>>,
-}
-
-impl<'a> Unpin for BcPayloadStream<'a> {}
-
-impl<'a> Stream for BcPayloadStream<'a> {
-    type Item = IoResult<Vec<u8>>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<IoResult<Vec<u8>>>> {
-        // log::debug!("PayloadStream: Poll");
-        match Pin::new(&mut self.rx).poll_next(cx) {
-            Poll::Ready(Some(Ok(Bc {
-                body:
-                    BcBody::ModernMsg(ModernMsg {
-                        payload: Some(BcPayloads::Binary(data)),
-                        ..
-                    }),
-                ..
-            }))) => {
-                // log::debug!("PayloadStream: Data");
-                return Poll::Ready(Some(Ok(data)));
-            }
-            Poll::Ready(Some(Ok(_bc))) => {
-                // trace!("Got other BC in payload stream");
-                // log::debug!("PayloadStream: Other Data!");
-            }
-            Poll::Ready(Some(Err(e))) => {
-                // log::debug!("PayloadStream: Err");
-                return Poll::Ready(Some(Err(IoError::new(ErrorKind::Other, e))));
-            }
-            Poll::Ready(None) => {
-                // log::debug!("PayloadStream: None");
-                return Poll::Ready(None);
-            }
-            Poll::Pending => {
-                // log::debug!("PayloadStream: Pend");
-                return Poll::Pending;
-            }
-        }
-        // log::debug!("PayloadStream: Default Pend and Wake");
-        cx.waker().wake_by_ref();
-        Poll::Pending
-    }
-}
-
-pub type BcMediaStream<'b> = FramedRead<Compat<IntoAsyncRead<BcPayloadStream<'b>>>, BcMediaCodex>;
 
 impl<'a> BcSubscription<'a> {
     pub fn new(
@@ -127,16 +76,26 @@ impl<'a> BcSubscription<'a> {
         BcStream { rx: &mut self.rx }
     }
 
-    #[allow(unused)]
-    pub fn payload_stream(&'_ mut self) -> BcPayloadStream<'_> {
-        BcPayloadStream { rx: &mut self.rx }
+    pub fn payload_stream(&'_ mut self) -> impl Stream<Item = IoResult<Vec<u8>>> + '_ {
+        (&mut self.rx).filter_map(|x| match x {
+            Ok(Bc {
+                body:
+                    BcBody::ModernMsg(ModernMsg {
+                        payload: Some(BcPayloads::Binary(data)),
+                        ..
+                    }),
+                ..
+            }) => {
+                // log::debug!("PayloadStream: Data");
+                Some(Ok(data))
+            }
+            Ok(_) => None,
+            Err(e) => Some(Err(IoError::new(ErrorKind::Other, e))),
+        })
     }
 
-    #[allow(unused)]
-    pub fn bcmedia_stream(&'_ mut self, strict: bool) -> BcMediaStream<'_> {
-        let async_read = BcPayloadStream { rx: &mut self.rx }
-            .into_async_read()
-            .compat();
+    pub fn bcmedia_stream(&'_ mut self, strict: bool) -> impl Stream<Item = Result<BcMedia>> + '_ {
+        let async_read = self.payload_stream().into_async_read().compat();
         FramedRead::new(async_read, BcMediaCodex::new(strict))
     }
 }
