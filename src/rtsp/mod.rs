@@ -1153,9 +1153,11 @@ fn build_h264(bin: &Element) -> Result<AppSrc> {
         .map_err(|_| anyhow!("Cannot cast back"))?;
     let queue = make_queue("source_queue")?;
     let parser = make_element("h264parse", "parser")?;
-    let payload = make_element("rtph264pay", "pay0")?;
-    bin.add_many(&[&source, &queue, &parser, &payload])?;
-    Element::link_many(&[&source, &queue, &parser, &payload])?;
+    let payload = make_element("rtph264pay", "vid_pay")?;
+    let jitter = make_element("rtpjitterbuffer", "pay0")?;
+    jitter.set_property("latency", 2000u32);
+    bin.add_many(&[&source, &queue, &parser, &payload, &jitter])?;
+    Element::link_many(&[&source, &queue, &parser, &payload, &jitter])?;
 
     let source = source
         .dynamic_cast::<AppSrc>()
@@ -1184,9 +1186,11 @@ fn build_h265(bin: &Element) -> Result<AppSrc> {
         .map_err(|_| anyhow!("Cannot cast back"))?;
     let queue = make_queue("source_queue")?;
     let parser = make_element("h265parse", "parser")?;
-    let payload = make_element("rtph265pay", "pay0")?;
-    bin.add_many(&[&source, &queue, &parser, &payload])?;
-    Element::link_many(&[&source, &queue, &parser, &payload])?;
+    let payload = make_element("rtph265pay", "vid_pay")?;
+    let jitter = make_element("rtpjitterbuffer", "pay0")?;
+    jitter.set_property("latency", 2000u32);
+    bin.add_many(&[&source, &queue, &parser, &payload, &jitter])?;
+    Element::link_many(&[&source, &queue, &parser, &payload, &jitter])?;
 
     let source = source
         .dynamic_cast::<AppSrc>()
@@ -1222,10 +1226,16 @@ fn build_aac(bin: &Element) -> Result<AppSrc> {
         Err(_) => make_element("avdec_aac", "auddecoder_avdec_aac"),
     }?;
     let encoder = make_element("audioconvert", "audencoder")?;
-    let payload = make_element("rtpL16pay", "pay1")?;
+    let payload = make_element("rtpL16pay", "aud_pay")?;
+    let jitter = make_element("rtpjitterbuffer", "pay1")?;
+    jitter.set_property("latency", 2000u32);
 
-    bin.add_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
-    Element::link_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
+    bin.add_many(&[
+        &source, &queue, &parser, &decoder, &encoder, &payload, &jitter,
+    ])?;
+    Element::link_many(&[
+        &source, &queue, &parser, &decoder, &encoder, &payload, &jitter,
+    ])?;
 
     let source = source
         .dynamic_cast::<AppSrc>()
@@ -1272,11 +1282,13 @@ fn build_adpcm(bin: &Element, block_size: u32) -> Result<AppSrc> {
     let queue = make_queue("audqueue")?;
     let decoder = make_element("decodebin", "auddecoder")?;
     let encoder = make_element("audioconvert", "audencoder")?;
-    let payload = make_element("rtpL16pay", "pay1")?;
+    let payload = make_element("rtpL16pay", "aud_pay")?;
+    let jitter = make_element("rtpjitterbuffer", "pay1")?;
+    jitter.set_property("latency", 2000u32);
 
-    bin.add_many(&[&source, &queue, &decoder, &encoder, &payload])?;
+    bin.add_many(&[&source, &queue, &decoder, &encoder, &payload, &jitter])?;
     Element::link_many(&[&source, &queue, &decoder])?;
-    Element::link_many(&[&encoder, &payload])?;
+    Element::link_many(&[&encoder, &payload, &jitter])?;
     decoder.connect_pad_added(move |_element, pad| {
         debug!("Linking encoder to decoder: {:?}", pad.caps());
         let sink_pad = encoder
@@ -1304,6 +1316,7 @@ fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
             "h265parse" => "videoparsersbad (gst-plugins-bad)",
             "rtph264pay" => "rtp (gst-plugins-good)",
             "rtph265pay" => "rtp (gst-plugins-good)",
+            "rtpjitterbuffer" => "rtp (gst-plugins-good)",
             "aacparse" => "audioparsers (gst-plugins-good)",
             "rtpL16pay" => "rtp (gst-plugins-good)",
             "x264enc" => "x264 (gst-plugins-ugly)",
