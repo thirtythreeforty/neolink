@@ -649,6 +649,7 @@ async fn stream_run(
     log::info!("{}: Avaliable at {}", name, paths.join(", "));
 
     let stream_cancel = CancellationToken::new();
+    let drop_guard = stream_cancel.clone().drop_guard();
     let mut set = JoinSet::new();
     // Wait for new media client data to come in from the factory
     while let Some(mut client_data) = client_rx.recv().await {
@@ -861,6 +862,7 @@ async fn stream_run(
     // Cancel any remaining threads that are trying to send data
     // Although it should be finished already when the appsrcs are dropped
     stream_cancel.cancel();
+    drop(drop_guard);
     while set.join_next().await.is_some() {}
     log::trace!("Stream done");
     AnyResult::Ok(())
