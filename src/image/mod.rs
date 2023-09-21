@@ -52,8 +52,15 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
         let mut stream = BroadcastStream::new(stream_data.vid.resubscribe())
             .filter(|f| futures::future::ready(f.is_ok())); // Filter to ignore lagged
         let buf = loop {
-            if let Some(Ok(StampedData { data, ts: _ })) = stream.next().await {
-                break data;
+            if let Some(Ok(StampedData {
+                data,
+                ts: _,
+                keyframe,
+            })) = stream.next().await
+            {
+                if keyframe {
+                    break data;
+                }
             }
         };
 

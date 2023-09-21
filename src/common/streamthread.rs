@@ -407,6 +407,7 @@ pub(crate) struct StreamConfig {
 
 #[derive(Debug, Clone)]
 pub(crate) struct StampedData {
+    pub(crate) keyframe: bool,
     pub(crate) data: Arc<Vec<u8>>,
     pub(crate) ts: Duration,
 }
@@ -552,6 +553,8 @@ impl StreamData {
                                     let watchdog_tx = watchdog_tx.clone();
                                     log::debug!("Running Stream Instance Task");
                                     Box::pin(async move {
+                                        let mut recieved_iframe = false;
+                                        let mut aud_keyframe = false;
                                         let res = async {
                                             let mut prev_ts = Duration::ZERO;
                                             let mut stream_data = camera.start_video(name, 0, strict).await?;
@@ -636,9 +639,10 @@ impl StreamData {
                                                 }
 
                                                 match data {
-                                                    BcMedia::Iframe(BcMediaIframe{data, microseconds, ..}) | BcMedia::Pframe(BcMediaPframe{data, microseconds,..}) => {
+                                                    BcMedia::Iframe(BcMediaIframe{data, microseconds, ..}) => {
                                                         prev_ts = Duration::from_micros(microseconds as u64);
                                                         let d = StampedData{
+                                                                keyframe: true,
                                                                 data: Arc::new(data),
                                                                 ts: prev_ts
                                                         };
@@ -649,13 +653,33 @@ impl StreamData {
                                                                history.pop_front();
                                                            }
                                                         });
+                                                        recieved_iframe = true;
+                                                        aud_keyframe = true;
+                                                        log::trace!("Sent Vid Key Frame");
+                                                    },
+                                                    BcMedia::Pframe(BcMediaPframe{data, microseconds,..}) if recieved_iframe => {
+                                                        prev_ts = Duration::from_micros(microseconds as u64);
+                                                        let d = StampedData{
+                                                            keyframe: false,
+                                                            data: Arc::new(data),
+                                                            ts: prev_ts
+                                                        };
+                                                        let _ = vid_tx.send(d.clone());
+                                                        vid_history.send_modify(|history| {
+                                                           history.push_back(d);
+                                                           while history.len() > 100 {
+                                                               history.pop_front();
+                                                           }
+                                                        });
                                                         log::trace!("Sent Vid Frame");
                                                     }
-                                                    BcMedia::Aac(BcMediaAac{data, ..}) | BcMedia::Adpcm(BcMediaAdpcm{data,..}) => {
+                                                    BcMedia::Aac(BcMediaAac{data, ..}) | BcMedia::Adpcm(BcMediaAdpcm{data,..}) if recieved_iframe => {
                                                         let d = StampedData{
-                                                                data: Arc::new(data),
-                                                                ts: prev_ts,
+                                                            keyframe: aud_keyframe,
+                                                            data: Arc::new(data),
+                                                            ts: prev_ts,
                                                         };
+                                                        aud_keyframe = false;
                                                         let _ = aud_tx.send(d.clone())?;
                                                         aud_history.send_modify(|history| {
                                                            history.push_back(d);

@@ -678,13 +678,17 @@ async fn stream_run(
                 _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
                 v = async {
                     // Send Initial
+                    let mut found_key_frame = false;
                     for data in thread_vid_history.borrow().iter() {
-                        thread_vid_data_tx.send(
-                            StreamData::Media {
-                                data: data.data.clone(),
-                                ts: Duration::ZERO,
-                            }
-                        )?;
+                        if data.keyframe || found_key_frame {
+                            found_key_frame = true;
+                            thread_vid_data_tx.send(
+                                StreamData::Media {
+                                    data: data.data.clone(),
+                                    ts: Duration::ZERO,
+                                }
+                            )?;
+                        }
                     }
 
                     // Send new
@@ -716,13 +720,17 @@ async fn stream_run(
                 _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
                 v = async {
                     // Send Initial
+                    let mut found_key_frame = false;
                     for data in thread_aud_history.borrow().iter() {
-                        thread_aud_data_tx.send(
-                            StreamData::Media {
-                                data: data.data.clone(),
-                                ts: Duration::ZERO,
-                            }
-                        )?;
+                        if data.keyframe || found_key_frame {
+                            thread_aud_data_tx.send(
+                                StreamData::Media {
+                                    data: data.data.clone(),
+                                    ts: Duration::ZERO,
+                                }
+                            )?;
+                            found_key_frame = true;
+                        }
                     }
                     // Send new
                     while let Some(data) = audstream.next().await {
