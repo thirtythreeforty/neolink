@@ -164,7 +164,7 @@ To use mqtt you will need to adjust your config file as such:
 ```toml
 bind = "0.0.0.0"
 
-[[mqtt]]
+[mqtt]
 broker_addr = "127.0.0.1" # Address of the mqtt server
 port = 1883 # mqtt servers port
 credentials = ["username", "password"] # mqtt server login details
@@ -288,7 +288,7 @@ Disabling these may help to conserve battery
 ```toml
 bind = "0.0.0.0"
 
-[[mqtt]]
+[mqtt]
 broker_addr = "127.0.0.1" # Address of the mqtt server
 port = 1883 # mqtt servers port
 credentials = ["username", "password"] # mqtt server login details
