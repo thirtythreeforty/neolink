@@ -18,8 +18,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    MdRequest, MdState, NeoCamMdThread, NeoCamStreamThread, NeoCamThread, NeoInstance,
-    StreamInstance, StreamRequest,
+    MdRequest, MdState, NeoCamMdThread, NeoCamStreamThread, NeoCamThread, NeoCamThreadState,
+    NeoInstance, StreamInstance, StreamRequest,
 };
 use crate::{config::CameraConfig, AnyResult, Result};
 use neolink_core::bc_protocol::{BcCamera, StreamKind};
@@ -34,6 +34,8 @@ pub(crate) enum NeoCamCommand {
     Streams(OneshotSender<Vec<StreamInstance>>),
     Motion(OneshotSender<WatchReceiver<MdState>>),
     Config(OneshotSender<WatchReceiver<CameraConfig>>),
+    Disconnect(OneshotSender<()>),
+    Connect(OneshotSender<()>),
 }
 /// The underlying camera binding
 pub(crate) struct NeoCam {
@@ -51,6 +53,7 @@ impl NeoCam {
         let (camera_watch_tx, camera_watch_rx) = watch(Weak::new());
         let (stream_request_tx, stream_request_rx) = mpsc(100);
         let (md_request_tx, md_request_rx) = mpsc(100);
+        let (state_tx, state_rx) = watch(NeoCamThreadState::Connected);
 
         let set = JoinSet::new();
         let mut me = Self {
@@ -133,6 +136,20 @@ impl NeoCam {
                             },
                             NeoCamCommand::Config(sender) => {
                                 let _ = sender.send(thread_watch_config_rx.clone());
+                            },
+                            NeoCamCommand::Connect(sender) => {
+                                if !matches!(*state_tx.borrow(), NeoCamThreadState::Disconnected) {
+                                    state_tx.send_replace(NeoCamThreadState::Connected);
+                                    log::info!("{}: Connect On Request", thread_watch_config_rx.borrow().name);
+                                }
+                                let _ = sender.send(());
+                            }
+                            NeoCamCommand::Disconnect(sender) => {
+                                if !matches!(*state_tx.borrow(), NeoCamThreadState::Disconnected) {
+                                    state_tx.send_replace(NeoCamThreadState::Disconnected);
+                                    log::info!("{}: Disconnect On Request", thread_watch_config_rx.borrow().name);
+                                }
+                                let _ = sender.send(());
                             }
                         }
                     }
@@ -155,8 +172,13 @@ impl NeoCam {
         //
         // It will keep it logged and reconnect
         let thread_watch_config_rx = watch_config_rx.clone();
-        let mut cam_thread =
-            NeoCamThread::new(thread_watch_config_rx, camera_watch_tx, me.cancel.clone()).await;
+        let mut cam_thread = NeoCamThread::new(
+            state_rx,
+            thread_watch_config_rx,
+            camera_watch_tx,
+            me.cancel.clone(),
+        )
+        .await;
         me.set.spawn(async move { cam_thread.run().await });
 
         // This thread maintains the streams
@@ -216,6 +238,9 @@ impl NeoCam {
             }
         });
 
+        // This thread will apply battery saving by disconnecting the camera on certain events (like no motion)
+        // and reconnecting on other events like push notifications
+
         Ok(me)
     }
 
@@ -227,9 +252,8 @@ impl NeoCam {
         )
     }
 
-    #[allow(dead_code)]
     pub(crate) async fn update_config(&self, config: CameraConfig) -> Result<()> {
-        self.config_watch.send(config)?;
+        self.config_watch.send_replace(config);
         Ok(())
     }
 
@@ -237,10 +261,6 @@ impl NeoCam {
         let _ = self.commander.send(NeoCamCommand::HangUp).await;
         self.set.shutdown().await;
         AnyResult::Ok(())
-    }
-
-    pub(crate) fn get_config_watch(&self) -> &WatchSender<CameraConfig> {
-        &self.config_watch
     }
 }
 

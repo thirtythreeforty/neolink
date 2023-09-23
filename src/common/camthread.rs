@@ -8,7 +8,13 @@ use tokio_util::sync::CancellationToken;
 use crate::{config::CameraConfig, utils::connect_and_login, Result};
 use neolink_core::bc_protocol::BcCamera;
 
+pub(crate) enum NeoCamThreadState {
+    Connected,
+    Disconnected,
+}
+
 pub(crate) struct NeoCamThread {
+    state: WatchReceiver<NeoCamThreadState>,
     config: WatchReceiver<CameraConfig>,
     cancel: CancellationToken,
     camera_watch: WatchSender<Weak<BcCamera>>,
@@ -16,11 +22,13 @@ pub(crate) struct NeoCamThread {
 
 impl NeoCamThread {
     pub(crate) async fn new(
+        watch_state_rx: WatchReceiver<NeoCamThreadState>,
         watch_config_rx: WatchReceiver<CameraConfig>,
         camera_watch_tx: WatchSender<Weak<BcCamera>>,
         cancel: CancellationToken,
     ) -> Self {
         Self {
+            state: watch_state_rx,
             config: watch_config_rx,
             cancel,
             camera_watch: camera_watch_tx,
@@ -77,13 +85,21 @@ impl NeoCamThread {
         let mut backoff = MIN_BACKOFF;
 
         loop {
+            self.state
+                .clone()
+                .wait_for(|state| matches!(state, NeoCamThreadState::Connected))
+                .await?;
             let mut config_rec = self.config.clone();
 
             let config = config_rec.borrow_and_update().clone();
             let now = Instant::now();
 
+            let mut state = self.state.clone();
             let res = tokio::select! {
                 Ok(_) = config_rec.changed() => {
+                    None
+                }
+                Ok(_) = state.wait_for(|state| matches!(state, NeoCamThreadState::Disconnected)) => {
                     None
                 }
                 v = self.run_camera(&config) => {

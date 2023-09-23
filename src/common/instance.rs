@@ -171,4 +171,20 @@ impl NeoInstance {
     pub(crate) fn camera(&self) -> WatchReceiver<Weak<BcCamera>> {
         self.camera_watch.clone()
     }
+
+    pub(crate) async fn connect(&self) -> Result<()> {
+        let (instance_tx, instance_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::Connect(instance_tx))
+            .await?;
+        Ok(instance_rx.await?)
+    }
+
+    pub(crate) async fn disconnect(&self) -> Result<()> {
+        let (instance_tx, instance_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::Disconnect(instance_tx))
+            .await?;
+        Ok(instance_rx.await?)
+    }
 }

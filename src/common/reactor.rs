@@ -95,7 +95,7 @@ impl NeoReactor {
                                 instances.retain(|name, _| names.contains_key(name));
                                 for (name, instance) in instances.iter() {
                                     if let Some(conf) = names.remove(name) {
-                                        let _ = instance.get_config_watch().send_replace(conf);
+                                        let _ = instance.update_config(conf).await;
                                     }
                                 }
 

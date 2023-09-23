@@ -333,13 +333,13 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                                 format!("{}: Online Watch Dropped", camera_name)
                             })?;
                             log::trace!("Publish online");
-                            mqtt_watch.send_message("status", "online", true).await.with_context(|| {
-                                format!("{}: Failed to publish Online", camera_name)
+                            mqtt_watch.send_message("status", "connected", true).await.with_context(|| {
+                                format!("{}: Failed to publish connected", camera_name)
                             })?;
                             camera_watch.wait_for(|cam| cam.upgrade().is_none()).await.with_context(|| {
                                 format!("{}: Disconnect Watch Dropped", camera_name)
                             })?;
-                            mqtt_watch.send_message("status", "disconnected4", true).await.with_context(|| {
+                            mqtt_watch.send_message("status", "disconnected", true).await.with_context(|| {
                                 format!("{}: Failed to publish disconnected", camera_name)
                             })?;
                         }
