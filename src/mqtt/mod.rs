@@ -31,6 +31,8 @@
 //! `/query/battery` Request that the camera reports its battery level
 //! `/query/pir` Request that the camera reports its pir status
 //! `/query/ptz/preset` Request that the camera reports the PTZ presets
+//! `/query/preview` Request that the camera post a base64 encoded jpeg
+//!    of the stream to `/status/preview`
 //!
 //!
 //! # Usage
@@ -1051,6 +1053,41 @@ async fn handle_mqtt_message(
             mqtt.send_message("query/ptz", &reply, false)
                 .await
                 .with_context(|| "Failed to publish ptz query")?;
+        }
+        MqttReplyRef {
+            topic: "query/preview",
+            ..
+        } => {
+            let res = camera
+                .run_task(|cam| {
+                    Box::pin(async move {
+                        let data = cam.get_snapshot().await?;
+                        AnyResult::Ok(data)
+                    })
+                })
+                .await;
+            let reply = match res {
+                Err(e) => {
+                    error!("Failed to get snapshot: {:?}", e);
+                    "FAIL"
+                }
+                Ok(bytes) => {
+                    if let Err(e) = mqtt
+                        .send_message("status/preview", BASE64.encode(image).as_str(), true)
+                        .await
+                        .with_context(|| format!("{}: Failed to publish preview", camera_name))
+                    {
+                        error!("Failed to send preview: {e:?}");
+                        "FAIL"
+                    } else {
+                        "OK"
+                    }
+                }
+            }
+            .to_string();
+            mqtt.send_message("query/preview", &reply, false)
+                .await
+                .with_context(|| "Failed to publish preview query")?;
         }
         _ => {}
     }

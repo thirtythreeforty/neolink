@@ -237,6 +237,8 @@ Query Messages:
 - `/query/battery` Request that the camera reports its battery level
 - `/query/pir` Request that the camera reports its pir status
 - `/query/ptz/preset` Request that the camera reports its PTZ presets
+- `/query/preview` Request that the camera post a base64 encoded jpeg
+    of the stream to `/status/preview` now, ignoring the timer
 
 ### Controlling RTSP from MQTT
 
