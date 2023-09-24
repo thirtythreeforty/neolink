@@ -136,16 +136,27 @@ pub(crate) async fn main(_: Opt, reactor: NeoReactor) -> Result<()> {
                                     .build()
                                     .unwrap();
                                 runtime.block_on(async move {
-                                    let camera = thread_reactor2.get(&name).await?;
-                                    tokio::select!(
-                                        _ = thread_global_cancel.cancelled() => {
-                                            AnyResult::Ok(())
-                                        },
-                                        _ = local_cancel.cancelled() => {
-                                            AnyResult::Ok(())
-                                        },
-                                        v = listen_on_camera(camera, mqtt_instance) => v,
-                                    )
+                                    loop {
+                                        let camera = thread_reactor2.get(&name).await?;
+                                        let mqtt_instance = mqtt_instance.resubscribe().await?;
+                                        let r = tokio::select!{
+                                            _ = thread_global_cancel.cancelled() => {
+                                                AnyResult::Ok(())
+                                            },
+                                            _ = local_cancel.cancelled() => {
+                                                AnyResult::Ok(())
+                                            },
+                                            v = listen_on_camera(camera, mqtt_instance) => {
+                                                v
+                                            },
+                                        };
+                                        if let Ok(()) = &r {
+                                            break r
+                                        } else {
+                                            log::debug!("listen_on_camera stopped: {:?}", r);
+                                            continue;
+                                        }
+                                    }
                                 })
                             }) ;
                         }
@@ -264,10 +275,12 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                         .send_message("status", "disconnected", true)
                         .await
                         .with_context(|| format!("Failed to publish status for {}", camera_name))?;
+                let _drop_message = mqtt_instance.drop_guard_message("status", "disconnected").await?;
                 mqtt_instance
                     .send_message("status/motion", "unknown", true)
                     .await
                     .with_context(|| format!("Failed to publish motion unknown for {}", camera_name))?;
+                let _drop_message2 = mqtt_instance.drop_guard_message("status/motion", "unknown").await?;
 
                 if let Some(discovery_config) = config.discovery.as_ref() {
                     enable_discovery(discovery_config, &mqtt_instance, &camera).await?;
@@ -300,6 +313,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                         let (tx, mut rx) = mpsc(1);
                         tokio::select! {
                             v = async {
+                                log::debug!("Listening to message on {}", mqtt_msg.get_name());
                                 while let Ok(msg) = mqtt_msg.recv().await {
                                     let mqtt_msg = mqtt_msg.resubscribe().await?;
                                     let camera_msg = camera_msg.clone();
@@ -309,6 +323,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                                         tokio::select!{
                                             _ = cancel_msg.cancelled() => AnyResult::Ok(()),
                                             v = async {
+                                                // log::debug!("Got message: {msg:?}");
                                                 let res = handle_mqtt_message(msg, &mqtt_msg, &camera_msg).await;
                                                 if res.is_err() {
                                                     tx.send(res).await?;
@@ -318,6 +333,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                                         }
                                     });
                                 }
+                                log::debug!("Listening to message on {}", mqtt_msg.get_name());
                                 AnyResult::Ok(())
                             } => v,
                             v = rx.recv() => {
@@ -347,7 +363,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                     // Handle the floodlight
                     v = async {
                         let (tx, mut rx) = mpsc(100);
-                        tokio::select! {
+                        let v = tokio::select! {
                             v = camera_floodlight.run_passive_task(|cam| {
                                 let tx = tx.clone();
                                 Box::pin(
@@ -376,6 +392,12 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                                 }
                                 AnyResult::Ok(())
                             } => v,
+                        };
+                        match v.map_err(|e| e.downcast::<neolink_core::Error>()) {
+                            Err(Ok(neolink_core::Error::UnintelligibleReply{..})) => futures::future::pending().await,
+                            Ok(()) => AnyResult::Ok(()),
+                            Err(Ok(e)) => Err(e.into()),
+                            Err(Err(e)) => Err(e),
                         }?;
                         AnyResult::Ok(())
                     } => v,
@@ -383,18 +405,27 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                     v = async {
                         let mut md = camera_motion.motion().await?;
                         loop {
-                            md.wait_for(|state| matches!(state, MdState::Start(_))).await.with_context(|| {
-                                format!("{}: MdStart Watch Dropped", camera_name)
-                            })?;
-                            mqtt_motion.send_message("status/motion", "on", true).await.with_context(|| {
-                                format!("{}: Failed to publish motion start", camera_name)
-                            })?;
-                            md.wait_for(|state| matches!(state, MdState::Stop(_))).await.with_context(|| {
-                                format!("{}: MdStop Watch Dropped", camera_name)
-                            })?;
-                            mqtt_motion.send_message("status/motion", "off", true).await.with_context(|| {
-                                format!("{}: Failed to publish motion stop", camera_name)
-                            })?;
+                            let v = async {
+                                md.wait_for(|state| matches!(state, MdState::Start(_))).await.with_context(|| {
+                                    format!("{}: MdStart Watch Dropped", camera_name)
+                                })?;
+                                mqtt_motion.send_message("status/motion", "on", true).await.with_context(|| {
+                                    format!("{}: Failed to publish motion start", camera_name)
+                                })?;
+                                md.wait_for(|state| matches!(state, MdState::Stop(_))).await.with_context(|| {
+                                    format!("{}: MdStop Watch Dropped", camera_name)
+                                })?;
+                                mqtt_motion.send_message("status/motion", "off", true).await.with_context(|| {
+                                    format!("{}: Failed to publish motion stop", camera_name)
+                                })?;
+                                AnyResult::Ok(())
+                            }.await;
+                            match v.map_err(|e| e.downcast::<neolink_core::Error>()) {
+                                Err(Ok(neolink_core::Error::UnintelligibleReply{..})) => futures::future::pending().await,
+                                Ok(()) => AnyResult::Ok(()),
+                                Err(Ok(e)) => Err(e.into()),
+                                Err(Err(e)) => Err(e),
+                            }?;
                         }
                     } => v,
                     // Handle the SNAP (image preview)
@@ -404,31 +435,40 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                             i.set_missed_tick_behavior(MissedTickBehavior::Skip);
                             i
                         });
-                        while wait.next().await.is_some() {
-                            let image = camera_snap.run_passive_task(|cam| {
-                                Box::pin(async move {
-                                    let image = cam.get_snapshot().await?;
-                                    AnyResult::Ok(image)
-                                })
-                            }).await;
-                            let image = match image {
-                                Err(e) => match e.downcast::<neolink_core::Error>() {
-                                    Ok(neolink_core::Error::CameraServiceUnavaliable) => {
-                                        log::debug!("Image not supported");
-                                        futures::future::pending().await
-                                    },
-                                    Ok(e) => Err(e.into()),
-                                    Err(e) => Err(e),
-                                }
-                                n => n,
-                            }?;
-                            mqtt_snap
-                                    .send_message("status/preview", BASE64.encode(image).as_str(), true)
-                                    .await
-                                    .with_context(|| {
-                                        format!("{}: Failed to publish preview", camera_name)
-                                    })?;
-                        }
+                        let v = async {
+                            while wait.next().await.is_some() {
+                                let image = camera_snap.run_passive_task(|cam| {
+                                    Box::pin(async move {
+                                        let image = cam.get_snapshot().await?;
+                                        AnyResult::Ok(image)
+                                    })
+                                }).await;
+                                let image = match image {
+                                    Err(e) => match e.downcast::<neolink_core::Error>() {
+                                        Ok(neolink_core::Error::CameraServiceUnavaliable) => {
+                                            log::debug!("Image not supported");
+                                            futures::future::pending().await
+                                        },
+                                        Ok(e) => Err(e.into()),
+                                        Err(e) => Err(e),
+                                    }
+                                    n => n,
+                                }?;
+                                mqtt_snap
+                                        .send_message("status/preview", BASE64.encode(image).as_str(), true)
+                                        .await
+                                        .with_context(|| {
+                                            format!("{}: Failed to publish preview", camera_name)
+                                        })?;
+                            }
+                            AnyResult::Ok(())
+                        }.await;
+                        match v.map_err(|e| e.downcast::<neolink_core::Error>()) {
+                            Err(Ok(neolink_core::Error::UnintelligibleReply{..})) => futures::future::pending().await,
+                            Ok(()) => AnyResult::Ok(()),
+                            Err(Ok(e)) => Err(e.into()),
+                            Err(Err(e)) => Err(e),
+                        }?;
                         AnyResult::Ok(())
                     } => v,
                     // Handle the battery publish
@@ -438,31 +478,41 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                             i.set_missed_tick_behavior(MissedTickBehavior::Skip);
                             i
                         });
-                        while wait.next().await.is_some() {
-                            let xml = camera_battery.run_passive_task(|cam| {
-                                Box::pin(async move {
-                                    let xml = cam.battery_info().await?;
-                                    AnyResult::Ok(xml)
-                                })
-                            }).await;
-                            let xml = match xml {
-                                Err(e) => match e.downcast::<neolink_core::Error>() {
-                                    Ok(neolink_core::Error::CameraServiceUnavaliable) => {
-                                        log::debug!("Battery not supported");
-                                        futures::future::pending().await
-                                    },
-                                    Ok(e) => Err(e.into()),
-                                    Err(e) => Err(e),
-                                }
-                                n => n,
-                            }?;
-                            mqtt_battery
-                                    .send_message("status/battery_level", format!("{}", xml.battery_percent).as_str(), true)
-                                    .await
-                                    .with_context(|| {
-                                        format!("{}: Failed to publish battery", camera_name)
-                                    })?;
-                        }
+
+                        let v = async {
+                            while wait.next().await.is_some() {
+                                let xml = camera_battery.run_passive_task(|cam| {
+                                    Box::pin(async move {
+                                        let xml = cam.battery_info().await?;
+                                        AnyResult::Ok(xml)
+                                    })
+                                }).await;
+                                let xml = match xml {
+                                    Err(e) => match e.downcast::<neolink_core::Error>() {
+                                        Ok(neolink_core::Error::CameraServiceUnavaliable) => {
+                                            log::debug!("Battery not supported");
+                                            futures::future::pending().await
+                                        },
+                                        Ok(e) => Err(e.into()),
+                                        Err(e) => Err(e),
+                                    }
+                                    n => n,
+                                }?;
+                                mqtt_battery
+                                        .send_message("status/battery_level", format!("{}", xml.battery_percent).as_str(), true)
+                                        .await
+                                        .with_context(|| {
+                                            format!("{}: Failed to publish battery", camera_name)
+                                        })?;
+                            }
+                            AnyResult::Ok(())
+                        }.await;
+                        match v.map_err(|e| e.downcast::<neolink_core::Error>()) {
+                            Err(Ok(neolink_core::Error::UnintelligibleReply{..})) => futures::future::pending().await,
+                            Ok(()) => AnyResult::Ok(()),
+                            Err(Ok(e)) => Err(e.into()),
+                            Err(Err(e)) => Err(e),
+                        }?;
                         AnyResult::Ok(())
                     } => v
                 }?;
@@ -712,10 +762,22 @@ async fn handle_mqtt_message(
                     };
 
                     if let (Some(seconds), Some(bc_direction)) = (seconds, bc_direction) {
+                        // On drop send the stop command again just to make sure it stops
+                        let _drop_command = camera.clone().drop_command(
+                            |cam| {
+                                Box::pin(async move {
+                                    cam.send_ptz(BcDirection::Stop, speed).await?;
+                                    AnyResult::Ok(())
+                                })
+                            },
+                            Duration::from_millis(100),
+                        );
                         if let Err(e) = camera
                             .run_task(|cam| {
                                 Box::pin(async move {
                                     cam.send_ptz(bc_direction, speed).await?;
+                                    sleep(Duration::from_secs_f32(seconds)).await;
+                                    cam.send_ptz(BcDirection::Stop, speed).await?;
                                     AnyResult::Ok(())
                                 })
                             })
@@ -724,24 +786,7 @@ async fn handle_mqtt_message(
                             error!("Failed to send PTZ: {:?}", e);
                             "FAIL"
                         } else {
-                            // sleep for the designated seconds
-                            sleep(Duration::from_secs_f32(seconds)).await;
-
-                            // note that amount is not used in the stop command
-                            if let Err(e) = camera
-                                .run_task(|cam| {
-                                    Box::pin(async move {
-                                        cam.send_ptz(bc_direction, speed).await?;
-                                        AnyResult::Ok(())
-                                    })
-                                })
-                                .await
-                            {
-                                error!("Failed to send PTZ: {:?}", e);
-                                "FAIL"
-                            } else {
-                                "OK"
-                            }
+                            "OK"
                         }
                     } else {
                         "FAIL"
@@ -946,7 +991,7 @@ async fn handle_mqtt_message(
                                 "OK"
                             }
                             Err(_) => {
-                                error!("Failed to encode pur status");
+                                error!("Failed to encode pir status");
                                 "FAIL"
                             }
                         },

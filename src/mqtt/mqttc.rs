@@ -328,6 +328,10 @@ pub(crate) struct MqttInstance {
 }
 
 impl MqttInstance {
+    pub(crate) fn get_name(&self) -> &str {
+        &self.name
+    }
+
     pub async fn subscribe<T: Into<String>>(&self, name: T) -> AnyResult<Self> {
         let (tx, rx) = oneshot();
         self.outgoing_tx
@@ -405,27 +409,44 @@ impl MqttInstance {
                 .incomming_rx
                 .next()
                 .await
-                .ok_or(anyhow!("End or client data"))?
-                .with_context(|| "Clinet stream is too far behind")?;
+                .ok_or(anyhow!("End of client data"))?
+                .with_context(|| "Client stream is too far behind")?;
+            // log::debug!("Got MQTT: {msg:?}");
+            // log::debug!("self.name: {:?}", self.name);
 
             if self.name.is_empty() {
                 break msg;
             } else {
                 let mut topics = msg.topic.split('/');
                 let sub_topic = topics.next();
+                // log::debug!("topics: {:?}", msg.topic);
+                // log::debug!("sub_topic: {sub_topic:?}");
                 if sub_topic
                     .map(|subtopic| *subtopic == self.name)
                     .unwrap_or(false)
                 {
                     msg.topic = topics.collect::<Vec<_>>().join("/");
+                    // log::debug!("new topics: {:?}", msg.topic);
                     break msg;
                 }
             }
         })
     }
+
+    pub(crate) async fn drop_guard_message(
+        &self,
+        topic: &str,
+        message: &str,
+    ) -> AnyResult<DropSender> {
+        Ok(DropSender {
+            instance: self.resubscribe().await?,
+            topic: topic.to_string(),
+            message: message.to_string(),
+        })
+    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct MqttReply {
     pub(crate) topic: String,
     pub(crate) message: String,
@@ -450,4 +471,22 @@ enum MqttRequest {
     SendRetained(MqttReply, OneshotSender<Result<()>>),
     HangUp(OneshotSender<()>),
     Subscribe(String, OneshotSender<Result<MqttInstance>>),
+}
+
+pub(crate) struct DropSender {
+    instance: MqttInstance,
+    topic: String,
+    message: String,
+}
+
+impl Drop for DropSender {
+    fn drop(&mut self) {
+        tokio::task::block_in_place(move || {
+            let _ = tokio::runtime::Handle::current().block_on(async move {
+                self.instance
+                    .send_message(&self.topic, &self.message, true)
+                    .await
+            });
+        });
+    }
 }

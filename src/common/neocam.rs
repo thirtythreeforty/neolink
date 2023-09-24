@@ -250,6 +250,26 @@ impl NeoCam {
 
         // This thread will apply battery saving by disconnecting the camera on certain events (like no motion)
         // and reconnecting on other events like push notifications
+        let connect_instance = instance.subscribe().await?;
+        let connect_cancel = me.cancel.clone();
+        let connect_name = config.name.clone();
+        me.set.spawn(async move {
+            tokio::select! {
+                _ = connect_cancel.cancelled() => {
+                    AnyResult::Ok(())
+                },
+                v = async {
+                    let mut permit = connect_instance.permit().await?;
+                    permit.deactivate().await?; // Watching only from here
+                    loop {
+                        permit.aquired_users().await?;
+                        log::debug!("{connect_name}: InUse");
+                        permit.dropped_users().await?;
+                        log::debug!("{connect_name}: Idle");
+                    }
+                } => v,
+            }
+        });
 
         Ok(me)
     }

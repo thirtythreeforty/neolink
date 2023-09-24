@@ -319,7 +319,7 @@ impl StreamData {
         let (aud_history, _) = watch::<VecDeque<StampedData>>(VecDeque::new());
         let aud_history = Arc::new(aud_history);
         let resolution = instance
-            .run_task(|cam| {
+            .run_passive_task(|cam| {
                 Box::pin(async move {
                     let infos = cam
                         .get_stream_info()
