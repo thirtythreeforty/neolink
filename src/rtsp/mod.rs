@@ -1194,11 +1194,9 @@ fn build_h265(bin: &Element) -> Result<AppSrc> {
         .map_err(|_| anyhow!("Cannot cast back"))?;
     let queue = make_queue("source_queue")?;
     let parser = make_element("h265parse", "parser")?;
-    let payload = make_element("rtph265pay", "vid_pay")?;
-    let jitter = make_element("rtpjitterbuffer", "pay0")?;
-    jitter.set_property("latency", 2000u32);
-    bin.add_many(&[&source, &queue, &parser, &payload, &jitter])?;
-    Element::link_many(&[&source, &queue, &parser, &payload, &jitter])?;
+    let payload = make_element("rtph265pay", "pay0")?;
+    bin.add_many(&[&source, &queue, &parser, &payload])?;
+    Element::link_many(&[&source, &queue, &parser, &payload])?;
 
     let source = source
         .dynamic_cast::<AppSrc>()
