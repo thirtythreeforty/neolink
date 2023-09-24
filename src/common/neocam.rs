@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     MdRequest, MdState, NeoCamMdThread, NeoCamStreamThread, NeoCamThread, NeoCamThreadState,
-    NeoInstance, StreamInstance, StreamRequest,
+    NeoInstance, Permit, StreamInstance, StreamRequest, UseCounter,
 };
 use crate::{config::CameraConfig, AnyResult, Result};
 use neolink_core::bc_protocol::{BcCamera, StreamKind};
@@ -36,6 +36,8 @@ pub(crate) enum NeoCamCommand {
     Config(OneshotSender<WatchReceiver<CameraConfig>>),
     Disconnect(OneshotSender<()>),
     Connect(OneshotSender<()>),
+    State(OneshotSender<NeoCamThreadState>),
+    GetPermit(OneshotSender<Permit>),
 }
 /// The underlying camera binding
 pub(crate) struct NeoCam {
@@ -56,6 +58,8 @@ impl NeoCam {
         let (state_tx, state_rx) = watch(NeoCamThreadState::Connected);
 
         let set = JoinSet::new();
+        let users = UseCounter::new().await;
+
         let mut me = Self {
             cancel: CancellationToken::new(),
             config_watch: watch_config_tx,
@@ -150,6 +154,12 @@ impl NeoCam {
                                     log::info!("{}: Disconnect On Request", thread_watch_config_rx.borrow().name);
                                 }
                                 let _ = sender.send(());
+                            }
+                            NeoCamCommand::State(sender) => {
+                                let _ = sender.send(*state_tx.borrow());
+                            }
+                            NeoCamCommand::GetPermit(sender) => {
+                                let _ = sender.send(users.create_activated().await?);
                             }
                         }
                     }

@@ -11,7 +11,7 @@ use tokio::sync::{
 };
 use tokio_util::sync::CancellationToken;
 
-use super::{MdState, NeoCamCommand, StreamInstance};
+use super::{MdState, NeoCamCommand, NeoCamThreadState, Permit, StreamInstance};
 use crate::{config::CameraConfig, Result};
 use neolink_core::bc_protocol::{BcCamera, StreamKind};
 
@@ -60,6 +60,30 @@ impl NeoInstance {
     /// - If the camera returns a retryable error, wait for camera instance to change then rerun
     /// - else return the result of the function
     pub(crate) async fn run_task<F, T>(&self, task: F) -> Result<T>
+    where
+        F: for<'a> Fn(
+            &'a BcCamera,
+        )
+            -> std::pin::Pin<Box<dyn futures::Future<Output = Result<T>> + Send + 'a>>,
+    {
+        let _permit = self.permit().await?;
+        self.run_passive_task(task).await
+    }
+
+    /// This is a helpful convience function
+    ///
+    /// Given an async task it will:
+    /// - Run the task with a reference to a BcCamera
+    /// - If the camera instance is changed: Rerun the task with the new instance
+    /// - If the camera returns a retryable error, wait for camera instance to change then rerun
+    /// - else return the result of the function
+    ///
+    /// This variant does NOT take out a use permit so the camera can disconnect
+    /// for inactvitity during its call. It is meant to be used for non-critial
+    /// background tasks that we want to stop during certain times like low battery
+    ///
+    /// The streams and MD use this
+    pub(crate) async fn run_passive_task<F, T>(&self, task: F) -> Result<T>
     where
         F: for<'a> Fn(
             &'a BcCamera,
@@ -184,6 +208,22 @@ impl NeoInstance {
         let (instance_tx, instance_rx) = oneshot();
         self.camera_control
             .send(NeoCamCommand::Disconnect(instance_tx))
+            .await?;
+        Ok(instance_rx.await?)
+    }
+
+    pub(crate) async fn get_state(&self) -> Result<NeoCamThreadState> {
+        let (instance_tx, instance_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::State(instance_tx))
+            .await?;
+        Ok(instance_rx.await?)
+    }
+
+    pub(crate) async fn permit(&self) -> Result<Permit> {
+        let (instance_tx, instance_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::GetPermit(instance_tx))
             .await?;
         Ok(instance_rx.await?)
     }

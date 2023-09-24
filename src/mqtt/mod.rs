@@ -348,7 +348,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                     v = async {
                         let (tx, mut rx) = mpsc(100);
                         tokio::select! {
-                            v = camera_floodlight.run_task(|cam| {
+                            v = camera_floodlight.run_passive_task(|cam| {
                                 let tx = tx.clone();
                                 Box::pin(
                                     async move {
@@ -405,7 +405,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                             i
                         });
                         while wait.next().await.is_some() {
-                            let image = camera_snap.run_task(|cam| {
+                            let image = camera_snap.run_passive_task(|cam| {
                                 Box::pin(async move {
                                     let image = cam.get_snapshot().await?;
                                     AnyResult::Ok(image)
@@ -439,7 +439,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                             i
                         });
                         while wait.next().await.is_some() {
-                            let xml = camera_battery.run_task(|cam| {
+                            let xml = camera_battery.run_passive_task(|cam| {
                                 Box::pin(async move {
                                     let xml = cam.battery_info().await?;
                                     AnyResult::Ok(xml)

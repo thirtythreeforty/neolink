@@ -13,16 +13,16 @@ use tokio::{
         broadcast::{
             channel as broadcast, Receiver as BroadcastReceiver, Sender as BroadcastSender,
         },
-        mpsc::{channel as mpsc, Receiver as MpscReceiver, Sender as MpscSender},
+        mpsc::{channel as mpsc, Receiver as MpscReceiver},
         oneshot::Sender as OneshotSender,
         watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
     },
-    task::{JoinHandle, JoinSet},
+    task::JoinHandle,
     time::{timeout, Duration},
 };
 use tokio_util::sync::CancellationToken;
 
-use super::NeoInstance;
+use super::{NeoInstance, Permit, UseCounter};
 use crate::{AnyResult, Result};
 use neolink_core::{bc_protocol::StreamKind, bcmedia::model::*};
 
@@ -223,153 +223,6 @@ pub(crate) enum StreamRequest {
     },
 }
 
-/// Counts the active users of the stream
-pub(crate) struct UseCounter {
-    value: WatchReceiver<u32>,
-    notifier_tx: MpscSender<bool>,
-    cancel: CancellationToken,
-    set: JoinSet<AnyResult<()>>,
-}
-
-impl UseCounter {
-    pub(crate) async fn new() -> Self {
-        let (notifier_tx, mut notifier) = mpsc(100);
-        let (value_tx, value) = watch(0);
-        let cancel = CancellationToken::new();
-        let mut set = JoinSet::new();
-
-        let thread_cancel = cancel.clone();
-        set.spawn(async move {
-            let r = tokio::select! {
-                _ = thread_cancel.cancelled() => {
-                    AnyResult::Ok(())
-                },
-                v = async {
-                    while let Some(noti) = notifier.recv().await {
-                        value_tx.send_modify(|value| {
-                            if noti {
-                                log::trace!("Usecounter: {}->{}", *value, (*value) + 1);
-                                *value += 1;
-                            } else {
-                                log::trace!("Usecounter: {}->{}", *value, (*value) - 1);
-                                *value -= 1;
-                            }
-                        });
-                    }
-                    AnyResult::Ok(())
-                } => v,
-            };
-            log::trace!("End Use Counter: {r:?}");
-            r
-        });
-        Self {
-            value,
-            notifier_tx,
-            cancel,
-            set,
-        }
-    }
-
-    pub(crate) async fn create_activated(&self) -> Result<CountUses> {
-        let mut res = CountUses::new(self);
-        res.activate().await?;
-        Ok(res)
-    }
-
-    pub(crate) async fn create_deactivated(&self) -> Result<CountUses> {
-        Ok(CountUses::new(self))
-    }
-}
-
-impl Drop for UseCounter {
-    fn drop(&mut self) {
-        log::trace!("Drop UseCounter");
-        self.cancel.cancel();
-        tokio::task::block_in_place(move || {
-            let _ = tokio::runtime::Handle::current().block_on(async move {
-                while self.set.join_next().await.is_some() {}
-                AnyResult::Ok(())
-            });
-        });
-        log::trace!("Dropped UseCounter");
-    }
-}
-
-pub(crate) struct CountUses {
-    is_active: bool,
-    value: WatchReceiver<u32>,
-    notifier: MpscSender<bool>,
-}
-
-impl CountUses {
-    pub(crate) fn subscribe(&self) -> Self {
-        Self {
-            is_active: false,
-            value: self.value.clone(),
-            notifier: self.notifier.clone(),
-        }
-    }
-
-    fn new(source: &UseCounter) -> Self {
-        Self {
-            is_active: false,
-            value: source.value.clone(),
-            notifier: source.notifier_tx.clone(),
-        }
-    }
-
-    pub(crate) async fn activate(&mut self) -> Result<()> {
-        if !self.is_active {
-            self.is_active = true;
-            self.notifier.send(self.is_active).await?;
-        }
-        Ok(())
-    }
-
-    pub(crate) async fn deactivate(&mut self) -> Result<()> {
-        if self.is_active {
-            self.is_active = false;
-            self.notifier.send(self.is_active).await?;
-        }
-        Ok(())
-    }
-
-    pub(crate) async fn aquired_users(&self) -> Result<()> {
-        self.value
-            .clone()
-            .wait_for(|curr| {
-                log::trace!("aquired_users: {}", *curr);
-                *curr > 0
-            })
-            .await?;
-        Ok(())
-    }
-
-    pub(crate) async fn dropped_users(&self) -> Result<()> {
-        self.value
-            .clone()
-            .wait_for(|curr| {
-                log::trace!("dropped_users: {}", *curr);
-                *curr == 0
-            })
-            .await?;
-        Ok(())
-    }
-}
-
-impl Drop for CountUses {
-    fn drop(&mut self) {
-        if self.is_active {
-            self.is_active = false;
-            tokio::task::block_in_place(move || {
-                tokio::runtime::Handle::current().block_on(async move {
-                    let _ = self.notifier.send(self.is_active).await;
-                });
-            });
-        }
-    }
-}
-
 /// The data of a running stream
 pub(crate) struct StreamData {
     vid: BroadcastSender<StampedData>,
@@ -420,7 +273,7 @@ pub(crate) struct StreamInstance {
     pub(crate) aud: BroadcastReceiver<StampedData>,
     pub(crate) aud_history: WatchReceiver<VecDeque<StampedData>>,
     pub(crate) config: WatchReceiver<StreamConfig>,
-    in_use: CountUses,
+    in_use: Permit,
 }
 
 impl StreamInstance {
@@ -442,7 +295,7 @@ impl StreamInstance {
         self.in_use.deactivate().await
     }
 
-    pub(crate) async fn activator_handle(&mut self) -> CountUses {
+    pub(crate) async fn activator_handle(&mut self) -> Permit {
         self.in_use.subscribe()
     }
 }
@@ -544,7 +397,7 @@ impl StreamData {
                                     }
                                 }
                             } => v,
-                            result = instance.run_task(|camera| {
+                            result = instance.run_passive_task(|camera| {
                                     let vid_tx = vid.clone();
                                     let aud_tx = aud.clone();
                                     let stream_config = config.clone();

@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{config::CameraConfig, utils::connect_and_login, Result};
 use neolink_core::bc_protocol::BcCamera;
 
+#[derive(Eq, PartialEq, Copy, Clone)]
 pub(crate) enum NeoCamThreadState {
     Connected,
     Disconnected,

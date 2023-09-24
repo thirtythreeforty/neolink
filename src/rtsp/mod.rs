@@ -76,7 +76,7 @@ use tokio_util::sync::CancellationToken;
 mod cmdline;
 mod gst;
 
-use crate::common::{CountUses, UseCounter};
+use crate::common::{Permit, UseCounter};
 use crate::{
     common::{AudFormat, NeoInstance, NeoReactor, StreamConfig, StreamInstance, VidFormat},
     rtsp::gst::NeoMediaFactory,
@@ -626,7 +626,7 @@ async fn stream_run(
     stream_config: &StreamConfig,
     users: &HashSet<String>,
     paths: &[String],
-    client_count: CountUses,
+    client_count: Permit,
 ) -> AnyResult<()> {
     let vidstream = stream_instance.vid.resubscribe();
     let audstream = stream_instance.aud.resubscribe();

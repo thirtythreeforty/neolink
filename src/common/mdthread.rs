@@ -64,7 +64,7 @@ impl NeoCamMdThread {
                 }
                 Ok(())
             } => v,
-            v = md_instance.run_task(|cam| {
+            v = md_instance.run_passive_task(|cam| {
                     let watcher = watcher.clone();
                     Box::pin(
                     async move {
