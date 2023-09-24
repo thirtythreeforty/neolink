@@ -1410,7 +1410,7 @@ dependencies = [
 
 [[package]]
 name = "neolink"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "base64 0.21.2",
@@ -1443,7 +1443,7 @@ dependencies = [
 
 [[package]]
 name = "neolink_core"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "aes",
  "assert_matches",
