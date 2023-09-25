@@ -190,6 +190,9 @@ pub(crate) struct CameraConfig {
     #[serde(default = "default_false", alias = "verbose")]
     pub(crate) debug: bool,
 
+    #[serde(default = "default_true", alias = "splash")]
+    pub(crate) use_splash: bool,
+
     #[serde(
         default = "default_max_discovery_retries",
         alias = "retries",

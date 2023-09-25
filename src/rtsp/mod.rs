@@ -307,10 +307,11 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
             .as_stream_kinds()
             .drain(..)
             .collect::<HashSet<_>>();
+        let use_splash = camera_config.borrow().use_splash;
 
         // This select is for changes to camera_config.stream
         break tokio::select! {
-            v = camera_config.wait_for(|config| config.stream != prev_stream_config || config.permitted_users != prev_stream_users) => {
+            v = camera_config.wait_for(|config| config.stream != prev_stream_config || config.permitted_users != prev_stream_users || config.use_splash != use_splash) => {
                 if let Err(e) = v {
                     AnyResult::Err(e.into())
                 } else {
@@ -336,6 +337,18 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
                     None => ["anonymous".to_string()].iter().cloned().collect(),
                 };
 
+                // Create the dummy factory
+                let dummy_factory = NeoMediaFactory::new_with_callback(move |element| {
+                    clear_bin(&element)?;
+                    if !use_splash {
+                        Ok(None)
+                    } else {
+                        build_unknown(&element)?;
+                        Ok(Some(element))
+                    }
+                })
+                .await?;
+                dummy_factory.add_permitted_roles(&permitted_users);
                 let mut supported_streams_1 = supported_streams.clone();
                 let mut supported_streams_2 = supported_streams.clone();
                 let mut supported_streams_3 = supported_streams.clone();
@@ -362,13 +375,6 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
                         let mounts = rtsp
                             .mount_points()
                             .ok_or(anyhow!("RTSP server lacks mount point"))?;
-                        // Create the dummy factory
-                        let dummy_factory = NeoMediaFactory::new_with_callback(move |element| {
-                            clear_bin(&element)?;
-                            Ok(None)
-                        })
-                        .await?;
-                        dummy_factory.add_permitted_roles(&permitted_users);
                         for path in paths.iter() {
                             log::debug!("Path: {}", path);
                             mounts.add_factory(path, dummy_factory.clone());
@@ -404,12 +410,6 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
                             .mount_points()
                             .ok_or(anyhow!("RTSP server lacks mount point"))?;
                         // Create the dummy factory
-                        let dummy_factory = NeoMediaFactory::new_with_callback(move |element| {
-                            clear_bin(&element)?;
-                            Ok(None)
-                        })
-                        .await?;
-                        dummy_factory.add_permitted_roles(&permitted_users);
                         for path in paths.iter() {
                             log::debug!("Path: {}", path);
                             mounts.add_factory(path, dummy_factory.clone());
@@ -444,13 +444,6 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
                         let mounts = rtsp
                             .mount_points()
                             .ok_or(anyhow!("RTSP server lacks mount point"))?;
-                        // Create the dummy factory
-                        let dummy_factory = NeoMediaFactory::new_with_callback(move |element| {
-                            clear_bin(&element)?;
-                            Ok(None)
-                        })
-                        .await?;
-                        dummy_factory.add_permitted_roles(&permitted_users);
                         for path in paths.iter() {
                             log::debug!("Path: {}", path);
                             mounts.add_factory(path, dummy_factory.clone());
