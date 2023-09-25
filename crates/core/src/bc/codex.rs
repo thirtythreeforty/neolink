@@ -45,7 +45,6 @@ impl Encoder<Bc> for BcCodex {
             n => *n,
         };
         let buf = item.serialize(buf, &enc_protocol)?;
-        dst.reserve(buf.len());
         dst.extend_from_slice(buf.as_slice());
         Ok(())
     }

@@ -1064,12 +1064,9 @@ impl Drop for Discoverer {
     fn drop(&mut self) {
         log::trace!("Drop Discoverer");
         self.cancel.cancel();
-        tokio::task::block_in_place(move || {
-            let _ = tokio::runtime::Handle::current().block_on(async move {
-                while self.handle.get_mut().join_next().await.is_some() {}
-                Result::Ok(())
-            });
-        });
+        let _gt = tokio::runtime::Handle::current().enter();
+        let mut handle = std::mem::take(&mut self.handle);
+        tokio::task::spawn(async move { while handle.get_mut().join_next().await.is_some() {} });
         log::trace!("Dropped Discoverer");
     }
 }

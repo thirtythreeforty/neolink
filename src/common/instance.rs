@@ -231,12 +231,15 @@ impl NeoInstance {
     pub(crate) fn drop_command<F>(self, task: F, timeout: tokio::time::Duration) -> DropRunTask<F>
     where
         F: for<'a> Fn(
-            &'a BcCamera,
-        )
-            -> std::pin::Pin<Box<dyn futures::Future<Output = Result<()>> + Send + 'a>>,
+                &'a BcCamera,
+            )
+                -> std::pin::Pin<Box<dyn futures::Future<Output = Result<()>> + Send + 'a>>
+            + Send
+            + Sync
+            + 'static,
     {
         DropRunTask {
-            instance: self,
+            instance: Some(self),
             command: Some(Box::new(task)),
             timeout,
         }
@@ -247,10 +250,14 @@ impl NeoInstance {
 pub(crate) struct DropRunTask<F>
 where
     F: for<'a> Fn(
-        &'a BcCamera,
-    ) -> std::pin::Pin<Box<dyn futures::Future<Output = Result<()>> + Send + 'a>>,
+            &'a BcCamera,
+        )
+            -> std::pin::Pin<Box<dyn futures::Future<Output = Result<()>> + Send + 'a>>
+        + Send
+        + Sync
+        + 'static,
 {
-    instance: NeoInstance,
+    instance: Option<NeoInstance>,
     command: Option<Box<F>>,
     timeout: tokio::time::Duration,
 }
@@ -258,17 +265,20 @@ where
 impl<F> Drop for DropRunTask<F>
 where
     F: for<'a> Fn(
-        &'a BcCamera,
-    ) -> std::pin::Pin<Box<dyn futures::Future<Output = Result<()>> + Send + 'a>>,
+            &'a BcCamera,
+        )
+            -> std::pin::Pin<Box<dyn futures::Future<Output = Result<()>> + Send + 'a>>
+        + Send
+        + Sync
+        + 'static,
 {
     fn drop(&mut self) {
-        if let Some(command) = self.command.take() {
-            tokio::task::block_in_place(move || {
-                let _ = tokio::runtime::Handle::current().block_on(async move {
-                    tokio::time::timeout(self.timeout, self.instance.run_passive_task(*command))
-                        .await??;
-                    crate::AnyResult::Ok(())
-                });
+        if let (Some(command), Some(instance)) = (self.command.take(), self.instance.take()) {
+            let _gt = tokio::runtime::Handle::current().enter();
+            let timeout = self.timeout;
+            tokio::task::spawn(async move {
+                tokio::time::timeout(timeout, instance.run_passive_task(*command)).await??;
+                crate::AnyResult::Ok(())
             });
         }
     }

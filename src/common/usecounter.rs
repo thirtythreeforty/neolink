@@ -72,12 +72,10 @@ impl Drop for UseCounter {
     fn drop(&mut self) {
         log::trace!("Drop UseCounter");
         self.cancel.cancel();
-        tokio::task::block_in_place(move || {
-            let _ = tokio::runtime::Handle::current().block_on(async move {
-                while self.set.join_next().await.is_some() {}
-                AnyResult::Ok(())
-            });
-        });
+
+        let mut set = std::mem::take(&mut self.set);
+        let _gt = tokio::runtime::Handle::current().enter();
+        tokio::task::spawn(async move { while set.join_next().await.is_some() {} });
         log::trace!("Dropped UseCounter");
     }
 }
@@ -148,10 +146,11 @@ impl Drop for Permit {
     fn drop(&mut self) {
         if self.is_active {
             self.is_active = false;
-            tokio::task::block_in_place(move || {
-                tokio::runtime::Handle::current().block_on(async move {
-                    let _ = self.notifier.send(self.is_active).await;
-                });
+            let _gt = tokio::runtime::Handle::current().enter();
+            let notifier = self.notifier.clone();
+            let is_active = self.is_active;
+            tokio::task::spawn(async move {
+                let _ = notifier.send(is_active).await;
             });
         }
     }

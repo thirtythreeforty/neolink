@@ -11,13 +11,11 @@ const PAD_SIZE: u32 = 8;
 
 impl BcMedia {
     pub(crate) fn deserialize(buf: &mut BytesMut) -> Result<BcMedia, Error> {
-        const TYPICAL_HEADER: usize = 25;
         let (result, len) = match consumed(bcmedia)(buf) {
             Ok((_, (parsed_buff, result))) => Ok((result, parsed_buff.len())),
             Err(e) => Err(e),
         }?;
         buf.advance(len);
-        buf.reserve(len + TYPICAL_HEADER); // Preallocate for future buffer calls
         Ok(result)
     }
 }

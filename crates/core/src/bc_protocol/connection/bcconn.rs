@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::task::yield_now;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::sync::{CancellationToken, PollSender};
+use tokio_util::sync::CancellationToken;
 
 use tokio::{sync::RwLock, task::JoinSet};
 
@@ -57,27 +57,19 @@ impl BcConnection {
         let mut rx_thread = JoinSet::<Result<()>>::new();
         let thread_poll_commander = poll_commander.clone();
         let thread_cancel = cancel.clone();
-        rx_thread.spawn_blocking(move || {
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            let result = runtime.block_on(async move {
-                tokio::select! {
-                    _ = thread_cancel.cancelled() => {
-                        Result::Ok(())
-                    },
-                    v = async {
-                        let mut sender = PollSender::new(thread_poll_commander);
-                        while let Some(bc) = source.next().await {
-                            sender.send(PollCommand::Bc(Box::new(bc))).await?;
-                        }
-                        Result::Ok(())
-                    } => v
-                }
-            });
-            log::trace!("PollSender Bc {:?}", result);
-            result
+        rx_thread.spawn(async move {
+            tokio::select! {
+                _ = thread_cancel.cancelled() => {
+                    Result::Ok(())
+                },
+                v = async {
+                    let sender = thread_poll_commander;
+                    while let Some(bc) = source.next().await {
+                        sender.send(PollCommand::Bc(Box::new(bc))).await?;
+                    }
+                    Result::Ok(())
+                } => v
+            }
         });
 
         let thread_cancel = cancel.clone();
@@ -199,13 +191,17 @@ impl Drop for BcConnection {
     fn drop(&mut self) {
         log::trace!("Drop BcConnection");
         self.cancel.cancel();
-        tokio::task::block_in_place(move || {
-            let _ = tokio::runtime::Handle::current().block_on(async move {
-                let _ = self.shutdown().await;
-                Result::Ok(())
-            });
+
+        let poll_commander = self.poll_commander.clone();
+        let _gt = tokio::runtime::Handle::current().enter();
+        let mut threads = std::mem::take(&mut self.rx_thread);
+        tokio::task::spawn(async move {
+            let _ = poll_commander.send(PollCommand::Disconnect).await;
+            log::debug!("BcConnection::shutdown Cancel");
+            let locked_threads = threads.get_mut();
+            while locked_threads.join_next().await.is_some() {}
+            log::trace!("Dropped BcConnection");
         });
-        log::trace!("Dropped BcConnection");
     }
 }
 

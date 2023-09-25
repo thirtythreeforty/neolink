@@ -62,13 +62,12 @@ impl Drop for GstSender {
     fn drop(&mut self) {
         log::trace!("Drop GstSender");
         self.cancel.cancel();
-        tokio::task::block_in_place(move || {
-            let _ = tokio::runtime::Handle::current().block_on(async move {
-                while self.set.join_next().await.is_some() {}
-                AnyResult::Ok(())
-            });
+        let _gt = tokio::runtime::Handle::current().enter();
+        let mut set = std::mem::take(&mut self.set);
+        tokio::task::spawn(async move {
+            while set.join_next().await.is_some() {}
+            log::trace!("Dropped GstSender");
         });
-        log::trace!("Dropped GstSender");
     }
 }
 

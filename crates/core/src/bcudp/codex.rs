@@ -24,7 +24,6 @@ impl Encoder<BcUdp> for BcUdpCodex {
         log::trace!("Encoding: {item:?}");
         let buf: Vec<u8> = Default::default();
         let buf = item.serialize(buf)?;
-        dst.reserve(buf.len());
         dst.extend_from_slice(buf.as_slice());
         log::trace!("  Encoding: Done: {}", buf.len());
         Ok(())

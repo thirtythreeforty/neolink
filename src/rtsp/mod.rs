@@ -175,23 +175,17 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
                             let thread_rtsp2 = thread_rtsp.clone();
                             let thread_reactor2 = thread_reactor.clone();
                             let name = name.clone();
-                            set.spawn_blocking(|| {
-                                let runtime = tokio::runtime::Builder::new_multi_thread()
-                                    .enable_all()
-                                    .build()
-                                    .unwrap();
-                                runtime.block_on(async move {
-                                    let camera = thread_reactor2.get(&name).await?;
-                                    tokio::select!(
-                                        _ = thread_global_cancel.cancelled() => {
-                                            AnyResult::Ok(())
-                                        },
-                                        _ = local_cancel.cancelled() => {
-                                            AnyResult::Ok(())
-                                        },
-                                        v = camera_main(camera, &thread_rtsp2) => v,
-                                    )
-                                })
+                            set.spawn(async move {
+                                let camera = thread_reactor2.get(&name).await?;
+                                tokio::select!(
+                                    _ = thread_global_cancel.cancelled() => {
+                                        AnyResult::Ok(())
+                                    },
+                                    _ = local_cancel.cancelled() => {
+                                        AnyResult::Ok(())
+                                    },
+                                    v = camera_main(camera, &thread_rtsp2) => v,
+                                )
                             }) ;
                         }
                     }
@@ -991,11 +985,24 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
     mut data_rx: T,
 ) -> Result<()> {
     if let Some(app) = app {
-        let mut set = JoinSet::<AnyResult<()>>::new();
         let mut last_ft: Option<Duration> = None;
         let mut ft = Duration::ZERO;
         let mut last_rt: Option<Duration> = None;
         let mut rt = Duration::ZERO;
+        let (gst_data_tx, mut gst_data_rx) = mpsc(100);
+        let appsrc = app.clone();
+        // push_buffer can block so we need to do this on a dedicated thread
+        // however it is expensive to call spawn_blocking too often
+        // so we call it once and push via a channel
+        tokio::task::spawn_blocking(move || {
+            while let Some(buf) = gst_data_rx.blocking_recv() {
+                appsrc
+                    .push_buffer(buf)
+                    .map(|_| ())
+                    .map_err(|_| anyhow!("Could not push buffer to appsrc"))?;
+            }
+            AnyResult::Ok(())
+        });
         while let Some(Ok(data)) = data_rx.next().await {
             check_live(app)?; // Stop if appsrc is dropped
                               // Cache the last runtime
@@ -1029,44 +1036,21 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                         ft = rt;
                     }
 
-                    // Send frame to app src on another thread
-                    let thread_app = app.clone();
-                    let thread_rt = rt;
-                    let thread_ft = ft;
-                    set.spawn(async move {
-                        check_live(&thread_app)?; // Stop if appsrc is dropped
-                        if ft > (rt + Duration::from_millis(50)) {
-                            let delta = ft - rt;
-                            sleep(delta).await;
+                    let buf = {
+                        let mut gst_buf = gstreamer::Buffer::with_size(data.len()).unwrap();
+                        {
+                            let gst_buf_mut = gst_buf.get_mut().unwrap();
+                            log::trace!("Setting PTS: {ft:?}, Runtime: {rt:?}");
+                            let time = ClockTime::from_useconds(ft.as_micros() as u64);
+                            gst_buf_mut.set_dts(time);
+                            gst_buf_mut.set_pts(time);
+                            let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
+                            gst_buf_data.copy_from_slice(data.as_slice());
                         }
-                        let buf = {
-                            let mut gst_buf = gstreamer::Buffer::with_size(data.len()).unwrap();
-                            {
-                                let gst_buf_mut = gst_buf.get_mut().unwrap();
-                                log::trace!("Setting PTS: {thread_ft:?}, Runtime: {thread_rt:?}");
-                                let time = ClockTime::from_useconds(thread_ft.as_micros() as u64);
-                                gst_buf_mut.set_dts(time);
-                                gst_buf_mut.set_pts(time);
-                                let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
-                                gst_buf_data.copy_from_slice(data.as_slice());
-                            }
-                            gst_buf
-                        };
+                        gst_buf
+                    };
 
-                        log::trace!("Pushing Data");
-                        let appsrc = thread_app.clone();
-                        let mut inner_set = JoinSet::new();
-                        inner_set.spawn_blocking(move || {
-                            appsrc
-                                .push_buffer(buf.copy())
-                                .map(|_| ())
-                                .map_err(|_| anyhow!("Could not push buffer to appsrc"))
-                        });
-                        inner_set.join_next().await.unwrap()??;
-                        while inner_set.join_next().await.is_some() {}
-                        log::trace!("  Pushed Data");
-                        AnyResult::Ok(())
-                    });
+                    gst_data_tx.send(buf).await?;
                 }
             }
         }
@@ -1107,6 +1091,7 @@ fn clear_bin(bin: &Element) -> Result<()> {
 
     Ok(())
 }
+
 fn build_unknown(bin: &Element) -> Result<()> {
     let bin = bin
         .clone()
@@ -1346,8 +1331,8 @@ fn make_queue(name: &str) -> AnyResult<Element> {
     // Ok(queue)
 
     let queue = make_element("queue2", name)?;
-    queue.set_property("max-size-bytes", 0u32);
-    queue.set_property("max-size-buffers", 0u32);
+    // queue.set_property("max-size-bytes", 0u32);
+    // queue.set_property("max-size-buffers", 0u32);
     queue.set_property(
         "max-size-time",
         std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())

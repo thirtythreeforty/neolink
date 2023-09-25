@@ -15,7 +15,6 @@ impl Bc {
     /// Returns Ok(deserialized data, the amount of data consumed)
     /// Can then use this as the amount that should be remove from a buffer
     pub(crate) fn deserialize(context: &BcContext, buf: &mut BytesMut) -> Result<Bc, Error> {
-        const TYPICAL_HEADER: usize = 24;
         let parser = BcParser { context };
         let (result, amount) = match consumed(parser)(buf) {
             Ok((_, (parsed_buff, result))) => Ok((result, parsed_buff.len())),
@@ -23,7 +22,6 @@ impl Bc {
         }?;
 
         buf.advance(amount);
-        buf.reserve(amount + TYPICAL_HEADER); // Preallocate for future buffer calls
         Ok(result)
     }
 }

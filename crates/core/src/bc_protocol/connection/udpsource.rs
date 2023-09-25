@@ -16,9 +16,10 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::mpsc::channel;
+
 use tokio::{
     net::UdpSocket,
+    sync::mpsc::channel,
     task::JoinSet,
     time::{interval, sleep, Duration, Instant, Interval},
 };
@@ -33,8 +34,9 @@ use tokio_util::{
 const MTU: usize = 1350;
 const UDPDATA_HEADER_SIZE: usize = 20;
 
+pub(crate) type InnerFramed = Framed<Compat<IntoAsyncRead<UdpPayloadSource>>, BcCodex>;
 pub(crate) struct UdpSource {
-    inner: Framed<Compat<IntoAsyncRead<UdpPayloadSource>>, BcCodex>,
+    inner: Pin<Box<InnerFramed>>,
 }
 
 impl UdpSource {
@@ -94,7 +96,9 @@ impl UdpSource {
         };
         let framed = Framed::new(async_read, codex);
 
-        Ok(Self { inner: framed })
+        Ok(Self {
+            inner: Box::pin(framed),
+        })
     }
 
     // pub(crate) async fn send(&mut self, bc: Bc) -> Result<()> {
@@ -113,13 +117,13 @@ impl Stream for UdpSource {
     type Item = std::result::Result<<BcCodex as Decoder>::Item, <BcCodex as Decoder>::Error>;
 
     delegate! {
-        to Pin::new(&mut self.inner) {
+        to self.inner.as_mut() {
             fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>>;
         }
     }
 
     delegate! {
-        to self.inner {
+        to self.inner.as_ref().get_ref() {
             fn size_hint(&self) -> (usize, Option<usize>);
         }
     }
@@ -129,7 +133,7 @@ impl Sink<Bc> for UdpSource {
     type Error = <BcCodex as Encoder<Bc>>::Error;
 
     delegate! {
-        to Pin::new(&mut self.inner) {
+        to self.inner.as_mut() {
             fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::result::Result<(), Self::Error>>;
             fn start_send(mut self: Pin<&mut Self>, item: Bc) -> std::result::Result<(), Self::Error>;
             fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::result::Result<(), Self::Error>>;
@@ -139,7 +143,7 @@ impl Sink<Bc> for UdpSource {
 }
 
 pub(crate) struct BcUdpSource {
-    inner: UdpFramed<BcUdpCodex, Arc<UdpSocket>>,
+    inner: Pin<Box<UdpFramed<BcUdpCodex, Arc<UdpSocket>>>>,
     addr: SocketAddr,
 }
 
@@ -158,7 +162,7 @@ impl BcUdpSource {
 
     pub(crate) async fn new_from_socket(stream: Arc<UdpSocket>, addr: SocketAddr) -> Result<Self> {
         Ok(Self {
-            inner: UdpFramed::new(stream, BcUdpCodex::new()),
+            inner: Box::pin(UdpFramed::new(stream, BcUdpCodex::new())),
             addr,
         })
     }
@@ -176,13 +180,13 @@ impl Stream for BcUdpSource {
     type Item = Result<(BcUdp, SocketAddr)>;
 
     delegate! {
-        to Pin::new(&mut self.inner) {
+        to self.inner.as_mut() {
             fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>>;
         }
     }
 
     delegate! {
-        to self.inner {
+        to self.inner.as_ref().get_ref() {
             fn size_hint(&self) -> (usize, Option<usize>);
         }
     }
@@ -192,7 +196,7 @@ impl Sink<(BcUdp, SocketAddr)> for BcUdpSource {
     type Error = Error;
 
     delegate! {
-        to Pin::new(&mut self.inner) {
+        to self.inner.as_mut() {
             fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::result::Result<(), Self::Error>>;
             fn start_send(mut self: Pin<&mut Self>, item: (BcUdp, SocketAddr)) -> std::result::Result<(), Self::Error>;
             fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::result::Result<(), Self::Error>>;
@@ -262,7 +266,7 @@ impl AckLatency {
 }
 
 pub(crate) struct UdpPayloadSource {
-    inner_stream: ReceiverStream<IoResult<Vec<u8>>>,
+    inner_stream: Pin<Box<ReceiverStream<IoResult<Vec<u8>>>>>,
     inner_sink: PollSender<Vec<u8>>,
     set: JoinSet<Result<()>>,
     cancel_token: CancellationToken,
@@ -272,13 +276,12 @@ impl Drop for UdpPayloadSource {
     fn drop(&mut self) {
         log::trace!("Drop UdpPayloadSource");
         self.cancel_token.cancel();
-        tokio::task::block_in_place(|| {
-            let _ = tokio::runtime::Handle::current().block_on(async {
-                while self.set.join_next().await.is_some() {}
-                Result::Ok(())
-            });
+        let _gt = tokio::runtime::Handle::current().enter();
+        let mut set = std::mem::take(&mut self.set);
+        tokio::task::spawn(async move {
+            while set.join_next().await.is_some() {}
+            log::trace!("Dropped UdpPayloadSource");
         });
-        log::trace!("Dropped UdpPayloadSource");
     }
 }
 
@@ -322,8 +325,8 @@ impl UdpPayloadInner {
         // In order to achieve this we use dedicated threads for ACK
         // and the socket
 
-        let (socket_in_tx, socket_in_rx) = channel::<BcUdp>(1000);
-        let (socket_out_tx, socket_out_rx) = channel::<(BcUdp, SocketAddr)>(1000);
+        let (socket_in_tx, socket_in_rx) = channel::<BcUdp>(100);
+        let (socket_out_tx, socket_out_rx) = channel::<(BcUdp, SocketAddr)>(100);
         // let (mut socket_tx, mut socket_rx) = inner.split();
 
         // Send/Recv on the socket
@@ -335,122 +338,110 @@ impl UdpPayloadInner {
         let thread_camera_id = camera_id;
         const TIME_OUT: u64 = 10;
         let mut recv_timeout = Box::pin(sleep(Duration::from_secs(TIME_OUT)));
-        set.spawn_blocking(move || {
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            runtime.block_on(async move {
-                let result = tokio::select! {
-                    _ = send_cancel.cancelled() => {
-                        Result::Ok(())
-                    },
-                    v = async {
-                        loop {
-                            break tokio::select!{
-                                _ = recv_timeout.as_mut() => {
-                                    log::trace!("DroppedConnection: Timeout");
-                                    Err(Error::DroppedConnection)
-                                }
-                                packet = inner.next() => {
-                                    log::trace!("Cam->App");
-                                    let packet = packet.ok_or(Error::DroppedConnection)??;
-                                    recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(TIME_OUT));
-                                    // let packet = socket_rx.next().await.ok_or(Error::DroppedConnection)??;
-                                    socket_out_tx.send(packet).await?;
-                                    continue;
-                                },
-                                packet = socket_in_rx.next() => {
-                                    let packet = packet.ok_or(Error::DroppedConnection)?;
-                                    match tokio::time::timeout(tokio::time::Duration::from_millis(250), inner.send((packet, thread_camera_addr))).await {
-                                        Ok(written) => {
-                                            written?;
-                                        }
-                                        Err(_) => {
-                                            // Socket is (maybe) broken
-                                            // Seems to happen with network reconnects like over
-                                            // a lossy cellular network
-                                            log::debug!("Quick reconnect: Due to socket timeout");
-                                            let stream = Arc::new(connect_try_port(inner.inner.get_ref().local_addr()?.port()).await?);
-                                            inner = BcUdpSource::new_from_socket(stream, inner.addr).await?;
-
-                                            // Inform the camera that we are the same client
-                                            //
-                                            // At least I think that is what this is for.
-                                            // Might also have to do this for the relay but not sure
-                                            let msg = BcUdp::Discovery(UdpDiscovery {
-                                                tid: {
-                                                    let mut rng = thread_rng();
-                                                    (rng.gen::<u8>()) as u32
-                                                },
-                                                payload: UdpXml {
-                                                    c2d_hb: Some(C2dHb {
-                                                        cid: thread_client_id,
-                                                        did: thread_camera_id,
-                                                    }),
-                                                    ..Default::default()
-                                                },
-                                            });
-                                            let _ = tokio::time::timeout(Duration::from_millis(250), inner.send((msg, thread_camera_addr))).await;
-                                        }
-                                    }
-
-                                    log::trace!("Send Packet");
-                                    continue;
-                                }
+        set.spawn(async move {
+            let result = tokio::select! {
+                _ = send_cancel.cancelled() => {
+                    Result::Ok(())
+                },
+                v = async {
+                    loop {
+                        break tokio::select!{
+                            _ = recv_timeout.as_mut() => {
+                                log::trace!("DroppedConnection: Timeout");
+                                Err(Error::DroppedConnection)
                             }
-                        }?;
-                        Ok(())
-                    } => v,
-                };
-                log::debug!("UdpPayloadInner::new SendToSocket Cancel");
-                send_cancel.cancel();
-                result
-            })
+                            packet = inner.next() => {
+                                log::trace!("Cam->App");
+                                let packet = packet.ok_or(Error::DroppedConnection)??;
+                                recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(TIME_OUT));
+                                // let packet = socket_rx.next().await.ok_or(Error::DroppedConnection)??;
+                                socket_out_tx.send(packet).await?;
+                                continue;
+                            },
+                            packet = socket_in_rx.next() => {
+                                let packet = packet.ok_or(Error::DroppedConnection)?;
+                                match tokio::time::timeout(tokio::time::Duration::from_millis(250), inner.send((packet, thread_camera_addr))).await {
+                                    Ok(written) => {
+                                        written?;
+                                    }
+                                    Err(_) => {
+                                        // Socket is (maybe) broken
+                                        // Seems to happen with network reconnects like over
+                                        // a lossy cellular network
+                                        log::debug!("Quick reconnect: Due to socket timeout");
+                                        let stream = Arc::new(connect_try_port(inner.inner.get_ref().local_addr()?.port()).await?);
+                                        inner = BcUdpSource::new_from_socket(stream, inner.addr).await?;
+
+                                        // Inform the camera that we are the same client
+                                        //
+                                        // At least I think that is what this is for.
+                                        // Might also have to do this for the relay but not sure
+                                        let msg = BcUdp::Discovery(UdpDiscovery {
+                                            tid: {
+                                                let mut rng = thread_rng();
+                                                (rng.gen::<u8>()) as u32
+                                            },
+                                            payload: UdpXml {
+                                                c2d_hb: Some(C2dHb {
+                                                    cid: thread_client_id,
+                                                    did: thread_camera_id,
+                                                }),
+                                                ..Default::default()
+                                            },
+                                        });
+                                        let _ = tokio::time::timeout(Duration::from_millis(250), inner.send((msg, thread_camera_addr))).await;
+                                    }
+                                }
+
+                                log::trace!("Send Packet");
+                                continue;
+                            }
+                        }
+                    }?;
+                    Ok(())
+                } => v,
+            };
+            log::debug!("UdpPayloadInner::new SendToSocket Cancel");
+            send_cancel.cancel();
+            result
         });
 
         // Queue up ack packets
         let ack_cancel = cancel.clone();
         let mut ack_interval = interval(Duration::from_millis(10)); // Offical Client does ack every 10ms
         ack_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let (ack_tx, mut ack_rx) = channel(1000);
+        let (ack_tx, mut ack_rx) = channel(100);
         let thread_camera_id = camera_id;
         let ack_socket_in_tx = socket_in_tx.clone();
-        set.spawn_blocking(move || {
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            runtime.block_on(async move {
-                tokio::select! {
-                    _ = ack_cancel.cancelled() => {
-                        Result::Ok(())
-                    },
-                    v = async {
-                        let mut ack_packet = UdpAck::empty(thread_camera_id);
-                        loop {
-                            tokio::select! {
-                                v = ack_rx.recv() => {
-                                    // Update the ACK packet
-                                    if let Some(v) = v {
-                                        ack_packet = v;
-                                        Ok(())
-                                    } else {
-                                        log::trace!("ack_rx.recv() Error::DroppedConnection");
-                                        Err(Error::DroppedConnection)
-                                    }
-                                },
-                                _ = ack_interval.tick() => {
-                                    // Send an ack packet
-                                    log::trace!("send ack");
-                                    ack_socket_in_tx.send(BcUdp::Ack(ack_packet.clone())).await?;
+        set.spawn(async move {
+            tokio::select! {
+                _ = ack_cancel.cancelled() => {
+                    Result::Ok(())
+                },
+                v = async {
+                    let mut ack_packet = UdpAck::empty(thread_camera_id);
+                    loop {
+                        tokio::select! {
+                            v = ack_rx.recv() => {
+                                // Update the ACK packet
+                                if let Some(v) = v {
+                                    ack_packet = v;
                                     Ok(())
+                                } else {
+                                    log::trace!("ack_rx.recv() Error::DroppedConnection");
+                                    Err(Error::DroppedConnection)
                                 }
-                            }?;
-                        }
-                    } => v,
-                }
-            })
+                            },
+                            _ = ack_interval.tick() => {
+                                // Send an ack packet
+                                log::trace!("send ack");
+                                ack_socket_in_tx.send(BcUdp::Ack(ack_packet.clone())).await?;
+                                Ok(())
+                            }
+                        }?;
+                    }
+                } => v,
+            }
         });
 
         // Queue up Hb packets
@@ -513,7 +504,7 @@ impl UdpPayloadInner {
                 for (_, resend) in self.sent.iter() {
                     self.socket_in.feed(BcUdp::Data(resend.clone())).await?;
                 }
-                self.ack_tx.send(self.build_send_ack()).await?; // Ensure we update the ack packet sometimes too
+                self.ack_tx.feed(self.build_send_ack()).await?; // Ensure we update the ack packet sometimes too
                 Result::Ok(())
             },
             v = self.thread_sink.next() => {
@@ -559,7 +550,7 @@ impl UdpPayloadInner {
                                 if packet_id >= self.packets_want {
                                     // error!("packets_want: {}", this.packets_want);
                                     self.recieved.insert(packet_id, data.payload);
-                                    self.ack_tx.send(self.build_send_ack()).await?;
+                                    self.ack_tx.feed(self.build_send_ack()).await?;
                                 }
                             }
                         },
@@ -573,10 +564,12 @@ impl UdpPayloadInner {
         while let Some(payload) = self.recieved.remove(&self.packets_want) {
             log::trace!("  + {}", self.packets_want);
             self.packets_want += 1;
-            self.thread_stream.send(Ok(payload)).await?;
+            self.thread_stream.feed(Ok(payload)).await?;
         }
         log::trace!("Flush");
         self.socket_in.flush().await?;
+        self.thread_stream.flush().await?;
+        self.ack_tx.flush().await?;
         log::trace!("Flushed");
         Ok(())
     }
@@ -632,31 +625,24 @@ impl UdpPayloadInner {
         }
         self.ack_latency.feed_ack();
     }
-
-    async fn shutdown(&mut self) -> Result<()> {
-        self.cancel.cancel();
-        while self.set.join_next().await.is_some() {}
-        Ok(())
-    }
 }
 
 impl Drop for UdpPayloadInner {
     fn drop(&mut self) {
         log::trace!("Drop UdpPayloadInner");
         self.cancel.cancel();
-        tokio::task::block_in_place(move || {
-            let _ = tokio::runtime::Handle::current().block_on(async move {
-                self.shutdown().await?;
-                Result::Ok(())
-            });
+        let _gt = tokio::runtime::Handle::current().enter();
+        let mut set = std::mem::take(&mut self.set);
+        tokio::task::spawn(async move {
+            while set.join_next().await.is_some() {}
+            log::trace!("Dropped UdpPayloadInner");
         });
-        log::trace!("Dropped UdpPayloadInner");
     }
 }
 impl UdpPayloadSource {
     async fn new(inner: BcUdpSource, client_id: i32, camera_id: i32) -> Self {
-        let (inner_sink, thread_sink) = channel(1000);
-        let (thread_stream, inner_stream) = channel(1000);
+        let (inner_sink, thread_sink) = channel(100);
+        let (thread_stream, inner_stream) = channel(100);
 
         let mut payload_inner = UdpPayloadInner::new(
             inner,
@@ -669,45 +655,38 @@ impl UdpPayloadSource {
 
         let thread_cancel_token = cancel_token.clone();
         let mut set = JoinSet::new();
-        set.spawn_blocking(move || {
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-
-            runtime.block_on(async move {
-                tokio::select! {
-                    v = async {
-                        loop {
-                            if payload_inner.thread_stream.is_closed() {
-                                log::trace!("payload_inner.thread_stream.is_closed");
-                                payload_inner.thread_sink.close();
-                                return Err(Error::DroppedConnection);
-                            }
-                            log::trace!("Calling inner");
-                            let res = payload_inner.run().await;
-                            log::trace!("Called inner: {:?}", res);
-                            match res {
-                                Ok(()) => {}
-                                Err(e) => {
-                                    log::trace!("UDP Error. Connection will Drop: {:?}", e);
-                                    // Pass error up
-                                    let _ = payload_inner
-                                        .thread_stream
-                                        .send(Err(IoError::new(ErrorKind::Other, e.clone())))
-                                        .await;
-                                    return Result::<()>::Err(e);
-                                }
+        set.spawn(async move {
+            tokio::select! {
+                v = async {
+                    loop {
+                        if payload_inner.thread_stream.is_closed() {
+                            log::trace!("payload_inner.thread_stream.is_closed");
+                            payload_inner.thread_sink.close();
+                            return Err(Error::DroppedConnection);
+                        }
+                        log::trace!("Calling inner");
+                        let res = payload_inner.run().await;
+                        log::trace!("Called inner: {:?}", res);
+                        match res {
+                            Ok(()) => {}
+                            Err(e) => {
+                                log::trace!("UDP Error. Connection will Drop: {:?}", e);
+                                // Pass error up
+                                let _ = payload_inner
+                                    .thread_stream
+                                    .send(Err(IoError::new(ErrorKind::Other, e.clone())))
+                                    .await;
+                                return Result::<()>::Err(e);
                             }
                         }
-                    } => v,
-                    _ = thread_cancel_token.cancelled() => Ok(()),
-                }
-            })
+                    }
+                } => v,
+                _ = thread_cancel_token.cancelled() => Ok(()),
+            }
         });
 
         UdpPayloadSource {
-            inner_stream: ReceiverStream::new(inner_stream),
+            inner_stream: Box::pin(ReceiverStream::new(inner_stream)),
             inner_sink: PollSender::new(inner_sink),
             set,
             cancel_token,
@@ -719,13 +698,13 @@ impl Stream for UdpPayloadSource {
     type Item = IoResult<Vec<u8>>;
 
     delegate! {
-        to Pin::new(&mut self.inner_stream) {
+        to self.inner_stream.as_mut() {
             fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>>;
         }
     }
 
     delegate! {
-        to self.inner_stream {
+        to self.inner_stream.as_ref().get_ref() {
             fn size_hint(&self) -> (usize, Option<usize>);
         }
     }
@@ -793,8 +772,11 @@ impl futures::AsyncWrite for UdpPayloadSource {
 /// Helper to create a UdpStream
 async fn connect() -> Result<UdpSocket> {
     let mut ports: Vec<u16> = (53500..54000).collect();
-    let mut rng = thread_rng();
-    ports.shuffle(&mut rng);
+    {
+        let mut rng = thread_rng();
+        ports.shuffle(&mut rng);
+        drop(rng); // Do not hold RNG over an await
+    }
 
     let addrs: Vec<_> = ports
         .iter()
@@ -807,8 +789,11 @@ async fn connect() -> Result<UdpSocket> {
 
 async fn connect_try_port(port: u16) -> Result<UdpSocket> {
     let mut ports: Vec<u16> = (53500..54000).collect();
-    let mut rng = thread_rng();
-    ports.shuffle(&mut rng);
+    {
+        let mut rng = thread_rng();
+        ports.shuffle(&mut rng);
+        drop(rng); // Do not hold RNG over an await
+    }
 
     let addrs: Vec<_> = vec![port]
         .iter()

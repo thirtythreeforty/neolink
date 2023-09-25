@@ -30,7 +30,6 @@ impl Encoder<BcMedia> for BcMediaCodex {
     fn encode(&mut self, item: BcMedia, dst: &mut BytesMut) -> Result<()> {
         let buf: Vec<u8> = Default::default();
         let buf = item.serialize(buf)?;
-        dst.reserve(buf.len());
         dst.extend_from_slice(buf.as_slice());
         Ok(())
     }

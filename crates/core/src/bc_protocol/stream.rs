@@ -89,11 +89,13 @@ impl StreamData {
 impl Drop for StreamData {
     fn drop(&mut self) {
         log::trace!("Drop StreamData");
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let _ = self.shutdown().await;
+        self.abort_handle.cancel();
+        if let Some(handle) = self.handle.take() {
+            let _gt = tokio::runtime::Handle::current().enter();
+            tokio::task::spawn(async move {
+                let _ = handle.await;
             });
-        });
+        }
         log::trace!("Dropped MotionData");
     }
 }

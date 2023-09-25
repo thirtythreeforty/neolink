@@ -286,23 +286,18 @@ impl NeoCam {
         self.config_watch.send_replace(config);
         Ok(())
     }
-
-    async fn shutdown(&mut self) -> AnyResult<()> {
-        let _ = self.commander.send(NeoCamCommand::HangUp).await;
-        self.set.shutdown().await;
-        AnyResult::Ok(())
-    }
 }
 
 impl Drop for NeoCam {
     fn drop(&mut self) {
         log::trace!("Drop NeoCam");
-        tokio::task::block_in_place(move || {
-            let _ = tokio::runtime::Handle::current().block_on(async move {
-                let _ = self.shutdown().await;
-                AnyResult::Ok(())
-            });
+        let mut set = std::mem::take(&mut self.set);
+        let commander = self.commander.clone();
+        let _gt = tokio::runtime::Handle::current().enter();
+        tokio::task::spawn(async move {
+            let _ = commander.send(NeoCamCommand::HangUp).await;
+            while set.join_next().await.is_some() {}
+            log::trace!("Dropped NeoCam");
         });
-        log::trace!("Dropped NeoCam");
     }
 }

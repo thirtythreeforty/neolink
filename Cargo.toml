@@ -39,3 +39,6 @@ toml = "0.7.3"
 validator = "0.16.0"
 validator_derive = "0.16.0"
 yaserde = "0.8.0"
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.5"

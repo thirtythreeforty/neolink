@@ -132,34 +132,28 @@ pub(crate) async fn main(_: Opt, reactor: NeoReactor) -> Result<()> {
                             let thread_reactor2 = thread_reactor.clone();
                             let mqtt_instance = thread_instance.subscribe(name).await?;
                             let name = name.clone();
-                            set.spawn_blocking(|| {
-                                let runtime = tokio::runtime::Builder::new_multi_thread()
-                                    .enable_all()
-                                    .build()
-                                    .unwrap();
-                                runtime.block_on(async move {
-                                    loop {
-                                        let camera = thread_reactor2.get(&name).await?;
-                                        let mqtt_instance = mqtt_instance.resubscribe().await?;
-                                        let r = tokio::select!{
-                                            _ = thread_global_cancel.cancelled() => {
-                                                AnyResult::Ok(())
-                                            },
-                                            _ = local_cancel.cancelled() => {
-                                                AnyResult::Ok(())
-                                            },
-                                            v = listen_on_camera(camera, mqtt_instance) => {
-                                                v
-                                            },
-                                        };
-                                        if let Ok(()) = &r {
-                                            break r
-                                        } else {
-                                            log::debug!("listen_on_camera stopped: {:?}", r);
-                                            continue;
-                                        }
+                            set.spawn(async move {
+                                loop {
+                                    let camera = thread_reactor2.get(&name).await?;
+                                    let mqtt_instance = mqtt_instance.resubscribe().await?;
+                                    let r = tokio::select!{
+                                        _ = thread_global_cancel.cancelled() => {
+                                            AnyResult::Ok(())
+                                        },
+                                        _ = local_cancel.cancelled() => {
+                                            AnyResult::Ok(())
+                                        },
+                                        v = listen_on_camera(camera, mqtt_instance) => {
+                                            v
+                                        },
+                                    };
+                                    if let Ok(()) = &r {
+                                        break r
+                                    } else {
+                                        log::debug!("listen_on_camera stopped: {:?}", r);
+                                        continue;
                                     }
-                                })
+                                }
                             }) ;
                         }
                     }
@@ -476,7 +470,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                     // Handle the battery publish
                     v = async {
                         let mut wait = IntervalStream::new({
-                            let mut i = interval(Duration::from_millis(config.preview_update));
+                            let mut i = interval(Duration::from_millis(config.battery_update));
                             i.set_missed_tick_behavior(MissedTickBehavior::Skip);
                             i
                         });
@@ -766,7 +760,7 @@ async fn handle_mqtt_message(
                     if let (Some(seconds), Some(bc_direction)) = (seconds, bc_direction) {
                         // On drop send the stop command again just to make sure it stops
                         let _drop_command = camera.clone().drop_command(
-                            |cam| {
+                            move |cam| {
                                 Box::pin(async move {
                                     cam.send_ptz(BcDirection::Stop, speed).await?;
                                     AnyResult::Ok(())
@@ -1073,9 +1067,9 @@ async fn handle_mqtt_message(
                 }
                 Ok(bytes) => {
                     if let Err(e) = mqtt
-                        .send_message("status/preview", BASE64.encode(image).as_str(), true)
+                        .send_message("status/preview", BASE64.encode(bytes).as_str(), true)
                         .await
-                        .with_context(|| format!("{}: Failed to publish preview", camera_name))
+                        .with_context(|| "Failed to publish preview")
                     {
                         error!("Failed to send preview: {e:?}");
                         "FAIL"

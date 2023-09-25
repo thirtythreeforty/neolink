@@ -286,12 +286,11 @@ impl Drop for MotionData {
     fn drop(&mut self) {
         log::trace!("Drop MotionData");
         self.cancel.cancel();
-        tokio::task::block_in_place(move || {
-            let _ = tokio::runtime::Handle::current().block_on(async move {
-                while self.handle.join_next().await.is_some() {}
-                Result::Ok(())
-            });
+        let mut handle = std::mem::take(&mut self.handle);
+        let _gt = tokio::runtime::Handle::current().enter();
+        tokio::task::spawn(async move {
+            while handle.join_next().await.is_some() {}
+            log::trace!("Dropped MotionData");
         });
-        log::trace!("Dropped MotionData");
     }
 }

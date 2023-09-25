@@ -156,14 +156,13 @@ impl Drop for NeoReactor {
             if let Ok(mut set) = Arc::try_unwrap(set) {
                 log::trace!("Drop NeoReactor");
                 self.cancel.cancel();
-                tokio::task::block_in_place(move || {
-                    let _ = tokio::runtime::Handle::current().block_on(async move {
-                        let _ = self.commander.send(NeoReactorCommand::HangUp).await;
-                        while set.join_next().await.is_some() {}
-                        AnyResult::Ok(())
-                    });
+                let commander = self.commander.clone();
+                let _gt = tokio::runtime::Handle::current().enter();
+                tokio::task::spawn(async move {
+                    let _ = commander.send(NeoReactorCommand::HangUp).await;
+                    while set.join_next().await.is_some() {}
+                    log::trace!("Dropped NeoReactor");
                 });
-                log::trace!("Dropped NeoReactor");
             }
         }
     }

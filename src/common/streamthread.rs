@@ -300,16 +300,6 @@ impl StreamInstance {
     }
 }
 
-impl Drop for StreamInstance {
-    fn drop(&mut self) {
-        tokio::task::block_in_place(move || {
-            tokio::runtime::Handle::current().block_on(async move {
-                let _ = self.in_use.deactivate().await;
-            });
-        });
-    }
-}
-
 impl StreamData {
     async fn new(name: StreamKind, instance: NeoInstance, strict: bool) -> Result<Self> {
         let (vid, _) = broadcast::<StampedData>(100);
@@ -589,14 +579,12 @@ impl Drop for StreamData {
     fn drop(&mut self) {
         log::trace!("Drop StreamData");
         self.cancel.cancel();
-        tokio::task::block_in_place(move || {
-            let _ = tokio::runtime::Handle::current().block_on(async move {
-                if let Some(h) = self.handle.take() {
-                    let _ = h.await;
-                }
-                AnyResult::Ok(())
+        if let Some(h) = self.handle.take() {
+            let _gt = tokio::runtime::Handle::current().enter();
+            tokio::task::spawn(async move {
+                let _ = h.await;
+                log::trace!("Dropped StreamData");
             });
-        });
-        log::trace!("Dropped StreamData");
+        }
     }
 }

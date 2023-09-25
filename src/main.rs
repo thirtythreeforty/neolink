@@ -22,6 +22,13 @@
 //!
 //! Neolink source code is available online at <https://github.com/thirtythreeforty/neolink>
 //!
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use env_logger::Env;
@@ -47,6 +54,7 @@ use cmdline::{Command, Opt};
 use common::NeoReactor;
 use config::Config;
 use console_subscriber as _;
+
 pub(crate) type AnyResult<T> = Result<T, anyhow::Error>;
 
 #[cfg(tokio_unstable)]

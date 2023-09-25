@@ -93,19 +93,21 @@ impl Mqtt {
 impl Drop for Mqtt {
     fn drop(&mut self) {
         log::trace!("Drop MQTT");
-        tokio::task::block_in_place(move || {
-            let _ = tokio::runtime::Handle::current().block_on(async move {
-                let (tx, rx) = oneshot();
-                let _ = self.outgoing_tx.send(MqttRequest::HangUp(tx)).await;
-                let _ = rx.await;
+        let outgoing_tx = self.outgoing_tx.clone();
+        let cancel = self.cancel.clone();
+        let mut set = std::mem::take(&mut self.set);
 
-                log::debug!("Mqtt::drop Cancel");
-                self.cancel.cancel();
-                while self.set.join_next().await.is_some() {}
-                AnyResult::Ok(())
-            });
+        let _gt = tokio::runtime::Handle::current().enter();
+        tokio::task::spawn(async move {
+            let (tx, rx) = oneshot();
+            let _ = outgoing_tx.send(MqttRequest::HangUp(tx)).await;
+            let _ = rx.await;
+
+            log::debug!("Mqtt::drop Cancel");
+            cancel.cancel();
+            while set.join_next().await.is_some() {}
+            log::trace!("Dropped MQTT");
         });
-        log::trace!("Dropped MQTT");
     }
 }
 
@@ -172,8 +174,6 @@ impl<'a> MqttBackend<'a> {
 
         let (client, mut connection) = AsyncClient::new(mqttoptions, 100);
 
-        let mut set = JoinSet::new();
-
         let client = Arc::new(client);
         let send_client = client.clone();
         send_client
@@ -185,6 +185,8 @@ impl<'a> MqttBackend<'a> {
             )
             .await?;
         log::debug!("MQTT Published Startup");
+        let loop_cancel = CancellationToken::new();
+        let _drop_guard = loop_cancel.clone().drop_guard();
         loop {
             let r = tokio::select! {
                 v = self.outgoing_rx.recv() => {
@@ -194,64 +196,72 @@ impl<'a> MqttBackend<'a> {
                     let outgoing_tx = self.outgoing_tx.clone();
                     let incomming_tx = self.incomming_tx.clone();
                     let send_client = send_client.clone();
-                    set.spawn(async move {
-                        match msg {
-                            MqttRequest::Send(msg, tx) =>  {
-                                let v = send_client.publish(
-                                    msg.topic.clone(),
-                                    QoS::AtLeastOnce,
-                                    false,
-                                    msg.message.clone(),
-                                ).await;
-                                match &v {
-                                    Ok(()) => {
-                                        let _ = tx.send(Ok(()));
-                                    },
-                                    Err(rumqttc::ClientError::Request(_)) | Err(rumqttc::ClientError::TryRequest(_)) => {
-                                        // Requeue it
-                                        outgoing_tx.send(MqttRequest::Send(msg, tx)).await?;
+                    let cancel = self.cancel.clone();
+                    let thread_cancel = loop_cancel.clone();
+                    tokio::task::spawn(async move {
+                        tokio::select!{
+                            _ = cancel.cancelled() => AnyResult::Ok(()),
+                            _ = thread_cancel.cancelled() => AnyResult::Ok(()),
+                            v = async {
+                                match msg {
+                                    MqttRequest::Send(msg, tx) =>  {
+                                        let v = send_client.publish(
+                                            msg.topic.clone(),
+                                            QoS::AtLeastOnce,
+                                            false,
+                                            (*msg.message).clone(),
+                                        ).await;
+                                        match &v {
+                                            Ok(()) => {
+                                                let _ = tx.send(Ok(()));
+                                            },
+                                            Err(rumqttc::ClientError::Request(_)) | Err(rumqttc::ClientError::TryRequest(_)) => {
+                                                // Requeue it
+                                                outgoing_tx.send(MqttRequest::Send(msg, tx)).await?;
+                                            }
+                                        };
+                                        v?;
                                     }
-                                };
-                                v?;
-                            }
-                            MqttRequest::SendRetained(msg, tx) =>  {
-                                let v = send_client.publish(
-                                    msg.topic.clone(),
-                                    QoS::AtLeastOnce,
-                                    true,
-                                    msg.message.clone(),
-                                ).await;
-                                match &v {
-                                    Ok(()) => {
-                                        let _ = tx.send(Ok(()));
-                                    },
-                                    Err(rumqttc::ClientError::Request(_)) | Err(rumqttc::ClientError::TryRequest(_)) => {
-                                        // Requeue it
-                                        outgoing_tx.send(MqttRequest::Send(msg, tx)).await?;
+                                    MqttRequest::SendRetained(msg, tx) =>  {
+                                        let v = send_client.publish(
+                                            msg.topic.clone(),
+                                            QoS::AtLeastOnce,
+                                            true,
+                                            (*msg.message).clone(),
+                                        ).await;
+                                        match &v {
+                                            Ok(()) => {
+                                                let _ = tx.send(Ok(()));
+                                            },
+                                            Err(rumqttc::ClientError::Request(_)) | Err(rumqttc::ClientError::TryRequest(_)) => {
+                                                // Requeue it
+                                                outgoing_tx.send(MqttRequest::Send(msg, tx)).await?;
+                                            }
+                                        };
+                                        v?;
                                     }
-                                };
-                                v?;
-                            }
-                            MqttRequest::HangUp(reply) => {
-                                send_client.publish(
-                                    "neolink/status".to_string(),
-                                    QoS::AtLeastOnce,
-                                    true,
-                                    "disconnected".to_string(),
-                                ).await?;
-                                let _ = reply.send(());
-                                return Err(anyhow!("Disconneting"));
-                            }
-                            MqttRequest::Subscribe(name, reply) => {
-                                let instance = MqttInstance {
-                                    name,
-                                    incomming_rx: BroadcastStream::new(incomming_tx.subscribe()),
-                                    outgoing_tx: outgoing_tx.clone(),
-                                };
-                                let _ = reply.send(Ok(instance));
-                            }
+                                    MqttRequest::HangUp(reply) => {
+                                        send_client.publish(
+                                            "neolink/status".to_string(),
+                                            QoS::AtLeastOnce,
+                                            true,
+                                            "disconnected".to_string(),
+                                        ).await?;
+                                        let _ = reply.send(());
+                                        return Err(anyhow!("Disconneting"));
+                                    }
+                                    MqttRequest::Subscribe(name, reply) => {
+                                        let instance = MqttInstance {
+                                            name,
+                                            incomming_rx: BroadcastStream::new(incomming_tx.subscribe()),
+                                            outgoing_tx: outgoing_tx.clone(),
+                                        };
+                                        let _ = reply.send(Ok(instance));
+                                    }
+                                }
+                                AnyResult::Ok(())
+                            } => v,
                         }
-                        AnyResult::Ok(())
                     });
 
                     AnyResult::Ok(())
@@ -262,9 +272,11 @@ impl<'a> MqttBackend<'a> {
                     let client = client.clone();
                     let incomming_tx = self.incomming_tx.clone();
                     let cancel = self.cancel.clone();
-                    set.spawn(async move {
+                    let thread_cancel = loop_cancel.clone();
+                    tokio::task::spawn(async move {
                         tokio::select!{
                             _ = cancel.cancelled() => AnyResult::Ok(()),
+                            _ = thread_cancel.cancelled() => AnyResult::Ok(()),
                             v = async {
                                 match notification {
                                     Event::Incoming(Incoming::ConnAck(connected)) => {
@@ -292,8 +304,8 @@ impl<'a> MqttBackend<'a> {
                                             let _ = incomming_tx
                                                 .send(MqttReply {
                                                     topic: sub_topic.to_string(),
-                                                    message: String::from_utf8_lossy(published_message.payload.as_ref())
-                                                        .into_owned(),
+                                                    message: Arc::new(String::from_utf8_lossy(published_message.payload.as_ref())
+                                                        .into_owned()),
                                                 });
                                         }
                                     }
@@ -370,7 +382,7 @@ impl MqttInstance {
                 .send(MqttRequest::SendRetained(
                     MqttReply {
                         topic: topics.join("/"),
-                        message: message.to_string(),
+                        message: Arc::new(message.to_string()),
                     },
                     tx,
                 ))
@@ -382,7 +394,7 @@ impl MqttInstance {
                 .send(MqttRequest::Send(
                     MqttReply {
                         topic: topics.join("/"),
-                        message: message.to_string(),
+                        message: Arc::new(message.to_string()),
                     },
                     tx,
                 ))
@@ -439,7 +451,7 @@ impl MqttInstance {
         message: &str,
     ) -> AnyResult<DropSender> {
         Ok(DropSender {
-            instance: self.resubscribe().await?,
+            instance: Some(self.resubscribe().await?),
             topic: topic.to_string(),
             message: message.to_string(),
         })
@@ -449,7 +461,7 @@ impl MqttInstance {
 #[derive(Clone, Debug)]
 pub(crate) struct MqttReply {
     pub(crate) topic: String,
-    pub(crate) message: String,
+    pub(crate) message: Arc<String>, // Messages can be long so avoid costly clones with an arc
 }
 
 impl MqttReply {
@@ -474,19 +486,18 @@ enum MqttRequest {
 }
 
 pub(crate) struct DropSender {
-    instance: MqttInstance,
+    instance: Option<MqttInstance>,
     topic: String,
     message: String,
 }
 
 impl Drop for DropSender {
     fn drop(&mut self) {
-        tokio::task::block_in_place(move || {
-            let _ = tokio::runtime::Handle::current().block_on(async move {
-                self.instance
-                    .send_message(&self.topic, &self.message, true)
-                    .await
-            });
-        });
+        if let Some(instance) = self.instance.take() {
+            let _gt = tokio::runtime::Handle::current().enter();
+            let topic = self.topic.clone();
+            let message = self.message.clone();
+            tokio::task::spawn(async move { instance.send_message(&topic, &message, true).await });
+        }
     }
 }
