@@ -240,12 +240,14 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
 async fn apply_users(rtsp: &NeoRtspServer, curr_users: &HashSet<UserConfig>) -> AnyResult<()> {
     // Add those missing
     for user in curr_users.iter() {
+        log::debug!("Adding user {} to rtsp server", user.name);
         rtsp.add_user(&user.name, &user.pass).await?;
     }
     // Remove unused
     let rtsp_users = rtsp.get_users().await?;
     for user in rtsp_users {
-        if curr_users.iter().any(|a| a.name == user) {
+        if !curr_users.iter().any(|a| a.name == user) {
+            log::debug!("Removing user {} from rtsp server", user);
             rtsp.remove_user(&user).await?;
         }
     }

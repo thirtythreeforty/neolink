@@ -54,8 +54,10 @@ impl NeoMediaFactory {
 
     pub(crate) fn add_permitted_roles<T: AsRef<str>>(&self, permitted_roles: &HashSet<T>) {
         for permitted_role in permitted_roles {
+            let s = permitted_role.as_ref();
+            log::debug!("Adding {} as permitted user", s);
             self.add_role_from_structure(
-                &Structure::builder(permitted_role.as_ref())
+                &Structure::builder(s)
                     .field(RTSP_PERM_MEDIA_FACTORY_ACCESS, true)
                     .field(RTSP_PERM_MEDIA_FACTORY_CONSTRUCT, true)
                     .build(),
