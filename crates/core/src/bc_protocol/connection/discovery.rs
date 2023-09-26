@@ -489,6 +489,8 @@ impl Discoverer {
             },
         };
 
+        trace!("Registering: {:?}", msg.payload.c2r_c);
+
         // Send and await acceptance
         let (sid, dev, dmap, relay) = self
             .retry_send(msg, lookup.reg, |bc, socket| {

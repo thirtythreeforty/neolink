@@ -1705,6 +1705,64 @@ Message have zero to two payloads.
     </body>
     ```
 
+- 109: `<Snap>`
+
+  - Client:
+    Usual header
+
+    - Meta:
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <Extension version="1.1">
+    <channelId>0</channelId>
+    </Extension>
+    ```
+
+    - Main:
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <Snap version="1.1">
+    <channelId>0</channelId>
+    <logicChannel>0</logicChannel>
+    <time>0</time>
+    <fullFrame>0</fullFrame>
+    <streamType>main</streamType>
+    </Snap>
+    </body>
+    ```
+
+    - Camera:
+
+    **Notes:** XML & Binary reply over mutliple packets:
+    - Reply 1:
+        - Main:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <Snap version="1.1">
+        <channelId>0</channelId>
+        <fileName>01_20230518140240.jpg</fileName>
+        <time>0</time>
+        <pictureSize>23644</pictureSize>
+        </Snap>
+        </body>
+        ```
+
+    - Reply 2:
+        - Meta:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <Extension version="1.1">
+        <binaryData>1</binaryData>
+        </Extension>
+        ```
+        - Main:
+        **Binary data containing the file may be broken over multiple packets**
+
+
 - 115: `<WifiSignal>`
 
   - Client
@@ -1733,6 +1791,35 @@ Message have zero to two payloads.
     </WifiSignal>
     </body>
     ```
+
+- 116: `<Wifi>`
+
+    - Client:
+        Usual header
+
+    - Camera:
+        Payload:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <Wifi version="1.1">
+        <mode>station</mode>
+        <authMode>wpa2psk</authMode>
+        <encryptType>aes</encryptType>
+        <udidList>
+            <udid>
+            <name>WIFINAME</name>
+            <signal>NUMBER</signal>
+            <encrypt>ONE_OR_ZERO</encrypt>
+            </udid>
+            # Repeats for ALL wifi in range
+        </udidList>
+        <ssid>YOUR_CURRENT_WIFI</ssid>
+        <key>YOUR_CURRENT_WIFI_PASSWORD_UNENCRYPTED</key>
+        <channel>YOUR_CURRENT_WIFI_CHANNEL</channel>
+        </Wifi>
+        </body>
+        ```
 
 - 132: `<VideoInput>`
 
@@ -1845,6 +1932,37 @@ Message have zero to two payloads.
     </InputAdvanceCfg>
     </body>
     ```
+
+- 124: `<PushInfo>`
+
+    - Client
+        - Payload:
+
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <PushInfo version="1.1">
+        <token>A_PUSH_NOTIFICATION_TOKEN</token>
+        <phoneType>reo_iphone</phoneType>
+        <clientID>A_PUSH_NOTIFICATION_CLIENTID</clientID>
+        </PushInfo>
+        </body>
+        ```
+
+    - Camera
+        - Payload
+
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <PushRspInfo version="1.1">
+        <registerHandle>-1</registerHandle>
+        <uid>CAMERA_UID</uid>
+        <uidKey>A_4_CHAR_STRING</uidKey>
+        </PushRspInfo>
+        </body>
+        ```
+
 
 - 133: `<RfAlarm>`
 
@@ -2386,6 +2504,154 @@ Message have zero to two payloads.
         |--------------|--------------|----------------|-------------------|-------------------|---------------|---------------|
         | 0a bc de f0  | 00 00 00 d1  |  00 00 00 00   |    85 00 00 00    |       c8 00       |     00 00     |  00 00 00 00  |
 
+- 219: `<PushTask>`
+    - Client
+        Usual header
+
+        - Meta:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <Extension version="1.1">
+        <channelId>0</channelId>
+        </Extension>
+        ```
+    - Camera
+        Usual header
+
+        - Payload:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <PushTask version="1.1">
+        <channelId>0</channelId>
+        <enable>1</enable>
+        <ScheduleList>
+        <Schedule>
+        <alarmType>MD</alarmType>
+        <timeBlockList>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Sunday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Monday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Tuesday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Wednesday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Thursday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Friday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Saturday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        </timeBlockList>
+        </Schedule>
+        </ScheduleList>
+        </PushTask>
+        </body>
+        ```
+
+
+- 232: `<AudioTask>`
+    - Client
+        Usual header
+
+        - Meta:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <Extension version="1.1">
+        <channelId>0</channelId>
+        </Extension>
+        ```
+    - Camera
+        Usual header
+
+        - Payload:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <AudioTask version="1.1">
+        <channelId>0</channelId>
+        <enable>0</enable>
+        <ScheduleList>
+        <Schedule>
+        <alarmType>MD</alarmType>
+        <timeBlockList>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Sunday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Monday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Tuesday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Wednesday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Thursday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Friday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        <timeBlock>
+        <enable>1</enable>
+        <weekDay>Saturday</weekDay>
+        <beginHour>0</beginHour>
+        <endHour>23</endHour>
+        </timeBlock>
+        </timeBlockList>
+        </Schedule>
+        </ScheduleList>
+        </AudioTask>
+        </body>
+        ```
 
 - 264: `<audioCfg>` (write)
 
@@ -2420,6 +2686,55 @@ Message have zero to two payloads.
     </audioCfg>
     </body>
     ```
+
+- 268: `CloudBindInfo`
+    - Client:
+        Usual header only packet
+
+    - Camera
+
+        - Payload
+
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <CloudBindInfo version="1.1">
+        <binded>1</binded>
+        </CloudBindInfo>
+        </body>
+        ```
+
+- 282: `CloudLoginKey`
+
+    - Client:
+        Usual header only packet
+
+    - Camera
+        - Payload
+
+        ```xml
+        <body>
+        <CloudLoginKey version="1.1">
+        <enable>0</enable>
+        </CloudLoginKey>
+        </body>
+        ```
+
+- 287: `<TimeCfg>`
+    - Client:
+        - Payload
+
+        ```xml
+        <?xml version="1.0" encoding="UTF-8" ?>
+        <body>
+        <TimeCfg version="1.1">
+        <realTime>1684393362</realTime>
+        </TimeCfg>
+        </body>
+        ```
+
+    - Camera
+        Header only 200 Ok reply
 
 - 288: `<FloodlightManual>` (write)
 

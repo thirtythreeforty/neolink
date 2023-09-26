@@ -16,4 +16,5 @@ repos:
   hooks:
   - id: markdownlint-fix
     files: README.md
+    args: [--disable, MD041, --]
 

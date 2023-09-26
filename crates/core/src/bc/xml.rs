@@ -94,6 +94,9 @@ pub struct BcXml {
     /// Recieved on request for a users persmissions/capabilitoes
     #[yaserde(rename = "AbilityInfo")]
     pub ability_info: Option<AbilityInfo>,
+    /// Recieved on request for a users persmissions/capabilitoes
+    #[yaserde(rename = "PushInfo")]
+    pub push_info: Option<PushInfo>,
     /// Recieved on request for a link type
     #[yaserde(rename = "LinkType")]
     pub link_type: Option<LinkType>,
@@ -717,6 +720,19 @@ pub struct AbilityInfoSubModule {
     /// The comma seperated list of permissions like this: `general_rw, norm_rw, version_ro`
     #[yaserde(rename = "abilityValue")]
     pub ability_value: String,
+}
+
+/// PushInfo XML
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct PushInfo {
+    /// The token from FCM registration
+    pub token: String,
+    /// The phone type, known values: `reo_iphone`
+    #[yaserde(rename = "phoneType")]
+    pub phone_type: String,
+    /// A client ID, seems to be an all CAPS MD5 hash of something
+    #[yaserde(rename = "clientID")]
+    pub client_id: String,
 }
 
 /// The Link Type contains the type of connection present
