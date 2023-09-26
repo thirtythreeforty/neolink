@@ -198,6 +198,7 @@ impl<'a> MqttBackend<'a> {
                     let send_client = send_client.clone();
                     let cancel = self.cancel.clone();
                     let thread_cancel = loop_cancel.clone();
+                    let server_config = self.config.clone();
                     tokio::task::spawn(async move {
                         tokio::select!{
                             _ = cancel.cancelled() => AnyResult::Ok(()),
@@ -257,6 +258,14 @@ impl<'a> MqttBackend<'a> {
                                             outgoing_tx: outgoing_tx.clone(),
                                         };
                                         let _ = reply.send(Ok(instance));
+                                    },
+                                    MqttRequest::LastWill{topic, message, reply} => {
+                                        let last_will = LastWillMqtt::new(
+                                            &server_config,
+                                            topic,
+                                            message,
+                                        ).await;
+                                        let _ = reply.send(last_will);
                                     }
                                 }
                                 AnyResult::Ok(())
@@ -445,16 +454,22 @@ impl MqttInstance {
         })
     }
 
-    pub(crate) async fn drop_guard_message(
-        &self,
-        topic: &str,
-        message: &str,
-    ) -> AnyResult<DropSender> {
-        Ok(DropSender {
-            instance: Some(self.resubscribe().await?),
-            topic: topic.to_string(),
-            message: message.to_string(),
-        })
+    pub(crate) async fn last_will(&self, topic: &str, message: &str) -> AnyResult<LastWillMqtt> {
+        let topic = if self.name.is_empty() {
+            format!("neolink/{}", topic)
+        } else {
+            format!("neolink/{}/{}", self.name, topic)
+        };
+
+        let (tx, rx) = oneshot();
+        self.outgoing_tx
+            .send(MqttRequest::LastWill {
+                topic,
+                message: message.to_string(),
+                reply: tx,
+            })
+            .await?;
+        rx.await?
     }
 }
 
@@ -483,21 +498,98 @@ enum MqttRequest {
     SendRetained(MqttReply, OneshotSender<Result<()>>),
     HangUp(OneshotSender<()>),
     Subscribe(String, OneshotSender<Result<MqttInstance>>),
+    LastWill {
+        topic: String,
+        message: String,
+        reply: OneshotSender<Result<LastWillMqtt>>,
+    },
 }
 
-pub(crate) struct DropSender {
-    instance: Option<MqttInstance>,
-    topic: String,
-    message: String,
+pub(crate) struct LastWillMqtt {
+    cancel: CancellationToken,
 }
 
-impl Drop for DropSender {
-    fn drop(&mut self) {
-        if let Some(instance) = self.instance.take() {
-            let _gt = tokio::runtime::Handle::current().enter();
-            let topic = self.topic.clone();
-            let message = self.message.clone();
-            tokio::task::spawn(async move { instance.send_message(&topic, &message, true).await });
+impl LastWillMqtt {
+    pub(crate) async fn new(
+        config: &MqttServerConfig,
+        topic: String,
+        message: String,
+    ) -> AnyResult<Self> {
+        log::trace!("Run MQTT Last Will");
+        let mut mqttoptions = MqttOptions::new(
+            format!("NeolinkLastWill_{}", topic),
+            &config.broker_addr,
+            config.port,
+        );
+        let max_size = 100 * (1024 * 1024);
+        mqttoptions.set_max_packet_size(max_size, max_size);
+
+        // Use TLS if ca path is set
+        if let Some(ca_path) = &config.ca {
+            if let Ok(ca) = std::fs::read(ca_path) {
+                // Use client_auth if they have cert and key
+                let client_auth = if let Some((cert_path, key_path)) = &config.client_auth {
+                    if let (Ok(cert_buf), Ok(key_buf)) =
+                        (std::fs::read(cert_path), std::fs::read(key_path))
+                    {
+                        Some((cert_buf, Key::RSA(key_buf)))
+                    } else {
+                        error!("Failed to set client tls");
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let transport = Transport::Tls(TlsConfiguration::Simple {
+                    ca,
+                    alpn: None,
+                    client_auth,
+                });
+                mqttoptions.set_transport(transport);
+            } else {
+                error!("Failed to set CA");
+            }
+        };
+
+        if let Some((username, password)) = &config.credentials {
+            mqttoptions.set_credentials(username, password);
         }
+
+        mqttoptions.set_keep_alive(Duration::from_secs(5));
+
+        // On unclean disconnect send this
+        mqttoptions.set_last_will(LastWill::new(topic, message, QoS::AtLeastOnce, true));
+
+        let (client, mut connection) = AsyncClient::new(mqttoptions, 100);
+        let client = Arc::new(client);
+        let cancel = CancellationToken::new();
+        let thread_cancel = cancel.clone();
+
+        tokio::task::spawn(async move {
+            loop {
+                let r = tokio::select! {
+                    _ = thread_cancel.cancelled() => AnyResult::Ok(()),
+                    v = connection.poll() =>  {
+                        v?;
+                        AnyResult::Ok(())
+                    },
+                };
+                if r.is_ok() {
+                    continue;
+                }
+                break r;
+            }?;
+            drop(client);
+            AnyResult::Ok(())
+        });
+
+        Ok(LastWillMqtt { cancel })
+    }
+}
+
+impl Drop for LastWillMqtt {
+    fn drop(&mut self) {
+        self.cancel.cancel();
     }
 }

@@ -271,7 +271,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                         .send_message("status", "disconnected", true)
                         .await
                         .with_context(|| format!("Failed to publish status for {}", camera_name))?;
-                let _drop_message = mqtt_instance.drop_guard_message("status", "disconnected").await?;
+                let _drop_message = mqtt_instance.last_will("status", "disconnected").await?;
                 mqtt_instance
                     .send_message("status/motion", "unknown", true)
                     .await
@@ -280,7 +280,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                     .send_message("status/notification", "unknown", true)
                     .await
                     .with_context(|| format!("Failed to publish push notification unknown for {}", camera_name))?;
-                let _drop_message2 = mqtt_instance.drop_guard_message("status/motion", "unknown").await?;
+                let _drop_message2 = mqtt_instance.last_will("status/motion", "unknown").await?;
 
                 if let Some(discovery_config) = config.discovery.as_ref() {
                     enable_discovery(discovery_config, &mqtt_instance, &camera).await?;
