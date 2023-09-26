@@ -8,7 +8,6 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Sender};
-use tokio::task::yield_now;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 
@@ -234,7 +233,6 @@ struct Poller {
 impl Poller {
     async fn run(&mut self) -> Result<()> {
         while let Some(command) = self.reciever.next().await {
-            yield_now().await;
             // Clean Up subscribers
             self.subscribers
                 .num
@@ -267,10 +265,15 @@ impl Poller {
                             ) {
                                 (Some(occ), _) => {
                                     log::trace!("Calling ID callback");
-                                    if let Some(reply) = occ(&response).await {
-                                        assert!(reply.meta.msg_num == response.meta.msg_num);
-                                        self.sink.send(Ok(reply)).await?;
-                                    }
+                                    let occ = occ.clone();
+                                    let sink = self.sink.clone();
+                                    tokio::task::spawn(async move {
+                                        if let Some(reply) = occ(&response).await {
+                                            assert!(reply.meta.msg_num == response.meta.msg_num);
+                                            sink.send(Ok(reply)).await?;
+                                        }
+                                        Result::Ok(())
+                                    });
                                     log::trace!("Called ID callback");
                                 }
                                 (None, Some(occ)) => {
@@ -315,9 +318,10 @@ impl Poller {
                                                 &msg_id
                                             );
                                         }
-                                        if sender.send(Ok(response)).await.is_err() {
-                                            occ.remove(&Some(msg_num));
-                                        }
+                                        let sender = sender.clone();
+                                        tokio::task::spawn(async move {
+                                            sender.send(Ok(response)).await
+                                        });
                                     } else {
                                         debug!(
                                             "Ignoring uninteresting message id {} (number: {})",
@@ -376,9 +380,11 @@ impl Poller {
                                 occ_entry.insert(tx);
                             } else {
                                 // log::error!("Failed to subscribe in bcconn to {:?} for {:?}", msg_num, msg_id);
-                                let _ = tx
-                                    .send(Err(Error::SimultaneousSubscription { msg_num }))
-                                    .await;
+                                tokio::task::spawn(async move {
+                                    let _ = tx
+                                        .send(Err(Error::SimultaneousSubscription { msg_num }))
+                                        .await;
+                                });
                             }
                         }
                     };

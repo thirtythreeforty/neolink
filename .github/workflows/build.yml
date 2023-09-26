@@ -92,7 +92,7 @@ jobs:
     if: needs.pre_job.outputs.should_skip != 'true'
     name: cross
     runs-on: ubuntu-latest
-    container: "node:current-bullseye-slim"
+    container: "node:current-bookworm-slim"
     strategy:
       fail-fast: false
       matrix:
@@ -155,7 +155,7 @@ jobs:
           TARGET: ${{ matrix.target }}
       - uses: actions/upload-artifact@v3
         with:
-          name: release-${{ matrix.arch }}-bullseye
+          name: release-${{ matrix.arch }}-bookworm
           path: "target/${{ matrix.target }}/release/neolink*"
 
   push_to_registry:
@@ -264,22 +264,22 @@ jobs:
       - name: Download Linux x86_64
         uses: actions/download-artifact@v3
         with:
-          name: release-amd64-bullseye
+          name: release-amd64-bookworm
           path: linux/amd64
       - name: Download Linux armv7
         uses: actions/download-artifact@v3
         with:
-          name: release-armhf-bullseye
+          name: release-armhf-bookworm
           path: linux/arm/v7
       - name: Download Linux arm64
         uses: actions/download-artifact@v3
         with:
-          name: release-arm64-bullseye
+          name: release-arm64-bookworm
           path: linux/arm64
       - name: Download Linux i386
         uses: actions/download-artifact@v3
         with:
-          name: release-i386-bullseye
+          name: release-i386-bookworm
           path: linux/386
       - name: Push to Docker Hub
         if: ${{ steps.vars.outputs.HAS_SECRET_TOKEN }}
@@ -333,22 +333,22 @@ jobs:
       - name: Download Linux x86_64
         uses: actions/download-artifact@v3
         with:
-          name: release-amd64-bullseye
-          path: neolink_linux_x86_64_bullseye
+          name: release-amd64-bookworm
+          path: neolink_linux_x86_64_bookworm
       - name: Download Linux armhf
         uses: actions/download-artifact@v3
         with:
-          name: release-armhf-bullseye
+          name: release-armhf-bookworm
           path: neolink_linux_armhf
       - name: Download Linux arm64
         uses: actions/download-artifact@v3
         with:
-          name: release-arm64-bullseye
+          name: release-arm64-bookworm
           path: neolink_linux_arm64
       - name: Download Linux i386
         uses: actions/download-artifact@v3
         with:
-          name: release-i386-bullseye
+          name: release-i386-bookworm
           path: neolink_linux_i386
       - name: Prepare Releases
         run: |
@@ -356,7 +356,7 @@ jobs:
             neolink_windows
             neolink_macos
             neolink_linux_x86_64_ubuntu
-            neolink_linux_x86_64_bullseye
+            neolink_linux_x86_64_bookworm
             neolink_linux_armhf
             neolink_linux_arm64
             neolink_linux_i386
@@ -373,7 +373,7 @@ jobs:
             neolink_windows.zip
             neolink_macos.zip
             neolink_linux_x86_64_ubuntu.zip
-            neolink_linux_x86_64_bullseye.zip
+            neolink_linux_x86_64_bookworm.zip
             neolink_linux_armhf.zip
             neolink_linux_arm64.zip
             neolink_linux_i386.zip

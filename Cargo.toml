@@ -20,10 +20,10 @@ console-subscriber = "0.1.8"
 crossbeam-channel = "0.5.8"
 env_logger = "0.10.0"
 futures = "0.3.28"
-gstreamer = "0.20.3"
-gstreamer-app = "0.20.0"
-gstreamer-rtsp = "0.20.0"
-gstreamer-rtsp-server = { version = "0.20.3", features = ["v1_16"] }
+gstreamer = "0.21.0"
+gstreamer-app = { version = "0.21.0", features = ["v1_16"] }
+gstreamer-rtsp = { version = "0.21.0", features = ["v1_16"] }
+gstreamer-rtsp-server = { version = "0.21.0", features = ["v1_16"] }
 heck = "0.4.1"
 lazy_static = "1.4.0"
 log = { version = "0.4.17", features = [ "release_max_level_debug" ] }

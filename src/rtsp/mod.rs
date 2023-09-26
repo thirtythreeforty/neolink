@@ -53,7 +53,7 @@
 //   - `"none"`: Resends the last iframe the camera. This does not reencode at all.  **Most use cases should use this one as it has the least effort on the cpu and gives what you would expect**
 //
 use anyhow::{anyhow, Context, Result};
-use gstreamer::{Bin, Caps, ClockTime, Element, ElementFactory};
+use gstreamer::{prelude::*, Bin, Caps, ClockTime, Element, ElementFactory, GhostPad};
 use gstreamer_app::{AppSrc, AppSrcCallbacks, AppStreamType};
 use gstreamer_rtsp_server::prelude::*;
 use log::*;
@@ -87,6 +87,8 @@ pub(crate) use cmdline::Opt;
 use gst::NeoRtspServer;
 
 type AnyResult<T> = anyhow::Result<T, anyhow::Error>;
+
+const GST_BUFFER_SIZE: u64 = 1024u64 * 1024u64 * 10u64; // 10MB
 
 /// Entry point for the rtsp subcommand
 ///
@@ -984,20 +986,8 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
         let mut ft = Duration::ZERO;
         let mut last_rt: Option<Duration> = None;
         let mut rt = Duration::ZERO;
-        let (gst_data_tx, mut gst_data_rx) = mpsc(100);
         let appsrc = app.clone();
-        // push_buffer can block so we need to do this on a dedicated thread
-        // however it is expensive to call spawn_blocking too often
-        // so we call it once and push via a channel
-        tokio::task::spawn_blocking(move || {
-            while let Some(buf) = gst_data_rx.blocking_recv() {
-                appsrc
-                    .push_buffer(buf)
-                    .map(|_| ())
-                    .map_err(|_| anyhow!("Could not push buffer to appsrc"))?;
-            }
-            AnyResult::Ok(())
-        });
+
         while let Some(Ok(data)) = data_rx.next().await {
             check_live(app)?; // Stop if appsrc is dropped
                               // Cache the last runtime
@@ -1045,7 +1035,10 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                         gst_buf
                     };
 
-                    gst_data_tx.send(buf).await?;
+                    appsrc
+                        .push_buffer(buf)
+                        .map(|_| ())
+                        .map_err(|_| anyhow!("Could not push buffer to appsrc"))?;
                 }
             }
         }
@@ -1106,7 +1099,7 @@ fn build_unknown(bin: &Element) -> Result<()> {
     let encoder = make_element("jpegenc", "encoder")?;
     let payload = make_element("rtpjpegpay", "pay0")?;
 
-    bin.add_many(&[&source, &queue, &overlay, &encoder, &payload])?;
+    bin.add_many([&source, &queue, &overlay, &encoder, &payload])?;
     source.link_filtered(
         &queue,
         &Caps::builder("video/x-raw")
@@ -1116,7 +1109,7 @@ fn build_unknown(bin: &Element) -> Result<()> {
             .field("framerate", gstreamer::Fraction::new(25, 1))
             .build(),
     )?;
-    Element::link_many(&[&queue, &overlay, &encoder, &payload])?;
+    Element::link_many([&queue, &overlay, &encoder, &payload])?;
 
     Ok(())
 }
@@ -1134,7 +1127,7 @@ fn build_h264(bin: &Element) -> Result<AppSrc> {
     source.set_is_live(false);
     source.set_block(false);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(50000000u64); // 50MB
+    source.set_max_bytes(GST_BUFFER_SIZE); // 4MB
     source.set_do_timestamp(false);
     source.set_stream_type(AppStreamType::Seekable);
 
@@ -1144,8 +1137,8 @@ fn build_h264(bin: &Element) -> Result<AppSrc> {
     let queue = make_queue("source_queue")?;
     let parser = make_element("h264parse", "parser")?;
     let payload = make_element("rtph264pay", "pay0")?;
-    bin.add_many(&[&source, &queue, &parser, &payload])?;
-    Element::link_many(&[&source, &queue, &parser, &payload])?;
+    bin.add_many([&source, &queue, &parser, &payload])?;
+    Element::link_many([&source, &queue, &parser, &payload])?;
 
     let source = source
         .dynamic_cast::<AppSrc>()
@@ -1165,7 +1158,7 @@ fn build_h265(bin: &Element) -> Result<AppSrc> {
     source.set_is_live(false);
     source.set_block(false);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(52428800);
+    source.set_max_bytes(GST_BUFFER_SIZE);
     source.set_do_timestamp(false);
     source.set_stream_type(AppStreamType::Seekable);
 
@@ -1175,8 +1168,8 @@ fn build_h265(bin: &Element) -> Result<AppSrc> {
     let queue = make_queue("source_queue")?;
     let parser = make_element("h265parse", "parser")?;
     let payload = make_element("rtph265pay", "pay0")?;
-    bin.add_many(&[&source, &queue, &parser, &payload])?;
-    Element::link_many(&[&source, &queue, &parser, &payload])?;
+    bin.add_many([&source, &queue, &parser, &payload])?;
+    Element::link_many([&source, &queue, &parser, &payload])?;
 
     let source = source
         .dynamic_cast::<AppSrc>()
@@ -1197,7 +1190,7 @@ fn build_aac(bin: &Element) -> Result<AppSrc> {
     source.set_is_live(false);
     source.set_block(false);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(52428800);
+    source.set_max_bytes(GST_BUFFER_SIZE);
     source.set_do_timestamp(false);
     source.set_stream_type(AppStreamType::Seekable);
 
@@ -1214,8 +1207,8 @@ fn build_aac(bin: &Element) -> Result<AppSrc> {
     let encoder = make_element("audioconvert", "audencoder")?;
     let payload = make_element("rtpL16pay", "pay1")?;
 
-    bin.add_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
-    Element::link_many(&[&source, &queue, &parser, &decoder, &encoder, &payload])?;
+    bin.add_many([&source, &queue, &parser, &decoder, &encoder, &payload])?;
+    Element::link_many([&source, &queue, &parser, &decoder, &encoder, &payload])?;
 
     let source = source
         .dynamic_cast::<AppSrc>()
@@ -1242,7 +1235,7 @@ fn build_adpcm(bin: &Element, block_size: u32) -> Result<AppSrc> {
     source.set_is_live(false);
     source.set_block(false);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(52428800);
+    source.set_max_bytes(GST_BUFFER_SIZE);
     source.set_do_timestamp(false);
     source.set_stream_type(AppStreamType::Seekable);
 
@@ -1264,9 +1257,9 @@ fn build_adpcm(bin: &Element, block_size: u32) -> Result<AppSrc> {
     let encoder = make_element("audioconvert", "audencoder")?;
     let payload = make_element("rtpL16pay", "pay1")?;
 
-    bin.add_many(&[&source, &queue, &decoder, &encoder, &payload])?;
-    Element::link_many(&[&source, &queue, &decoder])?;
-    Element::link_many(&[&encoder, &payload])?;
+    bin.add_many([&source, &queue, &decoder, &encoder, &payload])?;
+    Element::link_many([&source, &queue, &decoder])?;
+    Element::link_many([&encoder, &payload])?;
     decoder.connect_pad_added(move |_element, pad| {
         debug!("Linking encoder to decoder: {:?}", pad.caps());
         let sink_pad = encoder
@@ -1314,25 +1307,45 @@ fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
     })
 }
 fn make_queue(name: &str) -> AnyResult<Element> {
-    // let queue = make_element("queue", name)?;
-    // queue.set_property_from_str("leaky", "downstream");
-    // queue.set_property("max-size-bytes", 0u32);
+    let queue = make_element("queue", &format!("queue1_{}", name))?;
+    // queue.set_property("max-size-bytes", GST_BUFFER_SIZE as u32);
     // queue.set_property("max-size-buffers", 0u32);
     // queue.set_property(
     //     "max-size-time",
     //     std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
     //         .unwrap_or(0),
     // );
-    // Ok(queue)
 
-    let queue = make_element("queue2", name)?;
-    // queue.set_property("max-size-bytes", 0u32);
-    // queue.set_property("max-size-buffers", 0u32);
-    queue.set_property(
-        "max-size-time",
-        std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
-            .unwrap_or(0),
-    );
-    queue.set_property("use-buffering", true);
-    Ok(queue)
+    let queue2 = make_element("queue2", &format!("queue2_{}", name))?;
+    // queue2.set_property("max-size-bytes", (GST_BUFFER_SIZE * 2u64 / 3u64)  as u32 );
+    // // queue.set_property("max-size-buffers", 0u32);
+    // queue2.set_property(
+    //     "max-size-time",
+    //     std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
+    //         .unwrap_or(0),
+    // );
+    queue2.set_property("use-buffering", true);
+
+    let bin = gstreamer::Bin::builder().name(name).build();
+    bin.add_many([&queue, &queue2])?;
+    Element::link_many([&queue, &queue2])?;
+
+    let pad = queue
+        .static_pad("sink")
+        .expect("Failed to get a static pad from queue.");
+    let ghost_pad = GhostPad::builder_with_target(&pad).unwrap().build();
+    ghost_pad.set_active(true)?;
+    bin.add_pad(&ghost_pad)?;
+
+    let pad = queue2
+        .static_pad("src")
+        .expect("Failed to get a static pad from queue2.");
+    let ghost_pad = GhostPad::builder_with_target(&pad).unwrap().build();
+    ghost_pad.set_active(true)?;
+    bin.add_pad(&ghost_pad)?;
+
+    let bin = bin
+        .dynamic_cast::<Element>()
+        .map_err(|_| anyhow!("Cannot convert bin"))?;
+    Ok(bin)
 }
