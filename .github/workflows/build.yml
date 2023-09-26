@@ -37,7 +37,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y aptitude
-          sudo aptitude install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev protobuf-compiler
+          sudo aptitude install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev protobuf-compiler libssl-dev
       - if: runner.os == 'Windows'
         name: Install Gstreamer
         run: |
@@ -60,7 +60,9 @@ jobs:
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "${GITHUB_ENV}"
           echo "PKG_CONFIG_GSTREAMER_1_0_PREFIX=${PKG_CONFIG_GSTREAMER_1_0_PREFIX}" >> "${GITHUB_ENV}"
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"
-          brew install pkg-config protobuf
+          brew install pkg-config protobuf openssl@1.1
+          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@1.1)/include/" >>  "${GITHUB_ENV}"
+          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@1.1)/lib/" >>  "${GITHUB_ENV}"
       - name: Cache cargo registry
         uses: actions/cache@v3
         with:
@@ -137,7 +139,8 @@ jobs:
           libgstrtspserver-1.0-dev:${{ matrix.arch }} \
           libgstreamer1.0-dev:${{ matrix.arch }} \
           libgtk2.0-dev:${{ matrix.arch }} \
-          libglib2.0-dev:${{ matrix.arch }}
+          libglib2.0-dev:${{ matrix.arch }} \
+          libssl-dev:${{ matrix.arch }}
       - name: Install rustup
         run: |
           curl https://sh.rustup.rs -sSf | sh -s -- --no-modify-path --quiet -y
