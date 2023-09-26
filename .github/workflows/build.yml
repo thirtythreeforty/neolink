@@ -50,9 +50,9 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV  -Value "GSTREAMER_1_0_ROOT_MSVC_X86_64=$env:GSTREAMER_1_0_ROOT_MSVC_X86_64"
           Add-Content -Path $env:GITHUB_PATH  -Value "$env:GSTREAMER_1_0_ROOT_MSVC_X86_64\bin"
           Add-Content -Path $env:GITHUB_PATH  -Value "%GSTREAMER_1_0_ROOT_MSVC_X86_64%\bin"
-          dir OPENSSL_DIR=C:\Program Files\
-          dir OPENSSL_DIR=C:\Program Files\OpenSSL
-          Add-Content -Path $env:GITHUB_ENV  -Value "OPENSSL_DIR=C:\Program Files\OpenSSL"
+          dir C:\Program Files\
+          dir C:\Program Files\OpenSSL-Win64
+          Add-Content -Path $env:GITHUB_ENV  -Value "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64"
       - if: runner.os == 'macOS'
         name: Install Gstreamer on macOS
         run: |
