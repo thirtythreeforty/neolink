@@ -18,7 +18,9 @@ byte-slice-cast = "1.2.2"
 clap = { version = "4.2.2", features = ["derive", "cargo"] }
 console-subscriber = "0.1.8"
 crossbeam-channel = "0.5.8"
+dirs = "5.0.1"
 env_logger = "0.10.0"
+fcm-push-listener = "2.0.1"
 futures = "0.3.28"
 gstreamer = "0.21.0"
 gstreamer-app = { version = "0.21.0", features = ["v1_16"] }
@@ -27,6 +29,7 @@ gstreamer-rtsp-server = { version = "0.21.0", features = ["v1_16"] }
 heck = "0.4.1"
 lazy_static = "1.4.0"
 log = { version = "0.4.17", features = [ "release_max_level_debug" ] }
+md5 = "0.7.0"
 neolink_core = { path = "crates/core", version = "0.6.2" }
 regex = "1.7.3"
 rumqttc = "0.22.0"

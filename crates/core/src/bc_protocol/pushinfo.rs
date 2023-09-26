@@ -32,7 +32,7 @@ impl BcCamera {
     ) -> Result<()> {
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
-        let mut sub = connection.subscribe(msg_num).await?;
+        let mut sub = connection.subscribe(MSG_ID_PUSH_INFO, msg_num).await?;
 
         let phone_type_str = match phone_type {
             PhoneType::Ios => "reo_iphone",

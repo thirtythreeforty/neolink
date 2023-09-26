@@ -13,13 +13,15 @@ use tokio::{
         watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
     },
     task::JoinSet,
+    time::{sleep, Duration},
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 
 use super::{
     MdRequest, MdState, NeoCamMdThread, NeoCamStreamThread, NeoCamThread, NeoCamThreadState,
-    NeoInstance, Permit, StreamInstance, StreamRequest, UseCounter,
+    NeoInstance, Permit, PnRequest, PushNoti, PushNotiThread, StreamInstance, StreamRequest,
+    UseCounter,
 };
 use crate::{config::CameraConfig, AnyResult, Result};
 use neolink_core::bc_protocol::{BcCamera, StreamKind};
@@ -38,6 +40,7 @@ pub(crate) enum NeoCamCommand {
     Connect(OneshotSender<()>),
     State(OneshotSender<NeoCamThreadState>),
     GetPermit(OneshotSender<Permit>),
+    PushNoti(OneshotSender<WatchReceiver<Option<PushNoti>>>),
 }
 /// The underlying camera binding
 pub(crate) struct NeoCam {
@@ -55,6 +58,7 @@ impl NeoCam {
         let (camera_watch_tx, camera_watch_rx) = watch(Weak::new());
         let (stream_request_tx, stream_request_rx) = mpsc(100);
         let (md_request_tx, md_request_rx) = mpsc(100);
+        let (pn_request_tx, pn_request_rx) = mpsc(100);
         let (state_tx, state_rx) = watch(NeoCamThreadState::Connected);
 
         let set = JoinSet::new();
@@ -142,16 +146,16 @@ impl NeoCam {
                                 let _ = sender.send(thread_watch_config_rx.clone());
                             },
                             NeoCamCommand::Connect(sender) => {
-                                if !matches!(*state_tx.borrow(), NeoCamThreadState::Disconnected) {
+                                if !matches!(*state_tx.borrow(), NeoCamThreadState::Connected) {
                                     state_tx.send_replace(NeoCamThreadState::Connected);
-                                    log::info!("{}: Connect On Request", thread_watch_config_rx.borrow().name);
+                                    log::debug!("{}: Connect On Request", thread_watch_config_rx.borrow().name);
                                 }
                                 let _ = sender.send(());
                             }
                             NeoCamCommand::Disconnect(sender) => {
                                 if !matches!(*state_tx.borrow(), NeoCamThreadState::Disconnected) {
                                     state_tx.send_replace(NeoCamThreadState::Disconnected);
-                                    log::info!("{}: Disconnect On Request", thread_watch_config_rx.borrow().name);
+                                    log::debug!("{}: Disconnect On Request", thread_watch_config_rx.borrow().name);
                                 }
                                 let _ = sender.send(());
                             }
@@ -161,6 +165,13 @@ impl NeoCam {
                             NeoCamCommand::GetPermit(sender) => {
                                 let _ = sender.send(users.create_activated().await?);
                             }
+                            NeoCamCommand::PushNoti(sender) => {
+                                pn_request_tx.send(
+                                    PnRequest::Get {
+                                        sender,
+                                    }
+                                ).await?;
+                            },
                         }
                     }
                     log::debug!("Control thread Senders dropped");
@@ -248,28 +259,102 @@ impl NeoCam {
             }
         });
 
-        // This thread will apply battery saving by disconnecting the camera on certain events (like no motion)
-        // and reconnecting on other events like push notifications
-        let connect_instance = instance.subscribe().await?;
-        let connect_cancel = me.cancel.clone();
-        let connect_name = config.name.clone();
+        if config.push_notifications {
+            // This thread handles the push notfications
+            let pn_instance = instance.subscribe().await?;
+            let mut push_notifier = PushNotiThread::new(pn_request_rx, pn_instance).await?;
+            let pn_cancel = me.cancel.clone();
+            me.set.spawn(async move {
+                tokio::select! {
+                    _ = pn_cancel.cancelled() => {
+                        AnyResult::Ok(())
+                    },
+                    v = push_notifier.run() => v,
+                }
+            });
+
+            // Push notification permits
+            let pn_permit_instance = instance.subscribe().await?;
+            let pn_permit_cancel = me.cancel.clone();
+            me.set.spawn(async move {
+                tokio::select! {
+                    _ = pn_permit_cancel.cancelled() => {
+                        AnyResult::Ok(())
+                    },
+                    v = async {
+                        let mut prev_noti = None;
+                        let mut pn = pn_permit_instance.push_notifications().await?;
+                        loop{
+                            prev_noti = pn.wait_for(|noti| noti != &prev_noti && noti.is_some()).await.map(|noti| noti.clone())?;
+                            let _permit = pn_permit_instance.permit().await?;
+                            sleep(Duration::from_secs(30)).await; // Push notification will wake us up for 30s
+                        }
+                    } => v,
+                }
+            });
+        }
+
+        // MD permits
+        let md_permit_instance = instance.subscribe().await?;
+        let md_permit_cancel = me.cancel.clone();
         me.set.spawn(async move {
             tokio::select! {
-                _ = connect_cancel.cancelled() => {
+                _ = md_permit_cancel.cancelled() => {
                     AnyResult::Ok(())
                 },
                 v = async {
-                    let mut permit = connect_instance.permit().await?;
-                    permit.deactivate().await?; // Watching only from here
-                    loop {
-                        permit.aquired_users().await?;
-                        log::debug!("{connect_name}: InUse");
-                        permit.dropped_users().await?;
-                        log::debug!("{connect_name}: Idle");
+                    let mut md = md_permit_instance.motion().await?;
+                    loop{
+                        md.wait_for(|md| matches!(md, MdState::Start(_))).await?;
+                        let _permit = Some(md_permit_instance.permit().await?);
+                        md.wait_for(|md| matches!(md, MdState::Stop(_))).await?;
+                        // Try waiting for 30s
+                        // If in those 30s we get motion then return to
+                        // loop early to reaquire the permit
+                        tokio::select!{
+                            _ = sleep(Duration::from_secs(30)) => {},
+                            _ = md.wait_for(|md| matches!(md, MdState::Start(_))) => {},
+                        }
                     }
                 } => v,
             }
         });
+
+        if config.idle_disconnect {
+            // This thread will apply battery saving by disconnecting the camera when there are no
+            // active permits.
+            //
+            // Permits are created when a camera runs a user requested task, or when motion or push
+            // notifications are observed
+            let connect_instance = instance.subscribe().await?;
+            let connect_cancel = me.cancel.clone();
+            let connect_name = config.name.clone();
+            me.set.spawn(async move {
+                tokio::select! {
+                    _ = connect_cancel.cancelled() => {
+                        AnyResult::Ok(())
+                    },
+                    v = async {
+                        let mut permit = connect_instance.permit().await?;
+                        permit.deactivate().await?; // Watching only from here
+                        loop {
+                            permit.aquired_users().await?;
+                            log::debug!("{connect_name}: InUse");
+                            connect_instance.connect().await?;
+                            permit.dropped_users().await?;
+                            log::debug!("{connect_name}: Idle Wait");
+                            // Wait 30s or if we hit another use then go back and wait again
+                            tokio::select! {
+                                _ = sleep(Duration::from_secs(30)) => {},
+                                _ = permit.aquired_users() => continue,
+                            };
+                            log::debug!("{connect_name}: Idle");
+                            connect_instance.disconnect().await?;
+                        }
+                    } => v,
+                }
+            });
+        }
 
         Ok(me)
     }

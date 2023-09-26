@@ -1,5 +1,5 @@
 use lazy_static::lazy_static;
-use neolink_core::bc_protocol::{DiscoveryMethods, PrintFormat};
+use neolink_core::bc_protocol::DiscoveryMethods;
 use regex::Regex;
 use serde::Deserialize;
 use std::clone::Clone;
@@ -49,13 +49,6 @@ pub(crate) struct CameraConfig {
         code = "max_encryption"
     ))]
     pub(crate) max_encryption: String,
-
-    #[serde(default = "default_print", alias = "print")]
-    pub(crate) print_format: PrintFormat,
-}
-
-fn default_print() -> PrintFormat {
-    PrintFormat::None
 }
 
 fn default_discovery() -> DiscoveryMethods {

@@ -367,7 +367,7 @@ impl MqttInstance {
         message: &str,
         retain: bool,
     ) -> AnyResult<()> {
-        let topics = vec![
+        let topics = [
             root_topic.to_string(),
             self.name.clone(),
             sub_topic.to_string(),

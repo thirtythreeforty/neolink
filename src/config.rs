@@ -199,6 +199,12 @@ pub(crate) struct CameraConfig {
         alias = "max_retries"
     )]
     pub(crate) max_discovery_retries: usize,
+
+    #[serde(default = "default_true", alias = "push", alias = "push_noti")]
+    pub(crate) push_notifications: bool,
+
+    #[serde(default = "default_false", alias = "idle", alias = "idle_disc")]
+    pub(crate) idle_disconnect: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Validate, Clone, PartialEq, Eq, Hash)]

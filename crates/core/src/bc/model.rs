@@ -41,16 +41,14 @@ pub const MSG_ID_GET_GENERAL: u32 = 104;
 pub const MSG_ID_SET_GENERAL: u32 = 105;
 /// Snapshot to get a jpeg image
 pub const MSG_ID_SNAP: u32 = 109;
+/// Used to pass the token and client ID for push notifications
+pub const MSG_ID_PUSH_INFO: u32 = 124;
 /// StreamInfoList messages have this ID
 pub const MSG_ID_STREAM_INFO_LIST: u32 = 146;
 /// Used to get the abilities of a user
 pub const MSG_ID_ABILITY_INFO: u32 = 151;
 /// Get the available PTZ position presets
 pub const MSG_ID_GET_PTZ_PRESET: u32 = 190;
-/// Setting general system info (clock mostly) messages have this ID
-pub const MSG_ID_SET_GENERAL: u32 = 105;
-/// Used to pass the token and client ID for push notifications
-pub const MSG_ID_PUSH_INFO: u32 = 124;
 /// Will send the talk config for talk back data to follow this msg
 pub const MSG_ID_TALKCONFIG: u32 = 201;
 /// Used to send talk back binary data

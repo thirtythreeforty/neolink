@@ -11,7 +11,7 @@ use tokio::sync::{
 };
 use tokio_util::sync::CancellationToken;
 
-use super::{MdState, NeoCamCommand, NeoCamThreadState, Permit, StreamInstance};
+use super::{MdState, NeoCamCommand, NeoCamThreadState, Permit, PushNoti, StreamInstance};
 use crate::{config::CameraConfig, Result};
 use neolink_core::bc_protocol::{BcCamera, StreamKind};
 
@@ -176,6 +176,14 @@ impl NeoInstance {
         Ok(instance_rx.await?)
     }
 
+    pub(crate) async fn push_notifications(&self) -> Result<WatchReceiver<Option<PushNoti>>> {
+        let (instance_tx, instance_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::PushNoti(instance_tx))
+            .await?;
+        Ok(instance_rx.await?)
+    }
+
     pub(crate) async fn motion(&self) -> Result<WatchReceiver<MdState>> {
         let (instance_tx, instance_rx) = oneshot();
         self.camera_control
@@ -212,6 +220,7 @@ impl NeoInstance {
         Ok(instance_rx.await?)
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn get_state(&self) -> Result<NeoCamThreadState> {
         let (instance_tx, instance_rx) = oneshot();
         self.camera_control

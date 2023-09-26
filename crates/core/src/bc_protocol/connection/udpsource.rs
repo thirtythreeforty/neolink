@@ -795,7 +795,7 @@ async fn connect_try_port(port: u16) -> Result<UdpSocket> {
         drop(rng); // Do not hold RNG over an await
     }
 
-    let addrs: Vec<_> = vec![port]
+    let addrs: Vec<_> = [port]
         .iter()
         .chain(ports.iter())
         .map(|&port| SocketAddr::from(([0, 0, 0, 0], port)))

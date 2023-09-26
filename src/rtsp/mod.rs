@@ -270,7 +270,7 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
         let mut i = IntervalStream::new(interval(Duration::from_secs(15)));
         while i.next().await.is_some() {
             let stream_info = later_camera
-                .run_task(|cam| Box::pin(async move { Ok(cam.get_stream_info().await?) }))
+                .run_passive_task(|cam| Box::pin(async move { Ok(cam.get_stream_info().await?) }))
                 .await?;
 
             let new_supported_streams = stream_info

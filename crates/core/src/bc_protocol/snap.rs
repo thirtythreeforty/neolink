@@ -121,7 +121,7 @@ impl BcCamera {
                         expected_size
                     );
                     if result.len() != expected_size {
-                        log::warn!("Snap did not recieve expected number of byes");
+                        log::debug!("Snap did not recieve expected number of bytes");
                     }
                 } else {
                     return Err(Error::UnintelligibleReply {

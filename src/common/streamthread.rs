@@ -357,7 +357,7 @@ impl StreamData {
         let thread_inuse = me.users.create_deactivated().await?;
         let vid_history = me.vid_history.clone();
         let aud_history = me.aud_history.clone();
-
+        let mut permit = instance.permit().await?;
         me.handle = Some(tokio::task::spawn(async move {
             let r = tokio::select! {
                 _ = cancel.cancelled() => {
@@ -370,8 +370,10 @@ impl StreamData {
                             v = thread_inuse.dropped_users() => {
                                 // Handles the stop and restart when no active users
                                 log::debug!("Streaming STOP");
+                                permit.deactivate().await?;
                                 v?;
                                 thread_inuse.aquired_users().await?; // Wait for new users of the stream
+                                permit.activate().await?;
                                 log::debug!("Streaming START");
                                 AnyResult::Ok(())
                             },

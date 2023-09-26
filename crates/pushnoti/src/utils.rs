@@ -86,11 +86,12 @@ impl AddressOrUid {
             uid: camera_config.camera_uid.clone(),
             protocol: ConnectionProtocol::TcpUdp,
             discovery: camera_config.discovery,
-            aux_printing: camera_config.print_format,
+            max_discovery_retries: 10,
             credentials: Credentials {
                 username: camera_config.username.clone(),
                 password: camera_config.password.clone(),
             },
+            debug: false,
         };
 
         trace!("Camera Info: {:?}", options);
