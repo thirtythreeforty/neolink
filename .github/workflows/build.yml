@@ -43,6 +43,7 @@ jobs:
         run: |
           choco install -y --no-progress gstreamer --version=1.20.0
           choco install -y --no-progress gstreamer-devel --version=1.20.0
+          choco install -y --no-progress openssl --version=1.1.1.2100
           $env:GSTREAMER_1_0_ROOT_MSVC_X86_64=$env:SYSTEMDRIVE + '\gstreamer\1.0\msvc_x86_64\'
           echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=$env:GSTREAMER_1_0_ROOT_MSVC_X86_64"
           Add-Content -Path $env:GITHUB_ENV  -Value "GSTREAMER_1_0_ROOT_MSVC_X86_64=$env:GSTREAMER_1_0_ROOT_MSVC_X86_64"
@@ -75,6 +76,8 @@ jobs:
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
       - name: Build
         shell: bash
         run: |
@@ -122,7 +125,7 @@ jobs:
       - name: Install basic tools
         run: |
           apt-get update
-          apt-get install --assume-yes --no-install-recommends curl ca-certificates
+          apt-get install --assume-yes --no-install-recommends curl ca-certificates protobuf-compiler
       - name: Install ${{ matrix.arch }} cross compiler and gstreamer
         id: setup
         run: |

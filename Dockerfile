@@ -28,6 +28,7 @@ RUN  echo "TARGETPLATFORM: ${TARGETPLATFORM}"; \
           libgstrtspserver-1.0-dev \
           libgstreamer1.0-dev \
           libgtk2.0-dev \
+          protobuf-compiler \
           libglib2.0-dev && \
         apt-get clean -y && rm -rf /var/lib/apt/lists/* ; \
     cargo build --release; \
