@@ -143,7 +143,7 @@ pub(crate) struct CameraConfig {
     pub(crate) permitted_users: Option<Vec<String>>,
 
     #[validate(range(min = 0, max = 31, message = "Invalid channel", code = "channel_id"))]
-    #[serde(default = "default_channel_id")]
+    #[serde(default = "default_channel_id", alias = "channel")]
     pub(crate) channel_id: u8,
 
     #[validate]
