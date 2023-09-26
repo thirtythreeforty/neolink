@@ -16,7 +16,6 @@ use crate::AnyResult;
 
 pub(crate) struct PushNotiThread {
     pn_watcher: Arc<WatchSender<Option<PushNoti>>>,
-    pn_request_rx: MpscReceiver<PnRequest>,
     instance: NeoInstance,
 }
 
@@ -34,20 +33,19 @@ pub(crate) enum PnRequest {
 }
 
 impl PushNotiThread {
-    pub(crate) async fn new(
-        pn_request_rx: MpscReceiver<PnRequest>,
-        instance: NeoInstance,
-    ) -> AnyResult<Self> {
+    pub(crate) async fn new(instance: NeoInstance) -> AnyResult<Self> {
         let (pn_watcher, _) = watch(None);
 
         Ok(PushNotiThread {
             pn_watcher: Arc::new(pn_watcher),
-            pn_request_rx,
             instance,
         })
     }
 
-    pub(crate) async fn run(&mut self) -> AnyResult<()> {
+    pub(crate) async fn run(
+        &mut self,
+        pn_request_rx: &mut MpscReceiver<PnRequest>,
+    ) -> AnyResult<()> {
         let sender_id = "743639030586"; // andriod
                                         // let sender_id = "696841269229"; // ios
 
@@ -55,6 +53,7 @@ impl PushNotiThread {
             d.push("./neolink_token.toml");
             d
         });
+        log::debug!("Push notification details are saved to {:?}", token_path);
 
         let registration = if let Some(Ok(Ok(registration))) =
             token_path.as_ref().map(|token_path| {
@@ -111,11 +110,19 @@ impl PushNotiThread {
         );
         tokio::select! {
             v = async {
-                listener.connect().await?;
+                let r = listener.connect().await;
+                if r.is_err() {
+                    // Wipe data so next call is a new token
+                    token_path.map(|token_path|
+                        fs::write(token_path, "")
+                    );
+                    log::debug!("Error on push notification listener: {:?}. Clearing token", r);
+                }
+                r?;
                 AnyResult::Ok(())
             } => v,
             v = async {
-                while let Some(msg) = self.pn_request_rx.recv().await {
+                while let Some(msg) = pn_request_rx.recv().await {
                     match msg {
                         PnRequest::Get{sender} => {
                             let _ = sender.send(self.pn_watcher.subscribe());

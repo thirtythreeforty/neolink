@@ -44,7 +44,7 @@ impl Mqtt {
         let thread_outgoing_tx = outgoing_tx.clone();
         set.spawn(async move {
             let mut mqtt_config = thread_config.borrow().mqtt.clone();
-            loop {
+            let r = loop {
                 break tokio::select! {
                     _ = thread_cancel.cancelled() => AnyResult::Ok(()),
                     v = thread_config.wait_for(|config| config.mqtt != mqtt_config).map(|res| res.map(|r| r.clone())) =>
@@ -70,7 +70,9 @@ impl Mqtt {
                         v
                     },
                 };
-            }
+            };
+            log::debug!("MQTT thread stopped: {:?}", r);
+            r
         });
 
         Self {

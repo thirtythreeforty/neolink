@@ -4,7 +4,7 @@
 //!    Shared stream BC delivery
 //!    Common restart code
 //!    Clonable interface to share amongst threadsanyhow::anyhow;
-use futures::stream::StreamExt;
+use futures::{stream::StreamExt, TryFutureExt};
 use std::sync::Weak;
 use tokio::{
     sync::{
@@ -58,7 +58,7 @@ impl NeoCam {
         let (camera_watch_tx, camera_watch_rx) = watch(Weak::new());
         let (stream_request_tx, stream_request_rx) = mpsc(100);
         let (md_request_tx, md_request_rx) = mpsc(100);
-        let (pn_request_tx, pn_request_rx) = mpsc(100);
+        let (pn_request_tx, mut pn_request_rx) = mpsc(100);
         let (state_tx, state_rx) = watch(NeoCamThreadState::Connected);
 
         let set = JoinSet::new();
@@ -259,40 +259,54 @@ impl NeoCam {
             }
         });
 
-        if config.push_notifications {
-            // This thread handles the push notfications
-            let pn_instance = instance.subscribe().await?;
-            let mut push_notifier = PushNotiThread::new(pn_request_rx, pn_instance).await?;
-            let pn_cancel = me.cancel.clone();
-            me.set.spawn(async move {
-                tokio::select! {
-                    _ = pn_cancel.cancelled() => {
-                        AnyResult::Ok(())
-                    },
-                    v = push_notifier.run() => v,
-                }
-            });
+        // Handles push notifications
+        let pn_root_instance = instance.subscribe().await?;
+        let pn_cancel = me.cancel.clone();
+        me.set.spawn(async move {
+            tokio::select!{
+                _ = pn_cancel.cancelled() => {
+                    AnyResult::Ok(())
+                },
+                v = async {
+                    let mut config_rx = pn_root_instance.config().await?;
+                    loop {
+                        // Wait for the green light
+                        config_rx.wait_for(|config| config.push_notifications).await?;
+                        let pn_instance = pn_root_instance.subscribe().await?;
+                        let mut push_notifier = PushNotiThread::new(pn_instance).await?;
 
-            // Push notification permits
-            let pn_permit_instance = instance.subscribe().await?;
-            let pn_permit_cancel = me.cancel.clone();
-            me.set.spawn(async move {
-                tokio::select! {
-                    _ = pn_permit_cancel.cancelled() => {
-                        AnyResult::Ok(())
-                    },
-                    v = async {
-                        let mut prev_noti = None;
-                        let mut pn = pn_permit_instance.push_notifications().await?;
-                        loop{
-                            prev_noti = pn.wait_for(|noti| noti != &prev_noti && noti.is_some()).await.map(|noti| noti.clone())?;
-                            let _permit = pn_permit_instance.permit().await?;
-                            sleep(Duration::from_secs(30)).await; // Push notification will wake us up for 30s
+                        let pn_permit_instance = pn_root_instance.subscribe().await?;
+                        let r = tokio::select! {
+                            // This thread handles the push notfications
+                            v = async {
+                                while push_notifier.run(&mut pn_request_rx).await.is_err() {}
+                                AnyResult::Ok(())
+                            } => v,
+                            // Push notification permits
+                            v = async {
+                                let mut prev_noti = None;
+                                let mut pn = pn_permit_instance.push_notifications().await?;
+                                loop{
+                                    prev_noti = pn.wait_for(|noti| noti != &prev_noti && noti.is_some()).await.map(|noti| noti.clone())?;
+                                    let _permit = pn_permit_instance.permit().await?;
+                                    sleep(Duration::from_secs(30)).await; // Push notification will wake us up for 30s
+                                }
+                            } => v,
+                            // Continue loop on Red light
+                            v = config_rx.wait_for(|config| !config.push_notifications).map_ok(|_| ()) => {
+                                v?;
+                                AnyResult::Ok(())
+                            },
+                        };
+                        if r.is_err() {
+                            log::debug!("Push notifications stopped: {:?}", r);
+                            break r;
                         }
-                    } => v,
-                }
-            });
-        }
+                    }?;
+                    AnyResult::Ok(())
+                } => v,
+            }
+        });
 
         // MD permits
         let md_permit_instance = instance.subscribe().await?;
@@ -320,41 +334,60 @@ impl NeoCam {
             }
         });
 
-        if config.idle_disconnect {
-            // This thread will apply battery saving by disconnecting the camera when there are no
-            // active permits.
-            //
-            // Permits are created when a camera runs a user requested task, or when motion or push
-            // notifications are observed
-            let connect_instance = instance.subscribe().await?;
-            let connect_cancel = me.cancel.clone();
-            let connect_name = config.name.clone();
-            me.set.spawn(async move {
-                tokio::select! {
-                    _ = connect_cancel.cancelled() => {
-                        AnyResult::Ok(())
-                    },
-                    v = async {
-                        let mut permit = connect_instance.permit().await?;
-                        permit.deactivate().await?; // Watching only from here
-                        loop {
-                            permit.aquired_users().await?;
-                            log::debug!("{connect_name}: InUse");
-                            connect_instance.connect().await?;
-                            permit.dropped_users().await?;
-                            log::debug!("{connect_name}: Idle Wait");
-                            // Wait 30s or if we hit another use then go back and wait again
-                            tokio::select! {
-                                _ = sleep(Duration::from_secs(30)) => {},
-                                _ = permit.aquired_users() => continue,
-                            };
-                            log::debug!("{connect_name}: Idle");
-                            connect_instance.disconnect().await?;
+        // This thread will apply battery saving by disconnecting the camera when there are no
+        // active permits.
+        //
+        // Permits are created when a camera runs a user requested task, or when motion or push
+        // notifications are observed
+        let connect_instance = instance.subscribe().await?;
+        let connect_cancel = me.cancel.clone();
+        let connect_name = config.name.clone();
+        me.set.spawn(async move {
+            tokio::select!{
+                _ = connect_cancel.cancelled() => {
+                    AnyResult::Ok(())
+                },
+                v = async {
+                    let mut config_rx = connect_instance.config().await?;
+                    loop {
+                        // Wait for the green light
+                        config_rx.wait_for(|config| config.idle_disconnect).await?;
+
+                        let r = tokio::select!{
+                            // Wait for red light
+                            v = config_rx.wait_for(|config| !config.idle_disconnect).map_ok(|_| ()) => {
+                                v?;
+                                connect_instance.connect().await?; // Ensure we are online now that we are not idle_disconnect
+                                AnyResult::Ok(())
+                            }
+                            // Handle disconnects when no active permits
+                            v = async {
+                                let mut permit = connect_instance.permit().await?;
+                                permit.deactivate().await?; // Watching only from here
+                                loop {
+                                    permit.aquired_users().await?;
+                                    log::debug!("{connect_name}: InUse");
+                                    connect_instance.connect().await?;
+                                    permit.dropped_users().await?;
+                                    log::debug!("{connect_name}: Idle Wait");
+                                    // Wait 30s or if we hit another use then go back and wait again
+                                    tokio::select! {
+                                        _ = sleep(Duration::from_secs(30)) => {},
+                                        _ = permit.aquired_users() => continue,
+                                    };
+                                    log::debug!("{connect_name}: Idle");
+                                    connect_instance.disconnect().await?;
+                                }
+                            } => v,
+                        };
+                        if r.is_err() {
+                            break r;
                         }
-                    } => v,
-                }
-            });
-        }
+                    }?;
+                    AnyResult::Ok(())
+                } => v,
+            }
+        });
 
         Ok(me)
     }
