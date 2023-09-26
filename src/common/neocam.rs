@@ -279,7 +279,14 @@ impl NeoCam {
                         let r = tokio::select! {
                             // This thread handles the push notfications
                             v = async {
-                                while push_notifier.run(&mut pn_request_rx).await.is_err() {}
+                                while {
+                                    if let Err(e) = push_notifier.run(&mut pn_request_rx).await {
+                                        log::debug!("Push notification failed restarting: {:?}", e);
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }{}
                                 AnyResult::Ok(())
                             } => v,
                             // Push notification permits

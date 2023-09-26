@@ -62,8 +62,15 @@ sudo apt install \
   gstreamer1.0-x \
   gstreamer1.0-plugins-base \
   gstreamer1.0-plugins-good \
-  gstreamer1.0-plugins-bad
+  gstreamer1.0-plugins-bad \
+  libssl
 ```
+
+- **Windows**: You may also need to
+[install openssl](https://wiki.openssl.org/index.php/Binaries)
+- **Macos**: You may also need to
+[install openssl](https://wiki.openssl.org/index.php/Binaries) or `brew install openssl@1.1`
+- **Ubuntu/Debian**: Install the `libssl` package
 
 Make a config file see below.
 
@@ -374,6 +381,47 @@ Then start the rtsp server as usual:
 ```bash
 ./neolink rtsp --config=neolink.toml
 ```
+
+### Idle Disconnects
+
+To really save battery we need to disconnect the camera when it is idle.
+
+To acheieve this you can add `idle_disconnect = true` to the `[[cameras]]`
+section
+
+```toml
+bind = "0.0.0.0"
+
+[[cameras]]
+name = "Camera01"
+username = "admin"
+password = "password"
+uid = "ABCDEF0123456789"
+idle_disconnect = true
+  [cameras.pause]
+  on_client = true # Should pause when no rtsp client
+  timeout = 2.1 # How long to wait after motion stops before pausing
+```
+
+When `idle_disconnect = true` neolink will disconnect from the camera 30s
+after it stops being used.
+
+Neolink considers it as being used if there is an active stream running, or
+if there is motion being detected or an mqtt command being run
+
+You can make neolink stop active streams when there are no rtsp clients using
+
+```toml
+[cameras.pause]
+  on_client = true # Should pause when no rtsp client
+```
+
+Once in the disconnected state. Neolink will stay disconnected until there is a
+new requested activation such as a client connecting or an mqtt command
+
+Neolink will also wake up on push notifications from the camera. These are usually
+sent by the camera on motion or PIR alarms. To disable this you can set
+`push_notifications = false` in the `[[cameras]]` config
 
 ### Docker
 
