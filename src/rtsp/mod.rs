@@ -588,16 +588,17 @@ async fn stream_main(
             let mut curr_pn = None;
             let mut client_activator = stream_instance.activator_handle().await;
             client_activator.deactivate().await?;
+            let thread_name = name.clone();
             set.spawn(async move {
                 loop {
                     curr_pn = pn
-                        .wait_for(|pn| pn != curr_pn && pn.is_some())
+                        .wait_for(|pn| pn != &curr_pn && pn.is_some())
                         .await?
                         .clone();
                     log::info!("{}: Enabling Push Notification", thread_name);
                     client_activator.activate().await?;
                     tokio::select! {
-                        v = pn.wait_for(|pn| pn != curr_pn && pn.is_some()) => {
+                        v = pn.wait_for(|pn| pn != &curr_pn && pn.is_some()) => {
                             v?;
                             // If another PN during wait then go back to wait more
                             continue;
@@ -656,16 +657,17 @@ async fn stream_main(
             let mut curr_pn = None;
             let mut client_activator = stream_instance.activator_handle().await;
             client_activator.deactivate().await?;
+            let thread_name = name.clone();
             set.spawn(async move {
                 loop {
                     curr_pn = pn
-                        .wait_for(|pn| pn != curr_pn && pn.is_some())
+                        .wait_for(|pn| pn != &curr_pn && pn.is_some())
                         .await?
                         .clone();
                     log::info!("{}: Enabling Push Notification", thread_name);
                     client_activator.activate().await?;
                     tokio::select! {
-                        v = pn.wait_for(|pn| pn != curr_pn && pn.is_some()) => {
+                        v = pn.wait_for(|pn| pn != &curr_pn && pn.is_some()) => {
                             v?;
                             // If another PN during wait then go back to wait more
                             continue;

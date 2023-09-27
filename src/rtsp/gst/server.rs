@@ -44,7 +44,7 @@ impl NeoRtspServer {
         let factory = Object::new::<NeoRtspServer>();
 
         // Setup auth
-        let auth = factory.auth().unwrap_or_else(RTSPAuth::new);
+        let auth = factory.auth().unwrap_or_default();
         auth.set_supported_methods(RTSPAuthMethod::Basic);
         let mut un_authtoken = RTSPToken::new(&[
             //RTSP_TOKEN_MEDIA_FACTORY_ROLE: Means look inside the media factory settings and use the same permissions this user (`"anonymous"`) has
@@ -139,7 +139,7 @@ impl NeoRtspServerImpl {
         client_auth: TlsAuthenticationMode,
     ) -> AnyResult<()> {
         debug!("Setting up TLS using {}", cert_file);
-        let auth = self.obj().auth().unwrap_or_else(RTSPAuth::new);
+        let auth = self.obj().auth().unwrap_or_default();
 
         // We seperate reading the file and changing to a PEM so that we get different error messages.
         let cert_contents = fs::read_to_string(cert_file).with_context(|| "TLS file not found")?;
