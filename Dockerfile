@@ -14,6 +14,15 @@ WORKDIR /usr/local/src/neolink
 COPY . /usr/local/src/neolink
 
 # Build the main program or copy from artifact
+#
+# We prefer building from artifact to reduce
+# build time on the github runners
+#
+# Because of this through, during normal
+# github runner ops we are not testing the
+# docker to see if it will build from scratch
+# so if it is failing please make a PR
+#
 # hadolint ignore=DL3008
 RUN  echo "TARGETPLATFORM: ${TARGETPLATFORM}"; \
   if [ -f "${TARGETPLATFORM}/neolink" ]; then \
@@ -25,6 +34,8 @@ RUN  echo "TARGETPLATFORM: ${TARGETPLATFORM}"; \
     apt-get update && \
         apt-get install -y --no-install-recommends \
           build-essential \
+          openssl \
+          ca-certificates \
           libgstrtspserver-1.0-dev \
           libgstreamer1.0-dev \
           libgtk2.0-dev \

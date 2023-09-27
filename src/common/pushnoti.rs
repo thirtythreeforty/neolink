@@ -113,19 +113,26 @@ impl PushNotiThread {
                 v = async {
                     let r = listener.connect().await;
                     if let Err(e) = r {
-                        // Wipe data so next call is a new token
-                        token_path.map(|token_path|
-                            fs::write(token_path, "")
-                        );
                         use fcm_push_listener::Error::*;
                         match &e {
                             MissingMessagePayload | MissingCryptoMetadata | ProtobufDecode(_) | Base64Decode(_) => {
+                                // Wipe data so next call is a new token
+                                token_path.map(|token_path|
+                                    fs::write(token_path, "")
+                                );
                                 log::debug!("Error on push notification listener: {:?}. Clearing token", e);
+                                AnyResult::Ok(()) // Allow to restart
+                            },
+                            Http(e) if e.is_request() || e.is_connect() || e.is_timeout() => {
+                                log::debug!("Error on push notification listener: {:?}", e);
                                 AnyResult::Ok(()) // Allow to restart
                             }
                             _ => {
-                                log::warn!("Error on push notification listener: {:?}. Clearing token", e);
-                                Err(e.into()) // Propegate error so it breaks
+                                log::warn!("Error on push notification listener: {:?}", e);
+                                // Err(e.into()) // Propegate error so it breaks
+                                // Wait forever since it will not work
+                                // we just leave the push notificaitons as disabled
+                                futures::future::pending().await
                             }
                         }
                     } else {
