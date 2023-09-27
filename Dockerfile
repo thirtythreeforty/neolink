@@ -49,6 +49,8 @@ LABEL maintainer="$OWNER"
 # hadolint ignore=DL3008
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+        openssl \
+        ca-certificates \
         libgstrtspserver-1.0-0 \
         libgstreamer1.0-0 \
         gstreamer1.0-tools \
