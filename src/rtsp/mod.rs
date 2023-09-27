@@ -88,8 +88,6 @@ use gst::NeoRtspServer;
 
 type AnyResult<T> = anyhow::Result<T, anyhow::Error>;
 
-const GST_BUFFER_SIZE: u64 = 1024u64 * 1024u64 * 10u64; // 10MB
-
 /// Entry point for the rtsp subcommand
 ///
 /// Opt is the command line options
@@ -505,9 +503,7 @@ async fn stream_main(
             .config
             .wait_for(|config| {
                 log::debug!("{:?}", config);
-                !matches!(config.vid_format, VidFormat::None)
-                    && config.resolution[0] > 0
-                    && config.resolution[1] > 0
+                config.vid_ready()
             })
             .await?;
         log::debug!("{}: Waiting for Valid Audio", &name);
@@ -517,10 +513,7 @@ async fn stream_main(
             Duration::from_secs(1),
             stream_instance.config.wait_for(|config| {
                 log::debug!("{:?}", config);
-                !matches!(config.vid_format, VidFormat::None)
-                    && !matches!(config.aud_format, AudFormat::None)
-                    && config.resolution[0] > 0
-                    && config.resolution[1] > 0
+                config.aud_ready()
             }),
         )
         .await
@@ -982,7 +975,7 @@ async fn make_factory(
                     AnyResult::Ok(None)
                 }
                 VidFormat::H264 => {
-                    let app = build_h264(&element)?;
+                    let app = build_h264(&element, &stream_config)?;
                     app.set_callbacks(
                         AppSrcCallbacks::builder()
                             .seek_data(move |_, seek_pos| {
@@ -1001,7 +994,7 @@ async fn make_factory(
                     AnyResult::Ok(Some(app))
                 }
                 VidFormat::H265 => {
-                    let app = build_h265(&element)?;
+                    let app = build_h265(&element, &stream_config)?;
                     app.set_callbacks(
                         AppSrcCallbacks::builder()
                             .seek_data(move |_, seek_pos| {
@@ -1026,7 +1019,7 @@ async fn make_factory(
                 match stream_config.aud_format {
                     AudFormat::None => AnyResult::Ok(None),
                     AudFormat::Aac => {
-                        let app = build_aac(&element)?;
+                        let app = build_aac(&element, &stream_config)?;
                         app.set_callbacks(
                             AppSrcCallbacks::builder()
                                 .seek_data(move |_, seek_pos| {
@@ -1045,7 +1038,7 @@ async fn make_factory(
                         AnyResult::Ok(Some(app))
                     }
                     AudFormat::Adpcm(block_size) => {
-                        let app = build_adpcm(&element, block_size)?;
+                        let app = build_adpcm(&element, block_size, &stream_config)?;
                         app.set_callbacks(
                             AppSrcCallbacks::builder()
                                 .seek_data(move |_, seek_pos| {
@@ -1196,7 +1189,7 @@ fn build_unknown(bin: &Element) -> Result<()> {
     let source = make_element("videotestsrc", "testvidsrc")?;
     source.set_property_from_str("pattern", "snow");
     source.set_property("num-buffers", 500i32); // Send buffers then EOS
-    let queue = make_queue("queue0")?;
+    let queue = make_queue("queue0", buffer_size)?;
 
     let overlay = make_element("textoverlay", "overlay")?;
     overlay.set_property("text", "Stream not Ready");
@@ -1221,7 +1214,9 @@ fn build_unknown(bin: &Element) -> Result<()> {
     Ok(())
 }
 
-fn build_h264(bin: &Element) -> Result<AppSrc> {
+fn build_h264(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
+    let buffer_size = stream_config.bitrate * 15 / 8;
+    log::debug!("buffer_size: {buffer_size}");
     let bin = bin
         .clone()
         .dynamic_cast::<Bin>()
@@ -1234,14 +1229,14 @@ fn build_h264(bin: &Element) -> Result<AppSrc> {
     source.set_is_live(false);
     source.set_block(false);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(GST_BUFFER_SIZE); // 4MB
+    source.set_max_bytes(buffer_size);
     source.set_do_timestamp(false);
     source.set_stream_type(AppStreamType::Seekable);
 
     let source = source
         .dynamic_cast::<Element>()
         .map_err(|_| anyhow!("Cannot cast back"))?;
-    let queue = make_queue("source_queue")?;
+    let queue = make_queue("source_queue", buffer_size)?;
     let parser = make_element("h264parse", "parser")?;
     let payload = make_element("rtph264pay", "pay0")?;
     bin.add_many([&source, &queue, &parser, &payload])?;
@@ -1253,7 +1248,9 @@ fn build_h264(bin: &Element) -> Result<AppSrc> {
     Ok(source)
 }
 
-fn build_h265(bin: &Element) -> Result<AppSrc> {
+fn build_h265(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
+    let buffer_size = stream_config.bitrate * 15 / 8;
+    log::debug!("buffer_size: {buffer_size}");
     let bin = bin
         .clone()
         .dynamic_cast::<Bin>()
@@ -1265,14 +1262,14 @@ fn build_h265(bin: &Element) -> Result<AppSrc> {
     source.set_is_live(false);
     source.set_block(false);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(GST_BUFFER_SIZE);
+    source.set_max_bytes(buffer_size);
     source.set_do_timestamp(false);
     source.set_stream_type(AppStreamType::Seekable);
 
     let source = source
         .dynamic_cast::<Element>()
         .map_err(|_| anyhow!("Cannot cast back"))?;
-    let queue = make_queue("source_queue")?;
+    let queue = make_queue("source_queue", buffer_size)?;
     let parser = make_element("h265parse", "parser")?;
     let payload = make_element("rtph265pay", "pay0")?;
     bin.add_many([&source, &queue, &parser, &payload])?;
@@ -1284,7 +1281,9 @@ fn build_h265(bin: &Element) -> Result<AppSrc> {
     Ok(source)
 }
 
-fn build_aac(bin: &Element) -> Result<AppSrc> {
+fn build_aac(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
+    let buffer_size = stream_config.bitrate * 15 / 8;
+    log::debug!("buffer_size: {buffer_size}");
     let bin = bin
         .clone()
         .dynamic_cast::<Bin>()
@@ -1297,7 +1296,7 @@ fn build_aac(bin: &Element) -> Result<AppSrc> {
     source.set_is_live(false);
     source.set_block(false);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(GST_BUFFER_SIZE);
+    source.set_max_bytes(buffer_size);
     source.set_do_timestamp(false);
     source.set_stream_type(AppStreamType::Seekable);
 
@@ -1305,7 +1304,7 @@ fn build_aac(bin: &Element) -> Result<AppSrc> {
         .dynamic_cast::<Element>()
         .map_err(|_| anyhow!("Cannot cast back"))?;
 
-    let queue = make_queue("audqueue")?;
+    let queue = make_queue("audqueue", buffer_size)?;
     let parser = make_element("aacparse", "audparser")?;
     let decoder = match make_element("faad", "auddecoder_faad") {
         Ok(ele) => Ok(ele),
@@ -1323,7 +1322,9 @@ fn build_aac(bin: &Element) -> Result<AppSrc> {
     Ok(source)
 }
 
-fn build_adpcm(bin: &Element, block_size: u32) -> Result<AppSrc> {
+fn build_adpcm(bin: &Element, block_size: u32, stream_config: &StreamConfig) -> Result<AppSrc> {
+    let buffer_size = stream_config.bitrate * 15 / 8;
+    log::debug!("buffer_size: {buffer_size}");
     let bin = bin
         .clone()
         .dynamic_cast::<Bin>()
@@ -1342,7 +1343,7 @@ fn build_adpcm(bin: &Element, block_size: u32) -> Result<AppSrc> {
     source.set_is_live(false);
     source.set_block(false);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(GST_BUFFER_SIZE);
+    source.set_max_bytes(buffer_size);
     source.set_do_timestamp(false);
     source.set_stream_type(AppStreamType::Seekable);
 
@@ -1359,7 +1360,7 @@ fn build_adpcm(bin: &Element, block_size: u32) -> Result<AppSrc> {
         .dynamic_cast::<Element>()
         .map_err(|_| anyhow!("Cannot cast back"))?;
 
-    let queue = make_queue("audqueue")?;
+    let queue = make_queue("audqueue", buffer_size)?;
     let decoder = make_element("decodebin", "auddecoder")?;
     let encoder = make_element("audioconvert", "audencoder")?;
     let payload = make_element("rtpL16pay", "pay1")?;
@@ -1413,9 +1414,9 @@ fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
         )
     })
 }
-fn make_queue(name: &str) -> AnyResult<Element> {
+fn make_queue(name: &str, buffer_size: u32) -> AnyResult<Element> {
     let queue = make_element("queue", &format!("queue1_{}", name))?;
-    // queue.set_property("max-size-bytes", GST_BUFFER_SIZE as u32);
+    queue.set_property("max-size-bytes", buffer - size);
     // queue.set_property("max-size-buffers", 0u32);
     // queue.set_property(
     //     "max-size-time",
@@ -1424,7 +1425,7 @@ fn make_queue(name: &str) -> AnyResult<Element> {
     // );
 
     let queue2 = make_element("queue2", &format!("queue2_{}", name))?;
-    // queue2.set_property("max-size-bytes", (GST_BUFFER_SIZE * 2u64 / 3u64)  as u32 );
+    queue2.set_property("max-size-bytes", buffer_size * 2u32 / 3u32);
     // // queue.set_property("max-size-buffers", 0u32);
     // queue2.set_property(
     //     "max-size-time",

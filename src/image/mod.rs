@@ -27,7 +27,7 @@ use tokio_stream::wrappers::BroadcastStream;
 mod cmdline;
 mod gst;
 
-use crate::common::{NeoReactor, StampedData, VidFormat};
+use crate::common::{NeoReactor, StampedData};
 pub(crate) use cmdline::Opt;
 
 /// Entry point for the image subcommand
@@ -45,7 +45,7 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
         // Get one iframe at the start while also getting the the video type
         let mut stream_config = stream_data.config.clone();
         let vid_type = stream_config
-            .wait_for(|config| config.vid_format != VidFormat::None)
+            .wait_for(|config| config.vid_ready())
             .await?
             .vid_format
             .clone();

@@ -256,6 +256,20 @@ pub(crate) struct StreamConfig {
     pub(crate) resolution: [u32; 2],
     pub(crate) vid_format: VidFormat,
     pub(crate) aud_format: AudFormat,
+    pub(crate) bitrate: u32,
+}
+
+impl StreamConfig {
+    pub(crate) fn vid_ready(&self) -> bool {
+        self.resolution[0] > 0
+            && self.resolution[1] > 0
+            && self.bitrate > 0
+            && !matches!(self.vid_format, VidFormat::None)
+    }
+
+    pub(crate) fn aud_ready(&self) -> bool {
+        self.vid_ready() && !matches!(self.aud_format, AudFormat::None)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -308,7 +322,7 @@ impl StreamData {
         let vid_history = Arc::new(vid_history);
         let (aud_history, _) = watch::<VecDeque<StampedData>>(VecDeque::new());
         let aud_history = Arc::new(aud_history);
-        let resolution = instance
+        let (resolution, bitrate) = instance
             .run_passive_task(|cam| {
                 Box::pin(async move {
                     let infos = cam
@@ -321,9 +335,16 @@ impl StreamData {
                     if let Some(encode) =
                         infos.iter().find(|encode| encode.name == name.to_string())
                     {
-                        Ok([encode.resolution.width, encode.resolution.height])
+                        Ok((
+                            [encode.resolution.width, encode.resolution.height],
+                            encode
+                                .bitrate_table
+                                .get(encode.default_bitrate as usize)
+                                .copied()
+                                .unwrap_or(encode.default_bitrate),
+                        ))
                     } else {
-                        Ok([0, 0])
+                        Ok(([0, 0], 0))
                     }
                 })
             })
@@ -332,6 +353,7 @@ impl StreamData {
             resolution,
             vid_format: VidFormat::None,
             aud_format: AudFormat::None,
+            bitrate,
         });
         let mut me = Self {
             name,
@@ -412,7 +434,7 @@ impl StreamData {
                                                 match &data {
                                                     BcMedia::InfoV1(info) => {
                                                         stream_config.send_if_modified(|state| {
-                                                            if state.resolution[0] != info.video_width || state.resolution[1] != info.video_height {
+                                                            if state.resolution[0] != info.video_width || state.resolution[1] != info.video_height  {
                                                                 state.resolution[0] = info.video_width;
                                                                 state.resolution[1] = info.video_height;
                                                                 true
