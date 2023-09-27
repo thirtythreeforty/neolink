@@ -67,7 +67,7 @@ use tokio::{
         watch::channel as watch,
     },
     task::JoinSet,
-    time::{interval, sleep, Duration, Instant},
+    time::{interval, sleep, Duration},
 };
 use tokio_stream::wrappers::IntervalStream;
 use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
@@ -561,7 +561,7 @@ async fn stream_main(
                         v = client_count.aquired_users() => {
                             v?;
                         },
-                        v = motion.wait_for(|md| matches!(md, crate::common::MdState::Stop(n) if (*n - Instant::now())>delta)) => {
+                        v = motion.wait_for(|md| matches!(md, crate::common::MdState::Stop(n) if n.elapsed()>delta)) => {
                             v?;
                             // Motion has stopped go back
                             continue;
@@ -573,7 +573,7 @@ async fn stream_main(
                         v = client_count.dropped_users() => {
                             v?;
                         },
-                        v = motion.wait_for(|md| matches!(md, crate::common::MdState::Stop(n) if (*n - Instant::now())>delta)) => {
+                        v = motion.wait_for(|md| matches!(md, crate::common::MdState::Stop(n) if n.elapsed()>delta)) => {
                             v?;
                         }
                     }
@@ -642,11 +642,17 @@ async fn stream_main(
             let thread_name = name.clone();
             set.spawn(async move {
                 loop {
-                    motion.wait_for(|md| matches!(md, crate::common::MdState::Start(_))).await?;
+                    motion
+                        .wait_for(|md| matches!(md, crate::common::MdState::Start(_)))
+                        .await?;
                     log::info!("{}: Enabling Motion", thread_name);
                     client_activator.activate().await?;
 
-                    motion.wait_for(|md| matches!(md, crate::common::MdState::Stop(n) if (*n - Instant::now())>delta)).await?;
+                    motion
+                        .wait_for(
+                            |md| matches!(md, crate::common::MdState::Stop(n) if n.elapsed()>delta),
+                        )
+                        .await?;
                     log::info!("{}: Pausing Motion", thread_name);
                     client_activator.deactivate().await?;
                 }

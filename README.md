@@ -312,8 +312,6 @@ enable_motion = false  # motion detection
                        # (limited battery drain since it
                        # is a passive listening connection)
                        #
-enable_pings = false   # keep alive pings that keep the camera connected
-                       #
 enable_light = false   # flood lights only avaliable on some camera
                        # (limited battery drain since it
                        # is a passive listening connection)

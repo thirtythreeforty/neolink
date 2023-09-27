@@ -403,7 +403,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                             Err(Err(e)) => Err(e),
                         }?;
                         AnyResult::Ok(())
-                    } => v,
+                    }, if config.enable_light => v,
                     // Handle the motion messages
                     v = async {
                         let mut md = camera_motion.motion().await?;
@@ -430,7 +430,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                                 Err(Err(e)) => Err(e),
                             }?;
                         }
-                    } => v,
+                    }, if config.enable_motion => v,
                     // Handle the SNAP (image preview)
                     v = async {
                         let mut wait = IntervalStream::new({
@@ -473,7 +473,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                             Err(Err(e)) => Err(e),
                         }?;
                         AnyResult::Ok(())
-                    } => v,
+                    }, if config.enable_preview => v,
                     // Handle the battery publish
                     v = async {
                         let mut wait = IntervalStream::new({
@@ -517,7 +517,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                             Err(Err(e)) => Err(e),
                         }?;
                         AnyResult::Ok(())
-                    } => v,
+                    }, if config.enable_battery => v,
                     // Handle the push notification messages
                     v = async {
                         let mut pn = camera_pn.push_notifications().await?;

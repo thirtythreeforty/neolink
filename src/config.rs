@@ -222,8 +222,6 @@ pub(crate) struct MqttConfig {
     #[serde(default = "default_true")]
     pub(crate) enable_motion: bool,
     #[serde(default = "default_true")]
-    pub(crate) enable_pings: bool,
-    #[serde(default = "default_true")]
     pub(crate) enable_light: bool,
     #[serde(default = "default_true")]
     pub(crate) enable_battery: bool,
@@ -277,7 +275,6 @@ const fn default_false() -> bool {
 
 fn default_mqtt() -> MqttConfig {
     MqttConfig {
-        enable_pings: true,
         enable_motion: true,
         enable_light: true,
         enable_battery: true,
