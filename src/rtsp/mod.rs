@@ -538,52 +538,151 @@ async fn stream_main(
         // Handles the on off of the stream with the client pause
         let client_counter = UseCounter::new().await;
         let client_count = client_counter.create_deactivated().await?;
-        if curr_pause.on_disconnect {
+
+        if curr_pause.on_disconnect && curr_pause.on_motion {
+            log::debug!("{}: Enabling Client&Motion Pause", &name);
+            // Take over activation
+            let mut client_activator = stream_instance.activator_handle().await;
+            client_activator.deactivate().await?; // Start deactivated
+            stream_instance.deactivate().await?;
+            // Get client counter
+            let client_count = client_counter.create_deactivated().await?;
+
+            // Get motion counter
+            let mut motion = camera.motion().await?;
+            let delta = Duration::from_secs_f64(curr_pause.motion_timeout);
+
+            let thread_name = name.clone();
+            set.spawn(async move {
+                loop {
+                    // Wait for motion to start
+                    motion.wait_for(|md| matches!(md, crate::common::MdState::Start(_))).await?;
+                    tokio::select! {
+                        v = client_count.aquired_users() => {
+                            v?;
+                        },
+                        v = motion.wait_for(|md| matches!(md, crate::common::MdState::Stop(n) if (*n - Instant::now())>delta)) => {
+                            v?;
+                            // Motion has stopped go back
+                            continue;
+                        }
+                    }
+                    log::debug!("{}: Activating Client&Motion", thread_name);
+                    client_activator.activate().await?;
+                    tokio::select! {
+                        v = client_count.dropped_users() => {
+                            v?;
+                        },
+                        v = motion.wait_for(|md| matches!(md, crate::common::MdState::Stop(n) if (*n - Instant::now())>delta)) => {
+                            v?;
+                        }
+                    }
+                    // Deactivate time
+                    log::debug!("{}: Pausing Client&Motion", thread_name);
+                    client_activator.deactivate().await?;
+                }
+            });
+
+            // Push notfications
+            let mut pn = camera.push_notifications().await?;
+            let mut curr_pn = None;
+            let mut client_activator = stream_instance.activator_handle().await;
+            client_activator.deactivate().await?;
+            set.spawn(async move {
+                loop {
+                    curr_pn = pn
+                        .wait_for(|pn| pn != curr_pn && pn.is_some())
+                        .await?
+                        .clone();
+                    log::info!("{}: Enabling Push Notification", thread_name);
+                    client_activator.activate().await?;
+                    tokio::select! {
+                        v = pn.wait_for(|pn| pn != curr_pn && pn.is_some()) => {
+                            v?;
+                            // If another PN during wait then go back to wait more
+                            continue;
+                        }
+                        _ = sleep(Duration::from_secs(30)) => {}
+                    }
+                    log::info!("{}: Pausing Push Notification", thread_name);
+                    client_activator.deactivate().await?;
+                }
+            });
+        } else if curr_pause.on_disconnect {
             log::debug!("{}: Enabling Client Pause", &name);
             // Take over activation
             let mut client_activator = stream_instance.activator_handle().await;
-            client_activator.activate().await?;
+            client_activator.deactivate().await?;
             stream_instance.deactivate().await?;
             let client_count = client_counter.create_deactivated().await?;
             let thread_name = name.clone();
             set.spawn(async move {
                 loop {
+                    client_count.aquired_users().await?;
                     log::info!("{}: Activating Client", thread_name);
                     client_activator.activate().await?;
+
                     client_count.dropped_users().await?;
                     log::info!("{}: Pausing Client", thread_name);
                     client_activator.deactivate().await?;
-                    client_count.aquired_users().await?;
                 }
             });
-        }
-
-        // Handles on motion pausing
-        if curr_pause.on_motion {
+        } else if curr_pause.on_motion {
+            // Handles on motion pausing
             log::debug!("{}: Activating Motion Pause", &name);
             // Take over activation
             let mut client_activator = stream_instance.activator_handle().await;
+            client_activator.deactivate().await?;
             stream_instance.deactivate().await?;
+
             let mut motion = camera.motion().await?;
             let delta = Duration::from_secs_f64(curr_pause.motion_timeout);
+
             let thread_name = name.clone();
             set.spawn(async move {
                 loop {
+                    motion.wait_for(|md| matches!(md, crate::common::MdState::Start(_))).await?;
                     log::info!("{}: Enabling Motion", thread_name);
                     client_activator.activate().await?;
-                    motion.wait_for(|md| matches!(md, crate::common::MdState::Stop(_))).await?;
+
+                    motion.wait_for(|md| matches!(md, crate::common::MdState::Stop(n) if (*n - Instant::now())>delta)).await?;
                     log::info!("{}: Pausing Motion", thread_name);
                     client_activator.deactivate().await?;
-                    motion.wait_for(|md| matches!(md, crate::common::MdState::Start(n) if (*n - Instant::now())>delta)).await?;
+                }
+            });
+
+            // Push notfications
+            let mut pn = camera.push_notifications().await?;
+            let mut curr_pn = None;
+            let mut client_activator = stream_instance.activator_handle().await;
+            client_activator.deactivate().await?;
+            set.spawn(async move {
+                loop {
+                    curr_pn = pn
+                        .wait_for(|pn| pn != curr_pn && pn.is_some())
+                        .await?
+                        .clone();
+                    log::info!("{}: Enabling Push Notification", thread_name);
+                    client_activator.activate().await?;
+                    tokio::select! {
+                        v = pn.wait_for(|pn| pn != curr_pn && pn.is_some()) => {
+                            v?;
+                            // If another PN during wait then go back to wait more
+                            continue;
+                        }
+                        _ = sleep(Duration::from_secs(30)) => {}
+                    }
+                    log::info!("{}: Pausing Push Notification", thread_name);
+                    client_activator.deactivate().await?;
                 }
             });
         }
 
-        // This thread jsut keeps it active for 2s after an initial start to build the buffer
+        // This thread jsut keeps it active for 5s after an initial start to build the buffer
         let mut init_activator = stream_instance.activator_handle().await;
         set.spawn(async move {
             init_activator.activate().await?;
-            sleep(Duration::from_secs(2)).await;
+            sleep(Duration::from_secs(5)).await;
             init_activator.deactivate().await?;
             AnyResult::Ok(())
         });
