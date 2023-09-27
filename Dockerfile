@@ -61,6 +61,8 @@ LABEL maintainer="$OWNER"
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         openssl \
+        dnsutils \
+        iputils-ping \
         ca-certificates \
         libgstrtspserver-1.0-0 \
         libgstreamer1.0-0 \
@@ -79,7 +81,8 @@ COPY docker/entrypoint.sh /entrypoint.sh
 
 RUN gst-inspect-1.0; \
     chmod +x "/usr/local/bin/neolink" && \
-    "/usr/local/bin/neolink" --version
+    "/usr/local/bin/neolink" --version && \
+    mkdir -m 0700 /root/.config/ # Location that the push notifications are cached to
 
 CMD ["/usr/local/bin/neolink", "rtsp", "--config", "/etc/neolink.toml"]
 ENTRYPOINT ["/entrypoint.sh"]
