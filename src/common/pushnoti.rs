@@ -5,10 +5,13 @@
 
 use fcm_push_listener::*;
 use std::{fs, sync::Arc};
-use tokio::sync::{
-    mpsc::Receiver as MpscReceiver,
-    oneshot::Sender as OneshotSender,
-    watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
+use tokio::{
+    sync::{
+        mpsc::Receiver as MpscReceiver,
+        oneshot::Sender as OneshotSender,
+        watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
+    },
+    time::{sleep, Duration},
 };
 
 use super::NeoInstance;
@@ -47,6 +50,9 @@ impl PushNotiThread {
         pn_request_rx: &mut MpscReceiver<PnRequest>,
     ) -> AnyResult<()> {
         loop {
+            // Short wait on start/retry
+            sleep(Duration::from_secs(3)).await;
+
             let sender_id = "743639030586"; // andriod
                                             // let sender_id = "696841269229"; // ios
 
@@ -64,20 +70,27 @@ impl PushNotiThread {
                 registration
             } else {
                 log::debug!("Registering new push notification token");
-                let registration = fcm_push_listener::register(sender_id).await?;
-                let new_token = toml::to_string(&registration)?;
-                if let Some(Err(e)) = token_path
-                    .as_ref()
-                    .map(|token_path| fs::write(token_path, &new_token))
-                {
-                    log::warn!(
-                        "Unable to save push notification details ({}) to {:#?} because of the error {:#?}",
-                        new_token,
-                        token_path,
-                        e
-                    );
+                match fcm_push_listener::register(sender_id).await {
+                    Ok(registration) => {
+                        let new_token = toml::to_string(&registration)?;
+                        if let Some(Err(e)) = token_path
+                            .as_ref()
+                            .map(|token_path| fs::write(token_path, &new_token))
+                        {
+                            log::warn!(
+                                "Unable to save push notification details ({}) to {:#?} because of the error {:#?}",
+                                new_token,
+                                token_path,
+                                e
+                            );
+                        }
+                        registration
+                    }
+                    Err(e) => {
+                        log::warn!("Issue connecting to push notifications server: {:?}", e);
+                        continue;
+                    }
                 }
-                registration
             };
 
             // Send registration.fcm_token to the server to allow it to send push messages to you.

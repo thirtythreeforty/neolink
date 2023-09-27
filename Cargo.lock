@@ -1697,7 +1697,6 @@ dependencies = [
  "md5",
  "neolink_core",
  "regex",
- "reqwest",
  "rumqttc",
  "serde",
  "serde_json",
