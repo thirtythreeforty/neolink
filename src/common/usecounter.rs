@@ -140,6 +140,10 @@ impl Permit {
             .await?;
         Ok(())
     }
+
+    pub(crate) fn get_counter(&self) -> WatchReceiver<u32> {
+        self.value.clone()
+    }
 }
 
 impl Drop for Permit {

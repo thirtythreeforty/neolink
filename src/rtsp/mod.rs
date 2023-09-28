@@ -688,6 +688,17 @@ async fn stream_main(
             AnyResult::Ok(())
         });
 
+        // Task to just report the number of clients for debug purposes
+        let counter = client_counter.create_deactivated().await?;
+        let mut cur_count = 0;
+        let thread_name = name.clone();
+        set.spawn(async move {
+            loop {
+                cur_count = *counter.get_counter().wait_for(|v| v != &cur_count).await?;
+                log::debug!("{thread_name}: Number of rtsp clients: {cur_count}");
+            }
+        });
+
         // This runs the actual stream.
         // The select will restart if the stream's config updates
         log::debug!("{}: Stream Activated", &name);
