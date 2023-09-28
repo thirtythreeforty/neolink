@@ -14,7 +14,6 @@ use futures::{
     stream::{FuturesUnordered, Stream, StreamExt},
 };
 use lazy_static::lazy_static;
-use local_ip_address::local_ip;
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use std::collections::{btree_map::Entry, BTreeMap, HashSet};
@@ -461,7 +460,7 @@ impl Discoverer {
         lookup: &UidLookupResults,
     ) -> Result<RegisterResult> {
         let tid = generate_tid();
-        let local_addr = SocketAddr::new(local_ip()?, self.local_addr().port());
+        let local_addr = SocketAddr::new(get_local_ip()?, self.local_addr().port());
         let local_ip = local_addr.ip();
         let local_port = local_addr.port();
         let local_family = if local_addr.ip().is_ipv4() { 4 } else { 6 };
@@ -1276,6 +1275,14 @@ impl Discovery {
             camera_id: connect_result.camera_id,
         })
     }
+}
+
+fn get_local_ip() -> Result<std::net::IpAddr> {
+    get_if_addrs::get_if_addrs()?
+        .iter()
+        .find(|i| !i.is_loopback() && matches!(i.addr, get_if_addrs::IfAddr::V4(_)))
+        .map(|iface| Ok(iface.ip()))
+        .unwrap_or_else(|| Err(Error::Other("No Local Ip Address Found")))
 }
 
 fn get_broadcasts(ports: &[u16]) -> Result<Vec<SocketAddr>> {

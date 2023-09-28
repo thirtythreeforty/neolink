@@ -3,6 +3,7 @@
 //! as is, which comes fromt the json structure
 //!
 
+use anyhow::Context;
 use fcm_push_listener::*;
 use std::{fs, sync::Arc};
 use tokio::{
@@ -72,7 +73,8 @@ impl PushNotiThread {
                 log::debug!("Registering new push notification token");
                 match fcm_push_listener::register(sender_id).await {
                     Ok(registration) => {
-                        let new_token = toml::to_string(&registration)?;
+                        let new_token = toml::to_string(&registration)
+                            .with_context(|| "Unable to serialise fcm token")?;
                         if let Some(Err(e)) = token_path
                             .as_ref()
                             .map(|token_path| fs::write(token_path, &new_token))
@@ -99,7 +101,8 @@ impl PushNotiThread {
             let md5ed = md5::compute(format!("WHY_REOLINK_{:?}", registration.fcm_token));
             let uid = format!("{:X}", md5ed);
             log::debug!("push notification UID: {}", uid);
-            self.instance
+            if let Err(e) = self
+                .instance
                 .run_task(|camera| {
                     let uid = uid.clone();
                     let fcm_token = registration.fcm_token.clone();
@@ -108,7 +111,18 @@ impl PushNotiThread {
                         AnyResult::Ok(())
                     })
                 })
-                .await?;
+                .await
+            {
+                match e.downcast::<neolink_core::Error>() {
+                    Ok(neolink_core::Error::UnintelligibleReply { .. }) => {
+                        log::warn!("Push notitfications not supported for this camera");
+                        futures::future::pending().await
+                    }
+                    _ => {
+                        continue;
+                    } // Retry
+                };
+            }
 
             log::debug!("Push notification Listening");
             let thread_pn_watcher = self.pn_watcher.clone();
@@ -134,22 +148,17 @@ impl PushNotiThread {
                                     fs::write(token_path, "")
                                 );
                                 log::debug!("Error on push notification listener: {:?}. Clearing token", e);
-                                AnyResult::Ok(()) // Allow to restart
                             },
                             Http(e) if e.is_request() || e.is_connect() || e.is_timeout() => {
                                 log::debug!("Error on push notification listener: {:?}", e);
-                                AnyResult::Ok(()) // Allow to restart
                             }
                             _ => {
-                                log::warn!("Error on push notification listener: {:?}", e);
-                                // Err(e.into()) // Propegate error so it breaks
-                                // Wait forever since it will not work
-                                // we just leave the push notificaitons as disabled
-                                futures::future::pending().await
+                                log::debug!("Error on push notification listener: {:?}", e);
+                                // This sort of error can be a network error
+                                // Wait for a little longer
+                                sleep(Duration::from_secs(30)).await;
                             }
                         }
-                    } else {
-                        AnyResult::Ok(())
                     }
                 } => v,
                 v = async {
@@ -160,14 +169,12 @@ impl PushNotiThread {
                             }
                         }
                     }
-                    AnyResult::Ok(())
                 } => {
                     // These are critical errors
-                    // break the loop and return
                     log::debug!("Push Notification thread ended {:?}", v);
-                    break v;
+                    break AnyResult::Ok(());
                 },
-            }?;
+            };
         }
     }
 }

@@ -18,7 +18,7 @@ use tokio::{
         watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
     },
     task::JoinHandle,
-    time::{timeout, Duration},
+    time::{sleep, timeout, Duration},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -341,7 +341,8 @@ impl StreamData {
                                 .bitrate_table
                                 .get(encode.default_bitrate as usize)
                                 .copied()
-                                .unwrap_or(encode.default_bitrate),
+                                .unwrap_or(encode.default_bitrate)
+                                * 1024,
                         ))
                     } else {
                         Ok(([0, 0], 0))
@@ -402,11 +403,12 @@ impl StreamData {
                             v = async {
                                 watchdog_rx.recv().await; // Wait forever for the first feed
                                 loop {
-                                    let check_timeout = timeout(Duration::from_secs(3), watchdog_rx.recv()).await;
+                                    let check_timeout = timeout(Duration::from_secs(10), watchdog_rx.recv()).await;
                                     if let Err(_)| Ok(None) = check_timeout {
                                         // Timeout
                                         // Reply with Ok to trigger the restart
                                         log::debug!("Watchdog kicking the stream");
+                                        sleep(Duration::from_secs(1)).await;
                                         break AnyResult::Ok(());
                                     }
                                 }

@@ -62,7 +62,7 @@ fn platform_cfg() {
 fn platform_cfg() {
     let gstreamer_dir = env::var_os("GSTREAMER_1_0_ROOT_MACOSX")
         .and_then(|x| x.into_string().ok())
-        .unwrap_or_else(|| r#"/Library/Frameworks/GStreamer.framework/Versions/1.0"#.to_string());
+        .unwrap_or_else(|| r"/Library/Frameworks/GStreamer.framework/Versions/1.0".to_string());
 
     println!(r"cargo:rustc-link-search=native={}/lib", gstreamer_dir);
     println!(r"cargo:rustc-link-arg=-Wl,-rpath,{}/lib", gstreamer_dir);

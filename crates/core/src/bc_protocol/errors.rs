@@ -48,11 +48,11 @@ pub enum Error {
     DroppedConnection,
 
     /// Raised when a connection is dropped during a tokio mpsc TryRecv event
-    #[error(display = "Dropped connection")]
+    #[error(display = "Dropped connection (TryRecv)")]
     DroppedConnectionTry(#[error(source)] tokio::sync::mpsc::error::TryRecvError),
 
     /// Raised when a connection is dropped during a TryRecv event
-    #[error(display = "Dropped connection")]
+    #[error(display = "Dropped connection (Broadcast TryRecv)")]
     BroadcastDroppedConnectionTry(#[error(source)] tokio::sync::broadcast::error::TryRecvError),
 
     /// Raised when a connection is dropped during a TryRecv event
@@ -68,7 +68,7 @@ pub enum Error {
     TimeoutError(#[error(source)] tokio::time::error::Error),
 
     /// Raised when connection is dropped because the timeout is reach
-    #[error(display = "Dropped connection")]
+    #[error(display = "Dropped connection (Timeout)")]
     TimeoutDisconnected,
 
     /// Raised when a camera cannot be connected to ay any of the given addresses
@@ -143,10 +143,6 @@ pub enum Error {
     #[error(display = "Cannot perform lookup with this camera against reolink servers")]
     NoDev,
 
-    /// Raised when cannot determine local IP address
-    #[error(display = "Local IP address is unknown: {}", _0)]
-    LocalIpError(#[error(source)] std::sync::Arc<local_ip_address::Error>),
-
     /// Raised when a discovery fails to be accepted by the register
     #[error(display = "Register refuses to accept us")]
     RegisterError,
@@ -217,12 +213,6 @@ impl<T> From<tokio_util::sync::PollSendError<T>> for Error {
 impl From<cookie_factory::GenError> for Error {
     fn from(k: cookie_factory::GenError) -> Self {
         Error::GenError(std::sync::Arc::new(k))
-    }
-}
-
-impl From<local_ip_address::Error> for Error {
-    fn from(k: local_ip_address::Error) -> Self {
-        Error::LocalIpError(std::sync::Arc::new(k))
     }
 }
 

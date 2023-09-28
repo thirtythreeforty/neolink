@@ -123,7 +123,7 @@ impl NeoInstance {
                         Err(e) => {
                             match e.downcast::<neolink_core::Error>() {
                                 // Retry is a None
-                                Ok(neolink_core::Error::DroppedConnection) => {
+                                Ok(neolink_core::Error::DroppedConnection) | Ok(neolink_core::Error::TimeoutDisconnected) => {
                                     camera = None;
                                     None
                                 },

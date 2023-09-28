@@ -176,7 +176,10 @@ impl NeoCam {
                     }
                     log::debug!("Control thread Senders dropped");
                     Ok(())
-                } => v
+                } => {
+                    log::debug!("Camera Control Thread Ended; {:?}", v);
+                    v
+                }
             };
             log::debug!("Control thread terminated");
             res
@@ -200,7 +203,11 @@ impl NeoCam {
             me.cancel.clone(),
         )
         .await;
-        me.set.spawn(async move { cam_thread.run().await });
+        me.set.spawn(async move {
+            let v = cam_thread.run().await;
+            log::debug!("Camera MAIN thread ended; {:?}", v);
+            v
+        });
 
         // This thread maintains the streams
         let stream_instance = instance.subscribe().await?;
@@ -209,7 +216,10 @@ impl NeoCam {
         me.set.spawn(async move {
             tokio::select! {
                 _ = stream_cancel.cancelled() => AnyResult::Ok(()),
-                v = stream_thread.run() => v,
+                v = stream_thread.run() => {
+                    log::debug!("Camera Stream thread ended; {:?}", v);
+                    v
+                },
             }
         });
 
@@ -220,7 +230,10 @@ impl NeoCam {
         me.set.spawn(async move {
             tokio::select! {
                 _ = md_cancel.cancelled() => AnyResult::Ok(()),
-                v = md_thread.run() => v,
+                v = md_thread.run() => {
+                    log::debug!("MD thread ended; {:?}", v);
+                    v
+                },
             }
         });
 
@@ -278,7 +291,9 @@ impl NeoCam {
                         let pn_permit_instance = pn_root_instance.subscribe().await?;
                         let r = tokio::select! {
                             // This thread handles the push notfications
-                            v = push_notifier.run(&mut pn_request_rx) => v,
+                            v = push_notifier.run(&mut pn_request_rx) => {
+                                v
+                            },
                             // Push notification permits
                             v = async {
                                 let mut prev_noti = None;
@@ -301,7 +316,10 @@ impl NeoCam {
                         }
                     }?;
                     AnyResult::Ok(())
-                } => v,
+                } => {
+                    log::debug!("Push notification thread ended; {:?}", v);
+                    v
+                },
             }
         });
 
@@ -314,20 +332,23 @@ impl NeoCam {
                     AnyResult::Ok(())
                 },
                 v = async {
-                    let mut md = md_permit_instance.motion().await?;
+                    let mut md = md_permit_instance.motion().await.with_context(|| "Unable to acquire motion watcher")?;
                     loop{
-                        md.wait_for(|md| matches!(md, MdState::Start(_))).await?;
-                        let _permit = Some(md_permit_instance.permit().await?);
-                        md.wait_for(|md| matches!(md, MdState::Stop(_))).await?;
+                        md.wait_for(|md| matches!(md, MdState::Start(_))).await.with_context(|| "MD Watcher lost")?;
+                        let _permit = md_permit_instance.permit().await.with_context(|| "Unuable to acquire motion permit")?;
+                        md.wait_for(|md| matches!(md, MdState::Stop(_))).await.with_context(|| "MD Watcher lost")?;
                         // Try waiting for 30s
                         // If in those 30s we get motion then return to
                         // loop early to reaquire the permit
                         tokio::select!{
                             _ = sleep(Duration::from_secs(30)) => {},
-                            _ = md.wait_for(|md| matches!(md, MdState::Start(_))) => {},
+                            v = md.wait_for(|md| matches!(md, MdState::Start(_))) => {v.with_context(|| "MD Watcher lost")?;},
                         }
                     }
-                } => v,
+                } => {
+                    log::debug!("MD Wake Up thread ended; {:?}", v);
+                    v
+                },
             }
         });
 
@@ -382,7 +403,10 @@ impl NeoCam {
                         }
                     }?;
                     AnyResult::Ok(())
-                } => v,
+                } => {
+                    log::debug!("Idle Disconnect thread ended; {:?}", v);
+                    v
+                },
             }
         });
 
