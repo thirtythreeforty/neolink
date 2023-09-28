@@ -8,12 +8,12 @@ use tokio::{
         oneshot::Sender as OneshotSender,
         watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
     },
-    time::Instant,
+    time::{sleep, Duration, Instant},
 };
 use tokio_util::sync::CancellationToken;
 
 use super::NeoInstance;
-use crate::Result;
+use crate::{AnyResult, Result};
 use neolink_core::bc_protocol::MotionStatus;
 
 pub(crate) enum MdState {
@@ -64,29 +64,35 @@ impl NeoCamMdThread {
                 }
                 Ok(())
             } => v,
-            v = md_instance.run_passive_task(|cam| {
-                    let watcher = watcher.clone();
-                    Box::pin(
-                    async move {
-                        let mut md = cam.listen_on_motion().await?;
-                        loop {
-                            let event = md.next_motion().await?;
-                            match event {
-                                MotionStatus::Start(at) => {
-                                    watcher.send_replace(
-                                        MdState::Start(at.into())
-                                    );
+            v = async {
+                loop {
+                    let r: AnyResult<()> = md_instance.run_passive_task(|cam| {
+                        let watcher = watcher.clone();
+                        Box::pin(
+                        async move {
+                            let mut md = cam.listen_on_motion().await?;
+                            loop {
+                                let event = md.next_motion().await?;
+                                match event {
+                                    MotionStatus::Start(at) => {
+                                        watcher.send_replace(
+                                            MdState::Start(at.into())
+                                        );
+                                    }
+                                    MotionStatus::Stop(at) => {
+                                        watcher.send_replace(
+                                            MdState::Stop(at.into())
+                                        );
+                                    }
+                                    MotionStatus::NoChange(_) => {},
                                 }
-                                MotionStatus::Stop(at) => {
-                                    watcher.send_replace(
-                                        MdState::Stop(at.into())
-                                    );
-                                }
-                                MotionStatus::NoChange(_) => {},
                             }
                         }
-                    }
-                )}) => v
+                    )}).await;
+                    log::debug!("Error in MD task Restarting: {:?}", r);
+                    sleep(Duration::from_secs(1)).await;
+                }
+            } => v
         }
     }
 }
