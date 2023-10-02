@@ -25,6 +25,7 @@ impl BcCamera {
                 }),
                 payload: Some(BcPayloads::BcXml(BcXml {
                     snap: Some(Snap {
+                        version: "1.1".to_string(),
                         channel_id: self.channel_id,
                         logic_channel: Some(self.channel_id),
                         time: 0,

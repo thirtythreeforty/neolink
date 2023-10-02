@@ -67,7 +67,7 @@ use tokio::{
         watch::channel as watch,
     },
     task::JoinSet,
-    time::{interval, sleep, Duration},
+    time::{interval, sleep, Duration, Instant},
 };
 use tokio_stream::wrappers::IntervalStream;
 use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
@@ -1099,6 +1099,22 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
         let mut rt = Duration::ZERO;
         let appsrc = app.clone();
 
+        let (tx, mut rx) = mpsc(150);
+        let thread_appsrc = appsrc.clone();
+        tokio::task::spawn(async move {
+            while let Some((time, buf)) = rx.recv().await {
+                let now = Instant::now();
+                if now < time {
+                    sleep(time - now).await;
+                }
+                thread_appsrc
+                    .push_buffer(buf)
+                    .map(|_| ())
+                    .map_err(|_| anyhow!("Could not push buffer to appsrc"))?;
+            }
+            AnyResult::Ok(())
+        });
+
         while let Some(Ok(data)) = data_rx.next().await {
             check_live(app)?; // Stop if appsrc is dropped
                               // Cache the last runtime
@@ -1127,8 +1143,14 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
 
                     // Sync ft to rt if > 1500ms difference
                     const MAX_DELTA_T: Duration = Duration::from_millis(1500);
+                    let mut push_at = if ft > rt {
+                        Instant::now() + (ft - rt)
+                    } else {
+                        Instant::now()
+                    };
                     let delta_t = if rt > ft { rt - ft } else { ft - rt };
                     if delta_t > MAX_DELTA_T {
+                        push_at = Instant::now();
                         ft = rt;
                     }
 
@@ -1146,10 +1168,8 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                         gst_buf
                     };
 
-                    appsrc
-                        .push_buffer(buf)
-                        .map(|_| ())
-                        .map_err(|_| anyhow!("Could not push buffer to appsrc"))?;
+                    let send = (push_at, buf);
+                    tx.send(send).await?;
                 }
             }
         }
@@ -1226,7 +1246,7 @@ fn build_unknown(bin: &Element) -> Result<()> {
 }
 
 fn build_h264(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
-    let buffer_size = stream_config.bitrate * 15 / 8;
+    let buffer_size = buffer_size(stream_config.bitrate);
     log::debug!("buffer_size: {buffer_size}");
     let bin = bin
         .clone()
@@ -1260,7 +1280,7 @@ fn build_h264(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
 }
 
 fn build_h265(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
-    let buffer_size = stream_config.bitrate * 15 / 8;
+    let buffer_size = buffer_size(stream_config.bitrate);
     log::debug!("buffer_size: {buffer_size}");
     let bin = bin
         .clone()
@@ -1293,7 +1313,7 @@ fn build_h265(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
 }
 
 fn build_aac(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
-    let buffer_size = stream_config.bitrate * 15 / 8;
+    let buffer_size = buffer_size(stream_config.bitrate);
     log::debug!("buffer_size: {buffer_size}");
     let bin = bin
         .clone()
@@ -1334,7 +1354,7 @@ fn build_aac(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
 }
 
 fn build_adpcm(bin: &Element, block_size: u32, stream_config: &StreamConfig) -> Result<AppSrc> {
-    let buffer_size = stream_config.bitrate * 15 / 8;
+    let buffer_size = buffer_size(stream_config.bitrate);
     log::debug!("buffer_size: {buffer_size}");
     let bin = bin
         .clone()
@@ -1467,4 +1487,8 @@ fn make_queue(name: &str, buffer_size: u32) -> AnyResult<Element> {
         .dynamic_cast::<Element>()
         .map_err(|_| anyhow!("Cannot convert bin"))?;
     Ok(bin)
+}
+
+fn buffer_size(bitrate: u32) -> u32 {
+    std::cmp::max(bitrate * 15u32 / 8u32, 4u32 * 1024u32 * 1024u32)
 }

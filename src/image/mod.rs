@@ -93,7 +93,11 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
         let mut buffer = File::create(file_path).await?;
         let jpeg_data = camera
             .run_task(|camera| Box::pin(async move { Ok(camera.get_snapshot().await?) }))
-            .await?;
+            .await;
+        if jpeg_data.is_err() {
+            log::debug!("jpeg_data: {:?}", jpeg_data);
+        }
+        let jpeg_data = jpeg_data?;
         buffer.write_all(jpeg_data.as_slice()).await?;
     }
 

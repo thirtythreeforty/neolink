@@ -746,6 +746,9 @@ pub struct LinkType {
 /// The Snap contains the binary jpeg image details
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct Snap {
+    /// The snap xml version. Observed values "1.1"
+    #[yaserde(attribute)]
+    pub version: String,
     #[yaserde(rename = "channelId")]
     /// The channel id to get the snapshot from
     pub channel_id: u8,

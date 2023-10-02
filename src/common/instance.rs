@@ -128,17 +128,37 @@ impl NeoInstance {
                                     camera = None;
                                     None
                                 },
+                                Ok(neolink_core::Error::Io(e)) => {
+                                    log::debug!("Std IO Error");
+                                    // Check if  the inner error is the Other type and then the discomnect
+                                    let is_dropped = e.get_ref().is_some_and(|e| {
+                                        log::debug!("Std IO Error: Inner: {:?}", e);
+                                        matches!(e.downcast_ref::<neolink_core::Error>(),
+                                                Some(neolink_core::Error::DroppedConnection) | Some(neolink_core::Error::TimeoutDisconnected)
+                                        )
+                                    });
+                                    if is_dropped {
+                                        // Retry is a None
+                                        camera = None;
+                                        None
+                                    } else {
+                                        Some(Err(e.into()))
+                                    }
+                                }
                                 Ok(e) => Some(Err(e.into())),
                                 Err(e) => {
                                     // Check if it is an io error
+                                    log::debug!("Other Error: {:?}", e);
                                     match e.downcast::<std::io::Error>() {
                                         Ok(e) => {
-                                            // Check if the inner error is the Other type and then the discomnect
-                                            let is_dropped = e.get_ref().is_some_and(|e|
+                                            log::debug!("Std IO Error");
+                                            // Check if  the inner error is the Other type and then the discomnect
+                                            let is_dropped = e.get_ref().is_some_and(|e| {
+                                                log::debug!("Std IO Error: Inner: {:?}", e);
                                                 matches!(e.downcast_ref::<neolink_core::Error>(),
                                                         Some(neolink_core::Error::DroppedConnection) | Some(neolink_core::Error::TimeoutDisconnected)
                                                 )
-                                            );
+                                            });
                                             if is_dropped {
                                                 // Retry is a None
                                                 camera = None;
@@ -147,7 +167,10 @@ impl NeoInstance {
                                                 Some(Err(e.into()))
                                             }
                                         },
-                                        Err(e) =>Some(Err(e))
+                                        Err(e) => {
+                                            log::debug!("Other Error: {:?}", e);
+                                            Some(Err(e))
+                                        }
                                     }
                                 },
                             }
