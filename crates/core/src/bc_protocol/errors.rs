@@ -194,7 +194,14 @@ pub enum Error {
 
 impl From<std::io::Error> for Error {
     fn from(k: std::io::Error) -> Self {
-        Error::Io(std::sync::Arc::new(k))
+        // Check for other error that is already an Error of this type
+        if k.get_ref()
+            .is_some_and(|e| e.downcast_ref::<Error>().is_some())
+        {
+            *k.into_inner().unwrap().downcast::<Error>().unwrap()
+        } else {
+            Error::Io(std::sync::Arc::new(k))
+        }
     }
 }
 
