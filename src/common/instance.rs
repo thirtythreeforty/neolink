@@ -5,7 +5,8 @@
 //! The camera watch is used as an event to be triggered
 //! whenever the camera is lost/updated
 use anyhow::anyhow;
-use std::sync::Weak;
+use futures::TryFutureExt;
+use std::sync::{Arc, Weak};
 use tokio::sync::{
     mpsc::Sender as MpscSender, oneshot::channel as oneshot, watch::Receiver as WatchReceiver,
 };
@@ -98,11 +99,11 @@ impl NeoInstance {
                 _ = self.cancel.cancelled() => {
                     Some(Err(anyhow!("Camera is disconnecting")))
                 }
-                v = camera_watch.changed() => {
+                v = camera_watch.wait_for(|new_cam| !Weak::ptr_eq(new_cam, &camera.as_ref().map(Arc::downgrade).unwrap_or_else(Weak::new))).map_ok(|new_cam| new_cam.upgrade()) => {
                     // Camera value has changed!
                     // update and try again
-                    if v.is_ok() {
-                        camera = camera_watch.borrow_and_update().upgrade();
+                    if let Ok(new_cam) = v {
+                        camera = new_cam;
                         None
                     } else {
                         Some(Err(anyhow!("Camera is disconnecting")))
@@ -128,7 +129,27 @@ impl NeoInstance {
                                     None
                                 },
                                 Ok(e) => Some(Err(e.into())),
-                                Err(e) => Some(Err(e)),
+                                Err(e) => {
+                                    // Check if it is an io error
+                                    match e.downcast::<std::io::Error>() {
+                                        Ok(e) => {
+                                            // Check if the inner error is the Other type and then the discomnect
+                                            let is_dropped = e.get_ref().is_some_and(|e|
+                                                matches!(e.downcast_ref::<neolink_core::Error>(),
+                                                        Some(neolink_core::Error::DroppedConnection) | Some(neolink_core::Error::TimeoutDisconnected)
+                                                )
+                                            );
+                                            if is_dropped {
+                                                // Retry is a None
+                                                camera = None;
+                                                None
+                                            } else {
+                                                Some(Err(e.into()))
+                                            }
+                                        },
+                                        Err(e) =>Some(Err(e))
+                                    }
+                                },
                             }
                         }
                     }

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize, Serializer};
 pub(crate) enum Discoveries {
     #[serde(alias = "floodlight", alias = "light")]
     Floodlight,
-    #[serde(alias = "camera")]
+    #[serde(alias = "camera", alias = "preview", alias = "Preview")]
     Camera,
     #[serde(alias = "motion", alias = "md", alias = "pir")]
     Motion,

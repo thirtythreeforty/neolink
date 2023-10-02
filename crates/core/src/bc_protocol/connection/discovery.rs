@@ -460,7 +460,9 @@ impl Discoverer {
         lookup: &UidLookupResults,
     ) -> Result<RegisterResult> {
         let tid = generate_tid();
-        let local_addr = SocketAddr::new(get_local_ip()?, self.local_addr().port());
+        let local_ip = get_local_ip()?;
+        let local_addr = SocketAddr::new(local_ip, self.local_addr().port());
+        log::debug!("Registering {:?} to reolink", local_addr);
         let local_ip = local_addr.ip();
         let local_port = local_addr.port();
         let local_family = if local_addr.ip().is_ipv4() { 4 } else { 6 };

@@ -199,7 +199,7 @@ Neolink will publish these messages:
 
 Messages that are prefixed with `neolink/`
 
-- `/status` Tracks the connection of neolink, `online` for ready `offline`
+- `/status` Tracks the connection of neolink, `connected` for ready `offline`
   for not ready this is a LastWill message
 - `/config` The configuration file used to start neolink, you can publish to
   this to **temporarily** alter the live configuration
@@ -396,7 +396,7 @@ username = "admin"
 password = "password"
 uid = "ABCDEF0123456789"
 idle_disconnect = true
-  [cameras.pause]
+[cameras.pause]
   on_client = true # Should pause when no rtsp client
   timeout = 2.1 # How long to wait after motion stops before pausing
 ```
