@@ -875,13 +875,17 @@ async fn stream_run(
                             // Send initial buffer
                             if let Some(seek_ts) = seek_ts {
                                 // Send Initial
+                                let mut found_key_frame = false;
                                 for data in thread_vid_history.borrow().iter() {
-                                    vid_data_tx.send(
-                                        StreamData::Media {
-                                            data: data.data.clone(),
-                                            ts: seek_ts,
-                                        }
-                                    )?;
+                                    if data.keyframe || found_key_frame {
+                                        vid_data_tx.send(
+                                            StreamData::Media {
+                                                data: data.data.clone(),
+                                                ts: seek_ts,
+                                            }
+                                        )?;
+                                        found_key_frame = true;
+                                    }
                                 }
                             }
                         }
@@ -911,13 +915,17 @@ async fn stream_run(
                             // Send initial buffer
                             if let Some(seek_ts) = seek_ts {
                                 // Send Initial
+                                let mut found_key_frame = false;
                                 for data in thread_aud_history.borrow().iter() {
-                                    aud_data_tx.send(
-                                        StreamData::Media {
-                                            data: data.data.clone(),
-                                            ts: seek_ts,
-                                        }
-                                    )?;
+                                    if data.keyframe || found_key_frame {
+                                        aud_data_tx.send(
+                                            StreamData::Media {
+                                                data: data.data.clone(),
+                                                ts: seek_ts,
+                                            }
+                                        )?;
+                                        found_key_frame = true;
+                                    }
                                 }
                             }
                         }
@@ -931,7 +939,6 @@ async fn stream_run(
 
         // Handles sending the video data into gstreamer
         let thread_stream_cancel = stream_cancel.clone();
-        let thread_stream_canceler = stream_cancel.clone();
         let vid_data_rx = BroadcastStream::new(vid_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
         let thread_vid = vid.clone();
         let mut thread_client_count = client_count.subscribe();
@@ -942,18 +949,17 @@ async fn stream_run(
                     AnyResult::Ok(())
                 },
                 v = handle_data(thread_vid.as_ref(), vid_data_rx) => {
-                    thread_stream_canceler.cancel();
                     v
                 },
             };
             drop(thread_client_count);
-            log::trace!("Vid Thread End: {:?}", r);
+            thread_vid.map(|appsrc| appsrc.end_of_stream());
+            log::debug!("Vid Thread End: {:?}", r);
             r
         });
 
         // Handles the audio data into gstreamer
         let thread_stream_cancel = stream_cancel.clone();
-        let thread_stream_canceler = stream_cancel.clone();
         let aud_data_rx = BroadcastStream::new(aud_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
         let thread_aud = aud.clone();
         set.spawn(async move {
@@ -962,11 +968,11 @@ async fn stream_run(
                     AnyResult::Ok(())
                 },
                 v = handle_data(thread_aud.as_ref(), aud_data_rx) => {
-                    thread_stream_canceler.cancel();
                     v
                 },
             };
-            log::trace!("Aud Thread End: {:?}", r);
+            thread_aud.map(|appsrc| appsrc.end_of_stream());
+            log::debug!("Aud Thread End: {:?}", r);
             r
         });
     }
@@ -1002,7 +1008,7 @@ async fn make_factory(
                     app.set_callbacks(
                         AppSrcCallbacks::builder()
                             .seek_data(move |_, seek_pos| {
-                                log::trace!("seek_pos: {seek_pos:?}");
+                                log::debug!("seek_pos: {seek_pos:?}");
                                 let (reply_tx, mut reply_rx) = mpsc(1);
                                 vid_seek_tx
                                     .blocking_send(StreamData::Seek {
@@ -1013,12 +1019,12 @@ async fn make_factory(
                                     && reply_rx.blocking_recv().is_some()
                             })
                             .enough_data(move |_| {
-                                log::trace!("enough_data:");
+                                log::debug!("enough_data:");
                                 let _ = vid_enough_tx
                                     .blocking_send(StreamData::Enough { ts: Instant::now() });
                             })
                             .need_data(move |_, _| {
-                                log::trace!("need_data:");
+                                log::debug!("need_data:");
                                 let _ = vid_need_tx
                                     .blocking_send(StreamData::Need { ts: Instant::now() });
                             })
@@ -1032,7 +1038,7 @@ async fn make_factory(
                     app.set_callbacks(
                         AppSrcCallbacks::builder()
                             .seek_data(move |_, seek_pos| {
-                                log::trace!("seek_pos: {seek_pos:?}");
+                                log::debug!("seek_pos: {seek_pos:?}");
                                 let (reply_tx, mut reply_rx) = mpsc(1);
                                 vid_seek_tx
                                     .blocking_send(StreamData::Seek {
@@ -1043,12 +1049,12 @@ async fn make_factory(
                                     && reply_rx.blocking_recv().is_some()
                             })
                             .enough_data(move |_| {
-                                log::trace!("enough_data:");
+                                log::debug!("enough_data:");
                                 let _ = vid_enough_tx
                                     .blocking_send(StreamData::Enough { ts: Instant::now() });
                             })
                             .need_data(move |_, _| {
-                                log::trace!("need_data:");
+                                log::debug!("need_data:");
                                 let _ = vid_need_tx
                                     .blocking_send(StreamData::Need { ts: Instant::now() });
                             })
@@ -1196,6 +1202,7 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                     // Sync ft to rt if > 1500ms difference
                     const MAX_DELTA_T: Duration = Duration::from_millis(1500);
                     let mut push_at = if ft > rt {
+                        log::debug!("Display frame in {:?}", ft - rt);
                         Instant::now() + (ft - rt)
                     } else {
                         Instant::now()
@@ -1502,7 +1509,8 @@ fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
 fn make_queue(name: &str, buffer_size: u32) -> AnyResult<Element> {
     let queue = make_element("queue", &format!("queue1_{}", name))?;
     queue.set_property("max-size-bytes", buffer_size);
-    // queue.set_property("max-size-buffers", 0u32);
+    queue.set_property("max-size-buffers", 0u32);
+    queue.set_property("max-size-time", 0u64);
     // queue.set_property(
     //     "max-size-time",
     //     std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
@@ -1511,13 +1519,14 @@ fn make_queue(name: &str, buffer_size: u32) -> AnyResult<Element> {
 
     let queue2 = make_element("queue2", &format!("queue2_{}", name))?;
     queue2.set_property("max-size-bytes", buffer_size * 2u32 / 3u32);
-    // // queue.set_property("max-size-buffers", 0u32);
+    queue.set_property("max-size-buffers", 0u32);
+    queue.set_property("max-size-time", 0u64);
     // queue2.set_property(
     //     "max-size-time",
     //     std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
     //         .unwrap_or(0),
     // );
-    queue2.set_property("use-buffering", true);
+    queue2.set_property("use-buffering", false);
 
     let bin = gstreamer::Bin::builder().name(name).build();
     bin.add_many([&queue, &queue2])?;

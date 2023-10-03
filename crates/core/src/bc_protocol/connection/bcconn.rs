@@ -267,6 +267,9 @@ impl Poller {
                                     log::trace!("Calling ID callback");
                                     let occ = occ.clone();
                                     let sink = self.sink.clone();
+                                    // Move this on another thread coz I have NO idea
+                                    // how long the callback will run for
+                                    // and we must NOT hang
                                     tokio::task::spawn(async move {
                                         if let Some(reply) = occ(&response).await {
                                             assert!(reply.meta.msg_num == response.meta.msg_num);
@@ -319,9 +322,9 @@ impl Poller {
                                             );
                                         }
                                         let sender = sender.clone();
-                                        tokio::task::spawn(async move {
-                                            sender.send(Ok(response)).await
-                                        });
+                                        // tokio::task::spawn(async move {
+                                        let _ = sender.send(Ok(response)).await;
+                                        // });
                                     } else {
                                         debug!(
                                             "Ignoring uninteresting message id {} (number: {})",
@@ -380,11 +383,11 @@ impl Poller {
                                 occ_entry.insert(tx);
                             } else {
                                 // log::error!("Failed to subscribe in bcconn to {:?} for {:?}", msg_num, msg_id);
-                                tokio::task::spawn(async move {
-                                    let _ = tx
-                                        .send(Err(Error::SimultaneousSubscription { msg_num }))
-                                        .await;
-                                });
+                                // tokio::task::spawn(async move {
+                                let _ = tx
+                                    .send(Err(Error::SimultaneousSubscription { msg_num }))
+                                    .await;
+                                // });
                             }
                         }
                     };
