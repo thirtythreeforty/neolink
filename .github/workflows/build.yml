@@ -51,6 +51,9 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH  -Value "$env:GSTREAMER_1_0_ROOT_MSVC_X86_64\bin"
           Add-Content -Path $env:GITHUB_PATH  -Value "%GSTREAMER_1_0_ROOT_MSVC_X86_64%\bin"
           $env:OPENSSL_DIR=$env:SYSTEMDRIVE + '\Program Files\OpenSSL-Win64\'
+          if (-not (Test-Path -Path "$env:OPENSSL_DIR" -PathType Container)) {
+            $env:OPENSSL_DIR=$env:SYSTEMDRIVE + '\Program Files\OpenSSL\'
+          }
           dir "$env:GSTREAMER_1_0_ROOT_MSVC_X86_64"
           dir "$env:OPENSSL_DIR"
           Add-Content -Path $env:GITHUB_ENV  -Value "OPENSSL_DIR=$env:OPENSSL_DIR"

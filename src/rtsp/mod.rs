@@ -469,6 +469,8 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
 enum StreamData {
     Media { data: Arc<Vec<u8>>, ts: Duration },
     Seek { ts: Duration, reply: MpscSender<()> },
+    Enough { ts: Instant },
+    Need { ts: Instant },
 }
 
 struct ClientSourceData {
@@ -929,6 +931,7 @@ async fn stream_run(
 
         // Handles sending the video data into gstreamer
         let thread_stream_cancel = stream_cancel.clone();
+        let thread_stream_canceler = stream_cancel.clone();
         let vid_data_rx = BroadcastStream::new(vid_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
         let thread_vid = vid.clone();
         let mut thread_client_count = client_count.subscribe();
@@ -938,7 +941,10 @@ async fn stream_run(
                 _ = thread_stream_cancel.cancelled() => {
                     AnyResult::Ok(())
                 },
-                v = handle_data(thread_vid.as_ref(), vid_data_rx) => v,
+                v = handle_data(thread_vid.as_ref(), vid_data_rx) => {
+                    thread_stream_canceler.cancel();
+                    v
+                },
             };
             drop(thread_client_count);
             log::trace!("Vid Thread End: {:?}", r);
@@ -947,6 +953,7 @@ async fn stream_run(
 
         // Handles the audio data into gstreamer
         let thread_stream_cancel = stream_cancel.clone();
+        let thread_stream_canceler = stream_cancel.clone();
         let aud_data_rx = BroadcastStream::new(aud_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
         let thread_aud = aud.clone();
         set.spawn(async move {
@@ -954,7 +961,10 @@ async fn stream_run(
                 _ = thread_stream_cancel.cancelled() => {
                     AnyResult::Ok(())
                 },
-                v = handle_data(thread_aud.as_ref(), aud_data_rx) => v,
+                v = handle_data(thread_aud.as_ref(), aud_data_rx) => {
+                    thread_stream_canceler.cancel();
+                    v
+                },
             };
             log::trace!("Aud Thread End: {:?}", r);
             r
@@ -980,6 +990,8 @@ async fn make_factory(
             clear_bin(&element)?;
             let (vid_seek_tx, vid_seek_rx) = mpsc(10);
             let (aud_seek_tx, aud_seek_rx) = mpsc(10);
+            let vid_enough_tx = vid_seek_tx.clone();
+            let vid_need_tx = vid_seek_tx.clone();
             let vid = match stream_config.vid_format {
                 VidFormat::None => {
                     build_unknown(&element)?;
@@ -1000,12 +1012,23 @@ async fn make_factory(
                                     .is_ok()
                                     && reply_rx.blocking_recv().is_some()
                             })
+                            .enough_data(move |_| {
+                                log::trace!("enough_data:");
+                                let _ = vid_enough_tx
+                                    .blocking_send(StreamData::Enough { ts: Instant::now() });
+                            })
+                            .need_data(move |_, _| {
+                                log::trace!("need_data:");
+                                let _ = vid_need_tx
+                                    .blocking_send(StreamData::Need { ts: Instant::now() });
+                            })
                             .build(),
                     );
                     AnyResult::Ok(Some(app))
                 }
                 VidFormat::H265 => {
                     let app = build_h265(&element, &stream_config)?;
+
                     app.set_callbacks(
                         AppSrcCallbacks::builder()
                             .seek_data(move |_, seek_pos| {
@@ -1018,6 +1041,16 @@ async fn make_factory(
                                     })
                                     .is_ok()
                                     && reply_rx.blocking_recv().is_some()
+                            })
+                            .enough_data(move |_| {
+                                log::trace!("enough_data:");
+                                let _ = vid_enough_tx
+                                    .blocking_send(StreamData::Enough { ts: Instant::now() });
+                            })
+                            .need_data(move |_, _| {
+                                log::trace!("need_data:");
+                                let _ = vid_need_tx
+                                    .blocking_send(StreamData::Need { ts: Instant::now() });
                             })
                             .build(),
                     );
@@ -1115,9 +1148,28 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
             AnyResult::Ok(())
         });
 
+        let mut last_need: Option<Instant> = None;
+        let mut last_enough: Option<Instant> = None;
         while let Some(Ok(data)) = data_rx.next().await {
             check_live(app)?; // Stop if appsrc is dropped
                               // Cache the last runtime
+                              // Check for buffer over full
+                              // for >15s
+            if let (Some(rlast_enough), Some(rlast_need)) = (last_enough, last_need) {
+                if rlast_need > rlast_enough {
+                    last_enough = None;
+                    last_need = None;
+                }
+            }
+            if let Some(rlast_enough) = last_enough {
+                if rlast_enough.elapsed() > Duration::from_secs(15) {
+                    let _ = app.end_of_stream();
+                    log::debug!(
+                        "Client has not used any stream data for over 15s disconnecting the client"
+                    );
+                    return Ok(());
+                }
+            }
             match data {
                 StreamData::Seek { ts, reply } => {
                     rt = ts;
@@ -1171,6 +1223,8 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                     let send = (push_at, buf);
                     tx.send(send).await?;
                 }
+                StreamData::Enough { ts: when } => last_enough = Some(when),
+                StreamData::Need { ts: when } => last_need = Some(when),
             }
         }
     }
