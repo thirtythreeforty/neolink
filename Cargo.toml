@@ -38,7 +38,7 @@ serde_json = "1.0.96"
 tokio = { version = "1.27.0", features = ["rt-multi-thread", "macros", "io-util", "tracing"] }
 tokio-stream = "0.1.12"
 tokio-util = { version = "0.7.7", features = ["full", "tracing"] }
-toml = "0.7.3"
+toml = "0.8.1"
 validator = "0.16.0"
 validator_derive = "0.16.0"
 yaserde = "0.8.0"

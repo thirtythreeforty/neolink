@@ -99,7 +99,7 @@ impl NeoInstance {
                 _ = self.cancel.cancelled() => {
                     Some(Err(anyhow!("Camera is disconnecting")))
                 }
-                v = camera_watch.wait_for(|new_cam| !Weak::ptr_eq(new_cam, &camera.as_ref().map(Arc::downgrade).unwrap_or_else(Weak::new))).map_ok(|new_cam| new_cam.upgrade()) => {
+                v = camera_watch.wait_for(|new_cam| !Weak::ptr_eq(new_cam, &camera.as_ref().map(Arc::downgrade).unwrap_or_default())).map_ok(|new_cam| new_cam.upgrade()) => {
                     // Camera value has changed!
                     // update and try again
                     if let Ok(new_cam) = v {
