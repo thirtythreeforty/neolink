@@ -1050,13 +1050,21 @@ async fn make_factory(
                             })
                             .enough_data(move |_| {
                                 log::debug!("enough_data:");
-                                let _ = vid_enough_tx
-                                    .blocking_send(StreamData::Enough { ts: Instant::now() });
+                                let vid_enough_tx = vid_enough_tx.clone();
+                                let ts = Instant::now();
+                                // Need and enough are fired when we
+                                // call push_buffer which is inside an
+                                // async context so blocking_send is forbiddon
+                                tokio::task::spawn(vid_enough_tx.send(StreamData::Enough { ts }));
                             })
                             .need_data(move |_, _| {
                                 log::debug!("need_data:");
-                                let _ = vid_need_tx
-                                    .blocking_send(StreamData::Need { ts: Instant::now() });
+                                let vid_need_tx = vid_need_tx.clone();
+                                let ts = Instant::now();
+                                // Need and enough are fired when we
+                                // call push_buffer which is inside an
+                                // async context so blocking_send is forbiddon
+                                tokio::task::spawn(vid_need_tx.send(StreamData::Need { ts }));
                             })
                             .build(),
                     );
@@ -1141,11 +1149,8 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
         let (tx, mut rx) = mpsc(150);
         let thread_appsrc = appsrc.clone();
         tokio::task::spawn(async move {
-            while let Some((time, buf)) = rx.recv().await {
-                let now = Instant::now();
-                if now < time {
-                    sleep(time - now).await;
-                }
+            while let Some(buf) = rx.recv().await {
+                log::debug!("Send Frame");
                 thread_appsrc
                     .push_buffer(buf)
                     .map(|_| ())
@@ -1201,15 +1206,8 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
 
                     // Sync ft to rt if > 1500ms difference
                     const MAX_DELTA_T: Duration = Duration::from_millis(1500);
-                    let mut push_at = if ft > rt {
-                        log::debug!("Display frame in {:?}", ft - rt);
-                        Instant::now() + (ft - rt)
-                    } else {
-                        Instant::now()
-                    };
                     let delta_t = if rt > ft { rt - ft } else { ft - rt };
                     if delta_t > MAX_DELTA_T {
-                        push_at = Instant::now();
                         ft = rt;
                     }
 
@@ -1217,7 +1215,7 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                         let mut gst_buf = gstreamer::Buffer::with_size(data.len()).unwrap();
                         {
                             let gst_buf_mut = gst_buf.get_mut().unwrap();
-                            log::trace!("Setting PTS: {ft:?}, Runtime: {rt:?}");
+                            log::debug!("Setting PTS: {ft:?}, Runtime: {rt:?}");
                             let time = ClockTime::from_useconds(ft.as_micros() as u64);
                             gst_buf_mut.set_dts(time);
                             gst_buf_mut.set_pts(time);
@@ -1227,8 +1225,7 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                         gst_buf
                     };
 
-                    let send = (push_at, buf);
-                    tx.send(send).await?;
+                    tx.send(buf).await?;
                 }
                 StreamData::Enough { ts: when } => last_enough = Some(when),
                 StreamData::Need { ts: when } => last_need = Some(when),
