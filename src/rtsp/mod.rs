@@ -784,15 +784,19 @@ async fn stream_run(
                 v = async {
                     // Send Initial
                     let mut found_key_frame = false;
-                    for data in thread_vid_history.borrow().iter() {
-                        if data.keyframe || found_key_frame {
-                            found_key_frame = true;
-                            thread_vid_data_tx.send(
-                                StreamData::Media {
-                                    data: data.data.clone(),
-                                    ts: Duration::ZERO,
-                                }
-                            )?;
+                    {
+                        let borrowed = thread_vid_history.borrow();
+                        let last_ts = borrowed.back().map(|lf| lf.ts);
+                        for data in borrowed.iter() {
+                            if data.keyframe || found_key_frame {
+                                found_key_frame = true;
+                                thread_vid_data_tx.send(
+                                    StreamData::Media {
+                                        data: data.data.clone(),
+                                        ts: last_ts.unwrap()
+                                    }
+                                )?;
+                            }
                         }
                     }
 
@@ -825,16 +829,20 @@ async fn stream_run(
                 _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
                 v = async {
                     // Send Initial
-                    let mut found_key_frame = false;
-                    for data in thread_aud_history.borrow().iter() {
-                        if data.keyframe || found_key_frame {
-                            thread_aud_data_tx.send(
-                                StreamData::Media {
-                                    data: data.data.clone(),
-                                    ts: Duration::ZERO,
-                                }
-                            )?;
-                            found_key_frame = true;
+                    {
+                        let mut found_key_frame = false;
+                        let borrowed = thread_aud_history.borrow();
+                        let last_ts = borrowed.back().map(|lf| lf.ts);
+                        for data in borrowed.iter() {
+                            if data.keyframe || found_key_frame {
+                                found_key_frame = true;
+                                thread_aud_data_tx.send(
+                                    StreamData::Media {
+                                        data: data.data.clone(),
+                                        ts: last_ts.unwrap()
+                                    }
+                                )?;
+                            }
                         }
                     }
                     // Send new
@@ -873,18 +881,22 @@ async fn stream_run(
                             // Send seek
                             vid_data_tx.send(data)?;
                             // Send initial buffer
-                            if let Some(seek_ts) = seek_ts {
+                            if let Some(_seek_ts) = seek_ts {
                                 // Send Initial
-                                let mut found_key_frame = false;
-                                for data in thread_vid_history.borrow().iter() {
-                                    if data.keyframe || found_key_frame {
-                                        vid_data_tx.send(
-                                            StreamData::Media {
-                                                data: data.data.clone(),
-                                                ts: seek_ts,
-                                            }
-                                        )?;
-                                        found_key_frame = true;
+                                {
+                                    let mut found_key_frame = false;
+                                    let borrowed = thread_vid_history.borrow();
+                                    let last_ts = borrowed.back().map(|lf| lf.ts);
+                                    for data in borrowed.iter() {
+                                        if data.keyframe || found_key_frame {
+                                            found_key_frame = true;
+                                            vid_data_tx.send(
+                                                StreamData::Media {
+                                                    data: data.data.clone(),
+                                                    ts: last_ts.unwrap()
+                                                }
+                                            )?;
+                                        }
                                     }
                                 }
                             }
@@ -913,18 +925,22 @@ async fn stream_run(
                             };
                             aud_data_tx.send(data)?;
                             // Send initial buffer
-                            if let Some(seek_ts) = seek_ts {
+                            if let Some(_seek_ts) = seek_ts {
                                 // Send Initial
-                                let mut found_key_frame = false;
-                                for data in thread_aud_history.borrow().iter() {
-                                    if data.keyframe || found_key_frame {
-                                        aud_data_tx.send(
-                                            StreamData::Media {
-                                                data: data.data.clone(),
-                                                ts: seek_ts,
-                                            }
-                                        )?;
-                                        found_key_frame = true;
+                                {
+                                    let mut found_key_frame = false;
+                                    let borrowed = thread_aud_history.borrow();
+                                    let last_ts = borrowed.back().map(|lf| lf.ts);
+                                    for data in borrowed.iter() {
+                                        if data.keyframe || found_key_frame {
+                                            found_key_frame = true;
+                                            aud_data_tx.send(
+                                                StreamData::Media {
+                                                    data: data.data.clone(),
+                                                    ts: last_ts.unwrap()
+                                                }
+                                            )?;
+                                        }
                                     }
                                 }
                             }
@@ -1144,10 +1160,9 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
     mut data_rx: T,
 ) -> Result<()> {
     if let Some(app) = app {
-        let mut last_ft: Option<Duration> = None;
-        let mut ft = Duration::ZERO;
-        let mut last_rt: Option<Duration> = None;
-        let mut rt = Duration::ZERO;
+        let mut start_rt: Option<Duration> = None;
+        let mut start_ft: Option<Duration> = None;
+        let mut rt: Duration = Duration::ZERO;
         let appsrc = app.clone();
 
         let (tx, mut rx) = mpsc(150);
@@ -1186,42 +1201,47 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                 }
             }
             match data {
-                StreamData::Seek { ts, reply } => {
-                    rt = ts;
-                    last_rt = None;
+                StreamData::Seek { ts: _, reply } => {
                     let _ = reply.send(()).await;
                 }
                 StreamData::Media { data, ts: ft_i } => {
                     log::trace!("Frame recieved with ts: {ft_i:?}");
                     // Update rt
                     if let Some(rt_i) = get_runtime(app) {
-                        if let Some(last_rt) = last_rt {
-                            let delta_rt = rt_i.saturating_sub(last_rt);
-                            rt += delta_rt;
+                        log::debug!("Appsrc runtime: {:?}", rt_i);
+                        rt = rt_i;
+                    }
+
+                    if start_rt.is_none() {
+                        start_rt = Some(rt);
+                    }
+                    if let Some(i_start_ft) = start_ft {
+                        // Have we gone back in time?
+                        if ft_i < i_start_ft {
+                            start_rt = Some(rt);
+                            start_ft = Some(ft_i);
                         }
-                        last_rt = Some(rt_i);
+                    } else {
+                        start_ft = Some(ft_i);
                     }
-                    // Update ft
-                    if let Some(last_ft) = last_ft {
-                        let delta_ft = ft_i.saturating_sub(last_ft);
-                        ft += delta_ft;
-                    }
-                    last_ft = Some(ft_i);
+                    let mut ts = (ft_i - start_ft.unwrap()) + start_rt.unwrap();
 
                     // Sync ft to rt if > 1500ms difference
                     const MAX_DELTA_T: Duration = Duration::from_millis(200);
-                    let delta_t = if rt > ft { rt - ft } else { ft - rt };
+                    let delta_t = if rt > ts { rt - ts } else { ts - rt };
                     if delta_t > MAX_DELTA_T {
-                        log::debug!("delta_t > MAX_DELTA_T = {delta_t:?}, {MAX_DELTA_T:?}");
-                        ft = rt;
+                        log::debug!("delta_t > MAX_DELTA_T = {delta_t:?} > {MAX_DELTA_T:?}");
+                        ts = rt;
+                        start_rt = Some(rt);
+                        start_ft = Some(ft_i);
                     }
 
                     let buf = {
                         let mut gst_buf = gstreamer::Buffer::with_size(data.len()).unwrap();
                         {
                             let gst_buf_mut = gst_buf.get_mut().unwrap();
-                            log::debug!("Setting PTS: {ft:?}, Runtime: {rt:?}");
-                            let time = ClockTime::from_useconds(ft.as_micros() as u64);
+                            log::debug!("Setting PTS: {ts:?}, Runtime: {ts:?}");
+                            let time = ClockTime::from_useconds(ts.as_micros() as u64);
                             gst_buf_mut.set_dts(time);
                             gst_buf_mut.set_pts(time);
                             let mut gst_buf_data = gst_buf_mut.map_writable().unwrap();
@@ -1251,8 +1271,11 @@ fn check_live(app: &AppSrc) -> Result<()> {
 fn get_runtime(app: &AppSrc) -> Option<Duration> {
     if let Some(clock) = app.clock() {
         if let Some(time) = clock.time() {
+            log::debug!("time: {time:?}");
             if let Some(base_time) = app.base_time() {
+                log::debug!("base_time: {base_time:?}");
                 let runtime = time.saturating_sub(base_time);
+                log::debug!("runtime: {runtime:?}");
                 return Some(Duration::from_micros(runtime.useconds()));
             }
         }
@@ -1320,8 +1343,9 @@ fn build_h264(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
         .dynamic_cast::<AppSrc>()
         .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
 
-    source.set_is_live(false);
+    source.set_is_live(true);
     source.set_block(false);
+    source.set_min_latency(0);
     source.set_property("emit-signals", false);
     source.set_max_bytes(buffer_size as u64);
     source.set_do_timestamp(false);
@@ -1353,8 +1377,9 @@ fn build_h265(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
     let source = make_element("appsrc", "vidsrc")?
         .dynamic_cast::<AppSrc>()
         .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
-    source.set_is_live(false);
+    source.set_is_live(true);
     source.set_block(false);
+    source.set_min_latency(0);
     source.set_property("emit-signals", false);
     source.set_max_bytes(buffer_size as u64);
     source.set_do_timestamp(false);
@@ -1387,8 +1412,9 @@ fn build_aac(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
         .dynamic_cast::<AppSrc>()
         .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
 
-    source.set_is_live(false);
+    source.set_is_live(true);
     source.set_block(false);
+    source.set_min_latency(0);
     source.set_property("emit-signals", false);
     source.set_max_bytes(buffer_size as u64);
     source.set_do_timestamp(false);
@@ -1434,8 +1460,9 @@ fn build_adpcm(bin: &Element, block_size: u32, stream_config: &StreamConfig) -> 
     let source = make_element("appsrc", "audsrc")?
         .dynamic_cast::<AppSrc>()
         .map_err(|_| anyhow!("Cannot cast to appsrc."))?;
-    source.set_is_live(false);
+    source.set_is_live(true);
     source.set_block(false);
+    source.set_min_latency(0);
     source.set_property("emit-signals", false);
     source.set_max_bytes(buffer_size as u64);
     source.set_do_timestamp(false);

@@ -517,8 +517,9 @@ impl StreamData {
                                                         };
                                                         let _ = vid_tx.send(d.clone());
                                                         vid_history.send_modify(|history| {
+                                                           let drop_time = d.ts.saturating_sub(Duration::from_secs(5));
                                                            history.push_back(d);
-                                                           while history.len() > 100 {
+                                                           while history.front().is_some_and(|di| di.ts < drop_time) {
                                                                history.pop_front();
                                                            }
                                                         });
@@ -535,8 +536,9 @@ impl StreamData {
                                                         };
                                                         let _ = vid_tx.send(d.clone());
                                                         vid_history.send_modify(|history| {
+                                                           let drop_time = d.ts.saturating_sub(Duration::from_secs(5));
                                                            history.push_back(d);
-                                                           while history.len() > 100 {
+                                                           while history.front().is_some_and(|di| di.ts < drop_time) {
                                                                history.pop_front();
                                                            }
                                                         });
@@ -551,8 +553,9 @@ impl StreamData {
                                                         aud_keyframe = false;
                                                         let _ = aud_tx.send(d.clone())?;
                                                         aud_history.send_modify(|history| {
+                                                           let drop_time = d.ts.saturating_sub(Duration::from_secs(5));
                                                            history.push_back(d);
-                                                           while history.len() > 100 {
+                                                           while history.front().is_some_and(|di| di.ts < drop_time) {
                                                                history.pop_front();
                                                            }
                                                         });
