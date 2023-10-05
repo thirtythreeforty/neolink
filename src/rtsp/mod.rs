@@ -1055,7 +1055,9 @@ async fn make_factory(
                                 // Need and enough are fired when we
                                 // call push_buffer which is inside an
                                 // async context so blocking_send is forbiddon
-                                tokio::task::spawn(vid_enough_tx.send(StreamData::Enough { ts }));
+                                tokio::task::spawn(async move {
+                                    vid_enough_tx.send(StreamData::Enough { ts }).await
+                                });
                             })
                             .need_data(move |_, _| {
                                 log::debug!("need_data:");
@@ -1064,7 +1066,9 @@ async fn make_factory(
                                 // Need and enough are fired when we
                                 // call push_buffer which is inside an
                                 // async context so blocking_send is forbiddon
-                                tokio::task::spawn(vid_need_tx.send(StreamData::Need { ts }));
+                                tokio::task::spawn(async move {
+                                    vid_need_tx.send(StreamData::Need { ts }).await
+                                });
                             })
                             .build(),
                     );
@@ -1205,9 +1209,10 @@ async fn handle_data<T: Stream<Item = Result<StreamData, E>> + Unpin, E>(
                     last_ft = Some(ft_i);
 
                     // Sync ft to rt if > 1500ms difference
-                    const MAX_DELTA_T: Duration = Duration::from_millis(1500);
+                    const MAX_DELTA_T: Duration = Duration::from_millis(200);
                     let delta_t = if rt > ft { rt - ft } else { ft - rt };
                     if delta_t > MAX_DELTA_T {
+                        log::debug!("delta_t > MAX_DELTA_T = {delta_t:?}, {MAX_DELTA_T:?}");
                         ft = rt;
                     }
 

@@ -401,9 +401,8 @@ impl StreamData {
                                 AnyResult::Ok(())
                             },
                             v = async {
-                                watchdog_rx.recv().await; // Wait forever for the first feed
+                                let mut check_timeout = timeout(Duration::from_secs(15), watchdog_rx.recv()).await; // Wait lonfer for the first feed
                                 loop {
-                                    let check_timeout = timeout(Duration::from_secs(3), watchdog_rx.recv()).await;
                                     if let Err(_)| Ok(None) = check_timeout {
                                         // Timeout
                                         // Reply with Ok to trigger the restart
@@ -411,6 +410,7 @@ impl StreamData {
                                         sleep(Duration::from_secs(1)).await;
                                         break AnyResult::Ok(());
                                     }
+                                    check_timeout = timeout(Duration::from_secs(4), watchdog_rx.recv()).await;
                                 }
                             } => v,
                             result = instance.run_passive_task(|camera| {
