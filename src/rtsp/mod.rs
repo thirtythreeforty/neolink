@@ -1047,12 +1047,15 @@ async fn make_factory(
     let (client_tx, client_rx) = mpsc(100);
     let factory = {
         let stream_config = stream_config.clone();
+        let handle = tokio::runtime::Handle::current();
         NeoMediaFactory::new_with_callback(move |element| {
             clear_bin(&element)?;
             let (vid_seek_tx, vid_seek_rx) = mpsc(10);
             let (aud_seek_tx, aud_seek_rx) = mpsc(10);
             let vid_enough_tx = vid_seek_tx.clone();
             let vid_need_tx = vid_seek_tx.clone();
+            let need_handle = handle.clone();
+            let enough_handle = handle.clone();
             let vid = match stream_config.vid_format {
                 VidFormat::None => {
                     build_unknown(&element)?;
@@ -1075,13 +1078,25 @@ async fn make_factory(
                             })
                             .enough_data(move |_| {
                                 log::debug!("enough_data:");
-                                let _ = vid_enough_tx
-                                    .blocking_send(StreamData::Enough { ts: Instant::now() });
+                                let ts = Instant::now();
+                                let vid_enough_tx = vid_enough_tx.clone();
+                                // Need and enough are fired when we
+                                // call push_buffer which is inside an
+                                // async context so blocking_send is forbiddon
+                                enough_handle.spawn(async move {
+                                    let _ = vid_enough_tx.send(StreamData::Enough { ts }).await;
+                                });
                             })
                             .need_data(move |_, _| {
                                 log::debug!("need_data:");
-                                let _ = vid_need_tx
-                                    .blocking_send(StreamData::Need { ts: Instant::now() });
+                                let vid_need_tx = vid_need_tx.clone();
+                                let ts = Instant::now();
+                                // Need and enough are fired when we
+                                // call push_buffer which is inside an
+                                // async context so blocking_send is forbiddon
+                                need_handle.spawn(async move {
+                                    let _ = vid_need_tx.send(StreamData::Need { ts }).await;
+                                });
                             })
                             .build(),
                     );
@@ -1110,7 +1125,7 @@ async fn make_factory(
                                 // Need and enough are fired when we
                                 // call push_buffer which is inside an
                                 // async context so blocking_send is forbiddon
-                                tokio::task::spawn(async move {
+                                enough_handle.spawn(async move {
                                     vid_enough_tx.send(StreamData::Enough { ts }).await
                                 });
                             })
@@ -1121,8 +1136,8 @@ async fn make_factory(
                                 // Need and enough are fired when we
                                 // call push_buffer which is inside an
                                 // async context so blocking_send is forbiddon
-                                tokio::task::spawn(async move {
-                                    vid_need_tx.send(StreamData::Need { ts }).await
+                                need_handle.spawn(async move {
+                                    let _ = vid_need_tx.send(StreamData::Need { ts }).await;
                                 });
                             })
                             .build(),
