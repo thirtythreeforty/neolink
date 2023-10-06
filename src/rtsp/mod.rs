@@ -801,17 +801,56 @@ async fn stream_run(
                     }
 
                     // Send new
-                    while let Some(data) = vidstream.next().await {
-                        if let Ok(data) = data {
-                            thread_vid_data_tx.send(
-                                StreamData::Media {
-                                    data: data.data,
-                                    ts: data.ts
+                    let mut hold_buffer = vec![];
+                    let mut last_hold = None;
+                    loop {
+                        let timeout = sleep(Duration::from_millis(1000/25));
+                        let r = tokio::select!{
+                            v = vidstream.next() => {
+                                if let Some(data) = v {
+                                    if let Ok(data) = data {
+                                        if !data.keyframe {
+                                            hold_buffer.push(data);
+                                        } else {
+                                            // Send all held pframes
+                                            last_hold = Some(data.clone());
+                                            for held in hold_buffer.drain(..) {
+                                                thread_vid_data_tx.send(
+                                                    StreamData::Media {
+                                                        data: held.data,
+                                                        ts: held.ts
+                                                    }
+                                                )?;
+                                            }
+                                            // Send the new keyframe
+                                            thread_vid_data_tx.send(
+                                                StreamData::Media {
+                                                    data: data.data,
+                                                    ts: data.ts
+                                                }
+                                            )?;
+                                        }
+
+                                    }
                                 }
-                            )?;
+                                AnyResult::Ok(())
+                            }
+                            _ = timeout, if last_hold.is_some() => {
+                                log::debug!("Send Skip");
+                                let data = last_hold.clone().unwrap();
+                                thread_vid_data_tx.send(
+                                    StreamData::Media {
+                                        data: data.data,
+                                        ts: data.ts
+                                    }
+                                )?;
+                                AnyResult::Ok(())
+                            }
+                        };
+                        if r.is_err() {
+                            break r;
                         }
-                        // Ignore broadcast lag errors
-                    }
+                    }?;
                     AnyResult::Ok(())
                 } => v
             };
@@ -1356,6 +1395,7 @@ fn build_h264(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
         .map_err(|_| anyhow!("Cannot cast back"))?;
     let queue = make_queue("source_queue", buffer_size)?;
     let parser = make_element("h264parse", "parser")?;
+    parser.set_property("config-interval", -1i32); // Send SPS and PPS every Iframe to imporove joining frame late
     let payload = make_element("rtph264pay", "pay0")?;
     bin.add_many([&source, &queue, &parser, &payload])?;
     Element::link_many([&source, &queue, &parser, &payload])?;

@@ -35,6 +35,7 @@ mod stream;
 mod stream_info;
 mod talk;
 mod time;
+mod uid;
 mod version;
 
 pub(crate) use connection::*;

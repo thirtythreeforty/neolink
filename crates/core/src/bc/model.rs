@@ -41,6 +41,8 @@ pub const MSG_ID_GET_GENERAL: u32 = 104;
 pub const MSG_ID_SET_GENERAL: u32 = 105;
 /// Snapshot to get a jpeg image
 pub const MSG_ID_SNAP: u32 = 109;
+/// Used to grab the UID
+pub const MSG_ID_UID: u32 = 114;
 /// Used to pass the token and client ID for push notifications
 pub const MSG_ID_PUSH_INFO: u32 = 124;
 /// StreamInfoList messages have this ID

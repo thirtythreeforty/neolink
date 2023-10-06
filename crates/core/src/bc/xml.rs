@@ -103,9 +103,12 @@ pub struct BcXml {
     /// Recieved AND send for the snap message
     #[yaserde(rename = "Snap")]
     pub snap: Option<Snap>,
-    /// Thre list of streams and their configuration
+    /// The list of streams and their configuration
     #[yaserde(rename = "StreamInfoList")]
     pub stream_info_list: Option<StreamInfoList>,
+    /// Thre list of streams and their configuration
+    #[yaserde(rename = "Uid")]
+    pub uid: Option<Uid>,
 }
 
 impl BcXml {
@@ -824,6 +827,16 @@ pub struct StreamResolution {
     pub width: u32,
     /// Height of the stream
     pub height: u32,
+}
+
+/// Uid xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct Uid {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// This the UID of the camera
+    pub uid: String,
 }
 
 /// Convience function to return the xml version used throughout the library

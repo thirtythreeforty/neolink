@@ -20,7 +20,6 @@ use crate::AnyResult;
 
 pub(crate) struct PushNotiThread {
     pn_watcher: Arc<WatchSender<Option<PushNoti>>>,
-    instance: NeoInstance,
 }
 
 // The push notification
@@ -34,15 +33,18 @@ pub(crate) enum PnRequest {
     Get {
         sender: OneshotSender<WatchReceiver<Option<PushNoti>>>,
     },
+    Activate {
+        instance: NeoInstance,
+        sender: OneshotSender<AnyResult<()>>,
+    },
 }
 
 impl PushNotiThread {
-    pub(crate) async fn new(instance: NeoInstance) -> AnyResult<Self> {
+    pub(crate) async fn new() -> AnyResult<Self> {
         let (pn_watcher, _) = watch(None);
 
         Ok(PushNotiThread {
             pn_watcher: Arc::new(pn_watcher),
-            instance,
         })
     }
 
@@ -97,32 +99,10 @@ impl PushNotiThread {
 
             // Send registration.fcm_token to the server to allow it to send push messages to you.
             log::debug!("registration.fcm_token: {}", registration.fcm_token);
-
             let md5ed = md5::compute(format!("WHY_REOLINK_{:?}", registration.fcm_token));
             let uid = format!("{:X}", md5ed);
+            let fcm_token = registration.fcm_token.clone();
             log::debug!("push notification UID: {}", uid);
-            if let Err(e) = self
-                .instance
-                .run_task(|camera| {
-                    let uid = uid.clone();
-                    let fcm_token = registration.fcm_token.clone();
-                    Box::pin(async move {
-                        camera.send_pushinfo_android(&fcm_token, &uid).await?;
-                        AnyResult::Ok(())
-                    })
-                })
-                .await
-            {
-                match e.downcast::<neolink_core::Error>() {
-                    Ok(neolink_core::Error::UnintelligibleReply { .. }) => {
-                        log::warn!("Push notitfications not supported for this camera");
-                        futures::future::pending().await
-                    }
-                    _ => {
-                        continue;
-                    } // Retry
-                };
-            }
 
             log::debug!("Push notification Listening");
             let thread_pn_watcher = self.pn_watcher.clone();
@@ -166,6 +146,21 @@ impl PushNotiThread {
                         match msg {
                             PnRequest::Get{sender} => {
                                 let _ = sender.send(self.pn_watcher.subscribe());
+                            }
+                            PnRequest::Activate{instance, sender} => {
+                                let uid = uid.clone();
+                                let fcm_token = fcm_token.clone();
+                                tokio::task::spawn(async move {
+                                    let r = instance.run_task(|camera| {
+                                        let fcm_token = fcm_token.clone();
+                                        let uid = uid.clone();
+                                        Box::pin(async move {
+                                            camera.send_pushinfo_android(&fcm_token, &uid).await?;
+                                            AnyResult::Ok(())
+                                        })
+                                    }).await;
+                                    let _ = sender.send(r);
+                                });
                             }
                         }
                     }

@@ -8,12 +8,13 @@ use anyhow::anyhow;
 use futures::TryFutureExt;
 use std::sync::{Arc, Weak};
 use tokio::sync::{
-    mpsc::Sender as MpscSender, oneshot::channel as oneshot, watch::Receiver as WatchReceiver,
+    mpsc::Sender as MpscSender, oneshot::channel as oneshot, watch::channel as watch,
+    watch::Receiver as WatchReceiver,
 };
 use tokio_util::sync::CancellationToken;
 
 use super::{MdState, NeoCamCommand, NeoCamThreadState, Permit, PushNoti, StreamInstance};
-use crate::{config::CameraConfig, Result};
+use crate::{config::CameraConfig, AnyResult, Result};
 use neolink_core::bc_protocol::{BcCamera, StreamKind};
 
 /// This instance is the primary interface used throughout the app
@@ -221,11 +222,37 @@ impl NeoInstance {
     }
 
     pub(crate) async fn push_notifications(&self) -> Result<WatchReceiver<Option<PushNoti>>> {
+        let uid = self
+            .run_task(|cam| Box::pin(async move { Ok(cam.uid().await?) }))
+            .await?;
         let (instance_tx, instance_rx) = oneshot();
         self.camera_control
             .send(NeoCamCommand::PushNoti(instance_tx))
             .await?;
-        Ok(instance_rx.await?)
+        let mut source_watch = instance_rx.await?;
+
+        let (fwatch_tx, fwatch_rx) = watch(None);
+        tokio::task::spawn(async move {
+            loop {
+                match source_watch
+                    .wait_for(|i| {
+                        i.as_ref()
+                            .is_some_and(|i| i.message.contains(&format!("\"{uid}\"")))
+                    })
+                    .await
+                {
+                    Ok(pn) => {
+                        let _ = fwatch_tx.send_replace(pn.clone());
+                    }
+                    Err(e) => {
+                        break Err(e);
+                    }
+                }
+            }?;
+            AnyResult::Ok(())
+        });
+
+        Ok(fwatch_rx)
     }
 
     pub(crate) async fn motion(&self) -> Result<WatchReceiver<MdState>> {

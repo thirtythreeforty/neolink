@@ -422,6 +422,8 @@ impl StreamData {
                                     let watchdog_tx = watchdog_tx.clone();
                                     log::debug!("Running Stream Instance Task");
                                     Box::pin(async move {
+                                        // use std::io::Write;
+                                        // let mut file = std::fs::File::create("reference.h264")?;
                                         let mut recieved_iframe = false;
                                         let mut aud_keyframe = false;
                                         let res = async {
@@ -469,6 +471,7 @@ impl StreamData {
                                                                 false
                                                             }
                                                         });
+                                                        // let _ = file.write(&frame.data);
                                                     }
                                                     BcMedia::Pframe(frame) => {
                                                         stream_config.send_if_modified(|state| {
@@ -483,6 +486,7 @@ impl StreamData {
                                                                 false
                                                             }
                                                         });
+                                                        // let _ = file.write(&frame.data);
                                                     },
                                                     BcMedia::Aac(_) => {
                                                         stream_config.send_if_modified(|state| {
@@ -529,6 +533,7 @@ impl StreamData {
                                                     },
                                                     BcMedia::Pframe(BcMediaPframe{data, microseconds,..}) if recieved_iframe => {
                                                         prev_ts = Duration::from_micros(microseconds as u64);
+                                                        // log::debug!("data: {data:02X?}");
                                                         let d = StampedData{
                                                             keyframe: false,
                                                             data: Arc::new(data),

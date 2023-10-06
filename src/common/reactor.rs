@@ -12,11 +12,12 @@ use tokio::{
         watch::{channel as watch, Receiver as WatchReceiver},
     },
     task::JoinSet,
+    time::{sleep, Duration},
 };
 use tokio_util::sync::CancellationToken;
 
 use super::{NeoCam, NeoInstance};
-use crate::{config::Config, AnyResult, Result};
+use crate::{common::PushNotiThread, config::Config, AnyResult, Result};
 
 #[allow(clippy::large_enum_variant)]
 enum NeoReactorCommand {
@@ -37,6 +38,7 @@ pub(crate) struct NeoReactor {
 impl NeoReactor {
     pub(crate) async fn new(config: Config) -> Self {
         let (commad_tx, mut command_rx) = mpsc(100);
+        let (push_noti, mut pn_rx) = mpsc(10);
         let cancel = CancellationToken::new();
         let (config_tx, _) = watch(config);
         let mut set = JoinSet::new();
@@ -71,7 +73,7 @@ impl NeoReactor {
                                         log::debug!("Inserting new insance");
                                         let current_config: Config = (*config_tx.borrow()).clone();
                                         if let Some(config) = current_config.cameras.iter().find(|cam| cam.name == name).cloned() {
-                                            let cam = NeoCam::new(config).await?;
+                                            let cam = NeoCam::new(config, push_noti.clone()).await?;
                                             log::debug!("New instance created");
                                             Result::Ok(Some(
                                                 vac.insert(
@@ -110,6 +112,25 @@ impl NeoReactor {
                 } => v,
             };
             r
+        });
+
+        // Push notification client
+        let cancel1 = cancel.clone();
+        set.spawn(async move {
+            tokio::select! {
+                _ = cancel1.cancelled() => AnyResult::Ok(()),
+                v = async {
+                    let mut pn = PushNotiThread::new().await?;
+
+                    loop {
+                        let r = pn.run(&mut pn_rx).await;
+                        if r.is_err() {
+                            log::debug!("Issue with push notifier: {r:?}");
+                            sleep(Duration::from_secs(5)).await;
+                        }
+                    }
+                } => v,
+            }
         });
 
         Self {

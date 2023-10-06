@@ -16,7 +16,7 @@ anyhow = "1.0.70"
 base64 = "0.21.2"
 byte-slice-cast = "1.2.2"
 clap = { version = "4.2.2", features = ["derive", "cargo"] }
-console-subscriber = "0.1.8"
+console-subscriber = "0.2.0"
 crossbeam-channel = "0.5.8"
 dirs = "5.0.1"
 env_logger = "0.10.0"

@@ -21,8 +21,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     MdRequest, MdState, NeoCamMdThread, NeoCamStreamThread, NeoCamThread, NeoCamThreadState,
-    NeoInstance, Permit, PnRequest, PushNoti, PushNotiThread, StreamInstance, StreamRequest,
-    UseCounter,
+    NeoInstance, Permit, PnRequest, PushNoti, StreamInstance, StreamRequest, UseCounter,
 };
 use crate::{config::CameraConfig, AnyResult, Result};
 use neolink_core::bc_protocol::{BcCamera, StreamKind};
@@ -53,13 +52,15 @@ pub(crate) struct NeoCam {
 }
 
 impl NeoCam {
-    pub(crate) async fn new(config: CameraConfig) -> Result<NeoCam> {
+    pub(crate) async fn new(
+        config: CameraConfig,
+        pn_request_tx: MpscSender<PnRequest>,
+    ) -> Result<NeoCam> {
         let (commander_tx, commander_rx) = mpsc(100);
         let (watch_config_tx, watch_config_rx) = watch(config.clone());
         let (camera_watch_tx, camera_watch_rx) = watch(Weak::new());
         let (stream_request_tx, stream_request_rx) = mpsc(100);
         let (md_request_tx, md_request_rx) = mpsc(100);
-        let (pn_request_tx, mut pn_request_rx) = mpsc(100);
         let (state_tx, state_rx) = watch(NeoCamThreadState::Connected);
 
         let set = JoinSet::new();
@@ -83,6 +84,7 @@ impl NeoCam {
         let strict = config.strict;
         let thread_commander_tx = commander_tx.clone();
         let thread_watch_config_rx = watch_config_rx.clone();
+        let thread_pn_request_tx = pn_request_tx.clone();
         me.set.spawn(async move {
             let thread_cancel = sender_cancel.clone();
             let res = tokio::select! {
@@ -167,7 +169,7 @@ impl NeoCam {
                                 let _ = sender.send(users.create_activated().await?);
                             }
                             NeoCamCommand::PushNoti(sender) => {
-                                pn_request_tx.send(
+                                thread_pn_request_tx.send(
                                     PnRequest::Get {
                                         sender,
                                     }
@@ -276,6 +278,7 @@ impl NeoCam {
         // Handles push notifications
         let pn_root_instance = instance.subscribe().await?;
         let pn_cancel = me.cancel.clone();
+        let thread_pn_request_tx = pn_request_tx.clone();
         me.set.spawn(async move {
             tokio::select!{
                 _ = pn_cancel.cancelled() => {
@@ -286,15 +289,15 @@ impl NeoCam {
                     loop {
                         // Wait for the green light
                         config_rx.wait_for(|config| config.push_notifications).await?;
+
+                        // Activate it
                         let pn_instance = pn_root_instance.subscribe().await?;
-                        let mut push_notifier = PushNotiThread::new(pn_instance).await?;
+                        let (tx, rx) = oneshot();
+                        thread_pn_request_tx.send(PnRequest::Activate{sender: tx, instance: pn_instance}).await?;
+                        rx.await??;
 
                         let pn_permit_instance = pn_root_instance.subscribe().await?;
                         let r = tokio::select! {
-                            // This thread handles the push notfications
-                            v = push_notifier.run(&mut pn_request_rx) => {
-                                v
-                            },
                             // Push notification permits
                             v = async {
                                 let mut prev_noti = None;
