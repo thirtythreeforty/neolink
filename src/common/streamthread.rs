@@ -316,6 +316,7 @@ impl StreamInstance {
 
 impl StreamData {
     async fn new(name: StreamKind, instance: NeoInstance, strict: bool) -> Result<Self> {
+        const BUFFER_DURATION: Duration = Duration::from_secs(15);
         let (vid, _) = broadcast::<StampedData>(100);
         let (aud, _) = broadcast::<StampedData>(100);
         let (vid_history, _) = watch::<VecDeque<StampedData>>(VecDeque::new());
@@ -420,6 +421,7 @@ impl StreamData {
                                     let vid_history = vid_history.clone();
                                     let aud_history = aud_history.clone();
                                     let watchdog_tx = watchdog_tx.clone();
+
                                     log::debug!("Running Stream Instance Task");
                                     Box::pin(async move {
                                         // use std::io::Write;
@@ -514,6 +516,7 @@ impl StreamData {
                                                 match data {
                                                     BcMedia::Iframe(BcMediaIframe{data, microseconds, ..}) => {
                                                         prev_ts = Duration::from_micros(microseconds as u64);
+                                                        log::debug!("IFrame: {prev_ts:?}");
                                                         let d = StampedData{
                                                                 keyframe: true,
                                                                 data: Arc::new(data),
@@ -521,7 +524,7 @@ impl StreamData {
                                                         };
                                                         let _ = vid_tx.send(d.clone());
                                                         vid_history.send_modify(|history| {
-                                                           let drop_time = d.ts.saturating_sub(Duration::from_secs(5));
+                                                           let drop_time = d.ts.saturating_sub(BUFFER_DURATION);
                                                            history.push_back(d);
                                                            while history.front().is_some_and(|di| di.ts < drop_time) {
                                                                history.pop_front();
@@ -533,6 +536,7 @@ impl StreamData {
                                                     },
                                                     BcMedia::Pframe(BcMediaPframe{data, microseconds,..}) if recieved_iframe => {
                                                         prev_ts = Duration::from_micros(microseconds as u64);
+                                                        log::debug!("PFrame: {prev_ts:?}");
                                                         // log::debug!("data: {data:02X?}");
                                                         let d = StampedData{
                                                             keyframe: false,
@@ -541,7 +545,7 @@ impl StreamData {
                                                         };
                                                         let _ = vid_tx.send(d.clone());
                                                         vid_history.send_modify(|history| {
-                                                           let drop_time = d.ts.saturating_sub(Duration::from_secs(5));
+                                                           let drop_time = d.ts.saturating_sub(BUFFER_DURATION);
                                                            history.push_back(d);
                                                            while history.front().is_some_and(|di| di.ts < drop_time) {
                                                                history.pop_front();
@@ -550,6 +554,7 @@ impl StreamData {
                                                         log::trace!("Sent Vid Frame");
                                                     }
                                                     BcMedia::Aac(BcMediaAac{data, ..}) | BcMedia::Adpcm(BcMediaAdpcm{data,..}) if recieved_iframe => {
+                                                        log::debug!("Audio: {prev_ts:?}");
                                                         let d = StampedData{
                                                             keyframe: aud_keyframe,
                                                             data: Arc::new(data),
@@ -558,7 +563,7 @@ impl StreamData {
                                                         aud_keyframe = false;
                                                         let _ = aud_tx.send(d.clone())?;
                                                         aud_history.send_modify(|history| {
-                                                           let drop_time = d.ts.saturating_sub(Duration::from_secs(5));
+                                                           let drop_time = d.ts.saturating_sub(BUFFER_DURATION);
                                                            history.push_back(d);
                                                            while history.front().is_some_and(|di| di.ts < drop_time) {
                                                                history.pop_front();

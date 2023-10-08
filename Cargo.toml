@@ -13,6 +13,7 @@ members = [
 
 [dependencies]
 anyhow = "1.0.70"
+async-stream = "0.3.5"
 base64 = "0.21.2"
 byte-slice-cast = "1.2.2"
 clap = { version = "4.2.2", features = ["derive", "cargo"] }
