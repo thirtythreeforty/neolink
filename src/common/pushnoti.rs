@@ -23,7 +23,7 @@ pub(crate) struct PushNotiThread {
 }
 
 // The push notification
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) struct PushNoti {
     pub(crate) message: String,
     pub(crate) id: Option<String>,

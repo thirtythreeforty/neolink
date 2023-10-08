@@ -250,12 +250,14 @@ impl NeoInstance {
             loop {
                 match source_watch
                     .wait_for(|i| {
-                        i.as_ref()
-                            .is_some_and(|i| i.message.contains(&format!("\"{uid}\"")))
+                        fwatch_tx.borrow().as_ref() != i.as_ref()
+                            && i.as_ref()
+                                .is_some_and(|i| i.message.contains(&format!("\"{uid}\"")))
                     })
                     .await
                 {
                     Ok(pn) => {
+                        log::debug!("Sending push notification: {:?} about {}", *pn, uid);
                         let _ = fwatch_tx.send_replace(pn.clone());
                     }
                     Err(e) => {
