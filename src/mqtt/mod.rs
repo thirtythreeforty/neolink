@@ -258,7 +258,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
     let mut config;
     let cancel = CancellationToken::new();
     let drop_cancel = cancel.clone().drop_guard();
-    loop {
+    let r = loop {
         config = watch_config.borrow().clone().mqtt;
         break tokio::select! {
             v = watch_config.wait_for(|new_config| config != new_config.mqtt) => {
@@ -545,10 +545,11 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                 AnyResult::Ok(())
             } => v,
         };
-    }?;
+    };
 
-    log::debug!("Mqtt::listen_on_camera Cancel");
+    log::debug!("Mqtt::listen_on_camera Cancel: {r:?}");
     drop(drop_cancel);
+    r?;
     Ok(())
 }
 

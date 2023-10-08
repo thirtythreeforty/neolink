@@ -439,7 +439,12 @@ async fn stream_run(
 
 fn check_live(app: &AppSrc) -> Result<()> {
     // log::debug!("Checking Live: {:?}", app.bus());
-    app.bus().map(|_| ()).ok_or(anyhow!("App source is closed"))
+    app.bus().ok_or(anyhow!("App source is closed"))?;
+    app.pads()
+        .iter()
+        .all(|pad| pad.is_linked())
+        .then_some(())
+        .ok_or(anyhow!("App source is closed"))
 }
 
 fn get_runtime(app: &AppSrc) -> Option<Duration> {

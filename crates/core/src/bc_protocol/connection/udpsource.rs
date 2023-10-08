@@ -401,7 +401,7 @@ impl UdpPayloadInner {
                     Ok(())
                 } => v,
             };
-            log::debug!("UdpPayloadInner::new SendToSocket Cancel");
+            log::debug!("UdpPayloadInner::new SendToSocket Cancel: {:?}", result);
             send_cancel.cancel();
             result
         });
