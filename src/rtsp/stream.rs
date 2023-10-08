@@ -486,11 +486,11 @@ fn hold_stream<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
             if let Ok(frame) = frame {
                 if frame.keyframe {
                     // Release
-                    log::debug!("Yielding: {}", held_frames.len());
+                    // log::debug!("Yielding: {}", held_frames.len());
                     for held_frame in held_frames.drain(..) {
                         yield Ok(held_frame);
                     }
-                    log::debug!("Yielded");
+                    // log::debug!("Yielded");
                     yield Ok(frame);
                 } else {
                     //  Hold
@@ -522,7 +522,7 @@ fn frametime_stream<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
                 }
 
                 let delta_ts =  std::cmp::min(curr_ts - prev_ts, MIN_FPS_DELTA);
-                log::debug!("curr_ts: {curr_ts:?}, {prev_ts:?} delta_ts: {delta_ts:?}");
+                // log::debug!("curr_ts: {curr_ts:?}, {prev_ts:?} delta_ts: {delta_ts:?}");
 
                 sleep_until(last_release + delta_ts).await;
                 last_release = Instant::now();
@@ -545,7 +545,7 @@ fn repeat_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
         while let Some(frame) = stream.next().await {
             if let Ok(frame) = frame {
                 if frame.keyframe {
-                    log::debug!("Key Frame");
+                    // log::debug!("Key Frame");
                     let repeater = frame.clone();
                     yield Ok(frame);
 
@@ -555,7 +555,7 @@ fn repeat_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
                             v = stream.next() => {
                                 if let Some(frame) = v {
                                     if let Ok(frame) = frame {
-                                        log::debug!("Key Frame: Resume");
+                                        // log::debug!("Key Frame: Resume");
                                         yield Ok(frame);
                                         break;
                                     }

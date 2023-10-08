@@ -516,7 +516,7 @@ impl StreamData {
                                                 match data {
                                                     BcMedia::Iframe(BcMediaIframe{data, microseconds, ..}) => {
                                                         prev_ts = Duration::from_micros(microseconds as u64);
-                                                        log::debug!("IFrame: {prev_ts:?}");
+                                                        // log::debug!("IFrame: {prev_ts:?}");
                                                         let d = StampedData{
                                                                 keyframe: true,
                                                                 data: Arc::new(data),
@@ -536,7 +536,7 @@ impl StreamData {
                                                     },
                                                     BcMedia::Pframe(BcMediaPframe{data, microseconds,..}) if recieved_iframe => {
                                                         prev_ts = Duration::from_micros(microseconds as u64);
-                                                        log::debug!("PFrame: {prev_ts:?}");
+                                                        // log::debug!("PFrame: {prev_ts:?}");
                                                         // log::debug!("data: {data:02X?}");
                                                         let d = StampedData{
                                                             keyframe: false,
@@ -554,7 +554,7 @@ impl StreamData {
                                                         log::trace!("Sent Vid Frame");
                                                     }
                                                     BcMedia::Aac(BcMediaAac{data, ..}) | BcMedia::Adpcm(BcMediaAdpcm{data,..}) if recieved_iframe => {
-                                                        log::debug!("Audio: {prev_ts:?}");
+                                                        // log::debug!("Audio: {prev_ts:?}");
                                                         let d = StampedData{
                                                             keyframe: aud_keyframe,
                                                             data: Arc::new(data),
