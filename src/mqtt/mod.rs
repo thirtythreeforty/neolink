@@ -336,10 +336,14 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                                         }
                                     });
                                 }
-                                log::debug!("Listening to message on {}", mqtt_msg.get_name());
+                                log::debug!("STOPPED  Listening to message on {}", mqtt_msg.get_name());
                                 AnyResult::Ok(())
-                            } => v,
+                            } => {
+                                log::debug!("MQTT Command Returned: {v:?}");
+                                v
+                            },
                             v = rx.recv() => {
+                                log::debug!("MQTT Task Returned: {v:?}");
                                 v.ok_or(anyhow!("All error senders were dropped"))?
                             },
                         }?;
@@ -362,7 +366,10 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                                 format!("{}: Failed to publish disconnected", camera_name)
                             })?;
                         }
-                    } => v,
+                    } => {
+                        log::debug!("CamConnection returned: {v:?}");
+                        v
+                    },
                     // Handle the floodlight
                     v = async {
                         let (tx, mut rx) = mpsc(100);
@@ -396,6 +403,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                                 AnyResult::Ok(())
                             } => v,
                         };
+                        log::debug!("Flood light returned: {v:?}");
                         match v.map_err(|e| e.downcast::<neolink_core::Error>()) {
                             Err(Ok(neolink_core::Error::UnintelligibleReply{..})) => futures::future::pending().await,
                             Ok(()) => AnyResult::Ok(()),
@@ -423,6 +431,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                                 })?;
                                 AnyResult::Ok(())
                             }.await;
+                            log::debug!("Motion returned: {v:?}");
                             match v.map_err(|e| e.downcast::<neolink_core::Error>()) {
                                 Err(Ok(neolink_core::Error::UnintelligibleReply{..})) => futures::future::pending().await,
                                 Ok(()) => AnyResult::Ok(()),
@@ -466,6 +475,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                             }
                             AnyResult::Ok(())
                         }.await;
+                        log::debug!("Snap returned: {v:?}");
                         match v.map_err(|e| e.downcast::<neolink_core::Error>()) {
                             Err(Ok(neolink_core::Error::UnintelligibleReply{..})) => futures::future::pending().await,
                             Ok(()) => AnyResult::Ok(()),
@@ -510,6 +520,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                             }
                             AnyResult::Ok(())
                         }.await;
+                        log::debug!("Battery returned: {v:?}");
                         match v.map_err(|e| e.downcast::<neolink_core::Error>()) {
                             Err(Ok(neolink_core::Error::UnintelligibleReply{..})) => futures::future::pending().await,
                             Ok(()) => AnyResult::Ok(()),
@@ -533,6 +544,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                                 prev_noti = noti;
                                 AnyResult::Ok(())
                             }.await;
+                            log::debug!("PushNoti returned: {v:?}");
                             match v.map_err(|e| e.downcast::<neolink_core::Error>()) {
                                 Err(Ok(neolink_core::Error::UnintelligibleReply{..})) => futures::future::pending().await,
                                 Ok(()) => AnyResult::Ok(()),
