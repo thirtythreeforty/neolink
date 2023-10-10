@@ -123,7 +123,16 @@ impl NeoMediaFactoryImpl {
     }
     fn build_pipeline(&self, media: Element) -> AnyResult<Option<Element>> {
         match self.call_back.blocking_lock().as_ref() {
-            Some(call) => call(media),
+            Some(call) => {
+                let new_media = call(media);
+                match new_media {
+                    Ok(new_media) => Ok(new_media),
+                    Err(e) => {
+                        log::debug!("Media source is currently restarting");
+                        Ok(None)
+                    }
+                }
+            }
             None => Ok(None),
         }
     }

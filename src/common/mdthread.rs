@@ -1,6 +1,7 @@
 //! This thread will listen to motion messages
 //! from the camera.
 
+use anyhow::Context;
 use std::sync::Arc;
 use tokio::{
     sync::{
@@ -70,9 +71,9 @@ impl NeoCamMdThread {
                         let watcher = watcher.clone();
                         Box::pin(
                         async move {
-                            let mut md = cam.listen_on_motion().await?;
+                            let mut md = cam.listen_on_motion().await.with_context("Error in getting MD listen_on_motion")?;
                             loop {
-                                let event = md.next_motion().await?;
+                                let event = md.next_motion().await.with_context("Error in getting MD next_motion")?;
                                 match event {
                                     MotionStatus::Start(at) => {
                                         watcher.send_replace(
