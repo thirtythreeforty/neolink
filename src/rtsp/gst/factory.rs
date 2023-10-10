@@ -128,7 +128,7 @@ impl NeoMediaFactoryImpl {
                 match new_media {
                     Ok(new_media) => Ok(new_media),
                     Err(e) => {
-                        log::debug!("Media source is currently restarting");
+                        log::debug!("Media source is currently restarting: {e:?}");
                         Ok(None)
                     }
                 }

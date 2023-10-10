@@ -71,9 +71,9 @@ impl NeoCamMdThread {
                         let watcher = watcher.clone();
                         Box::pin(
                         async move {
-                            let mut md = cam.listen_on_motion().await.with_context("Error in getting MD listen_on_motion")?;
+                            let mut md = cam.listen_on_motion().await.with_context(|| "Error in getting MD listen_on_motion")?;
                             loop {
-                                let event = md.next_motion().await.with_context("Error in getting MD next_motion")?;
+                                let event = md.next_motion().await.with_context(|| "Error in getting MD next_motion")?;
                                 match event {
                                     MotionStatus::Start(at) => {
                                         watcher.send_replace(
