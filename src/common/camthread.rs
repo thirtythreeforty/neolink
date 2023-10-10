@@ -1,11 +1,12 @@
+use anyhow::Context;
 use std::sync::{Arc, Weak};
 use tokio::{
     sync::watch::{Receiver as WatchReceiver, Sender as WatchSender},
-    time::{interval, sleep, Duration, Instant},
+    time::{interval, sleep, timeout, Duration, Instant},
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::{config::CameraConfig, utils::connect_and_login, Result};
+use crate::{config::CameraConfig, utils::connect_and_login, AnyResult};
 use neolink_core::bc_protocol::BcCamera;
 
 #[derive(Eq, PartialEq, Copy, Clone)]
@@ -35,7 +36,7 @@ impl NeoCamThread {
             camera_watch: camera_watch_tx,
         }
     }
-    async fn run_camera(&mut self, config: &CameraConfig) -> Result<()> {
+    async fn run_camera(&mut self, config: &CameraConfig) -> AnyResult<()> {
         let camera = Arc::new(connect_and_login(config).await?);
 
         update_camera_time(&camera, &config.name, config.update_time).await?;
@@ -47,23 +48,28 @@ impl NeoCamThread {
         tokio::select! {
             _ = cancel_check.cancelled() => {
                 log::debug!("Camera Cancelled");
-                Ok(())
+                AnyResult::Ok(())
             }
             v = camera.join() => {
                 log::debug!("Camera Join: {:?}", v);
-                v
+                v?;
+                Ok(())
             },
             v = async {
                 let mut interval = interval(Duration::from_secs(5));
                 loop {
                     interval.tick().await;
-                    match camera.get_linktype().await {
-                        Ok(_) => continue,
-                        Err(neolink_core::Error::UnintelligibleReply { .. }) => {
+                    match timeout(Duration::from_secs(15), camera.get_linktype()).await {
+                        Ok(Ok(_)) => continue,
+                        Ok(Err(neolink_core::Error::UnintelligibleReply { .. })) => {
                             // Camera does not support pings just wait forever
                             futures::future::pending().await
                         },
-                        Err(e) => return Err(e),
+                        Ok(Err(e)) => return Err(e.into()),
+                        Err(e) => {
+                            // Timeout
+                            return AnyResult::Err(e.into()).with_context(|| "Timed out waiting for camera ping reply");
+                        }
                     }
                 }
             } => v,
@@ -79,7 +85,7 @@ impl NeoCamThread {
     //
     // A watch sender is used to send the new camera
     // whenever it changes
-    pub(crate) async fn run(&mut self) -> Result<()> {
+    pub(crate) async fn run(&mut self) -> AnyResult<()> {
         const MAX_BACKOFF: Duration = Duration::from_secs(5);
         const MIN_BACKOFF: Duration = Duration::from_millis(50);
 
@@ -116,10 +122,10 @@ impl NeoCamThread {
                 continue;
             }
 
-            // Else we see if the result actually was
+            // Else we see what the result actually was
             let result = res.unwrap();
 
-            if Instant::now() - now > Duration::from_secs(60) {
+            if now.elapsed() > Duration::from_secs(60) {
                 // Command ran long enough to be considered a success
                 backoff = MIN_BACKOFF;
             }
@@ -167,7 +173,7 @@ impl Drop for NeoCamThread {
     }
 }
 
-async fn update_camera_time(camera: &BcCamera, name: &str, update_time: bool) -> Result<()> {
+async fn update_camera_time(camera: &BcCamera, name: &str, update_time: bool) -> AnyResult<()> {
     let cam_time = camera.get_time().await?;
     let mut update = false;
     if let Some(time) = cam_time {

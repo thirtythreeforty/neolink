@@ -4,7 +4,7 @@
 //!
 //! The camera watch is used as an event to be triggered
 //! whenever the camera is lost/updated
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use futures::TryFutureExt;
 use std::sync::{Arc, Weak};
 use tokio::sync::{
@@ -93,49 +93,50 @@ impl NeoInstance {
             -> std::pin::Pin<Box<dyn futures::Future<Output = Result<T>> + Send + 'a>>,
     {
         let mut camera_watch = self.camera_watch.clone();
-        let mut camera = camera_watch.borrow_and_update().upgrade();
+        let mut camera = None;
 
         loop {
-            let res = tokio::select! {
+            camera = camera_watch
+                .wait_for(|new_cam| {
+                    let curr_as_weak = camera.as_ref().map(Arc::downgrade).unwrap_or_default();
+                    !Weak::ptr_eq(new_cam, &curr_as_weak)
+                })
+                .map_ok(|new_cam| new_cam.upgrade())
+                .await
+                .with_context(|| "Camera is disconnecting")?;
+            break tokio::select! {
                 _ = self.cancel.cancelled() => {
-                    Some(Err(anyhow!("Camera is disconnecting")))
+                    Err(anyhow!("Camera is disconnecting"))
                 }
-                v = camera_watch.wait_for(|new_cam| !Weak::ptr_eq(new_cam, &camera.as_ref().map(Arc::downgrade).unwrap_or_default())).map_ok(|new_cam| new_cam.upgrade()) => {
+                _ = camera_watch.wait_for(|new_cam| !Weak::ptr_eq(new_cam, &camera.as_ref().map(Arc::downgrade).unwrap_or_default())).map_ok(|new_cam| new_cam.upgrade()) => {
                     // Camera value has changed!
-                    // update and try again
-                    if let Ok(new_cam) = v {
-                        camera = new_cam;
-                        None
-                    } else {
-                        Some(Err(anyhow!("Camera is disconnecting")))
-                    }
+                    // Go back and see how it changed
+                    continue;
                 },
-                Some(v) = async {
+                v = async {
                     if let Some(cam) = camera.clone() {
                         let cam_ref = cam.as_ref();
-                        Some(task(cam_ref).await)
+                        task(cam_ref).await
                     } else {
-                        None
+                        unreachable!()
                     }
                 }, if camera.is_some() => {
                     match v {
                         // Ok means we are done
-                        Ok(v) => Some(Ok(v)),
+                        Ok(v) => Ok(v),
                         // If error we check for retryable errors
                         Err(e) => {
                             match e.downcast::<neolink_core::Error>() {
                                 // Retry is a None
                                 Ok(neolink_core::Error::DroppedConnection) | Ok(neolink_core::Error::TimeoutDisconnected) => {
-                                    camera = None;
-                                    None
+                                    continue;
                                 },
                                 Ok(neolink_core::Error::Io(e)) => {
                                     log::debug!("Std IO Error");
                                     use std::io::ErrorKind::*;
                                     if let ConnectionReset | ConnectionAborted | BrokenPipe | TimedOut =  e.kind() {
                                         // Resetable IO
-                                        camera = None;
-                                        None
+                                        continue;
                                     } else {
                                         // Check if  the inner error is the Other type and then the discomnect
                                         let is_dropped = e.get_ref().is_some_and(|e| {
@@ -146,14 +147,13 @@ impl NeoInstance {
                                         });
                                         if is_dropped {
                                             // Retry is a None
-                                            camera = None;
-                                            None
+                                            continue;
                                         } else {
-                                            Some(Err(e.into()))
+                                            Err(e.into())
                                         }
                                     }
                                 }
-                                Ok(e) => Some(Err(e.into())),
+                                Ok(e) => Err(e.into()),
                                 Err(e) => {
                                     // Check if it is an io error
                                     log::debug!("Other Error: {:?}", e);
@@ -164,8 +164,7 @@ impl NeoInstance {
                                             use std::io::ErrorKind::*;
                                             if let ConnectionReset | ConnectionAborted | BrokenPipe | TimedOut =  e.kind() {
                                                 // Resetable IO
-                                                camera = None;
-                                                None
+                                                continue;
                                             } else {
                                                 let is_dropped = e.get_ref().is_some_and(|e| {
                                                     log::debug!("Std IO Error: Inner: {:?}", e);
@@ -175,16 +174,15 @@ impl NeoInstance {
                                                 });
                                                 if is_dropped {
                                                     // Retry is a None
-                                                    camera = None;
-                                                    None
+                                                    continue;
                                                 } else {
-                                                    Some(Err(e.into()))
+                                                    Err(e.into())
                                                 }
                                             }
                                         },
                                         Err(e) => {
                                             log::debug!("Other Error: {:?}", e);
-                                            Some(Err(e))
+                                            Err(e)
                                         }
                                     }
                                 },
@@ -193,10 +191,6 @@ impl NeoInstance {
                     }
                 },
             };
-
-            if let Some(res) = res {
-                return res;
-            }
         }
     }
 
