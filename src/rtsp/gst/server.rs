@@ -26,6 +26,7 @@ use tokio::{
     task::JoinSet,
     time::{timeout, Duration},
 };
+use tokio_util::sync::CancellationToken;
 
 glib::wrapper! {
     /// The wrapped RTSPServer
@@ -63,16 +64,40 @@ impl NeoRtspServer {
         // Attach server to default Glib context
         let _ = server.attach(None);
         let main_loop = Arc::new(MainLoop::new(None, false));
+
         // Run the Glib main loop.
         let main_loop_thread = main_loop.clone();
+        let main_loop_cancel = CancellationToken::new();
+        let main_loop_gaurd = main_loop_cancel.clone().drop_guard();
         let handle = tokio::task::spawn_blocking(move || {
             main_loop_thread.run();
+            drop(main_loop_gaurd);
             AnyResult::Ok(())
         });
         timeout(Duration::from_secs(5), self.imp().threads.write())
             .await
             .with_context(|| "Timeout waiting to lock Server threads")?
             .spawn(async move { handle.await? });
+
+        let clean_up_server = server.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            while !main_loop_cancel.is_cancelled() {
+                if let Some(sessions) = clean_up_server.session_pool() {
+                    let cleanups = sessions.cleanup();
+                    if cleanups > 0 {
+                        log::debug!("Cleaned up {cleanups} sessions");
+                    }
+                }
+                std::thread::sleep(Duration::from_secs(5));
+            }
+            AnyResult::Ok(())
+        });
+        timeout(Duration::from_secs(5), self.imp().threads.write())
+            .await
+            .with_context(|| "Timeout waiting to lock Server threads")?
+            .spawn(async move { handle.await? });
+
+        // Put copy of main loop inside the rtsp server
         timeout(Duration::from_secs(5), self.imp().main_loop.write())
             .await
             .with_context(|| "Timeout waiting to lock Server main_loop")?
