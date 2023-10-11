@@ -39,7 +39,9 @@ impl NeoCamThread {
     async fn run_camera(&mut self, config: &CameraConfig) -> AnyResult<()> {
         let camera = Arc::new(connect_and_login(config).await?);
 
+        sleep(Duration::from_secs(2)).await; // Delay a little since some calls will error if camera is waking up
         update_camera_time(&camera, &config.name, config.update_time).await?;
+        sleep(Duration::from_secs(2)).await; // Delay a little since some calls will error if camera is waking up
 
         self.camera_watch.send_replace(Arc::downgrade(&camera));
 
