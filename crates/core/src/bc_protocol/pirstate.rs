@@ -39,10 +39,10 @@ impl BcCamera {
                     reties += 1;
                     continue;
                 } else {
-                    return Err(Error::CameraServiceUnavaliable);
+                    return Err(Error::CameraServiceUnavaliable(msg.meta.response_code));
                 }
             } else if msg.meta.response_code != 200 {
-                return Err(Error::CameraServiceUnavaliable);
+                return Err(Error::CameraServiceUnavaliable(msg.meta.response_code));
             } else {
                 // Valid message with response_code == 200
                 if let BcBody::ModernMsg(ModernMsg {
@@ -101,7 +101,7 @@ impl BcCamera {
         {
             let msg = reply?;
             if msg.meta.response_code != 200 {
-                return Err(Error::CameraServiceUnavaliable);
+                return Err(Error::CameraServiceUnavaliable(msg.meta.response_code));
             }
 
             if let BcMeta {

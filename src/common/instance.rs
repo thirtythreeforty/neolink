@@ -7,9 +7,12 @@
 use anyhow::{anyhow, Context};
 use futures::TryFutureExt;
 use std::sync::{Arc, Weak};
-use tokio::sync::{
-    mpsc::Sender as MpscSender, oneshot::channel as oneshot, watch::channel as watch,
-    watch::Receiver as WatchReceiver,
+use tokio::{
+    sync::{
+        mpsc::Sender as MpscSender, oneshot::channel as oneshot, watch::channel as watch,
+        watch::Receiver as WatchReceiver,
+    },
+    time::{sleep, Duration},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -116,9 +119,21 @@ impl NeoInstance {
                 v = async {
                     if let Some(cam) = camera.clone() {
                         let cam_ref = cam.as_ref();
-                        let r = task(cam_ref).await;
-                        if let Err(e) = &r {
-                            log::debug!("- Task Result: {e:?}");
+                        let mut r = Err(anyhow!("No run"));
+                        for _ in 0..5 {
+                            r = task(cam_ref).await;
+                            if let Err(e) = &r {
+                                log::debug!("- Task Result: {e:?}");
+                            }
+                            if let Err(Some(neolink_core::Error::CameraServiceUnavaliable(400))) = r.as_ref().map_err(|e| e.downcast_ref::<neolink_core::Error>()) {
+                                // Retryable without a reconnect
+                                // Usually occurs when camera is starting up
+                                // or the connection is initialising
+                                sleep(Duration::from_secs(1)).await;
+                                continue;
+                            } else {
+                                break;
+                            }
                         }
                         r
                     } else {

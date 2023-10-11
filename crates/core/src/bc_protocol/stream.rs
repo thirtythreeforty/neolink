@@ -271,7 +271,7 @@ impl BcCamera {
                             msg_id: MSG_ID_VIDEO_STOP,
                             ..
                         }   = msg.meta {
-                            return Err(Error::CameraServiceUnavaliable);
+                            return Err(Error::CameraServiceUnavaliable(msg.meta.response_code));
                         }
                     }
                 } => v,
@@ -352,7 +352,7 @@ impl BcCamera {
 
         let reply = sub_video.recv().await?;
         if reply.meta.response_code != 200 {
-            return Err(super::Error::CameraServiceUnavaliable);
+            return Err(Error::CameraServiceUnavaliable(reply.meta.response_code));
         }
 
         Ok(())

@@ -36,8 +36,8 @@ pub enum Error {
     },
 
     /// Raised when the camera responds with a status code over than OK
-    #[error(display = "Camera responded with Service Unavaliable")]
-    CameraServiceUnavaliable,
+    #[error(display = "Camera responded with Service Unavaliable: {}", _0)]
+    CameraServiceUnavaliable(u16),
 
     /// Raised when the camera responds with a status code over than OK during login
     #[error(display = "Camera responded with Err during login")]

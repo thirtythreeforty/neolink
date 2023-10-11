@@ -27,7 +27,9 @@ impl BcCamera {
 
         let modern_reply = sub_version.recv().await?;
         if modern_reply.meta.response_code != 200 {
-            return Err(Error::CameraServiceUnavaliable);
+            return Err(Error::CameraServiceUnavaliable(
+                modern_reply.meta.response_code,
+            ));
         }
         let version_info;
         match modern_reply.body {
