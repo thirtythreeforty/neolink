@@ -57,10 +57,14 @@ impl NeoCamThread {
             },
             v = async {
                 let mut interval = interval(Duration::from_secs(5));
+                let mut missed_pings = 0;
                 loop {
                     interval.tick().await;
-                    match timeout(Duration::from_secs(15), camera.get_linktype()).await {
-                        Ok(Ok(_)) => continue,
+                    match timeout(Duration::from_secs(5), camera.get_linktype()).await {
+                        Ok(Ok(_)) => {
+                            missed_pings = 0;
+                            continue
+                        },
                         Ok(Err(neolink_core::Error::UnintelligibleReply { .. })) => {
                             // Camera does not support pings just wait forever
                             futures::future::pending().await
@@ -68,7 +72,12 @@ impl NeoCamThread {
                         Ok(Err(e)) => return Err(e.into()),
                         Err(e) => {
                             // Timeout
-                            return AnyResult::Err(e.into()).with_context(|| "Timed out waiting for camera ping reply");
+                            if missed_pings > 5 {
+                                missed_pings += 1;
+                                continue;
+                            } else {
+                                return AnyResult::Err(e.into()).with_context(|| "Timed out waiting for camera ping reply");
+                            }
                         }
                     }
                 }
