@@ -579,7 +579,7 @@ fn repeat_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
                             v = stream.next() => {
                                 if let Some(frame) = v {
                                     if let Ok(frame) = frame {
-                                        // log::debug!("Key Frame: Resume");
+                                        log::debug!("Key Frame: Resume");
                                         yield Ok(frame);
                                         break;
                                     }
