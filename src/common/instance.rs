@@ -61,12 +61,12 @@ impl NeoInstance {
     /// - If the camera instance is changed: Rerun the task with the new instance
     /// - If the camera returns a retryable error, wait for camera instance to change then rerun
     /// - else return the result of the function
-    pub(crate) async fn run_task<F, T>(&self, task: F) -> Result<T>
+    pub(crate) async fn run_task<F, T>(&self, task: F) -> AnyResult<T>
     where
         F: for<'a> Fn(
             &'a BcCamera,
         )
-            -> std::pin::Pin<Box<dyn futures::Future<Output = Result<T>> + Send + 'a>>,
+            -> std::pin::Pin<Box<dyn futures::Future<Output = AnyResult<T>> + Send + 'a>>,
     {
         let _permit = self.permit().await?;
         self.run_passive_task(task).await
@@ -85,12 +85,12 @@ impl NeoInstance {
     /// background tasks that we want to stop during certain times like low battery
     ///
     /// The streams and MD use this
-    pub(crate) async fn run_passive_task<F, T>(&self, task: F) -> Result<T>
+    pub(crate) async fn run_passive_task<F, T>(&self, task: F) -> AnyResult<T>
     where
         F: for<'a> Fn(
             &'a BcCamera,
         )
-            -> std::pin::Pin<Box<dyn futures::Future<Output = Result<T>> + Send + 'a>>,
+            -> std::pin::Pin<Box<dyn futures::Future<Output = AnyResult<T>> + Send + 'a>>,
     {
         let mut camera_watch = self.camera_watch.clone();
         let mut camera = None;
@@ -116,7 +116,11 @@ impl NeoInstance {
                 v = async {
                     if let Some(cam) = camera.clone() {
                         let cam_ref = cam.as_ref();
-                        task(cam_ref).await
+                        let r = task(cam_ref).await;
+                        if let Err(e) = &r {
+                            log::debug!("- Task Result: {e:?}");
+                        }
+                        r
                     } else {
                         unreachable!()
                     }
@@ -129,13 +133,15 @@ impl NeoInstance {
                             match e.downcast::<neolink_core::Error>() {
                                 // Retry is a None
                                 Ok(neolink_core::Error::DroppedConnection) | Ok(neolink_core::Error::TimeoutDisconnected) => {
+                                    log::debug!("  - Neolink error continue");
                                     continue;
                                 },
                                 Ok(neolink_core::Error::Io(e)) => {
-                                    log::debug!("Std IO Error");
+                                    log::debug!("  - Neolink Std IO Error");
                                     use std::io::ErrorKind::*;
                                     if let ConnectionReset | ConnectionAborted | BrokenPipe | TimedOut =  e.kind() {
                                         // Resetable IO
+                                        log::debug!("    - Neolink Std IO Error: Continue");
                                         continue;
                                     } else {
                                         // Check if  the inner error is the Other type and then the discomnect
@@ -147,23 +153,29 @@ impl NeoInstance {
                                         });
                                         if is_dropped {
                                             // Retry is a None
+                                            log::debug!("    - Neolink Std IO Error => Neolink: Continue");
                                             continue;
                                         } else {
+                                            log::debug!("    - Neolink Std IO Error: Other");
                                             Err(e.into())
                                         }
                                     }
                                 }
-                                Ok(e) => Err(e.into()),
+                                Ok(e) => {
+                                    log::debug!("  - Neolink Error: Other");
+                                    Err(e.into())
+                                },
                                 Err(e) => {
                                     // Check if it is an io error
-                                    log::debug!("Other Error: {:?}", e);
+                                    log::debug!("  - Other Error: {:?}", e);
                                     match e.downcast::<std::io::Error>() {
                                         Ok(e) => {
-                                            log::debug!("Std IO Error");
+                                            log::debug!("    - Std IO Error");
                                             // Check if  the inner error is the Other type and then the discomnect
                                             use std::io::ErrorKind::*;
                                             if let ConnectionReset | ConnectionAborted | BrokenPipe | TimedOut =  e.kind() {
                                                 // Resetable IO
+                                                log::debug!("      - Std IO Error: Continue");
                                                 continue;
                                             } else {
                                                 let is_dropped = e.get_ref().is_some_and(|e| {
@@ -174,14 +186,16 @@ impl NeoInstance {
                                                 });
                                                 if is_dropped {
                                                     // Retry is a None
+                                                    log::debug!("      - Std IO Error => Neolink Error: Continue");
                                                     continue;
                                                 } else {
+                                                    log::debug!("      - Std IO Error: Other");
                                                     Err(e.into())
                                                 }
                                             }
                                         },
                                         Err(e) => {
-                                            log::debug!("Other Error: {:?}", e);
+                                            log::debug!("  - Other Error: {:?}", e);
                                             Err(e)
                                         }
                                     }

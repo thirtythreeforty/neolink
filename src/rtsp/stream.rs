@@ -314,10 +314,19 @@ async fn stream_run(
                 _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
                 v = async {
                     // Send Initial
-                    for data in thread_vid_history.borrow().iter() {
-                        thread_vid_data_tx.send(
-                            data.clone()
-                        )?;
+                    {
+                        let history = thread_vid_history.borrow();
+                        let last_ts = history.back().map(|s| s.ts);
+                        for data in history.iter() {
+                            thread_vid_data_tx.send(
+                                StampedData {
+                                    keyframe: data.keyframe,
+                                    data: data.data.clone(),
+                                    ts: last_ts.unwrap()
+                                }
+
+                            )?;
+                        }
                     }
 
                     // Send new
@@ -345,10 +354,19 @@ async fn stream_run(
                 _ = thread_stream_cancel.cancelled() => AnyResult::Ok(()),
                 v = async {
                     // Send Initial
-                    for data in thread_aud_history.borrow().iter() {
-                        thread_aud_data_tx.send(
-                            data.clone()
-                        )?;
+                    {
+                        let history = thread_aud_history.borrow();
+                        let last_ts = history.back().map(|s| s.ts);
+                        for data in history.iter() {
+                            thread_aud_data_tx.send(
+                                StampedData {
+                                    keyframe: data.keyframe,
+                                    data: data.data.clone(),
+                                    ts: last_ts.unwrap()
+                                }
+
+                            )?;
+                        }
                     }
 
                     // Send new
@@ -379,7 +397,7 @@ async fn stream_run(
                         AnyResult::Ok(())
                     },
                     v = send_to_appsrc(
-                        // repeat_keyframe(
+                        repeat_keyframe(
                             frametime_stream(
                                 hold_stream(
                                     wait_for_keyframe(
@@ -387,7 +405,8 @@ async fn stream_run(
                                     )
                                 )
                             ),
-                        // Duration::from_secs(1)),
+                            Duration::from_secs(1)
+                        ),
                         &thread_vid) => {
                         v
                     },
