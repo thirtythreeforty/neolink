@@ -177,7 +177,7 @@ fn build_h264(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
         .map_err(|_| anyhow!("Cannot cast back"))?;
     let queue = make_queue("source_queue", buffer_size)?;
     let parser = make_element("h264parse", "parser")?;
-    parser.set_property("config-interval", -1i32); // Send SPS and PPS every Iframe to imporove joining frame late
+    // parser.set_property("config-interval", -1i32); // Send SPS and PPS every Iframe to imporove joining frame late
     let payload = make_element("rtph264pay", "pay0")?;
     bin.add_many([&source, &queue, &parser, &payload])?;
     Element::link_many([&source, &queue, &parser, &payload])?;

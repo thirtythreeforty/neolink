@@ -54,6 +54,13 @@ impl NeoRtspServer {
         auth.set_default_token(Some(&mut un_authtoken));
         factory.set_auth(Some(&auth));
 
+        factory.connect_client_connected(|_, client| {
+            client.connect_new_session(|_, session| {
+                log::debug!("New Session");
+                session.set_timeout(5);
+            });
+        });
+
         Ok(factory)
     }
 
