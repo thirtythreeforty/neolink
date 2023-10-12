@@ -406,7 +406,7 @@ async fn stream_run(
                                     )
                                 )
                             ),
-                            Duration::from_secs(1)
+                            Duration::from_secs(3)
                         ),
                         &thread_vid) => {
                         v
@@ -560,8 +560,8 @@ fn frametime_stream<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
 }
 
 // This will take a stream and if there is a notibable lack of data
-// then it will repeat the last keyframe (if there have been no)
-// pframes in between
+// then it will repeat the last keyframe (if there have been no
+// pframes in between)
 fn repeat_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
     mut stream: T,
     fallback_time: Duration,
