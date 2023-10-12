@@ -316,15 +316,15 @@ async fn stream_run(
                     // Send Initial
                     {
                         let history = thread_vid_history.borrow();
-                        let last_ts = history.back().map(|s| s.ts);
+                        // let last_ts = history.back().map(|s| s.ts);
                         for data in history.iter() {
                             thread_vid_data_tx.send(
-                                StampedData {
-                                    keyframe: data.keyframe,
-                                    data: data.data.clone(),
-                                    ts: last_ts.unwrap()
-                                }
-
+                                // StampedData {
+                                //     keyframe: data.keyframe,
+                                //     data: data.data.clone(),
+                                //     ts: last_ts.unwrap()
+                                // }
+                                data.clone()
                             )?;
                         }
                     }
@@ -356,14 +356,15 @@ async fn stream_run(
                     // Send Initial
                     {
                         let history = thread_aud_history.borrow();
-                        let last_ts = history.back().map(|s| s.ts);
+                        // let last_ts = history.back().map(|s| s.ts);
                         for data in history.iter() {
                             thread_aud_data_tx.send(
-                                StampedData {
-                                    keyframe: data.keyframe,
-                                    data: data.data.clone(),
-                                    ts: last_ts.unwrap()
-                                }
+                                // StampedData {
+                                //     keyframe: data.keyframe,
+                                //     data: data.data.clone(),
+                                //     ts: last_ts.unwrap()
+                                // }
+                                data.clone()
 
                             )?;
                         }
