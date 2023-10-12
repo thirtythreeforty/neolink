@@ -13,7 +13,7 @@ use gstreamer_rtsp_server::{
     gio::{TlsAuthenticationMode, TlsCertificate},
     prelude::*,
     subclass::prelude::*,
-    RTSPAuth, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
+    RTSPAuth, RTSPFilterResult, RTSPServer, RTSPToken, RTSP_TOKEN_MEDIA_FACTORY_ROLE,
 };
 use log::*;
 use std::{
@@ -86,7 +86,13 @@ impl NeoRtspServer {
                     let cleanups = sessions.cleanup();
                     if cleanups > 0 {
                         log::debug!("Cleaned up {cleanups} sessions");
+                    } else {
+                        log::debug!("Cleaned up had no sessions to cleanup");
                     }
+                    sessions.filter(Some(&mut |_, session| {
+                        log::debug!("{:?}: {}", session.sessionid(), session.timeout(),);
+                        RTSPFilterResult::Keep
+                    }));
                 }
                 std::thread::sleep(Duration::from_secs(5));
             }
