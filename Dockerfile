@@ -35,6 +35,7 @@ RUN  echo "TARGETPLATFORM: ${TARGETPLATFORM}"; \
         apt-get install -y --no-install-recommends \
           build-essential \
           openssl \
+          libssl-dev \
           ca-certificates \
           libgstrtspserver-1.0-dev \
           libgstreamer1.0-dev \

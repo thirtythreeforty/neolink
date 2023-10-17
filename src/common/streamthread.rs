@@ -257,6 +257,7 @@ pub(crate) struct StreamConfig {
     pub(crate) vid_format: VidFormat,
     pub(crate) aud_format: AudFormat,
     pub(crate) bitrate: u32,
+    pub(crate) fps: u32,
 }
 
 impl StreamConfig {
@@ -323,7 +324,7 @@ impl StreamData {
         let vid_history = Arc::new(vid_history);
         let (aud_history, _) = watch::<VecDeque<StampedData>>(VecDeque::new());
         let aud_history = Arc::new(aud_history);
-        let (resolution, bitrate) = instance
+        let (resolution, bitrate, fps, fps_table) = instance
             .run_passive_task(|cam| {
                 Box::pin(async move {
                     let infos = cam
@@ -344,9 +345,15 @@ impl StreamData {
                                 .copied()
                                 .unwrap_or(encode.default_bitrate)
                                 * 1024,
+                            encode
+                                .framerate_table
+                                .get(encode.default_framerate as usize)
+                                .copied()
+                                .unwrap_or(encode.default_framerate),
+                            encode.framerate_table.clone(),
                         ))
                     } else {
-                        Ok(([0, 0], 0))
+                        Ok(([0, 0], 0, 0, vec![]))
                     }
                 })
             })
@@ -356,6 +363,7 @@ impl StreamData {
             vid_format: VidFormat::None,
             aud_format: AudFormat::None,
             bitrate,
+            fps,
         });
         let mut me = Self {
             name,
@@ -421,6 +429,7 @@ impl StreamData {
                                     let vid_history = vid_history.clone();
                                     let aud_history = aud_history.clone();
                                     let watchdog_tx = watchdog_tx.clone();
+                                    let fps_table = fps_table.clone();
 
                                     log::debug!("Running Stream Instance Task");
                                     Box::pin(async move {
@@ -428,6 +437,7 @@ impl StreamData {
                                         // let mut file = std::fs::File::create("reference.h264")?;
                                         let mut recieved_iframe = false;
                                         let mut aud_keyframe = false;
+
                                         let res = async {
                                             let mut prev_ts = Duration::ZERO;
                                             let mut stream_data = camera.start_video(name, 0, strict).await?;
@@ -440,9 +450,11 @@ impl StreamData {
                                                 match &data {
                                                     BcMedia::InfoV1(info) => {
                                                         stream_config.send_if_modified(|state| {
-                                                            if state.resolution[0] != info.video_width || state.resolution[1] != info.video_height  {
+                                                            let new_fps = fps_table.get(info.fps as usize).copied().unwrap_or(info.fps as u32);
+                                                            if state.resolution[0] != info.video_width || state.resolution[1] != info.video_height || new_fps != state.fps  {
                                                                 state.resolution[0] = info.video_width;
                                                                 state.resolution[1] = info.video_height;
+                                                                state.fps = new_fps;
                                                                 true
                                                             } else {
                                                                 false
@@ -451,9 +463,11 @@ impl StreamData {
                                                     },
                                                     BcMedia::InfoV2(info) => {
                                                         stream_config.send_if_modified(|state| {
-                                                            if state.resolution[0] != info.video_width || state.resolution[1] != info.video_height {
+                                                            let new_fps = fps_table.get(info.fps as usize).copied().unwrap_or(info.fps as u32);
+                                                            if state.resolution[0] != info.video_width || state.resolution[1] != info.video_height || new_fps != state.fps  {
                                                                 state.resolution[0] = info.video_width;
                                                                 state.resolution[1] = info.video_height;
+                                                                state.fps = new_fps;
                                                                 true
                                                             } else {
                                                                 false

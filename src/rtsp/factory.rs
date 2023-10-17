@@ -177,10 +177,10 @@ fn build_h264(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
         .map_err(|_| anyhow!("Cannot cast back"))?;
     let queue = make_queue("source_queue", buffer_size)?;
     let parser = make_element("h264parse", "parser")?;
-    // parser.set_property("config-interval", -1i32); // Send SPS and PPS every Iframe to imporove joining frame late
+    let stamper = make_element("h264timestamper", "stamper")?;
     let payload = make_element("rtph264pay", "pay0")?;
-    bin.add_many([&source, &queue, &parser, &payload])?;
-    Element::link_many([&source, &queue, &parser, &payload])?;
+    bin.add_many([&source, &queue, &parser, &stamper, &payload])?;
+    Element::link_many([&source, &queue, &parser, &stamper, &payload])?;
 
     let source = source
         .dynamic_cast::<AppSrc>()
@@ -212,9 +212,10 @@ fn build_h265(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
         .map_err(|_| anyhow!("Cannot cast back"))?;
     let queue = make_queue("source_queue", buffer_size)?;
     let parser = make_element("h265parse", "parser")?;
+    let stamper = make_element("h265timestamper", "stamper")?;
     let payload = make_element("rtph265pay", "pay0")?;
-    bin.add_many([&source, &queue, &parser, &payload])?;
-    Element::link_many([&source, &queue, &parser, &payload])?;
+    bin.add_many([&source, &queue, &parser, &stamper, &payload])?;
+    Element::link_many([&source, &queue, &parser, &stamper, &payload])?;
 
     let source = source
         .dynamic_cast::<AppSrc>()

@@ -390,6 +390,10 @@ async fn stream_run(
         let vid_data_rx = BroadcastStream::new(vid_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
         let thread_vid = vid.clone();
         let mut thread_client_count = client_count.subscribe();
+        log::debug!("stream_config.fps: {}", stream_config.fps);
+        let fallback_time = Duration::from_secs(3);
+        let fallback_framerate =
+            Duration::from_millis(1000u64 / std::cmp::max(stream_config.fps as u64, 5u64));
         if let Some(thread_vid) = thread_vid {
             set.spawn(async move {
                 thread_client_count.activate().await?;
@@ -406,7 +410,8 @@ async fn stream_run(
                                     )
                                 )
                             ),
-                            Duration::from_secs(3)
+                            fallback_time,
+                            fallback_framerate,
                         ),
                         &thread_vid) => {
                         v
@@ -565,6 +570,7 @@ fn frametime_stream<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
 fn repeat_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
     mut stream: T,
     fallback_time: Duration,
+    frame_rate: Duration,
 ) -> impl Stream<Item = Result<StampedData, E>> + Unpin {
     Box::pin(async_stream::stream! {
         while let Some(frame) = stream.next().await {
@@ -575,6 +581,7 @@ fn repeat_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
                     yield Ok(frame);
 
                     // Wait for either timeout or a new frame
+                    let mut fallback_time = fallback_time;
                     loop {
                         tokio::select!{
                             v = stream.next() => {
@@ -589,6 +596,7 @@ fn repeat_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
                                 }
                             },
                             _ = sleep(fallback_time) => {
+                                fallback_time = frame_rate;
                                 log::debug!("Inserting Skip Frame");
                                 yield Ok(repeater.clone());
                             }
