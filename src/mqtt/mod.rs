@@ -980,7 +980,7 @@ async fn handle_mqtt_message(
                 }
                 Err(e) => {
                     error!("Failed to parse minutes: {:?}", e);
-                    format!("FAIL: {e:?}")
+                    format!("FAIL: '{message}' => {e:?}")
                 }
             };
 
