@@ -93,11 +93,15 @@ impl NeoRtspServer {
                     let cleanups = sessions.cleanup();
                     if cleanups > 0 {
                         log::debug!("Cleaned up {cleanups} sessions");
-                    } else {
-                        log::debug!("Cleaned up had no sessions to cleanup");
                     }
                     sessions.filter(Some(&mut |_, session| {
-                        log::debug!("{:?}: {}", session.sessionid(), session.timeout(),);
+                        let remaining = session.next_timeout_usec(glib::monotonic_time());
+                        log::debug!(
+                            "{:?}: {}/{}",
+                            session.sessionid(),
+                            remaining,
+                            session.timeout(),
+                        );
                         RTSPFilterResult::Keep
                     }));
                 }

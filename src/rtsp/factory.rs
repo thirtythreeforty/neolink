@@ -253,11 +253,29 @@ fn build_aac(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
         Ok(ele) => Ok(ele),
         Err(_) => make_element("avdec_aac", "auddecoder_avdec_aac"),
     }?;
+
+    // The fallback
+    let silence = make_element("audiotestsrc", "audsilence")?;
+    silence.set_property_from_str("wave", "silence");
+    let fallback_switch = make_element("fallbackswitch", "audfallbackswitch")?;
+    fallback_switch.set_property("timeout", 3u64 * 1_000_000_000u64);
+    fallback_switch.set_property("immediate-fallback", true);
+
     let encoder = make_element("audioconvert", "audencoder")?;
     let payload = make_element("rtpL16pay", "pay1")?;
 
     bin.add_many([&source, &queue, &parser, &decoder, &encoder, &payload])?;
-    Element::link_many([&source, &queue, &parser, &decoder, &encoder, &payload])?;
+    bin.add_many([&silence, &fallback_switch])?;
+    Element::link_many([
+        &source,
+        &queue,
+        &parser,
+        &decoder,
+        &fallback_switch,
+        &encoder,
+        &payload,
+    ])?;
+    Element::link_many([&silence, &fallback_switch])?;
 
     let source = source
         .dynamic_cast::<AppSrc>()

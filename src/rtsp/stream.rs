@@ -596,8 +596,12 @@ fn repeat_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
                                 }
                             },
                             _ = sleep(fallback_time) => {
+                                if fallback_time != frame_rate {
+                                    // This way we only print once
+                                    log::debug!("Inserting Skip Frames");
+                                }
                                 fallback_time = frame_rate;
-                                log::debug!("Inserting Skip Frame");
+
                                 yield Ok(repeater.clone());
                             }
                         }
@@ -639,7 +643,7 @@ async fn send_to_appsrc<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
         appsrc
             .push_buffer(buf)
             .map(|_| ())
-            .map_err(|_| anyhow!("Could not push buffer to appsrc"))?;
+            .map_err(|e| anyhow!("Could not push buffer to appsrc: {e:?}"))?;
     }
     Ok(())
 }
