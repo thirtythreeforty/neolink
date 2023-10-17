@@ -302,6 +302,7 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
             .drain(..)
             .collect::<HashSet<_>>();
         let use_splash = camera_config.borrow().use_splash;
+        let splash_pattern = camera_config.borrow().splash_pattern.to_string();
 
         // This select is for changes to camera_config.stream
         break tokio::select! {
@@ -332,7 +333,7 @@ async fn camera_main(camera: NeoInstance, rtsp: &NeoRtspServer) -> Result<()> {
                 };
 
                 // Create the dummy factory
-                let dummy_factory = make_dummy_factory(use_splash).await?;
+                let dummy_factory = make_dummy_factory(use_splash, splash_pattern).await?;
                 dummy_factory.add_permitted_roles(&permitted_users);
                 let mut supported_streams_1 = supported_streams.clone();
                 let mut supported_streams_2 = supported_streams.clone();

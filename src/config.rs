@@ -193,6 +193,9 @@ pub(crate) struct CameraConfig {
     #[serde(default = "default_true", alias = "splash")]
     pub(crate) use_splash: bool,
 
+    #[serde(default = "default_splash", alias = "patter")]
+    pub(crate) splash_pattern: SplashPattern,
+
     #[serde(
         default = "default_max_discovery_retries",
         alias = "retries",
@@ -317,6 +320,97 @@ pub(crate) struct PauseConfig {
     pub(crate) mode: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum SplashPattern {
+    #[serde(alias = "smpte")]
+    Smpte,
+    #[serde(alias = "snow")]
+    Snow,
+    #[serde(alias = "black")]
+    Black,
+    #[serde(alias = "white")]
+    White,
+    #[serde(alias = "red")]
+    Red,
+    #[serde(alias = "green")]
+    Green,
+    #[serde(alias = "blue")]
+    Blue,
+    #[serde(alias = "checkers-1")]
+    Checkers1,
+    #[serde(alias = "checkers-2")]
+    Checkers2,
+    #[serde(alias = "checkers-4")]
+    Checkers4,
+    #[serde(alias = "checkers-8")]
+    Checkers8,
+    #[serde(alias = "circular")]
+    Circular,
+    #[serde(alias = "blink")]
+    Blink,
+    #[serde(alias = "smpte75")]
+    Smpte75,
+    #[serde(alias = "zone-plate")]
+    ZonePlate,
+    #[serde(alias = "gamut")]
+    Gamut,
+    #[serde(alias = "chroma-zone-plate")]
+    ChromaZonePlate,
+    #[serde(alias = "solid-color")]
+    SolidColor,
+    #[serde(alias = "ball")]
+    Ball,
+    #[serde(alias = "smpte100")]
+    Smpte100,
+    #[serde(alias = "bar")]
+    Bar,
+    #[serde(alias = "pinwheel")]
+    Pinwheel,
+    #[serde(alias = "spokes")]
+    Spokes,
+    #[serde(alias = "gradient")]
+    Gradient,
+    #[serde(alias = "colors")]
+    Colors,
+    #[serde(alias = "smpte-rp-219")]
+    SmpteRp219,
+}
+
+impl std::fmt::Display for SplashPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let s = match self {
+            SplashPattern::Smpte => "smpte",
+            SplashPattern::Snow => "snow",
+            SplashPattern::Black => "black",
+            SplashPattern::White => "white",
+            SplashPattern::Red => "red",
+            SplashPattern::Green => "green",
+            SplashPattern::Blue => "blue",
+            SplashPattern::Checkers1 => "checkers-1",
+            SplashPattern::Checkers2 => "checkers-2",
+            SplashPattern::Checkers4 => "checkers-4",
+            SplashPattern::Checkers8 => "checkers-8",
+            SplashPattern::Circular => "circular",
+            SplashPattern::Blink => "blink",
+            SplashPattern::Smpte75 => "smpte75",
+            SplashPattern::ZonePlate => "zone-plate",
+            SplashPattern::Gamut => "gamut",
+            SplashPattern::ChromaZonePlate => "chroma-zone-plate",
+            SplashPattern::SolidColor => "solid-color",
+            SplashPattern::Ball => "ball",
+            SplashPattern::Smpte100 => "smpte100",
+            SplashPattern::Bar => "bar",
+            SplashPattern::Pinwheel => "pinwheel",
+            SplashPattern::Spokes => "spokes",
+            SplashPattern::Gradient => "gradient",
+            SplashPattern::Colors => "colors",
+            SplashPattern::SmpteRp219 => "smpte-rp-219",
+        }
+        .to_string();
+        write!(f, "{}", s)
+    }
+}
+
 fn default_bind_addr() -> String {
     "0.0.0.0".to_string()
 }
@@ -388,6 +482,10 @@ fn default_max_discovery_retries() -> usize {
 
 fn default_2000() -> u64 {
     2000
+}
+
+fn default_splash() -> SplashPattern {
+    SplashPattern::Snow
 }
 
 pub(crate) static RESERVED_NAMES: &[&str] = &["anyone", "anonymous"];

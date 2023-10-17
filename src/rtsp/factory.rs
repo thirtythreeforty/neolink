@@ -19,13 +19,16 @@ pub(super) struct ClientData {
     pub(super) aud: Option<ClientSourceData>,
 }
 
-pub(super) async fn make_dummy_factory(use_splash: bool) -> AnyResult<NeoMediaFactory> {
+pub(super) async fn make_dummy_factory(
+    use_splash: bool,
+    pattern: String,
+) -> AnyResult<NeoMediaFactory> {
     NeoMediaFactory::new_with_callback(move |element| {
         clear_bin(&element)?;
         if !use_splash {
             Ok(None)
         } else {
-            build_unknown(&element)?;
+            build_unknown(&element, &pattern)?;
             Ok(Some(element))
         }
     })
@@ -43,7 +46,9 @@ pub(super) async fn make_factory(
             clear_bin(&element)?;
             let vid = match stream_config.vid_format {
                 VidFormat::None => {
-                    build_unknown(&element)?;
+                    // This should not be reachable
+                    log::debug!("Building unknown during normal make factory");
+                    build_unknown(&element, "black")?;
                     AnyResult::Ok(None)
                 }
                 VidFormat::H264 => {
@@ -118,14 +123,14 @@ fn clear_bin(bin: &Element) -> Result<()> {
     Ok(())
 }
 
-fn build_unknown(bin: &Element) -> Result<()> {
+fn build_unknown(bin: &Element, pattern: &str) -> Result<()> {
     let bin = bin
         .clone()
         .dynamic_cast::<Bin>()
         .map_err(|_| anyhow!("Media source's element should be a bin"))?;
     log::debug!("Building Unknown Pipeline");
     let source = make_element("videotestsrc", "testvidsrc")?;
-    source.set_property_from_str("pattern", "snow");
+    source.set_property_from_str("pattern", pattern);
     source.set_property("num-buffers", 500i32); // Send buffers then EOS
     let queue = make_queue("queue0", 1024 * 1024 * 4)?;
 
