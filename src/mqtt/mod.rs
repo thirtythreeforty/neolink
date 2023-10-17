@@ -573,13 +573,15 @@ async fn handle_mqtt_message(
     match msg.as_ref() {
         MqttReplyRef {
             topic: _,
-            message: message @ "OK",
+            message: "OK",
         }
         | MqttReplyRef {
             topic: _,
-            message: message @ "FAIL",
+            message: "FAIL",
+        } => {
+            // Do nothing for the success/fail replies
         }
-        | MqttReplyRef { topic: _, message }
+        MqttReplyRef { topic: _, message }
             if message.starts_with("FAIL:") || message.starts_with("OK:") =>
         {
             // Do nothing for the success/fail replies
