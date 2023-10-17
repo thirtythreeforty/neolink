@@ -193,7 +193,7 @@ pub(crate) struct CameraConfig {
     #[serde(default = "default_true", alias = "splash")]
     pub(crate) use_splash: bool,
 
-    #[serde(default = "default_splash", alias = "patter")]
+    #[serde(default = "default_splash", alias = "pattern")]
     pub(crate) splash_pattern: SplashPattern,
 
     #[serde(
