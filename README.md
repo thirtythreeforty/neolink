@@ -220,6 +220,8 @@ Control messages:
 - `/control/ptz/assign [id] [name]` Set the current PTZ position to a preset ID
   and name
 - `/control/pir [on|off]`
+- `control/wakeup (mins)` For cameras that are using `idle_disconnect` this will
+  force a wakeup for at least the given minutes
 
 Status Messages:
 

@@ -64,7 +64,7 @@ use std::collections::{HashMap, HashSet};
 use tokio::{
     sync::mpsc::channel as mpsc,
     task::JoinSet,
-    time::{interval, sleep, Duration, MissedTickBehavior},
+    time::{interval, sleep, sleep_until, Duration, Instant, MissedTickBehavior},
 };
 use tokio_stream::{wrappers::IntervalStream, StreamExt};
 use tokio_util::sync::CancellationToken;
@@ -573,12 +573,15 @@ async fn handle_mqtt_message(
     match msg.as_ref() {
         MqttReplyRef {
             topic: _,
-            message: "OK",
+            message: message @ "OK",
         }
         | MqttReplyRef {
             topic: _,
-            message: "FAIL",
-        } => {
+            message: message @ "FAIL",
+        }
+        | MqttReplyRef { topic: _, message }
+            if message.starts_with("FAIL:") || message.starts_with("OK:") =>
+        {
             // Do nothing for the success/fail replies
         }
         MqttReplyRef {
@@ -956,6 +959,34 @@ async fn handle_mqtt_message(
             mqtt.send_message("control/pir", &reply, false)
                 .await
                 .with_context(|| "Failed to publish pir off")?;
+        }
+        MqttReplyRef {
+            topic: "control/wakeup",
+            message,
+        } => {
+            let reply = match message.parse::<u64>() {
+                Ok(secs) => {
+                    let wake_time = Instant::now() + Duration::from_secs(secs * 60);
+                    if let Ok(permit) = camera.permit().await {
+                        tokio::task::spawn(async move {
+                            sleep_until(wake_time).await;
+                            drop(permit);
+                        });
+                        "OK"
+                    } else {
+                        "FAIL: Camera shutting down"
+                    }
+                    .to_string()
+                }
+                Err(e) => {
+                    error!("Failed to parse minutes: {:?}", e);
+                    format!("FAIL: {e:?}")
+                }
+            };
+
+            mqtt.send_message("control/wakeup", &reply, false)
+                .await
+                .with_context(|| "Failed to publish wakeup")?;
         }
         MqttReplyRef {
             topic: "query/battery",
