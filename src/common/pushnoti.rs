@@ -20,6 +20,7 @@ use crate::AnyResult;
 
 pub(crate) struct PushNotiThread {
     pn_watcher: Arc<WatchSender<Option<PushNoti>>>,
+    registed_cameras: Vec<NeoInstance>,
 }
 
 // The push notification
@@ -45,6 +46,7 @@ impl PushNotiThread {
 
         Ok(PushNotiThread {
             pn_watcher: Arc::new(pn_watcher),
+            registed_cameras: vec![],
         })
     }
 
@@ -116,6 +118,25 @@ impl PushNotiThread {
                 },
                 vec![],
             );
+
+            for instance in self.registed_cameras.iter() {
+                let uid = uid.clone();
+                let fcm_token = fcm_token.clone();
+                let instance = instance.clone();
+                tokio::task::spawn(async move {
+                    let _ = instance
+                        .run_task(|camera| {
+                            let fcm_token = fcm_token.clone();
+                            let uid = uid.clone();
+                            Box::pin(async move {
+                                camera.send_pushinfo_android(&fcm_token, &uid).await?;
+                                AnyResult::Ok(())
+                            })
+                        })
+                        .await;
+                });
+            }
+
             tokio::select! {
                 v = async {
                     let r = listener.connect().await;
@@ -150,6 +171,7 @@ impl PushNotiThread {
                             PnRequest::Activate{instance, sender} => {
                                 let uid = uid.clone();
                                 let fcm_token = fcm_token.clone();
+                                self.registed_cameras.push(instance.clone());
                                 tokio::task::spawn(async move {
                                     let r = instance.run_task(|camera| {
                                         let fcm_token = fcm_token.clone();
