@@ -129,7 +129,13 @@ impl PushNotiThread {
                             let fcm_token = fcm_token.clone();
                             let uid = uid.clone();
                             Box::pin(async move {
-                                camera.send_pushinfo_android(&fcm_token, &uid).await?;
+                                let r = camera.send_pushinfo_android(&fcm_token, &uid).await;
+                                log::debug!(
+                                    "Registered {} for pushnnotifications: {:?}",
+                                    camera.uid().await?,
+                                    r
+                                );
+                                r?;
                                 AnyResult::Ok(())
                             })
                         })
@@ -177,7 +183,13 @@ impl PushNotiThread {
                                         let fcm_token = fcm_token.clone();
                                         let uid = uid.clone();
                                         Box::pin(async move {
-                                            camera.send_pushinfo_android(&fcm_token, &uid).await?;
+                                            let r = camera.send_pushinfo_android(&fcm_token, &uid).await;
+                                            log::debug!(
+                                                "Registered {} for pushnnotifications: {:?}",
+                                                camera.uid().await?,
+                                                r
+                                            );
+                                            r?;
                                             AnyResult::Ok(())
                                         })
                                     }).await;
