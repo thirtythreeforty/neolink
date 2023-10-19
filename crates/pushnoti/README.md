@@ -271,3 +271,44 @@ but I forgot to save the details of it.
 It reports all the capabilities of the camera, such as it's model
 and its resolution etc. Could be useful to test if a UID is valid
 quickly
+
+--
+
+Checked it out again and found that the profile api is:
+
+```bash
+curl -v -X GET 'https://apis.reolink.com/v1.0/devices/<CAMERA_UID>/profile' -H 'Cookie: REO_LANGUAGE=;'
+```
+
+Which returns something like this:
+
+```json
+{
+  "uid":"CAMERA_UID",
+  "model":"CAMERA_MODEL e.g. E1",
+  "board":"CAMERA_BOARD_MODEL_ID",
+  "type":"IPC",
+  "hwVersion":"LINUX_V1",
+  "p2p": {
+    "enabled":true,
+    activated":true,
+    activatedAt": SECONDS_SINCE_EPOCH,
+    "firstUsedAt":0
+  },
+  "hwFeatures":{
+    "ethInterface":0,
+    cellNetwork":0,
+    reproduced":0
+  },
+  "qrScan":{
+    "mode":1,
+    "distance":20,
+    "languages":["en-us"],
+    "showCountryCode":1,
+    "attributes":1
+  },
+  "batteryType":0,
+  "wifiType":0,
+  "maxChannels":0
+}
+```
