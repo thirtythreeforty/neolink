@@ -280,7 +280,7 @@ impl NeoInstance {
                     .await
                 {
                     Ok(pn) => {
-                        log::debug!("Sending push notification: {:?} about {}", *pn, uid);
+                        log::debug!("Forwarding push notification about {}", uid);
                         let _ = fwatch_tx.send_replace(pn.clone());
                     }
                     Err(e) => {

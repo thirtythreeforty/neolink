@@ -8,7 +8,7 @@ use fcm_push_listener::*;
 use std::{fs, sync::Arc};
 use tokio::{
     sync::{
-        mpsc::Receiver as MpscReceiver,
+        mpsc::{Receiver as MpscReceiver, Sender as MpscSender},
         oneshot::Sender as OneshotSender,
         watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
     },
@@ -21,6 +21,7 @@ use crate::AnyResult;
 pub(crate) struct PushNotiThread {
     pn_watcher: Arc<WatchSender<Option<PushNoti>>>,
     registed_cameras: Vec<NeoInstance>,
+    received_ids: Vec<String>,
 }
 
 // The push notification
@@ -38,6 +39,9 @@ pub(crate) enum PnRequest {
         instance: NeoInstance,
         sender: OneshotSender<AnyResult<()>>,
     },
+    AddPushID {
+        id: String,
+    },
 }
 
 impl PushNotiThread {
@@ -47,11 +51,13 @@ impl PushNotiThread {
         Ok(PushNotiThread {
             pn_watcher: Arc::new(pn_watcher),
             registed_cameras: vec![],
+            received_ids: vec![],
         })
     }
 
     pub(crate) async fn run(
         &mut self,
+        sender: &MpscSender<PnRequest>,
         pn_request_rx: &mut MpscReceiver<PnRequest>,
     ) -> AnyResult<()> {
         loop {
@@ -111,12 +117,16 @@ impl PushNotiThread {
             let mut listener = FcmPushListener::create(
                 registration,
                 |message: FcmMessage| {
+                    log::debug!("Got FCM Message: {message:?}");
                     thread_pn_watcher.send_replace(Some(PushNoti {
                         message: message.payload_json,
                         id: message.persistent_id,
                     }));
+                    if let Some(id) = message.persistent_id {
+                        let _ = sender.try_send(PnRequest::AddPushID { id }); // Don't await not worth it
+                    }
                 },
-                vec![],
+                self.received_ids.clone(),
             );
 
             for instance in self.registed_cameras.iter() {
@@ -131,7 +141,7 @@ impl PushNotiThread {
                             Box::pin(async move {
                                 let r = camera.send_pushinfo_android(&fcm_token, &uid).await;
                                 log::debug!(
-                                    "Registered {} for pushnnotifications: {:?}",
+                                    "Registered {} for push notifications: {:?}",
                                     camera.uid().await?,
                                     r
                                 );
@@ -166,6 +176,8 @@ impl PushNotiThread {
                                 sleep(Duration::from_secs(30)).await;
                             }
                         }
+                    } else {
+                        log::debug!("Push notification listener reported normal shutdown");
                     }
                 } => v,
                 v = async {
@@ -185,7 +197,7 @@ impl PushNotiThread {
                                         Box::pin(async move {
                                             let r = camera.send_pushinfo_android(&fcm_token, &uid).await;
                                             log::debug!(
-                                                "Registered {} for pushnnotifications: {:?}",
+                                                "Registered {} for push notifications: {:?}",
                                                 camera.uid().await?,
                                                 r
                                             );
@@ -195,6 +207,9 @@ impl PushNotiThread {
                                     }).await;
                                     let _ = sender.send(r);
                                 });
+                            }
+                            PnRequest::AddPushID{id} => {
+                                self.received_ids.push(id);
                             }
                         }
                     }
