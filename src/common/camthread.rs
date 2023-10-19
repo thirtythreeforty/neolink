@@ -71,7 +71,9 @@ impl NeoCamThread {
                             // Camera does not support pings just wait forever
                             futures::future::pending().await
                         },
-                        Ok(Err(e)) => return Err(e.into()),
+                        Ok(Err(e)) => {
+                            break Err(e.into());
+                        },
                         Err(_) => {
                             // Timeout
                             if missed_pings > 5 {
