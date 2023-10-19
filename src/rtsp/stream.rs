@@ -40,6 +40,9 @@ pub(super) async fn stream_main(
 
     let mut curr_pause;
     loop {
+        let this_loop_cancel = CancellationToken::new();
+        let _drop_guard = this_loop_cancel.clone().drop_guard();
+
         log::debug!("{}: Activating Stream", &name);
         stream_instance.activate().await?;
 
@@ -90,20 +93,26 @@ pub(super) async fn stream_main(
             let thread_name = name.clone();
             let client_count = client_counter.create_deactivated().await?;
             let thread_pause_affector_tx = pause_affector_tx.clone();
+            let cancel = this_loop_cancel.clone();
             set.spawn(async move {
-                log::debug!("{}: Activating Client Pause", thread_name);
-                loop {
-                    client_count.aquired_users().await?;
-                    log::info!("{}: Enabling Client", thread_name);
-                    thread_pause_affector_tx.send_modify(|current| {
-                        current.client = true;
-                    });
+                tokio::select! {
+                    _ = cancel.cancelled() => AnyResult::Ok(()),
+                    v = async {
+                        log::debug!("{}: Activating Client Pause", thread_name);
+                        loop {
+                            client_count.aquired_users().await?;
+                            log::info!("{}: Enabling Client", thread_name);
+                            thread_pause_affector_tx.send_modify(|current| {
+                                current.client = true;
+                            });
 
-                    client_count.dropped_users().await?;
-                    log::info!("{}: Pausing Client", thread_name);
-                    thread_pause_affector_tx.send_modify(|current| {
-                        current.client = false;
-                    });
+                            client_count.dropped_users().await?;
+                            log::info!("{}: Pausing Client", thread_name);
+                            thread_pause_affector_tx.send_modify(|current| {
+                                current.client = false;
+                            });
+                        }
+                    } => v,
                 }
             });
         }
@@ -112,30 +121,36 @@ pub(super) async fn stream_main(
         if curr_pause.on_motion {
             let thread_name = name.clone();
             let thread_pause_affector_tx = pause_affector_tx.clone();
+            let cancel = this_loop_cancel.clone();
 
             let mut motion = camera.motion().await?;
             let delta = Duration::from_secs_f64(curr_pause.motion_timeout);
 
             set.spawn(async move {
-                log::debug!("{}: Activating Motion Pause", &thread_name);
-                loop {
-                    motion
-                        .wait_for(|md| matches!(md, crate::common::MdState::Start(_)))
-                        .await?;
-                    log::info!("{}: Enabling Motion", thread_name);
-                    thread_pause_affector_tx.send_modify(|current| {
-                        current.motion = true;
-                    });
+                tokio::select! {
+                    _ = cancel.cancelled() => AnyResult::Ok(()),
+                    v = async {
+                        log::debug!("{}: Activating Motion Pause", &thread_name);
+                        loop {
+                            motion
+                                .wait_for(|md| matches!(md, crate::common::MdState::Start(_)))
+                                .await?;
+                            log::info!("{}: Enabling Motion", thread_name);
+                            thread_pause_affector_tx.send_modify(|current| {
+                                current.motion = true;
+                            });
 
-                    motion
-                        .wait_for(
-                            |md| matches!(md, crate::common::MdState::Stop(n) if n.elapsed()>delta),
-                        )
-                        .await?;
-                    log::info!("{}: Pausing Motion", thread_name);
-                    thread_pause_affector_tx.send_modify(|current| {
-                        current.motion = false;
-                    });
+                            motion
+                                .wait_for(
+                                    |md| matches!(md, crate::common::MdState::Stop(n) if n.elapsed()>delta),
+                                )
+                                .await?;
+                            log::info!("{}: Pausing Motion", thread_name);
+                            thread_pause_affector_tx.send_modify(|current| {
+                                current.motion = false;
+                            });
+                        }
+                    } => v,
                 }
             });
 
@@ -145,92 +160,116 @@ pub(super) async fn stream_main(
             let mut curr_pn = None;
             let thread_name = name.clone();
             let thread_pause_affector_tx = pause_affector_tx.clone();
+            let cancel = this_loop_cancel.clone();
             set.spawn(async move {
-                loop {
-                    curr_pn = pn
-                        .wait_for(|pn| pn != &curr_pn && pn.is_some())
-                        .await?
-                        .clone();
-                    log::info!("{}: Enabling Push Notification", thread_name);
-                    thread_pause_affector_tx.send_modify(|current| {
-                        current.push = true;
-                    });
-                    tokio::select! {
-                        v = pn.wait_for(|pn| pn != &curr_pn && pn.is_some()) => {
-                            v?;
-                            // If another PN during wait then go back to wait more
-                            continue;
+                tokio::select! {
+                    _ = cancel.cancelled() => AnyResult::Ok(()),
+                    v = async {
+                        loop {
+                            curr_pn = pn
+                                .wait_for(|pn| pn != &curr_pn && pn.is_some())
+                                .await?
+                                .clone();
+                            log::info!("{}: Enabling Push Notification", thread_name);
+                            thread_pause_affector_tx.send_modify(|current| {
+                                current.push = true;
+                            });
+                            tokio::select! {
+                                v = pn.wait_for(|pn| pn != &curr_pn && pn.is_some()) => {
+                                    v?;
+                                    // If another PN during wait then go back to wait more
+                                    continue;
+                                }
+                                _ = sleep(Duration::from_secs(30)) => {}
+                            }
+                            log::info!("{}: Pausing Push Notification", thread_name);
+                            thread_pause_affector_tx.send_modify(|current| {
+                                current.push = false;
+                            });
                         }
-                        _ = sleep(Duration::from_secs(30)) => {}
-                    }
-                    log::info!("{}: Pausing Push Notification", thread_name);
-                    thread_pause_affector_tx.send_modify(|current| {
-                        current.push = false;
-                    });
+                    } => v,
                 }
             });
         }
 
         if curr_pause.on_motion || curr_pause.on_disconnect {
             // Take over activation
+            let cancel = this_loop_cancel.clone();
             let mut client_activator = stream_instance.activator_handle().await;
             client_activator.deactivate().await?;
             stream_instance.deactivate().await?;
             let mut pause_affector = tokio_stream::wrappers::WatchStream::new(pause_affector);
             let thread_curr_pause = curr_pause.clone();
             set.spawn(async move {
-                while let Some(state) = pause_affector.next().await {
-                    if thread_curr_pause.on_motion && thread_curr_pause.on_disconnect {
-                        if state.client && (state.motion || state.push) {
-                            client_activator.activate().await?;
-                        } else {
-                            client_activator.deactivate().await?;
+                tokio::select! {
+                    _ = cancel.cancelled() => AnyResult::Ok(()),
+                    v = async {
+                        while let Some(state) = pause_affector.next().await {
+                            if thread_curr_pause.on_motion && thread_curr_pause.on_disconnect {
+                                if state.client && (state.motion || state.push) {
+                                    client_activator.activate().await?;
+                                } else {
+                                    client_activator.deactivate().await?;
+                                }
+                            } else if thread_curr_pause.on_motion {
+                                if state.motion || state.push {
+                                    client_activator.activate().await?;
+                                } else {
+                                    client_activator.deactivate().await?;
+                                }
+                            } else if thread_curr_pause.on_disconnect {
+                                if state.client {
+                                    client_activator.activate().await?;
+                                } else {
+                                    client_activator.deactivate().await?;
+                                }
+                            } else {
+                                unreachable!()
+                            }
                         }
-                    } else if thread_curr_pause.on_motion {
-                        if state.motion || state.push {
-                            client_activator.activate().await?;
-                        } else {
-                            client_activator.deactivate().await?;
-                        }
-                    } else if thread_curr_pause.on_disconnect {
-                        if state.client {
-                            client_activator.activate().await?;
-                        } else {
-                            client_activator.deactivate().await?;
-                        }
-                    } else {
-                        unreachable!()
-                    }
+                        AnyResult::Ok(())
+                    } => v,
                 }
-                AnyResult::Ok(())
             });
         }
 
         // This thread jsut keeps it active for 5s after an initial start to build the buffer
+        let cancel = this_loop_cancel.clone();
         let mut init_activator = stream_instance.activator_handle().await;
         let init_camera = camera.clone();
         set.spawn(async move {
-            init_activator.activate().await?;
-            let _ = init_camera
-                .run_task(|_| {
-                    Box::pin(async move {
-                        sleep(Duration::from_secs(5)).await;
-                        AnyResult::Ok(())
-                    })
-                })
-                .await;
-            init_activator.deactivate().await?;
-            AnyResult::Ok(())
+            tokio::select! {
+                _ = cancel.cancelled() => AnyResult::Ok(()),
+                v = async {
+                    init_activator.activate().await?;
+                    let _ = init_camera
+                        .run_task(|_| {
+                            Box::pin(async move {
+                                sleep(Duration::from_secs(5)).await;
+                                AnyResult::Ok(())
+                            })
+                        })
+                        .await;
+                    init_activator.deactivate().await?;
+                    AnyResult::Ok(())
+                } => v,
+            }
         });
 
         // Task to just report the number of clients for debug purposes
+        let cancel = this_loop_cancel.clone();
         let counter = client_counter.create_deactivated().await?;
         let mut cur_count = 0;
         let thread_name = name.clone();
         set.spawn(async move {
-            loop {
-                cur_count = *counter.get_counter().wait_for(|v| v != &cur_count).await?;
-                log::debug!("{thread_name}: Number of rtsp clients: {cur_count}");
+            tokio::select! {
+                _ = cancel.cancelled() => AnyResult::Ok(()),
+                v = async {
+                    loop {
+                        cur_count = *counter.get_counter().wait_for(|v| v != &cur_count).await?;
+                        log::debug!("{thread_name}: Number of rtsp clients: {cur_count}");
+                    }
+                } => v,
             }
         });
 
