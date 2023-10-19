@@ -969,10 +969,10 @@ async fn handle_mqtt_message(
             let reply = match message.parse::<u64>() {
                 Ok(secs) => {
                     if let Ok(permit) = camera.permit().await {
-                        let (tx, rx) = mpsc(1);
+                        let (tx, mut rx) = mpsc(1);
 
                         // By using a run_task we can delay the countdown until AFTER we are connected
-                        let _ = camera.run_task(|cam| {
+                        let _ = camera.run_task(|_cam| {
                             let tx = tx.clone();
                             Box::pin(async move {
                                 let _ = tx.try_send(()); // Camera online, start the countdown

@@ -117,7 +117,7 @@ impl PushNotiThread {
             let mut listener = FcmPushListener::create(
                 registration,
                 |message: FcmMessage| {
-                    log::debug!("Got FCM Message: {message:?}");
+                    log::debug!("Got FCM Message: {message.payload_json:?}");
                     thread_pn_watcher.send_replace(Some(PushNoti {
                         message: message.payload_json,
                         id: message.persistent_id,

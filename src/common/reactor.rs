@@ -39,6 +39,7 @@ impl NeoReactor {
     pub(crate) async fn new(config: Config) -> Self {
         let (commad_tx, mut command_rx) = mpsc(100);
         let (push_noti, mut pn_rx) = mpsc(10);
+        let pn_tx = push_noti.clone();
         let cancel = CancellationToken::new();
         let (config_tx, _) = watch(config);
         let mut set = JoinSet::new();
@@ -116,7 +117,6 @@ impl NeoReactor {
 
         // Push notification client
         let cancel1 = cancel.clone();
-        let pn_tx = push_noti.clone();
         set.spawn(async move {
             tokio::select! {
                 _ = cancel1.cancelled() => AnyResult::Ok(()),
