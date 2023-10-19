@@ -968,10 +968,28 @@ async fn handle_mqtt_message(
         } => {
             let reply = match message.parse::<u64>() {
                 Ok(secs) => {
-                    let wake_time = Instant::now() + Duration::from_secs(secs * 60);
                     if let Ok(permit) = camera.permit().await {
+                        let (tx, rx) = mpsc(1);
+
+                        // By using a run_task we can delay the countdown until AFTER we are connected
+                        let _ = camera.run_task(|cam| {
+                            let tx = tx.clone();
+                            Box::pin(async move {
+                                let _ = tx.try_send(()); // Camera online, start the countdown
+                                AnyResult::Ok(())
+                            })
+                        });
+
+                        // This task waits for the `run_task` to send the OK then starts the countdown
+                        // to drop the permit
                         tokio::task::spawn(async move {
-                            sleep_until(wake_time).await;
+                            // Wait for connection then start the countdown
+                            let _ = rx.recv().await;
+
+                            log::debug!("Wakeup counting down");
+                            sleep(Duration::from_secs(secs * 60)).await;
+
+                            log::debug!("Wakeup complete");
                             drop(permit);
                         });
                         "OK"
