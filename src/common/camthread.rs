@@ -1,4 +1,3 @@
-use anyhow::Context;
 use std::sync::{Arc, Weak};
 use tokio::{
     sync::watch::{Receiver as WatchReceiver, Sender as WatchSender},

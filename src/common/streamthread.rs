@@ -384,6 +384,8 @@ impl StreamData {
         let aud = me.aud.clone();
         let instance = me.instance.subscribe().await?;
         let name = me.name;
+        let cam_name = instance.config().await?.borrow().name.clone();
+        let print_name = format!("{cam_name}::{name}");
         let strict = me.strict;
         let config = me.config.clone();
         let thread_inuse = me.users.create_deactivated().await?;
@@ -401,25 +403,35 @@ impl StreamData {
                         tokio::select! {
                             v = thread_inuse.dropped_users() => {
                                 // Handles the stop and restart when no active users
-                                log::debug!("Streaming STOP");
+                                log::debug!("{print_name}: Streaming STOP");
                                 permit.deactivate().await?;
                                 v?;
                                 thread_inuse.aquired_users().await?; // Wait for new users of the stream
                                 permit.activate().await?;
-                                log::debug!("Streaming START");
+                                log::debug!("{print_name}: Streaming START");
                                 AnyResult::Ok(())
                             },
                             v = async {
-                                let mut check_timeout = timeout(Duration::from_secs(15), watchdog_rx.recv()).await; // Wait lonfer for the first feed
+                                let mut check_timeout = timeout(Duration::from_secs(15), watchdog_rx.recv()).await; // Wait longer for the first feed
                                 loop {
-                                    if let Err(_)| Ok(None) = check_timeout {
-                                        // Timeout
-                                        // Reply with Ok to trigger the restart
-                                        log::debug!("Watchdog kicking the stream");
-                                        sleep(Duration::from_secs(1)).await;
-                                        break AnyResult::Ok(());
+                                    match check_timeout {
+                                        Err(_) => {
+                                            // Timeout
+                                            // Break with Ok to trigger the restart
+                                            log::debug!("{print_name}: Watchdog kicking the stream");
+                                            sleep(Duration::from_secs(1)).await;
+                                            break AnyResult::Ok(());
+                                        },
+                                        Ok(None) => {
+                                            log::debug!("{print_name}: Watchdog dropped the stream");
+                                            sleep(Duration::from_secs(1)).await;
+                                            break AnyResult::Ok(());
+                                        }
+                                        Ok(_) => {
+                                            log::debug!("{print_name}: Good Doggo");
+                                            check_timeout = timeout(Duration::from_secs(4), watchdog_rx.recv()).await;
+                                        }
                                     }
-                                    check_timeout = timeout(Duration::from_secs(4), watchdog_rx.recv()).await;
                                 }
                             } => v,
                             result = instance.run_passive_task(|camera| {
@@ -431,7 +443,7 @@ impl StreamData {
                                     let watchdog_tx = watchdog_tx.clone();
                                     let fps_table = fps_table.clone();
 
-                                    log::debug!("Running Stream Instance Task");
+                                    log::debug!("{print_name}: Running Stream Instance Task");
                                     Box::pin(async move {
                                         // use std::io::Write;
                                         // let mut file = std::fs::File::create("reference.h264")?;
@@ -594,15 +606,15 @@ impl StreamData {
                                 }) => {
                                 match result {
                                     Ok(AnyResult::Ok(())) => {
-                                        log::debug!("Video Stream Stopped due to no listeners");
+                                        log::debug!("{print_name}: Video Stream Stopped due to no listeners");
                                         break Ok(());
                                     },
                                     Ok(Err(e)) => {
-                                        log::debug!("Video Stream Restarting Due to Error: {:?}", e);
+                                        log::debug!("{print_name}: Video Stream Restarting Due to Error: {:?}", e);
                                         AnyResult::Ok(())
                                     },
                                     Err(e) => {
-                                        log::debug!("Video Stream Stopped Due to Instance Error: {:?}", e);
+                                        log::debug!("{print_name}: Video Stream Stopped Due to Instance Error: {:?}", e);
                                         break Err(e);
                                     },
                                 }
@@ -611,7 +623,7 @@ impl StreamData {
                     }
                 } => v,
             };
-            log::debug!("Stream Thead Stopped: {:?}", r);
+            log::debug!("{print_name}: Stream Thead Stopped: {:?}", r);
             r
         }));
 
