@@ -117,14 +117,14 @@ impl PushNotiThread {
             let mut listener = FcmPushListener::create(
                 registration,
                 |message: FcmMessage| {
-                    log::debug!("Got FCM Message: {message.payload_json:?}");
+                    log::debug!("Got FCM Message: {:?}", message.payload_json);
+                    if let Some(id) = message.persistent_id.clone() {
+                        let _ = sender.try_send(PnRequest::AddPushID { id }); // Don't worry if queue is full we will just not register as received yet
+                    }
                     thread_pn_watcher.send_replace(Some(PushNoti {
                         message: message.payload_json,
                         id: message.persistent_id,
                     }));
-                    if let Some(id) = message.persistent_id {
-                        let _ = sender.try_send(PnRequest::AddPushID { id }); // Don't await not worth it
-                    }
                 },
                 self.received_ids.clone(),
             );
