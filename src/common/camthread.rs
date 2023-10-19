@@ -37,10 +37,11 @@ impl NeoCamThread {
         }
     }
     async fn run_camera(&mut self, config: &CameraConfig) -> AnyResult<()> {
+        let name = config.name.clone();
         let camera = Arc::new(connect_and_login(config).await?);
 
         sleep(Duration::from_secs(2)).await; // Delay a little since some calls will error if camera is waking up
-        update_camera_time(&camera, &config.name, config.update_time).await?;
+        update_camera_time(&camera, &name, config.update_time).await?;
         sleep(Duration::from_secs(2)).await; // Delay a little since some calls will error if camera is waking up
 
         self.camera_watch.send_replace(Arc::downgrade(&camera));
@@ -49,11 +50,11 @@ impl NeoCamThread {
         // Now we wait for a disconnect
         tokio::select! {
             _ = cancel_check.cancelled() => {
-                log::debug!("Camera Cancelled");
+                log::debug!("{name}: Camera Cancelled");
                 AnyResult::Ok(())
             }
             v = camera.join() => {
-                log::debug!("Camera Join: {:?}", v);
+                log::debug!("{name}: Camera Join: {:?}", v);
                 v?;
                 Ok(())
             },
@@ -111,8 +112,10 @@ impl NeoCamThread {
 
             let config = config_rec.borrow_and_update().clone();
             let now = Instant::now();
+            let name = config.name.clone();
 
             let mut state = self.state.clone();
+
             let res = tokio::select! {
                 Ok(_) = config_rec.changed() => {
                     None
@@ -158,15 +161,15 @@ impl NeoCamThread {
                     match e_inner {
                         Some(neolink_core::Error::CameraLoginFail) => {
                             // Fatal
-                            log::error!("Login credentials were not accepted");
+                            log::error!("{name}: Login credentials were not accepted");
                             log::debug!("NeoCamThread::run Login Cancel");
                             self.cancel.cancel();
                             return Err(e);
                         }
                         _ => {
                             // Non fatal
-                            log::warn!("Connection Lost: {:?}", e);
-                            log::info!("Attempt reconnect in {:?}", backoff);
+                            log::warn!("{name}: Connection Lost: {:?}", e);
+                            log::info!("{name}: Attempt reconnect in {:?}", backoff);
                             sleep(backoff).await;
                             backoff *= 2;
                         }
