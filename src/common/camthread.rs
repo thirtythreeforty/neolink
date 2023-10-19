@@ -73,13 +73,14 @@ impl NeoCamThread {
                             futures::future::pending().await
                         },
                         Ok(Err(e)) => return Err(e.into()),
-                        Err(e) => {
+                        Err(_) => {
                             // Timeout
                             if missed_pings > 5 {
                                 missed_pings += 1;
                                 continue;
                             } else {
-                                return AnyResult::Err(e.into()).with_context(|| "Timed out waiting for camera ping reply");
+                                log::debug!("Timed out waiting for camera ping reply. Assuming unsupported");
+                                futures::future::pending().await
                             }
                         }
                     }
