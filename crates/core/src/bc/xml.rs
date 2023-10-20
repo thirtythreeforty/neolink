@@ -109,6 +109,8 @@ pub struct BcXml {
     /// Thre list of streams and their configuration
     #[yaserde(rename = "Uid")]
     pub uid: Option<Uid>,
+    #[yaserde(rename = "FloodlightTask")]
+    pub floodlight_task: Option<FloodlightTask>,
 }
 
 impl BcXml {
@@ -837,6 +839,133 @@ pub struct Uid {
     pub version: String,
     /// This the UID of the camera
     pub uid: String,
+}
+
+/// FloodlightTask xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct FloodlightTask {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Channel of the camera
+    pub channel: u8,
+    /// Alarm Mode: Observed values 1
+    #[yaserde(rename = "alarmMode")]
+    pub alarm_mode: u32,
+    /// Enable/Disable floor light on motion
+    pub enable: u32,
+    /// Last Alarm Mode: Observed values 2
+    #[yaserde(rename = "lastAlarmMode")]
+    pub last_alarm_mode: u32,
+    /// Preview Auto: Observed values 0
+    pub preview_auto: u32,
+    /// Duration of auto floodlight: Observed values 300 (assume seconds for 5mins)
+    pub duration: u32,
+    /// Current brightness of floodlight (in %)
+    pub brightness_cur: u32,
+    /// Max brightness (in %)
+    pub brightness_max: Option<u32>,
+    /// Min brightness (in %)
+    pub brightness_min: Option<u32>,
+    /// Schedule fot auto floodlight
+    pub schedule: Schedule,
+    /// Threshold settings for light sensor to consider nightime
+    #[yaserde(rename = "lightSensThreshold")]
+    pub light_sens_threshold: LightSensThreshold,
+    /// Light of schedled auto floodlights
+    #[yaserde(rename = "FloodlightScheduleList")]
+    pub floodlight_schedule_list: FloodlightScheduleList,
+    /// Some sort of multi brightness
+    #[yaserde(rename = "nightLongViewMultiBrightness")]
+    pub night_long_view_multi_brightness: NightLongViewMultiBrightness,
+    /// Detection Type: Observed values none
+    #[yaserde(rename = "detectType")]
+    pub detect_type: String,
+}
+
+/// Schedule for Floodlight Task
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct Schedule {
+    /// startHour
+    #[yaserde(rename = "startHour")]
+    pub start_hour: u32,
+    /// startMin: Observed values 0
+    #[yaserde(rename = "startMin")]
+    pub start_min: Option<u32>,
+    /// endHour
+    #[yaserde(rename = "endHour")]
+    pub end_hour: u32,
+    /// endMin: Observed values 0
+    #[yaserde(rename = "endMin")]
+    pub end_min: Option<u32>,
+}
+
+/// Light Sensor Threshold for FloodLightTask
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct LightSensThreshold {
+    /// Min: Observed values 1000
+    pub min: Option<u32>,
+    /// Max: OBserved values 2300
+    pub max: Option<u32>,
+    /// Light Current Value: Observed Value 1000
+    #[yaserde(rename = "lightCur")]
+    pub light_cur: u32,
+    /// Dark Current Value: Observed Value 1900
+    #[yaserde(rename = "darkCur")]
+    pub dark_cur: u32,
+    /// Light Default: Observed Value 1000
+    #[yaserde(rename = "lightDef")]
+    pub light_def: Option<u32>,
+    /// Dark Default: Observed Value 1900
+    #[yaserde(rename = "darkDef")]
+    pub dark_def: Option<u32>,
+}
+
+/// Floodlight schdule list for FloodlightTask
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct FloodlightScheduleList {
+    /// Max Num observed values 32
+    #[yaserde(rename = "maxNum")]
+    pub max_num: u32,
+}
+
+/// NightView Brightness for FloodLightTask
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct NightLongViewMultiBrightness {
+    /// Enabled: Observed values 0, 1
+    pub enable: u8,
+    /// alarmBrightness settings
+    #[yaserde(rename = "alarmBrightness")]
+    pub alarm_brightness: AlarmBrightness,
+    /// alarmDelay settings
+    #[yaserde(rename = "alarmDelay")]
+    pub alarm_delay: AlarmDelay,
+}
+
+/// Alarm brightness for NightLongViewMultiBrightness
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AlarmBrightness {
+    /// Min: Observed values 1
+    pub min: Option<u32>,
+    /// Max: Observed values 100
+    pub max: Option<u32>,
+    /// Current: Observed values 100
+    pub cur: u32,
+    /// Default: Observed values 100
+    pub def: Option<u32>,
+}
+
+/// Alarm delay for NightLongViewMultiBrightness
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AlarmDelay {
+    /// Min: Observed values 5
+    pub min: Option<u32>,
+    /// Max: Observed values 600
+    pub max: Option<u32>,
+    /// Current: Observed values 10
+    pub cur: u32,
+    /// Default: Observed values 10
+    pub def: Option<u32>,
 }
 
 /// Convience function to return the xml version used throughout the library
