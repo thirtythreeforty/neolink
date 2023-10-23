@@ -18,6 +18,6 @@ pub struct Opt {
     /// The name of the camera. Must be a name in the config
     pub camera: String,
     /// Whether to turn the PIR ON or OFF
-    #[arg(value_parser = onoff_parse, name = "on|off")]
+    #[arg(value_parser = onoff_parse, action = clap::ArgAction::Set, name = "on|off")]
     pub on: Option<bool>,
 }

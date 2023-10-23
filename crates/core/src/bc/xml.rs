@@ -109,6 +109,7 @@ pub struct BcXml {
     /// Thre list of streams and their configuration
     #[yaserde(rename = "Uid")]
     pub uid: Option<Uid>,
+    /// The floodlight settings for automatically turning on/off on schedule/motion
     #[yaserde(rename = "FloodlightTask")]
     pub floodlight_task: Option<FloodlightTask>,
 }

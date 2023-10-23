@@ -2831,6 +2831,31 @@ Message have zero to two payloads.
     </body>
     ```
 
+- 299: `<AiCfg>` (read)
+
+  - Client: Standard payload with extension xml of the channel
+
+  - Camera
+
+    - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <AiCfg version="1.1">
+    <channelId>0</channelId>
+    <smartTrack>0</smartTrack>
+    <smartTrackMode>2</smartTrackMode>
+    <smartTrackModeAbility>14</smartTrackModeAbility>
+    <detectType>people,vehicle,dog_cat</detectType>
+    <smartTrackType>people</smartTrackType>
+    <smartTrackPt>1</smartTrackPt>
+    <smartTrackObjectStopDelay>20</smartTrackObjectStopDelay>
+    <smartTrackObjectDisappearDelay>10</smartTrackObjectDisappearDelay>
+    </AiCfg>
+    </body>
+    ```
+
 - 438: `<FloodlightTask>` (read)
 
   - Camera

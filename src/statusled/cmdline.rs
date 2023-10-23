@@ -18,6 +18,6 @@ pub struct Opt {
     /// The name of the camera to change the lights of. Must be a name in the config
     pub camera: String,
     /// Whether to turn the light on or off
-    #[arg(value_parser = onoff_parse, name = "on|off")]
+    #[arg(value_parser = onoff_parse, action = clap::ArgAction::Set, name = "on|off")]
     pub on: bool,
 }

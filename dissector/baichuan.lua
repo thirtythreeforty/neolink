@@ -188,6 +188,8 @@ local message_types = {
   [272]="<findAlarmVideo>",
   [273]="<alarmVideoInfo>",
   [274]="<findAlarmVideo>",
+  [299]="<FloodlightStatusList>",
+  [299]="<AiCfg>",
   [319]="<timelapseCfg>",
   [342]="<AiDetectCfg>",
 }
