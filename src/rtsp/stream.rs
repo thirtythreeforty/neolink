@@ -438,7 +438,7 @@ async fn stream_run(
                         AnyResult::Ok(())
                     },
                     v = send_to_appsrc(
-                        repeat_keyframe(
+                        // repeat_keyframe(
                             frametime_stream(
                                 hold_stream(
                                     wait_for_keyframe(
@@ -446,9 +446,9 @@ async fn stream_run(
                                     )
                                 )
                             ),
-                            fallback_time,
-                            fallback_framerate,
-                        ),
+                        //     fallback_time,
+                        //     fallback_framerate,
+                        // ),
                         &thread_vid) => {
                         v
                     },
@@ -600,6 +600,7 @@ fn frametime_stream<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
     })
 }
 
+#[allow(dead_code)]
 // This will take a stream and if there is a notibable lack of data
 // then it will repeat the last keyframe (if there have been no
 // pframes in between)
