@@ -12,7 +12,7 @@ use tokio::{
         oneshot::Sender as OneshotSender,
         watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
     },
-    time::{sleep, Duration},
+    time::{sleep, timeout, Duration},
 };
 
 use super::NeoInstance;
@@ -156,29 +156,39 @@ impl PushNotiThread {
 
             tokio::select! {
                 v = async {
-                    let r = listener.connect().await;
-                    if let Err(e) = r {
-                        use fcm_push_listener::Error::*;
-                        match &e {
-                            MissingMessagePayload | MissingCryptoMetadata | ProtobufDecode(_) | Base64Decode(_) => {
-                                // Wipe data so next call is a new token
-                                token_path.map(|token_path|
-                                    fs::write(token_path, "")
-                                );
-                                log::debug!("Error on push notification listener: {:?}. Clearing token", e);
+                    loop {
+                        let r = timeout(Duration::from_secs(60*5), listener.connect()).await;
+                        match &r {
+                            Ok(Ok(_)) => {
+                                log::debug!("Push notification listener reported normal shutdown");
+                            }
+                            Ok(Err(e)) => {
+                                use fcm_push_listener::Error::*;
+                                match &e {
+                                    MissingMessagePayload | MissingCryptoMetadata | ProtobufDecode(_) | Base64Decode(_) => {
+                                        // Wipe data so next call is a new token
+                                        token_path.map(|token_path|
+                                            fs::write(token_path, "")
+                                        );
+                                        log::debug!("Error on push notification listener: {:?}. Clearing token", e);
+                                    },
+                                    Http(e) if e.is_request() || e.is_connect() || e.is_timeout() => {
+                                        log::debug!("Error on push notification listener: {:?}", e);
+                                    }
+                                    _ => {
+                                        log::debug!("Error on push notification listener: {:?}", e);
+                                        // This sort of error can be a network error
+                                        // Wait for a little longer
+                                        sleep(Duration::from_secs(30)).await;
+                                    }
+                                }
                             },
-                            Http(e) if e.is_request() || e.is_connect() || e.is_timeout() => {
-                                log::debug!("Error on push notification listener: {:?}", e);
+                            Err(_) => {
+                                // timeout
+                                continue;
                             }
-                            _ => {
-                                log::debug!("Error on push notification listener: {:?}", e);
-                                // This sort of error can be a network error
-                                // Wait for a little longer
-                                sleep(Duration::from_secs(30)).await;
-                            }
-                        }
-                    } else {
-                        log::debug!("Push notification listener reported normal shutdown");
+                        };
+                        break;
                     }
                 } => v,
                 v = async {

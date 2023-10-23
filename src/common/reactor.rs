@@ -118,7 +118,7 @@ impl NeoReactor {
         // Push notification client
         let cancel1 = cancel.clone();
         set.spawn(async move {
-            tokio::select! {
+            let r = tokio::select! {
                 _ = cancel1.cancelled() => AnyResult::Ok(()),
                 v = async {
                     let mut pn = PushNotiThread::new().await?;
@@ -133,7 +133,9 @@ impl NeoReactor {
                         }
                     }
                 } => v,
-            }
+            };
+            log::debug!("Push notifier ended: {r:?}");
+            r
         });
 
         Self {
