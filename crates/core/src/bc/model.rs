@@ -71,8 +71,12 @@ pub const MSG_ID_BATTERY_INFO_LIST: u32 = 252;
 pub const MSG_ID_BATTERY_INFO: u32 = 253;
 /// Manual Floodlight Control
 pub const MSG_ID_FLOODLIGHT_MANUAL: u32 = 288;
+/// Set Floodlight tasks xml
+pub const MSG_ID_FLOODLIGHT_TASKS_WRITE: u32 = 290;
 /// Floodlight status report from the camera
 pub const MSG_ID_FLOODLIGHT_STATUS_LIST: u32 = 291;
+/// Get the floodlight task xml
+pub const MSG_ID_FLOODLIGHT_TASKS_READ: u32 = 438;
 
 /// An empty password in legacy format
 pub const EMPTY_LEGACY_PASSWORD: &str =

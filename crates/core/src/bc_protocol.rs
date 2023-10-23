@@ -17,7 +17,7 @@ mod battery;
 mod connection;
 mod credentials;
 mod errors;
-mod floodlight_status;
+mod floodlight;
 mod keepalive;
 mod ledstate;
 mod link;

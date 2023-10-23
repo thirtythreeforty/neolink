@@ -1002,6 +1002,36 @@ async fn handle_mqtt_message(
                 .with_context(|| "Failed to publish wakeup")?;
         }
         MqttReplyRef {
+            topic: "control/floodlight_tasks",
+            message,
+        } => {
+            let reply = match message.parse::<bool>() {
+                Ok(state) => {
+                    if let Err(e) = camera
+                        .run_task(|cam| {
+                            Box::pin(async move {
+                                cam.flightlight_tasks_enable(state).await?;
+                                AnyResult::Ok(())
+                            })
+                        })
+                        .await
+                    {
+                        format!("FAIL: {e:?}")
+                    } else {
+                        "OK".to_string()
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to parse message as bool: {:?}", e);
+                    format!("FAIL: '{message}' => {e:?}")
+                }
+            };
+
+            mqtt.send_message("control/floodlight_tasks", &reply, false)
+                .await
+                .with_context(|| "Failed to publish floodlight_tasks")?;
+        }
+        MqttReplyRef {
             topic: "query/battery",
             ..
         } => {
