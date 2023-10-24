@@ -771,7 +771,7 @@ async fn handle_mqtt_message(
                 .with_context(|| "Failed to publish reboot on the camera")?;
         }
         MqttReplyRef {
-            topic: "control/",
+            topic: "control/zoom",
             message,
         } => {
             let reply = if let Ok(amount) = message.parse::<f32>() {
