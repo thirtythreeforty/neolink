@@ -2968,7 +2968,7 @@ Message have zero to two payloads.
     </body>
     ```
 
-- 294: `<StartZoomFocus>` (Read)
+- 294: `<PtzZoomFocus>` (Read)
 
   - Client: Standard header and channel extension
 
@@ -3173,12 +3173,18 @@ Message have zero to two payloads.
 
     ```xml
     <?xml version="1.0" encoding="UTF-8" ?>
+
+
+- 295: `<StartZoomFocus>` (Write)
+
+  - Client
+
+    - Extension: Usual extension xml with channel
+
+    - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
     <body>
-    <Net3g4gInfo version="1.1">
-    <sigIntensityLevel>5</sigIntensityLevel>
-    <sigIntensityValue>21</sigIntensityValue>
-    <netMode>7</netMode>
-    <mobileOperator>72403</mobileOperator>
-    </Net3g4gInfo>
-    </body>
-    ```
+    <StartZoomFocus version="1.1">
+    <channelId>1</ch

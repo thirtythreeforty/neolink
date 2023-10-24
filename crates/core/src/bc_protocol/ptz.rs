@@ -238,14 +238,17 @@ impl BcCamera {
 
     /// The camera will zoom to a given zoom amount.
     /// Not sure what the units for this are, seems to be 1000 is 1x and 2000 is 2x
-    pub async fn zoom_to(&self, in_zoom_pos: u32) -> Result<()> {
+    pub async fn zoom_to(&self, zoom_pos: u32) -> Result<()> {
+        log::debug!("Setting to {}", zoom_pos);
         let current = self.get_zoom().await?;
-        let zoom_pos;
-        if let Some(zoom) = current.zoom {
-            zoom_pos = in_zoom_pos.clamp(zoom.minPos, zoom.maxPos);
-        } else {
-            zoom_pos = in_zoom_pos;
-        }
+        log::debug!(
+            "   curr: {}, min: {}, max: {}",
+            current.zoom.cur_pos,
+            current.zoom.min_pos,
+            current.zoom.max_pos
+        );
+        let zoom_pos = zoom_pos.clamp(current.zoom.min_pos, current.zoom.max_pos);
+        log::debug!("Clamped to {}", zoom_pos);
 
         self.has_ability_rw("control").await?;
         let connection = self.get_connection();
@@ -270,9 +273,8 @@ impl BcCamera {
                     start_zoom_focus: Some(StartZoomFocus {
                         version: xml_ver(),
                         channel_id: self.channel_id,
-                        command: Some("zoomPos".to_string()),
-                        move_pos: Some(zoom_pos),
-                        ..Default::default()
+                        command: "zoomPos".to_string(),
+                        move_pos: zoom_pos,
                     }),
                     ..Default::default()
                 })),
@@ -297,7 +299,7 @@ impl BcCamera {
     }
 
     /// Get the zoom xml, that has current min and max zoom values
-    pub async fn get_zoom(&self) -> Result<StartZoomFocus> {
+    pub async fn get_zoom(&self) -> Result<PtzZoomFocus> {
         self.has_ability_ro("control").await?;
         let connection = self.get_connection();
         let msg_num = self.new_message_num();
@@ -329,7 +331,7 @@ impl BcCamera {
         if let BcBody::ModernMsg(ModernMsg {
             payload:
                 Some(BcPayloads::BcXml(BcXml {
-                    start_zoom_focus: Some(xml),
+                    ptz_zoom_focus: Some(xml),
                     ..
                 })),
             ..
@@ -339,7 +341,7 @@ impl BcCamera {
         } else {
             Err(Error::UnintelligibleReply {
                 reply: std::sync::Arc::new(Box::new(msg)),
-                why: "Expected StartZoomFocus xml but it was not recieved",
+                why: "Expected PtzZoomFocus xml but it was not recieved",
             })
         }
     }

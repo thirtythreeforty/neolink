@@ -112,6 +112,9 @@ pub struct BcXml {
     /// The floodlight settings for automatically turning on/off on schedule/motion
     #[yaserde(rename = "FloodlightTask")]
     pub floodlight_task: Option<FloodlightTask>,
+    /// For geting the zoom anf focus of the camera
+    #[yaserde(rename = "PtzZoomFocus")]
+    pub ptz_zoom_focus: Option<PtzZoomFocus>,
     /// For zooming the camera
     #[yaserde(rename = "StartZoomFocus")]
     pub start_zoom_focus: Option<StartZoomFocus>,
@@ -975,6 +978,21 @@ pub struct AlarmDelay {
     pub def: Option<u32>,
 }
 
+/// PtzZoomFocus xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct PtzZoomFocus {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Channel ID
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// Max, min and current zoom. (Read Only)
+    pub zoom: HelperPosition,
+    /// Max, min and current focus. (Read Only)
+    pub focus: HelperPosition,
+}
+
 /// StartZoomFocus xml
 #[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
 pub struct StartZoomFocus {
@@ -985,14 +1003,10 @@ pub struct StartZoomFocus {
     #[yaserde(rename = "channelId")]
     pub channel_id: u8,
     /// Command: Observed values: zoomPos. (Write Only)
-    pub command: Option<String>,
+    pub command: String,
     /// Target Position: Observed Values: 2994, 2508, 2888, 3089, 3194, 3163. (Write Only)
     #[yaserde(rename = "movePos")]
-    pub move_pos: Option<u32>,
-    /// Max, min and current zoom. (Read Only)
-    pub zoom: Option<HelperPosition>,
-    /// Max, min and current focus. (Read Only)
-    pub focus: Option<HelperPosition>,
+    pub move_pos: u32,
 }
 
 /// Helper for Max, Min, Curr pos of zoom/focus
@@ -1000,13 +1014,13 @@ pub struct StartZoomFocus {
 pub struct HelperPosition {
     /// Max value
     #[yaserde(rename = "maxPos")]
-    pub maxPos: u32,
+    pub max_pos: u32,
     /// Min value
     #[yaserde(rename = "minPos")]
-    pub minPos: u32,
+    pub min_pos: u32,
     /// Curr value
     #[yaserde(rename = "curPos")]
-    pub curPos: u32,
+    pub cur_pos: u32,
 }
 
 /// Support xml
