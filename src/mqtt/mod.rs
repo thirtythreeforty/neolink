@@ -374,24 +374,31 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                     v = async {
                         let (tx, mut rx) = mpsc(100);
                         let v = tokio::select! {
-                            v = camera_floodlight.run_passive_task(|cam| {
-                                let tx = tx.clone();
-                                Box::pin(
-                                    async move {
-                                        let mut reciever = tokio_stream::wrappers::ReceiverStream::new(cam.listen_on_flightlight().await?);
-                                        while let Some(flights) = reciever.next().await {
-                                            for flight in flights.floodlight_status_list.iter() {
-                                                if flight.status == 0 {
-                                                    tx.send(false).await?;
-                                                } else {
-                                                    tx.send(true).await?;
+                            v = async {
+                                loop {
+                                    let r = camera_floodlight.run_passive_task(|cam| {
+                                        let tx = tx.clone();
+                                        Box::pin(
+                                            async move {
+                                                let mut reciever = tokio_stream::wrappers::ReceiverStream::new(cam.listen_on_flightlight().await?);
+                                                while let Some(flights) = reciever.next().await {
+                                                    for flight in flights.floodlight_status_list.iter() {
+                                                        if flight.status == 0 {
+                                                            tx.send(false).await?;
+                                                        } else {
+                                                            tx.send(true).await?;
+                                                        }
+                                                    }
                                                 }
+                                                AnyResult::Ok(())
                                             }
-                                        }
-                                        AnyResult::Ok(())
+                                        )
+                                    }).await;
+                                    if r.is_err() {
+                                        break r;
                                     }
-                                )
-                            }) => v,
+                                }
+                            } => v,
                             v = async {
                                 while let Some(on) = rx.recv().await {
                                     if on {

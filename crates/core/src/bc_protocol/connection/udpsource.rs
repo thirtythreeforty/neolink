@@ -355,7 +355,7 @@ impl UdpPayloadInner {
                                 let packet = packet.ok_or(Error::DroppedConnection)??;
                                 recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(TIME_OUT));
                                 // let packet = socket_rx.next().await.ok_or(Error::DroppedConnection)??;
-                                socket_out_tx.send(packet).await?;
+                                tokio::time::timeout(tokio::time::Duration::from_millis(250), socket_out_tx.send(packet)).await.map_err(|_| Error::DroppedConnection)??;
                                 continue;
                             },
                             packet = socket_in_rx.next() => {
@@ -369,8 +369,8 @@ impl UdpPayloadInner {
                                         // Seems to happen with network reconnects like over
                                         // a lossy cellular network
                                         log::debug!("Quick reconnect: Due to socket timeout");
-                                        let stream = Arc::new(connect_try_port(inner.inner.get_ref().local_addr()?.port()).await?);
-                                        inner = BcUdpSource::new_from_socket(stream, inner.addr).await?;
+                                        let stream = Arc::new(tokio::time::timeout(tokio::time::Duration::from_millis(250), connect_try_port(inner.inner.get_ref().local_addr()?.port())).await.map_err(|_| Error::DroppedConnection)??);
+                                        inner = tokio::time::timeout(tokio::time::Duration::from_millis(250), BcUdpSource::new_from_socket(stream, inner.addr)).await.map_err(|_| Error::DroppedConnection)??;
 
                                         // Inform the camera that we are the same client
                                         //

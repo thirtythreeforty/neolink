@@ -219,6 +219,9 @@ Control messages:
 - `/control/ptz/preset [id]` Move the camera to a PTZ preset
 - `/control/ptz/assign [id] [name]` Set the current PTZ position to a preset ID
   and name
+- `/control/zoom (amount)` Zoom the camera to the specified amount. Example: 1.0
+  for normal and 3.5 for 3.5x zoom factor. This only works on cameras that support
+  zoom
 - `/control/pir [on|off]`
 - `control/wakeup (mins)` For cameras that are using `idle_disconnect` this will
   force a wakeup for at least the given minutes
@@ -537,6 +540,15 @@ neolink ptz --config=config.toml CameraName preset 0
 # Save the current position as preset ID 0 with name PresetName
 neolink ptz --config=config.toml CameraName assign 0 PresetName
 ```
+
+To change the zoom level use the following:
+
+```bash
+# Zoom the camera to 2.5x
+neolink ptz --config=config.toml CameraName zoom 2.5
+```
+
+With 1.0 being normal and 2.5 being 2.5x zoom
 
 ## License
 
