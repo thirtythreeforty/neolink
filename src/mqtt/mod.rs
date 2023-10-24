@@ -771,7 +771,38 @@ async fn handle_mqtt_message(
                 .with_context(|| "Failed to publish reboot on the camera")?;
         }
         MqttReplyRef {
+            topic: "control/",
+            message,
+        } => {
+            let reply = if let Ok(amount) = message.parse::<f32>() {
+                if let Err(e) = camera
+                    .run_task(|cam| {
+                        Box::pin(async move {
+                            cam.zoom_to((amount * 1000.0) as u32).await?;
+                            AnyResult::Ok(())
+                        })
+                    })
+                    .await
+                {
+                    error!("Failed to send PTZ: {:?}", e);
+                    format!("FAIL: {e:?}")
+                } else {
+                    "OK".to_string()
+                }
+            } else {
+                "FAIL: Could not convert message to number".to_string()
+            };
+
+            mqtt.send_message("control/zoom", &reply, false)
+                .await
+                .with_context(|| "Failed to publish zoom on the camera")?;
+        }
+        MqttReplyRef {
             topic: "control/ptz",
+            message,
+        }
+        | MqttReplyRef {
+            topic: "control/pt",
             message,
         } => {
             let lowercase_message = message.to_lowercase();
@@ -797,8 +828,6 @@ async fn handle_mqtt_message(
                         "down" => Some(BcDirection::Down),
                         "left" => Some(BcDirection::Left),
                         "right" => Some(BcDirection::Right),
-                        "in" => Some(BcDirection::In),
-                        "out" => Some(BcDirection::Out),
                         n => {
                             error!("Unrecognized PTZ direction \"{}\"", n);
                             None
@@ -847,7 +876,7 @@ async fn handle_mqtt_message(
 
             mqtt.send_message("control/ptz", &reply, false)
                 .await
-                .with_context(|| "Failed to publish reboot on the camera")?;
+                .with_context(|| "Failed to publish ptz on the camera")?;
         }
         MqttReplyRef {
             topic: "control/ptz/preset",

@@ -51,6 +51,8 @@ pub const MSG_ID_STREAM_INFO_LIST: u32 = 146;
 pub const MSG_ID_ABILITY_INFO: u32 = 151;
 /// Get the available PTZ position presets
 pub const MSG_ID_GET_PTZ_PRESET: u32 = 190;
+/// Get the support details (ptz, talk et)
+pub const MSG_ID_GET_SUPPORT: u32 = 199;
 /// Will send the talk config for talk back data to follow this msg
 pub const MSG_ID_TALKCONFIG: u32 = 201;
 /// Used to send talk back binary data
@@ -75,6 +77,8 @@ pub const MSG_ID_FLOODLIGHT_MANUAL: u32 = 288;
 pub const MSG_ID_FLOODLIGHT_TASKS_WRITE: u32 = 290;
 /// Floodlight status report from the camera
 pub const MSG_ID_FLOODLIGHT_STATUS_LIST: u32 = 291;
+/// Used for camera Zoom
+pub const MSG_ID_ZOOM_FOCUS: u32 = 295;
 /// Get the floodlight task xml
 pub const MSG_ID_FLOODLIGHT_TASKS_READ: u32 = 438;
 

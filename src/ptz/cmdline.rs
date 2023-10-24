@@ -6,8 +6,6 @@ pub enum CmdDirection {
     Right,
     Up,
     Down,
-    In,
-    Out,
     Stop,
 }
 
@@ -36,5 +34,9 @@ pub enum PtzCommand {
         command: CmdDirection,
         /// The speed to move at
         speed: Option<u32>,
+    },
+    Zoom {
+        /// The amount to zoom to
+        amount: f32,
     },
 }

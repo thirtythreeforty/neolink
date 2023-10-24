@@ -112,6 +112,12 @@ pub struct BcXml {
     /// The floodlight settings for automatically turning on/off on schedule/motion
     #[yaserde(rename = "FloodlightTask")]
     pub floodlight_task: Option<FloodlightTask>,
+    /// For zooming the camera
+    #[yaserde(rename = "StartZoomFocus")]
+    pub start_zoom_focus: Option<StartZoomFocus>,
+    /// Get the support xml
+    #[yaserde(rename = "Support")]
+    pub support: Option<Support>,
 }
 
 impl BcXml {
@@ -967,6 +973,297 @@ pub struct AlarmDelay {
     pub cur: u32,
     /// Default: Observed values 10
     pub def: Option<u32>,
+}
+
+/// StartZoomFocus xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct StartZoomFocus {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// Channel ID
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// Command: Observed values: zoomPos
+    pub command: String,
+    /// Target Position: Observed Values: 2994, 2508, 2888, 3089, 3194, 3163
+    #[yaserde(rename = "movePos")]
+    pub move_pos: u32,
+}
+
+/// Support xml
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct Support {
+    /// XML Version
+    #[yaserde(attribute)]
+    pub version: String,
+    /// IO port number (input)
+    #[yaserde(rename = "IOInputPortNum")]
+    pub io_input_port_num: Option<u32>,
+    /// IO port number (output)
+    #[yaserde(rename = "IOOutputPortNum")]
+    pub io_output_port_num: Option<u32>,
+    #[yaserde(rename = "diskNum")]
+    /// Number of disks
+    pub disk_num: Option<u32>,
+    /// Number of video channels
+    #[yaserde(rename = "channelNum")]
+    pub channel_num: Option<u32>,
+    /// Number of audio channels
+    #[yaserde(rename = "audioNum")]
+    pub audio_num: Option<u32>,
+    /// The supported PTZ Mode: pt
+    #[yaserde(rename = "ptzMode")]
+    pub ptz_mode: Option<String>,
+    /// PTZ cfg: 0
+    #[yaserde(rename = "ptzCfg")]
+    pub ptz_cfg: Option<u32>,
+    /// Use b485 ptz
+    #[yaserde(rename = "")]
+    pub B485: Option<u32>,
+    /// Support autoupdate
+    #[yaserde(rename = "autoUpdate")]
+    pub auto_update: Option<u32>,
+    /// Support push notificaion alarms
+    #[yaserde(rename = "pushAlarm")]
+    pub push_alarm: Option<u32>,
+    /// Support ftp
+    pub ftp: Option<u32>,
+    /// Support test for ftp
+    #[yaserde(rename = "ftpTest")]
+    pub ftp_test: Option<u32>,
+    /// Support email notification
+    pub email: Option<u32>,
+    /// Support wifi connections
+    pub wifi: Option<u32>,
+    /// Support recording
+    pub record: Option<u32>,
+    /// Support test for wifi
+    #[yaserde(rename = "wifiTest")]
+    pub wifi_test: Option<u32>,
+    /// Support rtsp
+    pub rtsp: Option<u32>,
+    /// Support onvif
+    pub onvif: Option<u32>,
+    /// Support audio talk
+    #[yaserde(rename = "audioTalk")]
+    pub audio_talk: Option<u32>,
+    /// RF version
+    #[yaserde(rename = "rfVersion")]
+    pub rf_version: Option<u32>,
+    /// Support rtmp
+    pub rtmp: Option<u32>,
+    /// Has external stream
+    #[yaserde(rename = "noExternStream")]
+    pub no_extern_stream: Option<u32>,
+    /// Time format
+    #[yaserde(rename = "timeFormat")]
+    pub time_format: Option<u32>,
+    /// DDNS version
+    #[yaserde(rename = "ddnsVersion")]
+    pub ddns_version: Option<u32>,
+    /// Email version
+    #[yaserde(rename = "emailVersion")]
+    pub email_version: Option<u32>,
+    /// Push notification version
+    #[yaserde(rename = "pushVersion")]
+    pub push_version: Option<u32>,
+    /// Push notification type: 1
+    #[yaserde(rename = "pushType")]
+    pub push_type: Option<u32>,
+    /// Support audio alarm
+    #[yaserde(rename = "audioAlarm")]
+    pub audio_alarm: Option<u32>,
+    /// Support AP
+    #[yaserde(rename = "apMode")]
+    pub ap_mode: Option<u32>,
+    /// Could version
+    #[yaserde(rename = "cloudVersion")]
+    pub cloud_version: Option<u32>,
+    /// Replay version
+    #[yaserde(rename = "replayVersion")]
+    pub replay_version: Option<u32>,
+    /// mobComVersion
+    #[yaserde(rename = "mobComVersion")]
+    pub mob_com_version: Option<u32>,
+    /// Export images
+    #[yaserde(rename = "ExportImport")]
+    pub export_import: Option<u32>,
+    /// Language version
+    #[yaserde(rename = "languageVer")]
+    pub language_ver: Option<u32>,
+    /// Video standard
+    #[yaserde(rename = "videoStandard")]
+    pub video_standard: Option<u32>,
+    /// Support sync time
+    #[yaserde(rename = "syncTime")]
+    pub sync_time: Option<u32>,
+    /// Support net port
+    #[yaserde(rename = "netPort")]
+    pub net_port: Option<u32>,
+    /// NAS version
+    #[yaserde(rename = "nasVersion")]
+    pub nas_version: Option<u32>,
+    /// Reboot required
+    #[yaserde(rename = "needReboot")]
+    pub need_reboot: Option<u32>,
+    /// Support reboot
+    pub reboot: Option<u32>,
+    /// Support Audio config
+    #[yaserde(rename = "audioCfg")]
+    pub audio_cfg: Option<u32>,
+    /// Support network diagnosis
+    #[yaserde(rename = "networkDiagnosis")]
+    pub network_diagnosis: Option<u32>,
+    /// Support height adjustment
+    #[yaserde(rename = "heightDiffAdjust")]
+    pub height_diff_adjust: Option<u32>,
+    /// Support upgrade
+    pub upgrade: Option<u32>,
+    /// Support GPS
+    pub gps: Option<u32>,
+    /// Support power save config
+    #[yaserde(rename = "powerSavingCfg")]
+    pub power_saving_cfg: Option<u32>,
+    /// Login Locked
+    #[yaserde(rename = "loginLocked")]
+    pub login_locked: Option<u32>,
+    /// View plan
+    #[yaserde(rename = "viewPlan")]
+    pub view_plan: Option<u32>,
+    /// Preview replay limit
+    #[yaserde(rename = "previewReplayLimit")]
+    pub preview_replay_limit: Option<u32>,
+    /// IOT link
+    #[yaserde(rename = "IOTLink")]
+    pub iot_link: Option<u32>,
+    /// IOT link maximum actions
+    #[yaserde(rename = "IOTLinkActionMax")]
+    pub iot_link_action_max: Option<u32>,
+    /// Support record config
+    #[yaserde(rename = "recordCfg")]
+    pub record_cfg: Option<u32>,
+    /// Has large battery
+    #[yaserde(rename = "largeBattery")]
+    pub large_battery: Option<u32>,
+    /// Smart home config
+    #[yaserde(rename = "smartHome")]
+    pub smart_home: Option<SmartHome>,
+    /// Support config for specific channels
+    #[yaserde(rename = "item")]
+    pub items: Vec<SupportItem>,
+}
+
+/// List of smart home items
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct SmartHome {
+    /// Versionm
+    pub version: u32,
+    /// The smarthome items
+    #[yaserde(rename = "item")]
+    pub items: Vec<SmartHomeItem>,
+}
+
+/// Smart home items, are name:version pairs
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct SmartHomeItem {
+    /// Name of item: Option<"googleHome">, "amazonAlexa"
+    pub name: String,
+    /// Version of item: 1
+    pub ver: u32,
+}
+
+/// Support Items for an individual channel
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct SupportItem {
+    /// Channel ID of the item
+    #[yaserde(rename = "chnID")]
+    pub chn_id: u32,
+    /// PTZ type of the channel
+    #[yaserde(rename = "ptzType")]
+    pub ptz_type: Option<u32>,
+    /// RF config
+    #[yaserde(rename = "rfCfg")]
+    pub rf_cfg: Option<u32>,
+    /// Support audio
+    #[yaserde(rename = "noAudio")]
+    pub no_audio: Option<u32>,
+    /// Support auto focus
+    #[yaserde(rename = "autoFocus")]
+    pub auto_focus: Option<u32>,
+    /// Support video clip
+    #[yaserde(rename = "videoClip")]
+    pub video_clip: Option<u32>,
+    /// Has battery
+    pub battery: Option<u32>,
+    /// ISP config
+    #[yaserde(rename = "ispCfg")]
+    pub isp_cfg: Option<u32>,
+    /// OSD config
+    #[yaserde(rename = "osdCfg")]
+    pub osd_cfg: Option<u32>,
+    /// Support battery analysis
+    #[yaserde(rename = "batAnalysis")]
+    pub bat_analysis: Option<u32>,
+    /// Supports dynamic resolution
+    #[yaserde(rename = "dynamicReso")]
+    pub dynamic_reso: Option<u32>,
+    /// Audio version
+    #[yaserde(rename = "audioVersion")]
+    pub audio_version: Option<u32>,
+    /// Supports LED control
+    #[yaserde(rename = "ledCtrl")]
+    pub led_ctrl: Option<u32>,
+    /// Supports PTZ Control
+    #[yaserde(rename = "ptzControl")]
+    pub ptz_control: Option<u32>,
+    /// Supports new ISP config
+    #[yaserde(rename = "newIspCfg")]
+    pub new_isp_cfg: Option<u32>,
+    /// Supports PTZ presets
+    #[yaserde(rename = "ptzPreset")]
+    pub ptz_preset: Option<u32>,
+    /// Supports PTZ patrol
+    #[yaserde(rename = "ptzPatrol")]
+    pub ptz_patrol: Option<u32>,
+    /// Supports PTZ Tattern
+    #[yaserde(rename = "ptzTattern")]
+    pub ptz_tattern: Option<u32>,
+    /// Supports Auto PT
+    #[yaserde(rename = "autoPt")]
+    pub auto_pt: Option<u32>,
+    /// H264 Profile: 7
+    #[yaserde(rename = "h264Profile")]
+    pub h264_profile: Option<u32>,
+    /// Supports motion alarm
+    pub motion: Option<u32>,
+    /// AI Type
+    #[yaserde(rename = "aitype")]
+    pub ai_type: Option<u32>,
+    /// Animal AI Type
+    #[yaserde(rename = "aiAnimalType")]
+    pub ai_animal_type: Option<u32>,
+    /// Supports time lapse
+    pub timelapse: Option<u32>,
+    /// Supports snap
+    pub snap: Option<u32>,
+    /// Supports encoding control
+    #[yaserde(rename = "encCtrl")]
+    pub enc_ctrl: Option<u32>,
+    /// Has Zoom focus backlash
+    #[yaserde(rename = "zfBacklash")]
+    pub zf_backlash: Option<u32>,
+    /// Supports IOT Link Ability
+    #[yaserde(rename = "IOTLinkAbility")]
+    pub iot_link_ability: Option<u32>,
+    /// Supports IPC audio talk
+    #[yaserde(rename = "ipcAudioTalk")]
+    pub ipc_audio_talk: Option<u32>,
+    /// Supports Bino Config
+    #[yaserde(rename = "binoCfg")]
+    pub bino_cfg: Option<u32>,
+    /// Supports thumbnail
+    pub thumbnail: Option<u32>,
 }
 
 /// Convience function to return the xml version used throughout the library

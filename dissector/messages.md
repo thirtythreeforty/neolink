@@ -2270,6 +2270,143 @@ Message have zero to two payloads.
     </body>
     ```
 
+    This example payload is from a duel camera with zoom on the secondary camera
+
+    ```xml
+    <Support version=\"1.1\">
+	<IOInputPortNum>0</IOInputPortNum>
+	<IOOutputPortNum>0</IOOutputPortNum>
+	<diskNum>0</diskNum>
+	<channelNum>2</channelNum>
+	<audioNum>1</audioNum>
+	<ptzMode>pt</ptzMode>
+	<ptzCfg>0</ptzCfg>
+	<B485>0</B485>
+	<autoUpdate>1</autoUpdate>
+	<pushAlarm>3</pushAlarm>
+	<ftp>0</ftp>
+	<ftpTest>1</ftpTest>
+	<email>1</email>
+	<wifi>0</wifi>
+	<record>0</record>
+	<wifiTest>1</wifiTest>
+	<rtsp>0</rtsp>
+	<onvif>0</onvif>
+	<audioTalk>1</audioTalk>
+	<rfVersion>4</rfVersion>
+	<rtmp>0</rtmp>
+	<noExternStream>1</noExternStream>
+	<timeFormat>1</timeFormat>
+	<ddnsVersion>1</ddnsVersion>
+	<emailVersion>3</emailVersion>
+	<pushVersion>1</pushVersion>
+	<pushType>1</pushType>
+	<audioAlarm>1</audioAlarm>
+	<apMode>0</apMode>
+	<cloudVersion>127</cloudVersion>
+	<replayVersion>20</replayVersion>
+	<mobComVersion>3</mobComVersion>
+	<ExportImport>3</ExportImport>
+	<languageVer>0</languageVer>
+	<videoStandard>0</videoStandard>
+	<syncTime>0</syncTime>
+	<netPort>1</netPort>
+	<nasVersion>7</nasVersion>
+	<needReboot>0</needReboot>
+	<reboot>1</reboot>
+	<audioCfg>1</audioCfg>
+	<networkDiagnosis>0</networkDiagnosis>
+	<heightDiffAdjust>2</heightDiffAdjust>
+	<upgrade>1</upgrade>
+	<gps>0</gps>
+	<powerSavingCfg>0</powerSavingCfg>
+	<loginLocked>0</loginLocked>
+	<viewPlan>0</viewPlan>
+	<previewReplayLimit>0</previewReplayLimit>
+	<IOTLink>0</IOTLink>
+	<IOTLinkActionMax>48</IOTLinkActionMax>
+	<recordCfg>53</recordCfg>
+	<largeBattery>0</largeBattery>
+	<smartHome>
+		<version>1</version>
+		<item>
+			<name>googleHome</name>
+			<ver>1</ver>
+		</item>
+		<item>
+			<name>amazonAlexa</name>
+			<ver>1</ver>
+		</item>
+	</smartHome>
+	<item>
+		<chnID>0</chnID>
+		<ptzType>3</ptzType>
+		<rfCfg>0</rfCfg>
+		<noAudio>0</noAudio>
+		<autoFocus>0</autoFocus>
+		<videoClip>0</videoClip>
+		<battery>2</battery>
+		<ispCfg>195</ispCfg>
+		<osdCfg>1</osdCfg>
+		<batAnalysis>1</batAnalysis>
+		<dynamicReso>1</dynamicReso>
+		<audioVersion>63</audioVersion>
+		<ledCtrl>10</ledCtrl>
+		<ptzControl>207</ptzControl>
+		<newIspCfg>22467</newIspCfg>
+		<ptzPreset>1</ptzPreset>
+		<ptzPatrol>0</ptzPatrol>
+		<ptzTattern>0</ptzTattern>
+		<autoPt>0</autoPt>
+		<h264Profile>7</h264Profile>
+		<motion>0</motion>
+		<aitype>32503</aitype>
+		<aiAnimalType>1</aiAnimalType>
+		<timelapse>3</timelapse>
+		<snap>20</snap>
+		<encCtrl>0</encCtrl>
+		<zfBacklash>0</zfBacklash>
+		<IOTLinkAbility>747</IOTLinkAbility>
+		<ipcAudioTalk>1</ipcAudioTalk>
+		<binoCfg>0</binoCfg>
+		<thumbnail>2</thumbnail>
+	</item>
+	<item>
+		<chnID>1</chnID>
+		<ptzType>3</ptzType>
+		<rfCfg>0</rfCfg>
+		<noAudio>0</noAudio>
+		<autoFocus>0</autoFocus>
+		<videoClip>0</videoClip>
+		<battery>2</battery>
+		<ispCfg>195</ispCfg>
+		<osdCfg>1</osdCfg>
+		<batAnalysis>1</batAnalysis>
+		<dynamicReso>0</dynamicReso>
+		<audioVersion>63</audioVersion>
+		<ledCtrl>10</ledCtrl>
+		<ptzControl>223</ptzControl>
+		<newIspCfg>22467</newIspCfg>
+		<ptzPreset>1</ptzPreset>
+		<ptzPatrol>0</ptzPatrol>
+		<ptzTattern>0</ptzTattern>
+		<autoPt>0</autoPt>
+		<h264Profile>7</h264Profile>
+		<motion>0</motion>
+		<aitype>32503</aitype>
+		<aiAnimalType>1</aiAnimalType>
+		<timelapse>3</timelapse>
+		<snap>28</snap>
+		<encCtrl>0</encCtrl>
+		<zfBacklash>0</zfBacklash>
+		<IOTLinkAbility>747</IOTLinkAbility>
+		<ipcAudioTalk>1</ipcAudioTalk>
+		<binoCfg>0</binoCfg>
+		<thumbnail>2</thumbnail>
+	</item>
+    </Support>
+    ```
+
 - 201: `<TalkConfig>`
 
   - Client
@@ -2828,6 +2965,25 @@ Message have zero to two payloads.
     <status>1</status>
     </FloodlightStatus>
     </FloodlightStatusList>
+    </body>
+    ```
+
+- 295: `<StartZoomFocus>`
+
+  - Client
+
+    - Extension: Usual extension xml with channel
+
+    - Payload
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <body>
+    <StartZoomFocus version="1.1">
+    <channelId>1</channelId>
+    <command>zoomPos</command>
+    <movePos>2994</movePos>
+    </StartZoomFocus>
     </body>
     ```
 

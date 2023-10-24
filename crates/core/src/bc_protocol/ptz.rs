@@ -12,10 +12,6 @@ pub enum Direction {
     Left,
     /// To move the camera Right
     Right,
-    /// To zoom the camera In (may be done with cropping depending on camera model)
-    In,
-    /// To zoom the camera Out (may be done with cropping depending on camera model)
-    Out,
     /// To stop currently active PTZ command
     Stop,
 }
@@ -33,12 +29,6 @@ impl BcCamera {
             Direction::Down => "down",
             Direction::Left => "left",
             Direction::Right => "right",
-            Direction::In => {
-                todo!()
-            }
-            Direction::Out => {
-                todo!()
-            }
             Direction::Stop => "stop",
         }
         .to_string();
@@ -242,6 +232,57 @@ impl BcCamera {
             Err(Error::UnintelligibleReply {
                 reply: std::sync::Arc::new(Box::new(msg)),
                 why: "The camera did not accept the PtzPreset xml",
+            })
+        }
+    }
+
+    /// The camera will zoom to a given zoom amount.
+    /// Not sure what the units for this are. Or how to get the min/max values
+    pub async fn zoom_to(&self, zoom_pos: u32) -> Result<()> {
+        self.has_ability_rw("control").await?;
+        let connection = self.get_connection();
+        let msg_num = self.new_message_num();
+        let mut sub_set = connection.subscribe(MSG_ID_ZOOM_FOCUS, msg_num).await?;
+        let send = Bc {
+            meta: BcMeta {
+                msg_id: MSG_ID_ZOOM_FOCUS,
+                channel_id: self.channel_id,
+                msg_num,
+                response_code: 0,
+                stream_type: 0,
+                class: 0x6414,
+            },
+
+            body: BcBody::ModernMsg(ModernMsg {
+                extension: Some(Extension {
+                    channel_id: Some(self.channel_id),
+                    ..Default::default()
+                }),
+                payload: Some(BcPayloads::BcXml(BcXml {
+                    start_zoom_focus: Some(StartZoomFocus {
+                        version: xml_ver(),
+                        channel_id: self.channel_id,
+                        command: "zoomPos".to_string(),
+                        move_pos: zoom_pos,
+                    }),
+                    ..Default::default()
+                })),
+            }),
+        };
+
+        sub_set.send(send).await?;
+
+        let msg = sub_set.recv().await?;
+
+        if let BcMeta {
+            response_code: 200, ..
+        } = msg.meta
+        {
+            Ok(())
+        } else {
+            Err(Error::UnintelligibleReply {
+                reply: std::sync::Arc::new(Box::new(msg)),
+                why: "The camera did not accept the StartZoomFocus xml",
             })
         }
     }

@@ -90,8 +90,6 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
                 CmdDirection::Right => Direction::Right,
                 CmdDirection::Up => Direction::Up,
                 CmdDirection::Down => Direction::Down,
-                CmdDirection::In => Direction::In,
-                CmdDirection::Out => Direction::Out,
                 CmdDirection::Stop => Direction::Stop,
             };
             let speed = speed.unwrap_or(32) as f32;
@@ -119,6 +117,19 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
                     })
                 })
                 .await?;
+        }
+        PtzCommand::Zoom { amount } => {
+            camera
+                .run_task(|cam| {
+                    Box::pin(async move {
+                        cam.zoom_to((amount * 1000.0) as u32)
+                            .await
+                            .context("Unable to execute PTZ move command")?;
+                        Ok(())
+                    })
+                })
+                .await?;
+            sleep(Duration::from_secs(1)).await;
         }
     };
 

@@ -33,6 +33,7 @@ mod resolution;
 mod snap;
 mod stream;
 mod stream_info;
+mod support;
 mod talk;
 mod time;
 mod uid;
