@@ -77,8 +77,10 @@ pub const MSG_ID_FLOODLIGHT_MANUAL: u32 = 288;
 pub const MSG_ID_FLOODLIGHT_TASKS_WRITE: u32 = 290;
 /// Floodlight status report from the camera
 pub const MSG_ID_FLOODLIGHT_STATUS_LIST: u32 = 291;
-/// Used for camera Zoom
-pub const MSG_ID_ZOOM_FOCUS: u32 = 295;
+/// Used for camera Zoom read
+pub const MSG_ID_GET_ZOOM_FOCUS: u32 = 294;
+/// Used for camera Zoom write
+pub const MSG_ID_SET_ZOOM_FOCUS: u32 = 295;
 /// Get the floodlight task xml
 pub const MSG_ID_FLOODLIGHT_TASKS_READ: u32 = 438;
 

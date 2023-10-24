@@ -2968,7 +2968,36 @@ Message have zero to two payloads.
     </body>
     ```
 
-- 295: `<StartZoomFocus>`
+- 294: `<StartZoomFocus>` (Read)
+
+  - Client: Standard header and channel extension
+
+  - Camera:
+
+    Usual header and Extension XML with channel
+
+    - Payload:
+
+      ```xml
+      <?xml version="1.0" encoding="UTF-8" ?>
+      <body>
+      <PtzZoomFocus version="1.1">
+      <channelId>1</channelId>
+      <zoom>
+      <maxPos>6000</maxPos>
+      <minPos>1000</minPos>
+      <curPos>2501</curPos>
+      </zoom>
+      <focus>
+      <maxPos>100</maxPos>
+      <minPos>1</minPos>
+      <curPos>51</curPos>
+      </focus>
+      </PtzZoomFocus>
+      </body>
+      ```
+
+- 295: `<StartZoomFocus>` (Write)
 
   - Client
 

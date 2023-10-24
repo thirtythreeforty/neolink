@@ -984,11 +984,29 @@ pub struct StartZoomFocus {
     /// Channel ID
     #[yaserde(rename = "channelId")]
     pub channel_id: u8,
-    /// Command: Observed values: zoomPos
-    pub command: String,
-    /// Target Position: Observed Values: 2994, 2508, 2888, 3089, 3194, 3163
+    /// Command: Observed values: zoomPos. (Write Only)
+    pub command: Option<String>,
+    /// Target Position: Observed Values: 2994, 2508, 2888, 3089, 3194, 3163. (Write Only)
     #[yaserde(rename = "movePos")]
-    pub move_pos: u32,
+    pub move_pos: Option<u32>,
+    /// Max, min and current zoom. (Read Only)
+    pub zoom: Option<HelperPosition>,
+    /// Max, min and current focus. (Read Only)
+    pub focus: Option<HelperPosition>,
+}
+
+/// Helper for Max, Min, Curr pos of zoom/focus
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct HelperPosition {
+    /// Max value
+    #[yaserde(rename = "maxPos")]
+    pub maxPos: u32,
+    /// Min value
+    #[yaserde(rename = "minPos")]
+    pub minPos: u32,
+    /// Curr value
+    #[yaserde(rename = "curPos")]
+    pub curPos: u32,
 }
 
 /// Support xml
