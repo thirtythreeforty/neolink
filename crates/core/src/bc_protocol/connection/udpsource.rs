@@ -333,7 +333,7 @@ impl UdpPayloadInner {
         let send_cancel = cancel.clone();
         let mut socket_in_rx = ReceiverStream::new(socket_in_rx);
         let thread_camera_addr = camera_addr;
-        let mut socket_out_tx = PollSender::new(socket_out_tx);
+        let socket_out_tx = socket_out_tx.clone();
         let thread_client_id = client_id;
         let thread_camera_id = camera_id;
         const TIME_OUT: u64 = 10;
@@ -355,7 +355,7 @@ impl UdpPayloadInner {
                                 let packet = packet.ok_or(Error::DroppedConnection)??;
                                 recv_timeout.as_mut().reset(Instant::now() + Duration::from_secs(TIME_OUT));
                                 // let packet = socket_rx.next().await.ok_or(Error::DroppedConnection)??;
-                                tokio::time::timeout(tokio::time::Duration::from_millis(250), socket_out_tx.send(packet)).await.map_err(|_| Error::DroppedConnection)??;
+                                socket_out_tx.try_send(packet).map_err(|_| Error::DroppedConnection)?;
                                 continue;
                             },
                             packet = socket_in_rx.next() => {
@@ -389,7 +389,7 @@ impl UdpPayloadInner {
                                                 ..Default::default()
                                             },
                                         });
-                                        let _ = tokio::time::timeout(Duration::from_millis(250), inner.send((msg, thread_camera_addr))).await;
+                                        let _ = tokio::time::timeout(tokio::time::Duration::from_millis(250), inner.send((msg, thread_camera_addr))).await;
                                     }
                                 }
 

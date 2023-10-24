@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use gstreamer::{prelude::*, ClockTime};
+use gstreamer::{prelude::*, ClockTime, FlowError};
 use gstreamer_app::AppSrc;
 use gstreamer_rtsp_server::prelude::*;
 use std::collections::HashSet;
@@ -677,10 +677,14 @@ async fn send_to_appsrc<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
             gst_buf
         };
 
-        appsrc
-            .push_buffer(buf)
-            .map(|_| ())
-            .map_err(|e| anyhow!("Could not push buffer to appsrc: {e:?}"))?;
+        match appsrc.push_buffer(buf) {
+            Ok(_) => Ok(()),
+            Err(FlowError::Flushing) => {
+                // Buffer is full just skip
+                Ok(())
+            }
+            Err(e) => Err(anyhow!("Error in streaming: {e:?}")),
+        }?;
     }
     Ok(())
 }
