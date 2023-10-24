@@ -325,8 +325,8 @@ impl UdpPayloadInner {
         // In order to achieve this we use dedicated threads for ACK
         // and the socket
 
-        let (socket_in_tx, socket_in_rx) = channel::<BcUdp>(100);
-        let (socket_out_tx, socket_out_rx) = channel::<(BcUdp, SocketAddr)>(100);
+        let (socket_in_tx, socket_in_rx) = channel::<BcUdp>(500);
+        let (socket_out_tx, socket_out_rx) = channel::<(BcUdp, SocketAddr)>(500);
         // let (mut socket_tx, mut socket_rx) = inner.split();
 
         // Send/Recv on the socket
