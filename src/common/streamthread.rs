@@ -318,8 +318,10 @@ impl StreamInstance {
 impl StreamData {
     async fn new(name: StreamKind, instance: NeoInstance, strict: bool) -> Result<Self> {
         const BUFFER_DURATION: Duration = Duration::from_secs(15);
-        let (vid, _) = broadcast::<StampedData>(100);
-        let (aud, _) = broadcast::<StampedData>(100);
+        // At 30fps for 15s with audio is is about 900 frames
+        // Therefore we set this buffer to a rather large 2000
+        let (vid, _) = broadcast::<StampedData>(2000);
+        let (aud, _) = broadcast::<StampedData>(2000);
         let (vid_history, _) = watch::<VecDeque<StampedData>>(VecDeque::new());
         let vid_history = Arc::new(vid_history);
         let (aud_history, _) = watch::<VecDeque<StampedData>>(VecDeque::new());

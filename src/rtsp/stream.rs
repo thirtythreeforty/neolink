@@ -337,8 +337,10 @@ async fn stream_run(
 
         // This is the data that gets sent to gstreamer thread
         // It represents the combination of the camera stream and the appsrc seek messages
-        let (aud_data_tx, aud_data_rx) = broadcast(100);
-        let (vid_data_tx, vid_data_rx) = broadcast(100);
+        // At 30fps for 15s with audio you need about 900 frames
+        // Therefore the buffer is rather large at 2000
+        let (aud_data_tx, aud_data_rx) = broadcast(2000);
+        let (vid_data_tx, vid_data_rx) = broadcast(2000);
 
         // This thread takes the video data from the cam and passed it into the stream
         let mut vidstream = BroadcastStream::new(vidstream.resubscribe());
