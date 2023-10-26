@@ -20,6 +20,7 @@ local bc_protocol = Proto("Baichuan",  "Baichuan/Reolink IP Camera Protocol")
 
 local magic_bytes = ProtoField.int32("baichuan.magic", "magic", base.DEC)
 local message_id =  ProtoField.int32("baichuan.msg_id", "messageId", base.DEC)
+local message_understood  = ProtoField.int32("baichuan.msg_understood", "messageUnderstood", base.DEC)
 local message_len = ProtoField.int32("baichuan.msg_len", "messageLen", base.DEC)
 local xml_enc_offset = ProtoField.int8("baichuan.xml_encryption_offset", "xmlEncryptionOffset", base.DEC)
 local encrypt_xml = ProtoField.bool("baichuan.encrypt_xml", "encrypt_xml", base.NONE)
@@ -50,6 +51,7 @@ bc_protocol.fields = {
   magic_bytes,
   message_id,
   message_len,
+  message_understood,
   xml_enc_offset,
   channel_id,
   stream_id,
@@ -283,6 +285,7 @@ local function get_header(buffer)
     magic = buffer(0, 4):le_uint(),
     msg_type = buffer(4, 4):le_uint(),
     msg_type_str = message_types[msg_type] or "unknown",
+    message_understood = message_types[msg_type] ~= nil and 1 or 0,
     msg_len = buffer(8, 4):le_uint(),
     encrypt_xml = encr_xml,
     channel_id = buffer(12, 1):le_uint(),
@@ -326,6 +329,8 @@ local function process_header(buffer, headers_tree)
   else
     header:add_le(encrypt_xml, buffer(16, 1))
   end
+
+  header:add(message_understood, header_data.message_understood):set_generated()
   return header_data.header_len
 end
 
