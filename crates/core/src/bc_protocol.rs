@@ -30,6 +30,7 @@ mod ptz;
 mod pushinfo;
 mod reboot;
 mod resolution;
+mod siren;
 mod snap;
 mod stream;
 mod stream_info;

@@ -71,6 +71,8 @@ pub const MSG_ID_UDP_KEEP_ALIVE: u32 = 234;
 pub const MSG_ID_BATTERY_INFO_LIST: u32 = 252;
 /// Battery message initiaed by the client
 pub const MSG_ID_BATTERY_INFO: u32 = 253;
+/// Used for to play sounds like the siren
+pub const MSG_ID_PLAY_AUDIO: u32 = 263;
 /// Manual Floodlight Control
 pub const MSG_ID_FLOODLIGHT_MANUAL: u32 = 288;
 /// Set Floodlight tasks xml

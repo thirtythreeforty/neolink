@@ -1116,6 +1116,29 @@ async fn handle_mqtt_message(
                 .with_context(|| "Failed to publish floodlight_tasks")?;
         }
         MqttReplyRef {
+            topic: "control/siren",
+            message: "on",
+        } => {
+            let res = camera
+                .run_task(|cam| {
+                    Box::pin(async move {
+                        cam.siren().await?;
+                        AnyResult::Ok(())
+                    })
+                })
+                .await;
+            let reply = if let Err(e) = res {
+                error!("Failed to trigger siren: {:?}", e);
+                format!("FAIL: {e:?}")
+            } else {
+                "OK".to_string()
+            };
+
+            mqtt.send_message("control/siren", &reply, false)
+                .await
+                .with_context(|| "Failed to publish siren")?;
+        }
+        MqttReplyRef {
             topic: "query/battery",
             ..
         } => {

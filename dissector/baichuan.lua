@@ -184,6 +184,7 @@ local message_types = {
   [234]="UDP Keep Alive",
   [252]="<BatteryInfoList>",
   [253]="<BatteryInfo>",
+  [263]="<audioPlayInfo>",
   [268]="<CloudBindInfo>",
   [281]="<BindNasInfoList>",
   [282]="<CloudLoginKey>",

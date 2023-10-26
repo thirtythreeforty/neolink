@@ -2790,6 +2790,31 @@ Message have zero to two payloads.
         </body>
         ```
 
+- 264: `<audioPlayInfo>`
+
+  - Client: Usual header and extension xml with channel
+
+    - Payload
+
+      ```xml
+      <?xml version="1.0" encoding="UTF-8" ?>
+      <body>
+      <audioPlayInfo version="1.1">
+      <channelId>0</channelId>
+      <playMode>0</playMode>
+      <playDuration>0</playDuration>
+      <playTimes>1</playTimes>
+      <onOff>0</onOff>
+      </audioPlayInfo>
+      </body>
+      ```
+
+    **Notes:** This is used to play the siren
+
+  - Camera:
+
+        Replies with standard OK message
+
 - 264: `<audioCfg>` (write)
 
   - Client

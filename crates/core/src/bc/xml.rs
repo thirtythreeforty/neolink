@@ -121,6 +121,9 @@ pub struct BcXml {
     /// Get the support xml
     #[yaserde(rename = "Support")]
     pub support: Option<Support>,
+    /// Play a sound
+    #[yaserde(rename = "audioPlayInfo")]
+    pub audio_play_info: Option<AudioPlayInfo>,
 }
 
 impl BcXml {
@@ -1296,6 +1299,26 @@ pub struct SupportItem {
     pub bino_cfg: Option<u32>,
     /// Supports thumbnail
     pub thumbnail: Option<u32>,
+}
+
+/// Instruct camera to play an audio alarm, usually this is the siren
+#[derive(PartialEq, Eq, Default, Debug, YaDeserialize, YaSerialize)]
+pub struct AudioPlayInfo {
+    /// Channel ID
+    #[yaserde(rename = "channelId")]
+    pub channel_id: u8,
+    /// Playmode: 0
+    #[yaserde(rename = "playMode")]
+    pub play_mode: u32,
+    /// Duration: 0
+    #[yaserde(rename = "playDuration")]
+    pub play_duration: u32,
+    /// Times to play: 1
+    #[yaserde(rename = "playTimes")]
+    pub play_times: u32,
+    /// On or Off: 0
+    #[yaserde(rename = "onOff")]
+    pub on_off: u32,
 }
 
 /// Convience function to return the xml version used throughout the library
