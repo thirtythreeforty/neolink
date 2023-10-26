@@ -146,9 +146,12 @@ impl NeoInstance {
                         // If error we check for retryable errors
                         Err(e) => {
                             match e.downcast::<neolink_core::Error>() {
-                                // Retry is a None
                                 Ok(neolink_core::Error::DroppedConnection) | Ok(neolink_core::Error::TimeoutDisconnected) => {
                                     log::debug!("  - Neolink error continue");
+                                    continue;
+                                },
+                                Ok(neolink_core::Error::TokioBcSendError) => {
+                                    log::debug!("  - Neolink Send Error continue");
                                     continue;
                                 },
                                 Ok(neolink_core::Error::Io(e)) => {
