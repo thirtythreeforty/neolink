@@ -309,6 +309,9 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                 let camera_battery = camera.clone();
                 let mqtt_battery = mqtt_instance.resubscribe().await?;
 
+                let camera_floodlight_tasks = camera.clone();
+                let mqtt_floodlight_tasks = mqtt_instance.resubscribe().await?;
+
                 tokio::select! {
                     _ = cancel.cancelled() => AnyResult::Ok(()),
                     // Handles incomming requests
@@ -560,6 +563,45 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                             }?;
                         }
                     } => v,
+                    // Handle the floodlight task activation
+                    v = async {
+                        let flt_status = camera_floodlight_tasks.run_task(|cam| Box::pin(async move {
+                            Ok(cam.is_flightlight_tasks_enabled().await?)
+                        })).await;
+                        if flt_status.is_err() {
+                            // Assume floodlight unsupported
+                            futures::future::pending::<()>().await;
+                        }
+                        let flt_status = flt_status.unwrap();
+                        let flt_status_txt = match flt_status {
+                            true => "on".to_string(),
+                            false => "off".to_string(),
+                        };
+                        mqtt_floodlight_tasks.send_message("status/floodlight_tasks", &flt_status_txt, true).await.with_context(|| {
+                            format!("{}: Failed to publish floodlight task notification", camera_name)
+                        })?;
+
+                        let mut wait = IntervalStream::new({
+                            let mut i = interval(Duration::from_millis(config.floodlight_update));
+                            i.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                            i
+                        });
+                        while wait.next().await.is_some() {
+                            let flt_status = camera_floodlight_tasks.run_passive_task(|cam| Box::pin(async move {
+                                Ok(cam.is_flightlight_tasks_enabled().await?)
+                            })).await;
+                            if let Ok(flt_status) = flt_status {
+                                let flt_status_txt = match flt_status {
+                                    true => "on".to_string(),
+                                    false => "off".to_string(),
+                                };
+                                mqtt_floodlight_tasks.send_message("status/floodlight_tasks", &flt_status_txt, true).await.with_context(|| {
+                                    format!("{}: Failed to publish floodlight task notification", camera_name)
+                                })?;
+                            }
+                        }
+                        AnyResult::Ok(())
+                    }, if config.enable_floodlight => v,
                 }?;
                 AnyResult::Ok(())
             } => v,
@@ -1041,7 +1083,16 @@ async fn handle_mqtt_message(
             topic: "control/floodlight_tasks",
             message,
         } => {
-            let reply = match message.parse::<bool>() {
+            let state = match message.to_lowercase().as_ref() {
+                "on" => Ok(true),
+                "off" => Ok(false),
+                n => match n.parse::<bool>() {
+                    Ok(state) => Ok(state),
+                    Err(e) => AnyResult::Err(e.into()),
+                },
+            };
+
+            let reply = match state {
                 Ok(state) => {
                     if let Err(e) = camera
                         .run_task(|cam| {
@@ -1057,10 +1108,7 @@ async fn handle_mqtt_message(
                         "OK".to_string()
                     }
                 }
-                Err(e) => {
-                    error!("Failed to parse message as bool: {:?}", e);
-                    format!("FAIL: '{message}' => {e:?}")
-                }
+                Err(e) => format!("FAIL: Could not parse message to {e:?}"),
             };
 
             mqtt.send_message("control/floodlight_tasks", &reply, false)

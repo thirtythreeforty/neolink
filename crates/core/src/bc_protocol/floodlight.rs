@@ -187,15 +187,23 @@ impl BcCamera {
         Ok(())
     }
 
-    /// Activate the Flood Light night mode
+    /// Convience function: Activate the Flood Light night mode
     pub async fn flightlight_tasks_enable(&self, state: bool) -> Result<()> {
-        let mut curr_state = self.get_flightlight_tasks().await?;
         // println!("{:?}", pir_state);
-        curr_state.enable = match state {
-            true => 1,
-            false => 0,
-        };
-        self.set_flightlight_tasks(curr_state).await?;
+        if self.is_flightlight_tasks_enabled().await? != state {
+            let mut curr_state = self.get_flightlight_tasks().await?;
+            curr_state.enable = match state {
+                true => 1,
+                false => 0,
+            };
+            self.set_flightlight_tasks(curr_state).await?;
+        }
         Ok(())
+    }
+
+    /// Convience function: Check if Flood Light tasks are enbabled
+    pub async fn is_flightlight_tasks_enabled(&self) -> Result<bool> {
+        let curr_state = self.get_flightlight_tasks().await?;
+        Ok(curr_state.enable == 1)
     }
 }

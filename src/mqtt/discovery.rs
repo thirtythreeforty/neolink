@@ -286,6 +286,51 @@ pub(crate) async fn enable_discovery(
                         cam_config.name
                     )
                 })?;
+
+                let config_data = DiscoverySwitch {
+                    // Common across all potential features
+                    device: device.clone(),
+                    availability: availability.clone(),
+
+                    // Identifiers
+                    name: format!("{} FloodlightTasks", friendly_name.as_str()),
+                    unique_id: format!("neolink_{}_floodlight_tasks", cam_config.name),
+                    // Match native home assistant integration: https://github.com/home-assistant/core/blob/dev/homeassistant/components/reolink/light.py#L49
+                    icon: Some("mdi:spotlight-beam".to_string()),
+
+                    // State
+                    state_topic: Some(format!(
+                        "neolink/{}/status/floodlight_tasks",
+                        cam_config.name
+                    )),
+                    state_on: Some("on".to_string()),
+                    state_off: Some("off".to_string()),
+
+                    // Control
+                    command_topic: format!("neolink/{}/control/floodlight_tasks", cam_config.name),
+                    // Lowercase payloads to match neolink convention
+                    payload_on: "on".to_string(),
+                    payload_off: "off".to_string(),
+                };
+
+                // Each feature needs to be individually registered
+                mqtt.send_message_with_root_topic(
+                    &format!(
+                        "{}/switch/{}",
+                        discovery_config.topic, &config_data.unique_id
+                    ),
+                    "config",
+                    &serde_json::to_string(&config_data)
+                        .with_context(|| "Cound not serialise discovery switch config into json")?,
+                    true,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to publish floodlight tasks auto-discover data on over MQTT for {}",
+                        cam_config.name
+                    )
+                })?;
             }
             Discoveries::Camera => {
                 let config_data = DiscoveryCamera {

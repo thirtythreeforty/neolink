@@ -247,6 +247,20 @@ pub(crate) struct MqttConfig {
     #[serde(default = "default_2000")]
     pub(crate) preview_update: u64,
 
+    /// Enable the flood light tasks status
+    /// Will not do anything if no floodlight
+    /// is detected
+    #[serde(default = "default_true")]
+    pub(crate) enable_floodlight: bool,
+    /// Update time in ms
+    #[validate(range(
+        min = 500,
+        message = "Update ms should be > 500",
+        code = "floodlight_update"
+    ))]
+    #[serde(default = "default_2000")]
+    pub(crate) floodlight_update: u64,
+
     #[serde(default)]
     pub(crate) discovery: Option<MqttDiscoveryConfig>,
 }
@@ -284,6 +298,8 @@ fn default_mqtt() -> MqttConfig {
         battery_update: 2000,
         enable_preview: true,
         preview_update: 2000,
+        enable_floodlight: true,
+        floodlight_update: 2000,
         discovery: Default::default(),
     }
 }
