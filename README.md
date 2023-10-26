@@ -223,8 +223,13 @@ Control messages:
   for normal and 3.5 for 3.5x zoom factor. This only works on cameras that support
   zoom
 - `/control/pir [on|off]`
-- `control/wakeup (mins)` For cameras that are using `idle_disconnect` this will
+- `/control/floodlight [on|off]` Turns floodlight (if equipped) on/off
+- `/control/floodlight_tasks [on|off]` Turns floodlight (if equipped) tasks on/off
+  This is the automatic tasks such as on motion and night triggers
+- `/control/wakeup (mins)` For cameras that are using `idle_disconnect` this will
   force a wakeup for at least the given minutes
+- `/control/siren on` Signal the siren, the message is always "on" as there is no
+  "off" signal for the siren
 
 Status Messages:
 
@@ -243,6 +248,8 @@ Status Messages:
   every camera supports the snapshot command needed for this. In such cases
   there will be no `/status/preview` message. Only published when
   `enable_preview` is true in the config
+- `/status/floodlight_tasks` The current status of the floodlight tasks
+   used updated every 2s by default
 
 Query Messages:
 
@@ -313,21 +320,25 @@ username = "admin"
 password = "password"
 uid = "ABCDEF0123456789"
 [cameras.mqtt]
-enable_motion = false  # motion detection
-                       # (limited battery drain since it
-                       # is a passive listening connection)
-                       #
-enable_light = false   # flood lights only avaliable on some camera
-                       # (limited battery drain since it
-                       # is a passive listening connection)
-                       #
-enable_battery = false # battery updates in `/status/battery_level`
-                       #
-enable_preview = false # preview image in `/status/preview`
-                       #
-battery_update = 2000  # Number of ms between `/status/battery_level` updates
-                       #
-preview_update = 2000  # Number of ms between `/status/preview` updates
+enable_motion = false        # motion detection
+                             # (limited battery drain since it
+                             # is a passive listening connection)
+                             #
+enable_light = false         # flood lights only avaliable on some camera
+                             # (limited battery drain since it
+                             # is a passive listening connection)
+                             #
+enable_battery = false       # battery updates in `/status/battery_level`
+                             #
+enable_preview = false       # preview image in `/status/preview`
+                             #
+enable_floodlight = false    # preview image in `/status/floodlight_tasks`
+                             #
+battery_update = 2000        # Number of ms between `/status/battery_level` updates
+                             #
+preview_update = 2000        # Number of ms between `/status/preview` updates
+                             #
+floodlight_update = 2000     # Number of ms between `/status/floodlight_tasks` updates
 ```
 
 #### MQTT Discovery

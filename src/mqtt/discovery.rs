@@ -28,6 +28,8 @@ pub(crate) enum Discoveries {
     Pt,
     #[serde(alias = "battery", alias = "power")]
     Battery,
+    #[serde(alias = "siren", alias = "alarm")]
+    Siren,
 }
 
 #[derive(Debug, Clone)]
@@ -583,6 +585,41 @@ pub(crate) async fn enable_discovery(
                 .with_context(|| {
                     format!(
                         "Failed to publish battery auto-discover data on over MQTT for {}",
+                        cam_config.name
+                    )
+                })?;
+            }
+            Discoveries::Siren => {
+                let config_data = DiscoveryButton {
+                    // Common across all potential features
+                    device: device.clone(),
+                    availability: availability.clone(),
+
+                    // Identifiers
+                    name: format!("{} Siren", friendly_name.as_str()),
+                    unique_id: format!("neolink_{}_siren", cam_config.name),
+                    icon: Some("mdi:restart".to_string()),
+
+                    // Switch specific
+                    command_topic: format!("neolink/{}/control/siren", cam_config.name),
+                    payload_press: Some("on".to_string()),
+                };
+
+                // Each feature needs to be individually registered
+                mqtt.send_message_with_root_topic(
+                    &format!(
+                        "{}/button/{}",
+                        discovery_config.topic, &config_data.unique_id
+                    ),
+                    "config",
+                    &serde_json::to_string(&config_data)
+                        .with_context(|| "Cound not serialise discovery siren config into json")?,
+                    true,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to publish sire auto-discover data on over MQTT for {}",
                         cam_config.name
                     )
                 })?;
