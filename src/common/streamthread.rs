@@ -430,7 +430,7 @@ impl StreamData {
                                             break AnyResult::Ok(());
                                         }
                                         Ok(_) => {
-                                            log::debug!("{print_name}: Good Doggo");
+                                            // log::debug!("{print_name}: Good Doggo");
                                             check_timeout = timeout(Duration::from_secs(4), watchdog_rx.recv()).await;
                                         }
                                     }
