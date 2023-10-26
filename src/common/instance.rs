@@ -199,7 +199,7 @@ impl NeoInstance {
                                                 let is_dropped = e.get_ref().is_some_and(|e| {
                                                     log::debug!("Std IO Error: Inner: {:?}", e);
                                                     matches!(e.downcast_ref::<neolink_core::Error>(),
-                                                            Some(neolink_core::Error::DroppedConnection) | Some(neolink_core::Error::TimeoutDisconnected)
+                                                            Some(neolink_core::Error::DroppedConnection) | Some(neolink_core::Error::TimeoutDisconnected) | Some(neolink_core::Error::TokioBcSendError)
                                                     )
                                                 });
                                                 if is_dropped {
