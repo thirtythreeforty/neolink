@@ -440,7 +440,7 @@ async fn stream_run(
                         AnyResult::Ok(())
                     },
                     v = send_to_appsrc(
-                        // repeat_keyframe(
+                        repeat_keyframe(
                             frametime_stream(
                                 hold_stream(
                                     wait_for_keyframe(
@@ -448,9 +448,9 @@ async fn stream_run(
                                     )
                                 )
                             ),
-                        //     fallback_time,
-                        //     fallback_framerate,
-                        // ),
+                            fallback_time,
+                            fallback_framerate,
+                        ),
                         &thread_vid) => {
                         v
                     },
