@@ -612,6 +612,7 @@ fn repeat_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
     frame_rate: Duration,
 ) -> impl Stream<Item = Result<StampedData, E>> + Unpin {
     Box::pin(async_stream::stream! {
+        let mut was_repeating = false;
         while let Some(frame) = stream.next().await {
             if let Ok(frame) = frame {
                 if frame.keyframe {
@@ -626,7 +627,10 @@ fn repeat_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
                             v = stream.next() => {
                                 if let Some(frame) = v {
                                     if let Ok(frame) = frame {
-                                        log::debug!("Key Frame: Resume");
+                                        if was_repeating {
+                                            log::debug!("Key Frame: Resume");
+                                            was_repeating = false;
+                                        }
                                         yield Ok(frame);
                                         break;
                                     }
@@ -635,9 +639,10 @@ fn repeat_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
                                 }
                             },
                             _ = sleep(fallback_time) => {
-                                if fallback_time != frame_rate {
+                                if !was_repeating {
                                     // This way we only print once
                                     log::debug!("Inserting Skip Frames");
+                                    was_repeating = true;
                                 }
                                 fallback_time = frame_rate;
 
