@@ -228,7 +228,7 @@ local function hexencode(str)
 end
 local gcrypt = require("luagcrypt")
 local function aes_decrypt(data)
-		local raw_key = _G.nonce .. "-" ..  bc_protocol.prefs.key
+		local raw_key = (_G.nonce or "") .. "-" ..  bc_protocol.prefs.key
     local iv = "0123456789abcdef"
     local hasher = gcrypt.Hash(gcrypt.MD_MD5)
     hasher:write(raw_key)

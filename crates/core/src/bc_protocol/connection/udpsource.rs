@@ -19,7 +19,10 @@ use std::task::{Context, Poll};
 
 use tokio::{
     net::UdpSocket,
-    sync::mpsc::channel,
+    sync::{
+        mpsc::channel,
+        watch::{channel as watch, Sender as WatchSender},
+    },
     task::JoinSet,
     time::{interval, sleep, Duration, Instant, Interval},
 };
@@ -287,7 +290,7 @@ impl Drop for UdpPayloadSource {
 
 struct UdpPayloadInner {
     camera_addr: SocketAddr,
-    ack_tx: PollSender<UdpAck>,
+    ack_tx: WatchSender<UdpAck>,
     socket_in: PollSender<BcUdp>,
     socket_out: ReceiverStream<(BcUdp, SocketAddr)>,
     thread_stream: PollSender<IoResult<Vec<u8>>>,
@@ -410,8 +413,7 @@ impl UdpPayloadInner {
         let ack_cancel = cancel.clone();
         let mut ack_interval = interval(Duration::from_millis(10)); // Offical Client does ack every 10ms
         ack_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let (ack_tx, mut ack_rx) = channel(100);
-        let thread_camera_id = camera_id;
+        let (ack_tx, ack_rx) = watch(UdpAck::empty(camera_id));
         let ack_socket_in_tx = socket_in_tx.clone();
         set.spawn(async move {
             tokio::select! {
@@ -419,26 +421,12 @@ impl UdpPayloadInner {
                     Result::Ok(())
                 },
                 v = async {
-                    let mut ack_packet = UdpAck::empty(thread_camera_id);
                     loop {
-                        tokio::select! {
-                            v = ack_rx.recv() => {
-                                // Update the ACK packet
-                                if let Some(v) = v {
-                                    ack_packet = v;
-                                    Ok(())
-                                } else {
-                                    log::trace!("ack_rx.recv() Error::DroppedConnection");
-                                    Err(Error::DroppedConnection)
-                                }
-                            },
-                            _ = ack_interval.tick() => {
-                                // Send an ack packet
-                                log::trace!("send ack");
-                                ack_socket_in_tx.send(BcUdp::Ack(ack_packet.clone())).await?;
-                                Ok(())
-                            }
-                        }?;
+                        ack_interval.tick().await;
+                        // Send an ack packet
+                        log::trace!("send ack");
+                        let ack_packet = BcUdp::Ack(ack_rx.borrow().clone());
+                        ack_socket_in_tx.send(ack_packet).await?;
                     }
                 } => v,
             }
@@ -479,7 +467,7 @@ impl UdpPayloadInner {
 
         Self {
             camera_addr,
-            ack_tx: PollSender::new(ack_tx),
+            ack_tx,
             socket_in: PollSender::new(socket_in_tx),
             socket_out: ReceiverStream::new(socket_out_rx),
             thread_stream,
@@ -504,7 +492,7 @@ impl UdpPayloadInner {
                 for (_, resend) in self.sent.iter() {
                     self.socket_in.feed(BcUdp::Data(resend.clone())).await?;
                 }
-                self.ack_tx.feed(self.build_send_ack()).await?; // Ensure we update the ack packet sometimes too
+                self.ack_tx.send_replace(self.build_send_ack()); // Ensure we update the ack packet sometimes too
                 Result::Ok(())
             },
             v = self.thread_sink.next() => {
@@ -550,7 +538,7 @@ impl UdpPayloadInner {
                                 if packet_id >= self.packets_want {
                                     // error!("packets_want: {}", this.packets_want);
                                     self.recieved.insert(packet_id, data.payload);
-                                    self.ack_tx.feed(self.build_send_ack()).await?;
+                                    self.ack_tx.send_replace(self.build_send_ack());
                                 }
                             }
                         },
@@ -569,7 +557,6 @@ impl UdpPayloadInner {
         log::trace!("Flush");
         self.socket_in.flush().await?;
         self.thread_stream.flush().await?;
-        self.ack_tx.flush().await?;
         log::trace!("Flushed");
         Ok(())
     }

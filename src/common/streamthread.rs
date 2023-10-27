@@ -14,7 +14,7 @@ use tokio::{
             channel as broadcast, Receiver as BroadcastReceiver, Sender as BroadcastSender,
         },
         mpsc::{channel as mpsc, Receiver as MpscReceiver},
-        oneshot::Sender as OneshotSender,
+        oneshot::{channel as oneshot, Sender as OneshotSender},
         watch::{channel as watch, Receiver as WatchReceiver, Sender as WatchSender},
     },
     task::JoinHandle,
@@ -402,6 +402,36 @@ impl StreamData {
                 v = async {
                     loop {
                         let (watchdog_tx, mut watchdog_rx) = mpsc(1);
+                        let (watchdog_eat_tx, watchdog_eat_rx) = oneshot();
+                        // Give the watchdog his own thread to play in
+                        //
+                        // This should stop one branch of the select from waking the other
+                        // too often
+                        let watchdog_print_name = print_name.clone();
+                        tokio::task::spawn(async move {
+                            let mut check_timeout = timeout(Duration::from_secs(15), watchdog_rx.recv()).await; // Wait longer for the first feed
+                            loop {
+                                match check_timeout {
+                                    Err(_) => {
+                                        // Timeout
+                                        // Break with Ok to trigger the restart
+                                        log::debug!("{watchdog_print_name}: Watchdog kicking the stream");
+                                        break;
+                                    },
+                                    Ok(None) => {
+                                        log::debug!("{watchdog_print_name}: Watchdog dropped the stream");
+                                        break;
+                                    }
+                                    Ok(_) => {
+                                        // log::debug!("{print_name}: Good Doggo");
+                                        check_timeout = timeout(Duration::from_secs(10), watchdog_rx.recv()).await;
+                                    }
+                                }
+                            }
+                            // Watch dog is hungry send the kill to the stream thread
+                            let _ = watchdog_eat_tx.send(());
+                        }) ;
+
                         tokio::select! {
                             v = thread_inuse.dropped_users() => {
                                 // Handles the stop and restart when no active users
@@ -413,29 +443,10 @@ impl StreamData {
                                 log::debug!("{print_name}: Streaming START");
                                 AnyResult::Ok(())
                             },
-                            v = async {
-                                let mut check_timeout = timeout(Duration::from_secs(15), watchdog_rx.recv()).await; // Wait longer for the first feed
-                                loop {
-                                    match check_timeout {
-                                        Err(_) => {
-                                            // Timeout
-                                            // Break with Ok to trigger the restart
-                                            log::debug!("{print_name}: Watchdog kicking the stream");
-                                            sleep(Duration::from_secs(1)).await;
-                                            break AnyResult::Ok(());
-                                        },
-                                        Ok(None) => {
-                                            log::debug!("{print_name}: Watchdog dropped the stream");
-                                            sleep(Duration::from_secs(1)).await;
-                                            break AnyResult::Ok(());
-                                        }
-                                        Ok(_) => {
-                                            // log::debug!("{print_name}: Good Doggo");
-                                            check_timeout = timeout(Duration::from_secs(4), watchdog_rx.recv()).await;
-                                        }
-                                    }
-                                }
-                            } => v,
+                            _ = watchdog_eat_rx => {
+                                sleep(Duration::from_secs(1)).await;
+                                AnyResult::Ok(())
+                            },
                             result = instance.run_passive_task(|camera| {
                                     let vid_tx = vid.clone();
                                     let aud_tx = aud.clone();
@@ -444,6 +455,7 @@ impl StreamData {
                                     let aud_history = aud_history.clone();
                                     let watchdog_tx = watchdog_tx.clone();
                                     let fps_table = fps_table.clone();
+                                    let print_name = print_name.clone();
 
                                     log::debug!("{print_name}: Running Stream Instance Task");
                                     Box::pin(async move {
@@ -456,9 +468,11 @@ impl StreamData {
                                             let mut prev_ts = Duration::ZERO;
                                             let mut stream_data = camera.start_video(name, 0, strict).await?;
                                             loop {
-                                                watchdog_tx.send(()).await?;  // Feed the watchdog
+                                                log::debug!("{print_name}:   Waiting for frame");
                                                 let data = stream_data.get_data().await??;
+                                                log::debug!("{print_name}:   Waiting for Watchdog");
                                                 watchdog_tx.send(()).await?;  // Feed the watchdog
+                                                log::debug!("{print_name}:   Got frame");
 
                                                 // Update the stream config with any information
                                                 match &data {
