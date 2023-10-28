@@ -429,9 +429,9 @@ async fn stream_run(
         let thread_vid = vid.clone();
         let mut thread_client_count = client_count.subscribe();
         log::debug!("stream_config.fps: {}", stream_config.fps);
-        let fallback_time = Duration::from_secs(3);
-        let fallback_framerate =
-            Duration::from_millis(1000u64 / std::cmp::max(stream_config.fps as u64, 5u64));
+        // let fallback_time = Duration::from_secs(3);
+        // let fallback_framerate =
+        //     Duration::from_millis(1000u64 / std::cmp::max(stream_config.fps as u64, 5u64));
         if let Some(thread_vid) = thread_vid {
             set.spawn(async move {
                 thread_client_count.activate().await?;
@@ -440,7 +440,7 @@ async fn stream_run(
                         AnyResult::Ok(())
                     },
                     v = send_to_appsrc(
-                        repeat_keyframe(
+                        // repeat_keyframe(
                             frametime_stream(
                                 hold_stream(
                                     wait_for_keyframe(
@@ -448,9 +448,9 @@ async fn stream_run(
                                     )
                                 )
                             ),
-                            fallback_time,
-                            fallback_framerate,
-                        ),
+                        //     fallback_time,
+                        //     fallback_framerate,
+                        // ),
                         &thread_vid) => {
                         v
                     },
