@@ -598,7 +598,7 @@ pub(crate) async fn enable_discovery(
                     // Identifiers
                     name: format!("{} Siren", friendly_name.as_str()),
                     unique_id: format!("neolink_{}_siren", cam_config.name),
-                    icon: Some("mdi:restart".to_string()),
+                    icon: Some("mdi:bell".to_string()),
 
                     // Switch specific
                     command_topic: format!("neolink/{}/control/siren", cam_config.name),
