@@ -1663,7 +1663,7 @@ dependencies = [
 
 [[package]]
 name = "neolink"
-version = "0.6.2"
+version = "0.6.3-rc.1"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -1701,7 +1701,7 @@ dependencies = [
 
 [[package]]
 name = "neolink_core"
-version = "0.6.2"
+version = "0.6.3-rc.1"
 dependencies = [
  "aes",
  "assert_matches",
