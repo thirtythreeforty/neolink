@@ -371,6 +371,7 @@ Avaliable features are:
 - `pt`: This adds a selection of buttons to control the pan and tilt of the
   camera
 - `battery`: This adds a battery level sensor to home assistant
+- `siren`: Adds a siren button to home assistant
 
 ### Pause
 
