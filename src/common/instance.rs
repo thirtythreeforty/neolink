@@ -261,10 +261,16 @@ impl NeoInstance {
         Ok(instance_rx.await?)
     }
 
-    pub(crate) async fn push_notifications(&self) -> Result<WatchReceiver<Option<PushNoti>>> {
-        let uid = self
-            .run_task(|cam| Box::pin(async move { Ok(cam.uid().await?) }))
+    pub(crate) async fn uid(&self) -> Result<String> {
+        let (reply_tx, reply_rx) = oneshot();
+        self.camera_control
+            .send(NeoCamCommand::GetUid(reply_tx))
             .await?;
+        Ok(reply_rx.await?)
+    }
+
+    pub(crate) async fn push_notifications(&self) -> Result<WatchReceiver<Option<PushNoti>>> {
+        let uid = self.uid().await?;
         let (instance_tx, instance_rx) = oneshot();
         self.camera_control
             .send(NeoCamCommand::PushNoti(instance_tx))

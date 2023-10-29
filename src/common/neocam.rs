@@ -41,6 +41,7 @@ pub(crate) enum NeoCamCommand {
     State(OneshotSender<NeoCamThreadState>),
     GetPermit(OneshotSender<Permit>),
     PushNoti(OneshotSender<WatchReceiver<Option<PushNoti>>>),
+    GetUid(OneshotSender<String>),
 }
 /// The underlying camera binding
 pub(crate) struct NeoCam {
@@ -62,6 +63,7 @@ impl NeoCam {
         let (stream_request_tx, stream_request_rx) = mpsc(100);
         let (md_request_tx, md_request_rx) = mpsc(100);
         let (state_tx, state_rx) = watch(NeoCamThreadState::Connected);
+        let (uid_tx, uid_rx) = watch(config.camera_uid.clone());
 
         let set = JoinSet::new();
         let users = UseCounter::new().await;
@@ -175,6 +177,14 @@ impl NeoCam {
                                     }
                                 ).await?;
                             },
+                            NeoCamCommand::GetUid(sender) => {
+                                let mut uid_rx = uid_rx.clone();
+                                tokio::task::spawn(async move {
+                                    let uid = uid_rx.wait_for(|v| v.is_some()).await?.clone().unwrap();
+                                    let _ = sender.send(uid);
+                                    AnyResult::Ok(())
+                                });
+                            },
                         }
                     }
                     log::debug!("Control thread Senders dropped");
@@ -272,6 +282,26 @@ impl NeoCam {
 
                     Ok(())
                 } => v
+            }
+        });
+
+        // This thread will update the UID by asking the camera.
+        // We cache this in the uid_rx
+        let uid_instance = instance.clone();
+        let uid_cancel = me.cancel.clone();
+        me.set.spawn(async move {
+            tokio::select! {
+                _ = uid_cancel.cancelled() => {
+                    AnyResult::Ok(())
+                },
+                v = async {
+                    let uid = uid_instance.run_task(|cam| Box::pin(async move {
+                        let uid = cam.uid().await?;
+                        Ok(uid)
+                    })).await?;
+                    uid_tx.send_replace(Some(uid));
+                    AnyResult::Ok(())
+                } => v,
             }
         });
 

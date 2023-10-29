@@ -565,7 +565,7 @@ async fn listen_on_camera(camera: NeoInstance, mqtt_instance: MqttInstance) -> R
                     } => v,
                     // Handle the floodlight task activation
                     v = async {
-                        let flt_status = camera_floodlight_tasks.run_task(|cam| Box::pin(async move {
+                        let flt_status = camera_floodlight_tasks.run_passive_task(|cam| Box::pin(async move {
                             Ok(cam.is_flightlight_tasks_enabled().await?)
                         })).await;
                         if flt_status.is_err() {
