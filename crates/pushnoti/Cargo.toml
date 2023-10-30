@@ -12,7 +12,7 @@ env_logger = "0.10.0"
 fcm-push-listener =  "2.0.1"
 lazy_static = "1.4.0"
 log = { version = "0.4.17", features = [ "release_max_level_debug" ] }
-neolink_core = { path = "../core", version = "0.6.3-rc.1" }
+neolink_core = { path = "../core", version = "0.6.3-rc.2" }
 regex = "1.8.1"
 serde = "1.0.163"
 tokio = { version = "1.28.1", features = ["full"] }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::{
     sync::{broadcast::channel as broadcast, watch::channel as watch},
     task::JoinSet,
-    time::{sleep, sleep_until, Duration, Instant},
+    time::{interval, sleep, Duration},
 };
 use tokio_stream::{wrappers::BroadcastStream, Stream, StreamExt};
 use tokio_util::sync::CancellationToken;
@@ -584,11 +584,11 @@ fn ensure_order<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
         let mut frame_buffer: Vec<StampedData> = vec![];
         while let Some(frame) = stream.next().await {
             if let Ok(frame) = frame {
-
                 if ! frame.keyframe {
                     // Buffer until keyframe and reorder
                     let mut reorder_buffer = vec![];
                     while frame_buffer.last().is_some_and(|v| v.ts > frame.ts) {
+                        log::debug!("Reorder: {:?}", frame.ts);
                         reorder_buffer.push(frame_buffer.pop().unwrap());
                     }
                     frame_buffer.push(frame);
@@ -600,6 +600,7 @@ fn ensure_order<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
                     for frame in frame_buffer.drain(..) {
                         yield Ok(frame);
                     }
+                    yield(Ok(frame));
                 }
             }
         }
@@ -613,11 +614,11 @@ fn frametime_stream<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
     expected_frame_rate: Duration,
 ) -> impl Stream<Item = AnyResult<StampedData>> + Unpin {
     Box::pin(async_stream::stream! {
-        let mut last_release = Instant::now();
+        let mut waiter = interval(expected_frame_rate);
+        waiter.set_missed_tick_behavior( tokio::time::MissedTickBehavior::Skip);
         while let Some(frame) = stream.next().await {
             if let Ok(frame) = frame {
-                sleep_until(last_release + expected_frame_rate).await;
-                last_release += expected_frame_rate;
+                waiter.tick().await;
                 yield Ok(frame);
             }
         }
