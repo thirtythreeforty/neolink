@@ -593,7 +593,7 @@ fn frametime_stream<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
                 // log::debug!("curr_ts: {curr_ts:?}, {prev_ts:?} delta_ts: {delta_ts:?}");
 
                 sleep_until(last_release + delta_ts).await;
-                last_release = Instant::now();
+                last_release += delta_ts;
                 cached_prev_ts = Some(curr_ts);
 
                 yield Ok(frame);
