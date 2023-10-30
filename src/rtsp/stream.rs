@@ -430,8 +430,8 @@ async fn stream_run(
         let mut thread_client_count = client_count.subscribe();
         log::debug!("stream_config.fps: {}", stream_config.fps);
         // let fallback_time = Duration::from_secs(3);
-        // let fallback_framerate =
-        //     Duration::from_millis(1000u64 / std::cmp::max(stream_config.fps as u64, 5u64));
+        let framerate =
+            Duration::from_millis(1000u64 / std::cmp::max(stream_config.fps as u64, 5u64));
         if let Some(thread_vid) = thread_vid {
             set.spawn(async move {
                 thread_client_count.activate().await?;
@@ -442,14 +442,15 @@ async fn stream_run(
                     v = send_to_appsrc(
                         // repeat_keyframe(
                             frametime_stream(
-                                hold_stream(
+                                ensure_order(
                                     wait_for_keyframe(
                                         vid_data_rx,
                                     )
-                                )
+                                ),
+                                framerate
                             ),
                         //     fallback_time,
-                        //     fallback_framerate,
+                        //     framerate,
                         // ),
                         &thread_vid) => {
                         v
@@ -466,6 +467,8 @@ async fn stream_run(
         let thread_stream_cancel = stream_cancel.clone();
         let aud_data_rx = BroadcastStream::new(aud_data_rx).filter(|f| f.is_ok()); // Filter to ignore lagged
         let thread_aud = aud.clone();
+        let aud_framerate =
+            Duration::from_millis(1000u64 / std::cmp::max(stream_config.fps as u64, 5u64));
         if let Some(thread_aud) = thread_aud {
             set.spawn(async move {
                 let r = tokio::select! {
@@ -474,11 +477,12 @@ async fn stream_run(
                     },
                     v = send_to_appsrc(
                         frametime_stream(
-                            hold_stream(
+                            ensure_order(
                                 wait_for_keyframe(
                                     aud_data_rx
                                 )
-                            )
+                            ),
+                            aud_framerate
                         ), &thread_aud) => {
                         v
                     },
@@ -542,6 +546,7 @@ fn wait_for_keyframe<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
     })
 }
 
+#[allow(dead_code)]
 // Take a stream of stamped data and release them
 // in waves when a new key frame is found
 // this ensure that the last frame sent is always an IFrame
@@ -569,33 +574,50 @@ fn hold_stream<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
     })
 }
 
+// Take a stream of stamped data and reorder it
+// in case they are out of order
+// this also releases frames in waves of keyframe so it should replace `hold_stream`
+fn ensure_order<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
+    mut stream: T,
+) -> impl Stream<Item = AnyResult<StampedData>> + Unpin {
+    Box::pin(async_stream::stream! {
+        let mut frame_buffer: Vec<StampedData> = vec![];
+        while let Some(frame) = stream.next().await {
+            if let Ok(frame) = frame {
+
+                if ! frame.keyframe {
+                    // Buffer until keyframe and reorder
+                    let mut reorder_buffer = vec![];
+                    while frame_buffer.last().is_some_and(|v| v.ts > frame.ts) {
+                        reorder_buffer.push(frame_buffer.pop().unwrap());
+                    }
+                    frame_buffer.push(frame);
+                    while let Some(frame) = reorder_buffer.pop() {
+                        frame_buffer.push(frame);
+                    }
+                } else {
+                    // On key frame flush out
+                    for frame in frame_buffer.drain(..) {
+                        yield Ok(frame);
+                    }
+                }
+            }
+        }
+    })
+}
+
 // Take a stream of stamped data pause until
 // it is time to display it
 fn frametime_stream<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
     mut stream: T,
+    expected_frame_rate: Duration,
 ) -> impl Stream<Item = AnyResult<StampedData>> + Unpin {
     Box::pin(async_stream::stream! {
-        const MIN_FPS_DELTA: Duration = Duration::from_millis(1000/5);
         let mut last_release = Instant::now();
-        let mut cached_prev_ts = None;
         while let Some(frame) = stream.next().await {
             if let Ok(frame) = frame {
-                let curr_ts = frame.ts;
-                let mut prev_ts = cached_prev_ts.unwrap_or(curr_ts);
-
-                // Check if we have gone backwards
-                if curr_ts < prev_ts {
-                    // If we have reset things
-                    prev_ts = curr_ts;
-                }
-
-                let delta_ts =  std::cmp::min(curr_ts - prev_ts, MIN_FPS_DELTA);
-                // log::debug!("curr_ts: {curr_ts:?}, {prev_ts:?} delta_ts: {delta_ts:?}");
-
-                sleep_until(last_release + delta_ts).await;
-                last_release += delta_ts;
-                cached_prev_ts = Some(curr_ts);
-
+                sleep_until(last_release + expected_frame_rate).await;
+                last_release += expected_frame_rate;
                 yield Ok(frame);
             }
         }
@@ -665,8 +687,17 @@ async fn send_to_appsrc<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
     appsrc: &AppSrc,
 ) -> AnyResult<()> {
     let mut rt = Duration::ZERO;
+    let mut wait_for_iframe = true;
     while let Some(Ok(data)) = stream.next().await {
         check_live(appsrc)?; // Stop if appsrc is dropped
+
+        // Start on iframes
+        if wait_for_iframe && !data.keyframe {
+            continue;
+        } else if wait_for_iframe {
+            wait_for_iframe = false;
+        }
+
         if let Some(rt_i) = get_runtime(appsrc) {
             rt = rt_i;
         }
@@ -688,6 +719,9 @@ async fn send_to_appsrc<E, T: Stream<Item = Result<StampedData, E>> + Unpin>(
             Ok(_) => Ok(()),
             Err(FlowError::Flushing) => {
                 // Buffer is full just skip
+                //
+                // But ensure we start with an iframe to reduce gray screens
+                wait_for_iframe = true;
                 Ok(())
             }
             Err(e) => Err(anyhow!("Error in streaming: {e:?}")),
