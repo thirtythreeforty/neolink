@@ -1,7 +1,7 @@
 [package]
 name = "neolink_decoder"
 description = "A cli decoder for the AES encrypted packets"
-version = "0.0.1"
+version = "0.6.3-rc.2"
 authors = ["Andrew King <sheepchaan@gmail.com>"]
 edition = "2018"
 license = "AGPL-3.0-or-later"

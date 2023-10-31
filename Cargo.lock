@@ -1733,7 +1733,7 @@ dependencies = [
 
 [[package]]
 name = "neolink_decoder"
-version = "0.0.1"
+version = "0.6.3-rc.2"
 dependencies = [
  "aes",
  "anyhow",
@@ -2120,7 +2120,7 @@ dependencies = [
 
 [[package]]
 name = "pushnoti"
-version = "0.1.0"
+version = "0.6.3-rc.2"
 dependencies = [
  "anyhow",
  "clap",

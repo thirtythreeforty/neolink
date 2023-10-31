@@ -162,7 +162,7 @@ pub(crate) async fn main(_opt: Opt, reactor: NeoReactor) -> Result<()> {
 
                     for name in config_names.iter() {
                         if ! cameras.contains_key(name) {
-                            log::info!("{name}: Rtsp Staring");
+                            log::info!("{name}: Rtsp Starting");
                             let local_cancel = CancellationToken::new();
                             cameras.insert(name.clone(),local_cancel.clone() );
                             let thread_global_cancel = thread_cancel2.clone();

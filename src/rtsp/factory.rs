@@ -173,7 +173,7 @@ fn build_h264(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
     source.set_block(false);
     source.set_min_latency(0);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(buffer_size as u64);
+    source.set_max_bytes(buffer_size as u64 * 3);
     source.set_do_timestamp(true);
     source.set_stream_type(AppStreamType::Seekable);
 
@@ -208,7 +208,7 @@ fn build_h265(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
     source.set_block(false);
     source.set_min_latency(0);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(buffer_size as u64);
+    source.set_max_bytes(buffer_size as u64 * 3);
     source.set_do_timestamp(true);
     source.set_stream_type(AppStreamType::Seekable);
 
@@ -244,7 +244,7 @@ fn build_aac(bin: &Element, stream_config: &StreamConfig) -> Result<AppSrc> {
     source.set_block(false);
     source.set_min_latency(0);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(buffer_size as u64);
+    source.set_max_bytes(buffer_size as u64 * 3);
     source.set_do_timestamp(true);
     source.set_stream_type(AppStreamType::Seekable);
 
@@ -316,7 +316,7 @@ fn build_adpcm(bin: &Element, block_size: u32, stream_config: &StreamConfig) -> 
     source.set_block(false);
     source.set_min_latency(0);
     source.set_property("emit-signals", false);
-    source.set_max_bytes(buffer_size as u64);
+    source.set_max_bytes(buffer_size as u64 * 3);
     source.set_do_timestamp(true);
     source.set_stream_type(AppStreamType::Seekable);
 
@@ -387,6 +387,7 @@ fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
         )
     })
 }
+
 fn make_queue(name: &str, buffer_size: u32) -> AnyResult<Element> {
     let queue = make_element("queue", &format!("queue1_{}", name))?;
     queue.set_property("max-size-bytes", buffer_size);

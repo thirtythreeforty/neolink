@@ -123,7 +123,7 @@ pub(crate) async fn main(_: Opt, reactor: NeoReactor) -> Result<()> {
                     config_names = thread_config.borrow().clone().cameras.iter().filter(|a| a.enabled).map(|cam_config| cam_config.name.clone()).collect::<HashSet<_>>();
 
                     for name in config_names.iter() {
-                        log::info!("{name}: MQTT Staring");
+                        log::info!("{name}: MQTT Starting");
                         if ! cameras.contains_key(name) {
                             let local_cancel = CancellationToken::new();
                             cameras.insert(name.clone(),local_cancel.clone());
