@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use gstreamer::{prelude::*, Bin, Caps, Element, ElementFactory, GhostPad};
 use gstreamer_app::{AppSrc, AppSrcCallbacks, AppStreamType};
-use log::*;
 use tokio::sync::mpsc::{channel as mpsc, Receiver as MpscReceiver};
 
 use crate::{
@@ -342,7 +341,6 @@ fn build_adpcm(bin: &Element, block_size: u32, stream_config: &StreamConfig) -> 
     Element::link_many([&source, &queue, &decoder])?;
     Element::link_many([&encoder, &payload])?;
     decoder.connect_pad_added(move |_element, pad| {
-        debug!("Linking encoder to decoder: {:?}", pad.caps());
         let sink_pad = encoder
             .static_pad("sink")
             .expect("Encoder is missing its pad");
@@ -388,7 +386,8 @@ fn make_element(kind: &str, name: &str) -> AnyResult<Element> {
     })
 }
 
-fn make_queue(name: &str, buffer_size: u32) -> AnyResult<Element> {
+#[allow(dead_code)]
+fn make_dbl_queue(name: &str, buffer_size: u32) -> AnyResult<Element> {
     let queue = make_element("queue", &format!("queue1_{}", name))?;
     queue.set_property("max-size-bytes", buffer_size);
     queue.set_property("max-size-buffers", 0u32);
@@ -403,11 +402,11 @@ fn make_queue(name: &str, buffer_size: u32) -> AnyResult<Element> {
     queue2.set_property("max-size-bytes", buffer_size * 2u32 / 3u32);
     queue.set_property("max-size-buffers", 0u32);
     queue.set_property("max-size-time", 0u64);
-    // queue2.set_property(
-    //     "max-size-time",
-    //     std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
-    //         .unwrap_or(0),
-    // );
+    queue2.set_property(
+        "max-size-time",
+        std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
+            .unwrap_or(0),
+    );
     queue2.set_property("use-buffering", false);
 
     let bin = gstreamer::Bin::builder().name(name).build();
@@ -432,6 +431,19 @@ fn make_queue(name: &str, buffer_size: u32) -> AnyResult<Element> {
         .dynamic_cast::<Element>()
         .map_err(|_| anyhow!("Cannot convert bin"))?;
     Ok(bin)
+}
+
+fn make_queue(name: &str, buffer_size: u32) -> AnyResult<Element> {
+    let queue = make_element("queue", &format!("queue1_{}", name))?;
+    queue.set_property("max-size-bytes", buffer_size);
+    queue.set_property("max-size-buffers", 0u32);
+    queue.set_property("max-size-time", 0u64);
+    queue.set_property(
+        "max-size-time",
+        std::convert::TryInto::<u64>::try_into(tokio::time::Duration::from_secs(5).as_nanos())
+            .unwrap_or(0),
+    );
+    Ok(queue)
 }
 
 fn buffer_size(bitrate: u32) -> u32 {

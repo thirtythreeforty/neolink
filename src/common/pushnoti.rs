@@ -67,6 +67,11 @@ impl PushNotiThread {
             let sender_id = "743639030586"; // andriod
                                             // let sender_id = "696841269229"; // ios
 
+            // let firebase_app_id = "1:743639030586:android:86f60a4fb7143876";
+            // let firebase_project_id = "reolink-login";
+            // let firebase_api_key = "AIzaSyBEUIuWHnnOEwFahxWgQB4Yt4NsgOmkPyE";
+            // let vapid_key = "????";
+
             let token_path = dirs::config_dir().map(|mut d| {
                 d.push("./neolink_token.toml");
                 d

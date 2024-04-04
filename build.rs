@@ -63,9 +63,18 @@ fn platform_cfg() {
     let gstreamer_dir = env::var_os("GSTREAMER_1_0_ROOT_MACOSX")
         .and_then(|x| x.into_string().ok())
         .unwrap_or_else(|| r"/Library/Frameworks/GStreamer.framework/Versions/1.0".to_string());
+    let openssl_dir = env::var_os("OPENSSL_1_1_ROOT_MACOSX")
+        .and_then(|x| x.into_string().ok())
+        .unwrap_or_else(|| r"/usr/local/opt/openssl@1.1".to_string());
 
-    println!(r"cargo:rustc-link-search=native={}/lib", gstreamer_dir);
-    println!(r"cargo:rustc-link-arg=-Wl,-rpath,{}/lib", gstreamer_dir);
+    println!(
+        r"cargo:rustc-link-search=native={}/lib;{}/lib",
+        gstreamer_dir, openssl_dir
+    );
+    println!(
+        r"cargo:rustc-link-arg=-Wl,-rpath,{}/lib;{}/lib/",
+        gstreamer_dir, openssl_dir
+    );
 }
 
 #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]

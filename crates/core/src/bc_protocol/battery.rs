@@ -57,14 +57,13 @@ impl BcCamera {
                                     );
                                 }
                                 PrintFormat::Xml => {
-                                    let bat_ser = String::from_utf8(
-                                        yaserde::ser::serialize_with_writer(
-                                            battery,
-                                            vec![],
-                                            &Default::default(),
-                                        )
-                                        .expect("Should Ser the struct"),
-                                    )
+                                    let bat_ser = String::from_utf8({
+                                        let mut ser_buf = bytes::BytesMut::new();
+                                        let parsed =
+                                            quick_xml::se::to_writer(&mut ser_buf, &battery)
+                                                .map(|_| ser_buf);
+                                        parsed.expect("Could not serialise data").to_vec()
+                                    })
                                     .expect("Should be UTF8");
                                     println!("{}", bat_ser);
                                 }

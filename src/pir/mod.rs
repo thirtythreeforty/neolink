@@ -47,8 +47,11 @@ pub(crate) async fn main(opt: Opt, reactor: NeoReactor) -> Result<()> {
             })
             .await?;
         let pir_ser = String::from_utf8(
-            yaserde::ser::serialize_with_writer(&pir_state, vec![], &Default::default())
-                .expect("Should Ser the struct"),
+            {
+                let mut buf = bytes::BytesMut::new();
+                quick_xml::se::to_writer(&mut buf, &pir_state).map(|_| buf.to_vec())
+            }
+            .expect("Should Ser the struct"),
         )
         .expect("Should be UTF8");
         println!("{}", pir_ser);

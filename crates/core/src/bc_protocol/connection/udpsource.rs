@@ -384,13 +384,10 @@ impl UdpPayloadInner {
                                                 let mut rng = thread_rng();
                                                 (rng.gen::<u8>()) as u32
                                             },
-                                            payload: UdpXml {
-                                                c2d_hb: Some(C2dHb {
+                                            payload: UdpXml::C2dHb(C2dHb {
                                                     cid: thread_client_id,
                                                     did: thread_camera_id,
                                                 }),
-                                                ..Default::default()
-                                            },
                                         });
                                         let _ = tokio::time::timeout(tokio::time::Duration::from_millis(250), inner.send((msg, thread_camera_addr))).await;
                                     }
@@ -449,13 +446,10 @@ impl UdpPayloadInner {
                                 let mut rng = thread_rng();
                                 (rng.gen::<u8>()) as u32
                             },
-                            payload: UdpXml {
-                                c2d_hb: Some(C2dHb {
+                            payload: UdpXml::C2dHb(C2dHb {
                                     cid: thread_client_id,
                                     did: thread_camera_id,
                                 }),
-                                ..Default::default()
-                            },
                         });
                         if thread_sender.send(msg).await.is_err() {
                             break Result::Ok(());

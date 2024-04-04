@@ -1,33 +1,33 @@
 use super::bc::model::Bc;
 use crate::NomErrorType;
-use err_derive::Error;
+use thiserror::Error;
 
 /// This is the primary error type of the library
 #[derive(Debug, Error, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum Error {
     /// Underlying IO errors
-    #[error(display = "IO Error: {:?}", _0)]
-    Io(#[error(source)] std::sync::Arc<std::io::Error>),
+    #[error("IO Error: {:?}", _0)]
+    Io(#[from] std::sync::Arc<std::io::Error>),
 
     /// Raised when fails to parse time from the camera
-    #[error(display = "Error in time coversion: {:?}", _0)]
-    TimeRange(#[error(source)] time::error::ComponentRange),
+    #[error("Error in time coversion: {:?}", _0)]
+    TimeRange(#[from] time::error::ComponentRange),
 
     /// Raised when fails to parse time from the camera
-    #[error(display = "Error in time parsing")]
+    #[error("Error in time parsing")]
     TimeParse,
 
     /// Raised when fails to parse time from the camera
-    #[error(display = "Error in try from NonZeroInt")]
-    TryFromInt(#[error(source)] std::num::TryFromIntError),
+    #[error("Error in try from NonZeroInt")]
+    TryFromInt(#[from] std::num::TryFromIntError),
 
     /// /// Raised when fails to parse time from the camera
-    #[error(display = "Error in time conversion")]
-    TimeTryFrom(#[error(source)] time::error::TryFromParsed),
+    #[error("Error in time conversion")]
+    TimeTryFrom(#[from] time::error::TryFromParsed),
 
     /// Raised when a Bc reply was not understood
-    #[error(display = "Communication error")]
+    #[error("Communication error")]
     UnintelligibleReply {
         /// The Bc packet that was not understood
         reply: std::sync::Arc<Box<Bc>>,
@@ -36,140 +36,135 @@ pub enum Error {
     },
 
     /// Raised when the camera responds with a status code over than OK
-    #[error(display = "Camera responded with Service Unavaliable: {}", _0)]
+    #[error("Camera responded with Service Unavaliable: {}", _0)]
     CameraServiceUnavaliable(u16),
 
     /// Raised when the camera responds with a status code over than OK during login
-    #[error(display = "Camera responded with Err during login")]
+    #[error("Camera responded with Err during login")]
     CameraLoginFail,
 
     /// Raised when a connection is dropped.
-    #[error(display = "Dropped connection")]
+    #[error("Dropped connection")]
     DroppedConnection,
 
     /// Raised when a connection is dropped during a tokio mpsc TryRecv event
-    #[error(display = "Dropped connection (TryRecv)")]
-    DroppedConnectionTry(#[error(source)] tokio::sync::mpsc::error::TryRecvError),
+    #[error("Dropped connection (TryRecv)")]
+    DroppedConnectionTry(#[from] tokio::sync::mpsc::error::TryRecvError),
 
     /// Raised when a connection is dropped during a TryRecv event
-    #[error(display = "Dropped connection (Broadcast TryRecv)")]
-    BroadcastDroppedConnectionTry(#[error(source)] tokio::sync::broadcast::error::TryRecvError),
+    #[error("Dropped connection (Broadcast TryRecv)")]
+    BroadcastDroppedConnectionTry(#[from] tokio::sync::broadcast::error::TryRecvError),
 
     /// Raised when a connection is dropped during a TryRecv event
-    #[error(display = "Send Error")]
+    #[error("Send Error")]
     TokioBcSendError,
 
     /// Raised when the TIMEOUT is reach
-    #[error(display = "Timeout")]
-    Timeout(#[error(source)] std::sync::Arc<tokio::time::error::Elapsed>),
+    #[error("Timeout")]
+    Timeout(#[from] std::sync::Arc<tokio::time::error::Elapsed>),
 
     /// Raised when a timeout fails in a non standard way such as timeout during shutdown
-    #[error(display = "TimeoutError")]
-    TimeoutError(#[error(source)] tokio::time::error::Error),
+    #[error("TimeoutError")]
+    TimeoutError(#[from] tokio::time::error::Error),
 
     /// Raised when connection is dropped because the timeout is reach
-    #[error(display = "Dropped connection (Timeout)")]
+    #[error("Dropped connection (Timeout)")]
     TimeoutDisconnected,
 
     /// Raised when a camera cannot be connected to ay any of the given addresses
-    #[error(display = "Cannot contact camera at given address")]
+    #[error("Cannot contact camera at given address")]
     CannotInitCamera,
 
     /// Raised when failed to login to the camera
-    #[error(display = "Credential error")]
+    #[error("Credential error")]
     AuthFailed,
 
     /// Raised when the given camera url could not be resolved
-    #[error(display = "Failed to translate camera address")]
+    #[error("Failed to translate camera address")]
     AddrResolutionError,
 
     /// Raised non adpcm data is sent to the talk command
-    #[error(display = "Talk data is not ADPCM")]
+    #[error("Talk data is not ADPCM")]
     UnknownTalkEncoding,
 
     /// Raised when dicovery times out waiting for a reply
-    #[error(display = "Timed out while waiting for camera reply")]
+    #[error("Timed out while waiting for camera reply")]
     DiscoveryTimeout,
 
     /// Raised during a (de)seralisation error
-    #[error(display = "Cookie GenError")]
-    GenError(#[error(source)] std::sync::Arc<cookie_factory::GenError>),
+    #[error("Cookie GenError")]
+    GenError(#[from] std::sync::Arc<cookie_factory::GenError>),
 
     /// Raised when a connection is subscrbed to more than once for msg_num
-    #[error(display = "Simultaneous subscription, {:?}", _0)]
+    #[error("Simultaneous subscription, {msg_num:?}")]
     SimultaneousSubscription {
         /// The message number that was subscribed to
         msg_num: Option<u16>,
     },
 
     /// Raised when a connection is subscrbed to more than once for msg_id
-    #[error(display = "Simultaneous subscription, {}", _0)]
+    #[error("Simultaneous subscription, {msg_id}")]
     SimultaneousSubscriptionId {
         /// The message number that was subscribed to
         msg_id: u32,
     },
 
     /// Raised when a new encyrption byte is observed
-    #[error(display = "Unknown encryption: {:x?}", _0)]
+    #[error("Unknown encryption: {0:x?}")]
     UnknownEncryption(usize),
 
     /// Raised when the camera cannot be found
-    #[error(display = "Camera Not Findable")]
+    #[error("Camera Not Findable")]
     ConnectionUnavaliable,
 
     /// Raised when the subscription id dropped too soon
-    #[error(display = "Dropped Subscriber")]
+    #[error("Dropped Subscriber")]
     DroppedSubscriber,
 
     /// Raised when a unknown connection ID attempts to connect with us over UDP
-    #[error(display = "Connection with unknown connectionID: {:?}", _0)]
+    #[error("Connection with unknown connectionID: {0:?}")]
     UnknownConnectionId(i32),
 
     /// Raised when a unknown SocketAddr attempts to connect with us over UDP
-    #[error(display = "Connection from unknown source: {:?}", _0)]
+    #[error("Connection from unknown source: {0:?}")]
     UnknownSource(std::net::SocketAddr),
 
     /// Raised when the IP/Hostname cannot be understood
-    #[error(display = "Could not parse as IP")]
-    AddrParseError(#[error(source)] std::net::AddrParseError),
+    #[error("Could not parse as IP")]
+    AddrParseError(#[from] std::net::AddrParseError),
 
     /// Raised when a relay connection is not possible
     /// usually happens if the camera has not contacted reolink yet
-    #[error(display = "Cannot perform relay connection with this camera")]
+    #[error("Cannot perform relay connection with this camera")]
     NoDmap,
 
     /// Raised when a dev connection is not possible
     /// usually happens if the camera has not contacted reolink yet
-    #[error(display = "Cannot perform lookup with this camera against reolink servers")]
+    #[error("Cannot perform lookup with this camera against reolink servers")]
     NoDev,
 
     /// Raised when a discovery fails to be accepted by the register
-    #[error(display = "Register refuses to accept us")]
+    #[error("Register refuses to accept us")]
     RegisterError,
 
     /// Raised when a the relay terminates the connection by sending a R2C_DISC
-    #[error(display = "Relay terminated the connection")]
+    #[error("Relay terminated the connection")]
     RelayTerminate,
 
     /// Raised when a the camera terminates the connection by sending a D2C_DISC
-    #[error(display = "Camera terminated the connection")]
+    #[error("Camera terminated the connection")]
     CameraTerminate,
 
     /// Raised when the stream is not enough to complete a message
-    #[error(display = "Nom Parsing incomplete: {}", _0)]
+    #[error("Nom Parsing incomplete: {0}")]
     NomIncomplete(usize),
 
     /// Raised when a stream cannot be decoded
-    #[error(display = "Nom Parsing error: {}", _0)]
+    #[error("Nom Parsing error: {0}")]
     NomError(String),
 
     /// Raised when a camera/user lacks an ability
-    #[error(
-        display = "Missing ability: {} with {} permission has only {}",
-        name,
-        requested,
-        actual
-    )]
+    #[error("Missing ability: {name} with {requested} permission has only {actual}")]
     MissingAbility {
         /// Name of the ability
         name: String,
@@ -180,15 +175,15 @@ pub enum Error {
     },
 
     /// Raised when a thread panics
-    #[error(display = "Thread panicked")]
-    JoinError(#[error(source)] std::sync::Arc<tokio::task::JoinError>),
+    #[error("Thread panicked")]
+    JoinError(#[from] std::sync::Arc<tokio::task::JoinError>),
 
     /// A generic catch all error
-    #[error(display = "Other error: {}", _0)]
+    #[error("Other error: {0}")]
     Other(&'static str),
 
     /// A generic catch all error
-    #[error(display = "Other error: {}", _0)]
+    #[error("Other error: {0}")]
     OtherString(String),
 }
 

@@ -2,8 +2,8 @@ use crate::AnyResult;
 use anyhow::{anyhow, Context, Result};
 use crossbeam_channel::{bounded, Receiver, Sender};
 use gstreamer::{
-    element_error, parse_launch, prelude::*, Caps, ClockTime, FlowError, FlowSuccess, MessageView,
-    Pipeline, ResourceError, State,
+    element_error, parse::launch_full, prelude::*, Caps, ClockTime, FlowError, FlowSuccess,
+    MessageView, ParseFlags, Pipeline, ResourceError, State,
 };
 use gstreamer_app::{AppSink, AppSinkCallbacks};
 use tokio::task::JoinSet;
@@ -159,7 +159,7 @@ fn create_pipeline(
     // Parse the pipeline we want to probe from a static in-line string.
     // Here we give our audiotestsrc a name, so we can retrieve that element
     // from the resulting pipeline.
-    let pipeline = parse_launch(&launch_str)
+    let pipeline = launch_full(&launch_str, None, ParseFlags::empty())
         .context("Unable to load gstreamer pipeline ensure all gstramer plugins are installed")?;
     let pipeline = pipeline.dynamic_cast::<Pipeline>().map_err(|_| {
         anyhow!("Unable to create gstreamer pipeline ensure all gstramer plugins are installed")

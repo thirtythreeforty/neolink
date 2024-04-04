@@ -1,7 +1,9 @@
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
-use gstreamer::{parse_launch, prelude::*, ClockTime, MessageView, Pipeline, State};
+use gstreamer::{
+    parse::launch_full, prelude::*, ClockTime, MessageView, ParseFlags, Pipeline, State,
+};
 use gstreamer_app::AppSrc;
 use tokio::{
     sync::{
@@ -203,7 +205,7 @@ fn create_pipeline(format: VidFormat, file_path: &Path) -> Result<Pipeline> {
     // Parse the pipeline we want to probe from a static in-line string.
     // Here we give our audiotestsrc a name, so we can retrieve that element
     // from the resulting pipeline.
-    let pipeline = parse_launch(&launch_str)
+    let pipeline = launch_full(&launch_str, None, ParseFlags::empty())
         .context("Unable to load gstreamer pipeline ensure all gstramer plugins are installed")?;
     let pipeline = pipeline.dynamic_cast::<Pipeline>().map_err(|_| {
         anyhow!("Unable to create gstreamer pipeline ensure all gstramer plugins are installed")

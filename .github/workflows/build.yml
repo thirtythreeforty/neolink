@@ -17,8 +17,8 @@ jobs:
         uses: fkirc/skip-duplicate-actions@v5
         with:
           # All of these options are optional, so you can remove them if you are happy with the defaults
-          concurrent_skipping: 'same_content_newer'
-          skip_after_successful_duplicate: 'false'
+          concurrent_skipping: "same_content_newer"
+          skip_after_successful_duplicate: "false"
 
   native:
     needs: pre_job
@@ -190,9 +190,9 @@ jobs:
         id: vars
         shell: bash
         run: |
-            unset HAS_SECRET
-            if [ -n $SECRET ]; then HAS_SECRET='true' ; fi
-            echo "HAS_SECRET_TOKEN=${HAS_SECRET}" >> $GITHUB_OUTPUT
+          unset HAS_SECRET
+          if [ -n $SECRET ]; then HAS_SECRET='true' ; fi
+          echo "HAS_SECRET_TOKEN=${HAS_SECRET}" >> $GITHUB_OUTPUT
         env:
           SECRET: "${{ secrets.DOCKER_TOKEN }}"
       - name: Check out the repo
@@ -268,7 +268,7 @@ jobs:
           REPO_NAME: ${{ steps.docker_repo.outputs.DOCKER_NWO }}
       - name: Install latest rust
         run: |
-            rustup toolchain install stable
+          rustup toolchain install stable
       - name: Install toml-cli
         run: |
           cargo install toml-cli
@@ -327,7 +327,7 @@ jobs:
         uses: actions/checkout@v3
       - name: Install latest rust
         run: |
-            rustup toolchain install stable
+          rustup toolchain install stable
       - name: Install toml-cli
         run: |
           cargo install toml-cli

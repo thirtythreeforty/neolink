@@ -7,7 +7,7 @@ use super::AnyResult;
 use crate::config::*;
 
 use anyhow::Context;
-use gstreamer::glib::{self, object_subclass, subclass::types::ObjectSubclass, MainLoop, Object};
+use gstreamer::glib::{self, object_subclass, MainLoop, Object};
 use gstreamer_rtsp::RTSPAuthMethod;
 use gstreamer_rtsp_server::{
     gio::{TlsAuthenticationMode, TlsCertificate},

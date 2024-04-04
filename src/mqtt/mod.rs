@@ -1156,9 +1156,11 @@ async fn handle_mqtt_message(
                     "FAIL"
                 }
                 Ok(xml) => {
-                    let bytes_res =
-                        yaserde::ser::serialize_with_writer(&xml, vec![], &Default::default());
-                    match bytes_res {
+                    let ser_xml = {
+                        let mut buf = bytes::BytesMut::new();
+                        quick_xml::se::to_writer(&mut buf, &xml).map(|_| buf.to_vec())
+                    };
+                    match ser_xml {
                         Ok(bytes) => match String::from_utf8(bytes) {
                             Ok(str) => {
                                 mqtt.send_message("status/battery", &str, false)
@@ -1200,9 +1202,11 @@ async fn handle_mqtt_message(
                     "FAIL"
                 }
                 Ok(xml) => {
-                    let bytes_res =
-                        yaserde::ser::serialize_with_writer(&xml, vec![], &Default::default());
-                    match bytes_res {
+                    let ser_xml = {
+                        let mut buf = bytes::BytesMut::new();
+                        quick_xml::se::to_writer(&mut buf, &xml).map(|_| buf.to_vec())
+                    };
+                    match ser_xml {
                         Ok(bytes) => match String::from_utf8(bytes) {
                             Ok(str) => {
                                 mqtt.send_message("status/pir", &str, false)
@@ -1245,9 +1249,11 @@ async fn handle_mqtt_message(
                     "FAIL"
                 }
                 Ok(xml) => {
-                    let bytes_res =
-                        yaserde::ser::serialize_with_writer(&xml, vec![], &Default::default());
-                    match bytes_res {
+                    let ser_xml = {
+                        let mut buf = bytes::BytesMut::new();
+                        quick_xml::se::to_writer(&mut buf, &xml).map(|_| buf.to_vec())
+                    };
+                    match ser_xml {
                         Ok(bytes) => match String::from_utf8(bytes) {
                             Ok(str) => {
                                 mqtt.send_message("status/ptz", &str, false)

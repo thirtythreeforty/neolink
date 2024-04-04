@@ -48,20 +48,16 @@ impl Decoder for BcUdpCodex {
         if src.is_empty() {
             return Ok(None);
         }
-        match { BcUdp::deserialize(src) } {
+        match BcUdp::deserialize(src) {
             Ok(BcUdp::Discovery(UdpDiscovery {
-                payload: UdpXml {
-                    r2c_disc: Some(_), ..
-                },
+                payload: UdpXml::R2cDisc(_),
                 ..
             })) => {
                 log::trace!("   Decoding: Relay terminate");
                 Err(Error::RelayTerminate)
             }
             Ok(BcUdp::Discovery(UdpDiscovery {
-                payload: UdpXml {
-                    d2c_disc: Some(_), ..
-                },
+                payload: UdpXml::D2cDisc(_),
                 ..
             })) => {
                 log::trace!("   Decoding:Camera terminate");

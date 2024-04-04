@@ -5,7 +5,6 @@
 
 use super::AnyResult;
 use gstreamer::glib::object_subclass;
-use gstreamer::glib::subclass::types::ObjectSubclass;
 use gstreamer::Element;
 use gstreamer::{
     glib::{self, Object},

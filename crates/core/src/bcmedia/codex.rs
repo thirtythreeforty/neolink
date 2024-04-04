@@ -50,7 +50,7 @@ impl Decoder for BcMediaCodex {
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>> {
         loop {
-            match { BcMedia::deserialize(src) } {
+            match BcMedia::deserialize(src) {
                 Ok(bc) => {
                     if self.amount_skipped > 0 {
                         debug!("Amount skipped to restore stream: {}", self.amount_skipped);

@@ -18,6 +18,7 @@ use crate::{AnyResult, Result};
 use neolink_core::bc_protocol::MotionStatus;
 
 pub(crate) enum MdState {
+    #[allow(dead_code)]
     Start(Instant),
     Stop(Instant),
     Unknown,

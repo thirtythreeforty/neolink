@@ -6,8 +6,8 @@ use anyhow::{anyhow, Context, Result};
 use futures::future::FutureExt;
 use log::*;
 use rumqttc::{
-    AsyncClient, ConnectReturnCode, Event, Incoming, Key, LastWill, MqttOptions, QoS,
-    TlsConfiguration, Transport,
+    AsyncClient, ConnectReturnCode, Event, Incoming, LastWill, MqttOptions, QoS, TlsConfiguration,
+    Transport,
 };
 use std::sync::Arc;
 use tokio::task::JoinSet;
@@ -140,7 +140,7 @@ impl<'a> MqttBackend<'a> {
                     if let (Ok(cert_buf), Ok(key_buf)) =
                         (std::fs::read(cert_path), std::fs::read(key_path))
                     {
-                        Some((cert_buf, Key::RSA(key_buf)))
+                        Some((cert_buf, key_buf))
                     } else {
                         error!("Failed to set client tls");
                         None
@@ -534,7 +534,7 @@ impl LastWillMqtt {
                     if let (Ok(cert_buf), Ok(key_buf)) =
                         (std::fs::read(cert_path), std::fs::read(key_path))
                     {
-                        Some((cert_buf, Key::RSA(key_buf)))
+                        Some((cert_buf, key_buf))
                     } else {
                         error!("Failed to set client tls");
                         None

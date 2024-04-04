@@ -11,10 +11,10 @@ use nom::{
 
 type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), nom::Err<E>>;
 
-fn make_error<I, E: ParseError<I>>(input: I, ctx: &'static str, kind: ErrorKind) -> E
+fn make_error<I, E>(input: I, ctx: &'static str, kind: ErrorKind) -> E
 where
     I: std::marker::Copy,
-    E: ContextError<I>,
+    E: ContextError<I> + ParseError<I>,
 {
     E::add_context(input, ctx, E::from_error_kind(input, kind))
 }
@@ -164,13 +164,10 @@ mod tests {
             e,
             Ok(BcUdp::Discovery(UdpDiscovery {
                 tid: 96,
-                payload: UdpXml {
-                    c2d_disc: Some(C2dDisc {
-                        cid: 82000,
-                        did: 80,
-                    }),
-                    ..
-                },
+                payload: UdpXml::C2dDisc(C2dDisc {
+                    cid: 82000,
+                    did: 80,
+                }),
             }))
         );
     }
@@ -187,15 +184,12 @@ mod tests {
             e,
             Ok(BcUdp::Discovery(UdpDiscovery {
                 tid: 113,
-                payload: UdpXml {
-                    d2c_t: Some(D2cT {
+                payload: UdpXml::D2cT(D2cT {
                         sid: 62098713,
                         conn: conn_str,
                         cid: 82001,
                         did: 96,
                     }),
-                    ..
-                },
             })) if &conn_str == "local"
         );
     }
@@ -212,15 +206,12 @@ mod tests {
             e,
             Ok(BcUdp::Discovery(UdpDiscovery {
                 tid: 1101,
-                payload: UdpXml {
-                    c2d_t: Some(C2dT {
+                payload: UdpXml::C2dT(C2dT {
                         sid: 62098713,
                         conn: conn_str,
                         cid: 82001,
                         mtu: 1350,
                     }),
-                    ..
-                },
             })) if &conn_str == "local"
         );
     }
@@ -237,8 +228,7 @@ mod tests {
             e,
             Ok(BcUdp::Discovery(UdpDiscovery {
                 tid: 1101,
-                payload: UdpXml {
-                    d2c_cfm: Some(D2cCfm {
+                payload: UdpXml::D2cCfm(D2cCfm {
                         sid: 62098713,
                         conn: conn_str,
                         rsp: 0,
@@ -246,8 +236,6 @@ mod tests {
                         did: 96,
                         time_r: 0,
                     }),
-                    ..
-                },
             })) if &conn_str == "local"
         );
     }

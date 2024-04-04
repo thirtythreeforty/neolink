@@ -1,5 +1,4 @@
 use super::model::*;
-use super::xml::{BcPayloads, BcXml};
 use super::xml_crypto;
 use crate::Error;
 use bytes::{Buf, BytesMut};
@@ -84,10 +83,10 @@ fn bc_modern_msg<'a>(
         Err,
     };
 
-    fn make_error<I, E: ParseError<I>>(input: I, ctx: &'static str, kind: ErrorKind) -> E
+    fn make_error<I, E>(input: I, ctx: &'static str, kind: ErrorKind) -> E
     where
         I: std::marker::Copy,
-        E: ContextError<I>,
+        E: ParseError<I> + ContextError<I>,
     {
         E::add_context(input, ctx, E::from_error_kind(input, kind))
     }
