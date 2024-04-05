@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use serde::{Deserialize, Serialize};
-use std::{fmt::Write, io::BufRead};
+use std::{io::BufRead, io::Write};
 
 #[cfg(test)]
 use indoc::indoc;
@@ -19,96 +19,100 @@ pub enum BcPayloads {
 
 /// The top level BC Xml
 #[derive(PartialEq, Default, Debug, Deserialize, Serialize)]
+#[serde(rename = "body")]
 pub struct BcXml {
     /// Encryption xml is received during login and contain the NONCE
-    #[serde(rename = "Encryption")]
+    #[serde(rename = "Encryption", skip_serializing_if = "Option::is_none")]
     pub encryption: Option<Encryption>,
     /// LoginUser xml is used during modern login
-    #[serde(rename = "LoginUser")]
+    #[serde(rename = "LoginUser", skip_serializing_if = "Option::is_none")]
     pub login_user: Option<LoginUser>,
     /// LoginNet xml is used during modern login
-    #[serde(rename = "LoginNet")]
+    #[serde(rename = "LoginNet", skip_serializing_if = "Option::is_none")]
     pub login_net: Option<LoginNet>,
     /// The final part of a login sequence will return DeviceInfo xml
-    #[serde(rename = "DeviceInfo")]
+    #[serde(rename = "DeviceInfo", skip_serializing_if = "Option::is_none")]
     pub device_info: Option<DeviceInfo>,
     /// The VersionInfo xml is recieved in reply to a version request
-    #[serde(rename = "VersionInfo")]
+    #[serde(rename = "VersionInfo", skip_serializing_if = "Option::is_none")]
     pub version_info: Option<VersionInfo>,
     /// Preview xml is used as part of the stream request to set the stream quality and channel
-    #[serde(rename = "Preview")]
+    #[serde(rename = "Preview", skip_serializing_if = "Option::is_none")]
     pub preview: Option<Preview>,
-    #[serde(rename = "SystemGeneral")]
+    #[serde(rename = "SystemGeneral", skip_serializing_if = "Option::is_none")]
     /// SystemGeneral xml is sent or recieved as part of the clock get/setting
     pub system_general: Option<SystemGeneral>,
     /// Received as part of the Genral system info request
-    #[serde(rename = "Norm")]
+    #[serde(rename = "Norm", skip_serializing_if = "Option::is_none")]
     pub norm: Option<Norm>,
     /// Received as part of the LEDState info request
-    #[serde(rename = "LedState")]
+    #[serde(rename = "LedState", skip_serializing_if = "Option::is_none")]
     pub led_state: Option<LedState>,
     /// Sent as part of the TalkConfig to prepare the camera for audio talk-back
-    #[serde(rename = "TalkConfig")]
+    #[serde(rename = "TalkConfig", skip_serializing_if = "Option::is_none")]
     pub talk_config: Option<TalkConfig>,
     /// rfAlarmCfg xml is sent or recieved as part of the PIR get/setting
-    #[serde(rename = "rfAlarmCfg")]
+    #[serde(rename = "rfAlarmCfg", skip_serializing_if = "Option::is_none")]
     pub rf_alarm_cfg: Option<RfAlarmCfg>,
     /// Revieced as part of the TalkAbility request
-    #[serde(rename = "TalkAbility")]
+    #[serde(rename = "TalkAbility", skip_serializing_if = "Option::is_none")]
     pub talk_ability: Option<TalkAbility>,
     /// Received when motion is detected
-    #[serde(rename = "AlarmEventList")]
+    #[serde(rename = "AlarmEventList", skip_serializing_if = "Option::is_none")]
     pub alarm_event_list: Option<AlarmEventList>,
     /// Sent to move the camera
-    #[serde(rename = "PtzControl")]
+    #[serde(rename = "PtzControl", skip_serializing_if = "Option::is_none")]
     pub ptz_control: Option<PtzControl>,
     /// Sent to manually control the floodlight
-    #[serde(rename = "FloodlightManual")]
+    #[serde(rename = "FloodlightManual", skip_serializing_if = "Option::is_none")]
     pub floodlight_manual: Option<FloodlightManual>,
     /// Received when the floodlight status is updated
-    #[serde(rename = "FloodlightStatusList")]
+    #[serde(
+        rename = "FloodlightStatusList",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub floodlight_status_list: Option<FloodlightStatusList>,
     /// Sent or received for the PTZ preset functionality
-    #[serde(rename = "PtzPreset")]
+    #[serde(rename = "PtzPreset", skip_serializing_if = "Option::is_none")]
     pub ptz_preset: Option<PtzPreset>,
     /// Recieved on login/low battery events
-    #[serde(rename = "BatteryList")]
+    #[serde(rename = "BatteryList", skip_serializing_if = "Option::is_none")]
     pub battery_list: Option<BatteryList>,
     /// Recieved on request for battery info
-    #[serde(rename = "BatteryInfo")]
+    #[serde(rename = "BatteryInfo", skip_serializing_if = "Option::is_none")]
     pub battery_info: Option<BatteryInfo>,
     /// Recieved on request for a users persmissions/capabilitoes
-    #[serde(rename = "AbilityInfo")]
+    #[serde(rename = "AbilityInfo", skip_serializing_if = "Option::is_none")]
     pub ability_info: Option<AbilityInfo>,
     /// Recieved on request for a users persmissions/capabilitoes
-    #[serde(rename = "PushInfo")]
+    #[serde(rename = "PushInfo", skip_serializing_if = "Option::is_none")]
     pub push_info: Option<PushInfo>,
     /// Recieved on request for a link type
-    #[serde(rename = "LinkType")]
+    #[serde(rename = "LinkType", skip_serializing_if = "Option::is_none")]
     pub link_type: Option<LinkType>,
     /// Recieved AND send for the snap message
-    #[serde(rename = "Snap")]
+    #[serde(rename = "Snap", skip_serializing_if = "Option::is_none")]
     pub snap: Option<Snap>,
     /// The list of streams and their configuration
-    #[serde(rename = "StreamInfoList")]
+    #[serde(rename = "StreamInfoList", skip_serializing_if = "Option::is_none")]
     pub stream_info_list: Option<StreamInfoList>,
     /// Thre list of streams and their configuration
-    #[serde(rename = "Uid")]
+    #[serde(rename = "Uid", skip_serializing_if = "Option::is_none")]
     pub uid: Option<Uid>,
     /// The floodlight settings for automatically turning on/off on schedule/motion
-    #[serde(rename = "FloodlightTask")]
+    #[serde(rename = "FloodlightTask", skip_serializing_if = "Option::is_none")]
     pub floodlight_task: Option<FloodlightTask>,
     /// For geting the zoom anf focus of the camera
-    #[serde(rename = "PtzZoomFocus")]
+    #[serde(rename = "PtzZoomFocus", skip_serializing_if = "Option::is_none")]
     pub ptz_zoom_focus: Option<PtzZoomFocus>,
     /// For zooming the camera
-    #[serde(rename = "StartZoomFocus")]
+    #[serde(rename = "StartZoomFocus", skip_serializing_if = "Option::is_none")]
     pub start_zoom_focus: Option<StartZoomFocus>,
     /// Get the support xml
-    #[serde(rename = "Support")]
+    #[serde(rename = "Support", skip_serializing_if = "Option::is_none")]
     pub support: Option<Support>,
     /// Play a sound
-    #[serde(rename = "audioPlayInfo")]
+    #[serde(rename = "audioPlayInfo", skip_serializing_if = "Option::is_none")]
     pub audio_play_info: Option<AudioPlayInfo>,
 }
 
@@ -117,7 +121,13 @@ impl BcXml {
         quick_xml::de::from_reader(s)
     }
     pub(crate) fn serialize<W: Write>(&self, mut w: W) -> Result<W, quick_xml::de::DeError> {
-        quick_xml::se::to_writer(&mut w, self)?;
+        let mut writer = quick_xml::writer::Writer::new(&mut w);
+        writer
+            .write_event(quick_xml::events::Event::Decl(
+                quick_xml::events::BytesDecl::new("1.0", Some("UTF-8"), None),
+            ))
+            .expect("Should be aboe to serialise a basic xml declation");
+        writer.write_serializable("body", &self)?;
         Ok(w)
     }
 }
@@ -126,8 +136,14 @@ impl Extension {
     pub(crate) fn try_parse(s: impl BufRead) -> Result<Self, quick_xml::de::DeError> {
         quick_xml::de::from_reader(s)
     }
-    pub(crate) fn serialize<W: Write>(&self, mut w: W) -> Result<W, quick_xml::de::DeError> {
-        quick_xml::se::to_writer(&mut w, self)?;
+    pub(crate) fn serialize<W: Write>(&self, mut w: W) -> Result<W, quick_xml::Error> {
+        let mut writer = quick_xml::writer::Writer::new(&mut w);
+        writer.write_event(quick_xml::events::Event::Decl(
+            quick_xml::events::BytesDecl::new("1.0", Some("UTF-8"), None),
+        ))?;
+        writer
+            .write_serializable("body", &self)
+            .expect("Should be serialisable");
         Ok(w)
     }
 }
@@ -190,6 +206,9 @@ impl Default for LoginNet {
 /// There is more to this xml but we don't deserialize it all
 #[derive(PartialEq, Eq, Default, Debug, Deserialize, Serialize)]
 pub struct DeviceInfo {
+    /// Version of device info
+    #[serde(rename = "@version")]
+    pub version: Option<String>,
     /// The resolution xml block
     pub resolution: Resolution,
 }
@@ -200,7 +219,7 @@ pub struct VersionInfo {
     /// Name assigned to the camera
     pub name: String,
     /// Model Name
-    #[serde(rename = "type")]
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// Camera's serial number
     pub serialNumber: String,
@@ -244,7 +263,7 @@ pub struct Preview {
     /// Handle usually 0 for mainStream and 1 for subStream
     pub handle: u32,
     /// Either `"mainStream"` or `"subStream"`
-    #[serde(rename = "streamType")]
+    #[serde(rename = "streamType", skip_serializing_if = "Option::is_none")]
     pub stream_type: Option<String>,
 }
 
@@ -257,31 +276,32 @@ pub struct Extension {
     #[serde(rename = "@version")]
     pub version: String,
     /// If the subsequent payload is binary this will be set to 1. Otherwise it is ommited
-    #[serde(rename = "binaryData")]
+    #[serde(rename = "binaryData", skip_serializing_if = "Option::is_none")]
     pub binary_data: Option<u32>,
     /// Certain requests such `AbilitySupport` require to know which user this
     /// ability support request is for (why camera dosen't know this based on who
     /// is logged in is unknown... Possible security hole)
-    #[serde(rename = "userName")]
+    #[serde(rename = "userName", skip_serializing_if = "Option::is_none")]
     pub user_name: Option<String>,
     /// Certain requests such as `AbilitySupport` require details such as what type of
     /// abilities are you intested in. This is a comma seperated list such as
     /// `"system, network, alarm, record, video, image"`
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
     /// The channel ID. This is usually `0` unless using an NVR
-    #[serde(rename = "channelId")]
+    #[serde(rename = "channelId", skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<u8>,
     /// The rfID used in the PIR
-    #[serde(rename = "rfId")]
+    #[serde(rename = "rfId", skip_serializing_if = "Option::is_none")]
     pub rf_id: Option<u8>,
     /// Encrypted binary has this to verify successful decryption
-    #[serde(rename = "checkPos")]
+    #[serde(rename = "checkPos", skip_serializing_if = "Option::is_none")]
     pub check_pos: Option<u32>,
     /// Encrypted binary has this to verify successful decryption
-    #[serde(rename = "checkValue")]
+    #[serde(rename = "checkValue", skip_serializing_if = "Option::is_none")]
     pub check_value: Option<u32>,
     /// Used in newer encrypted payload packets
-    #[serde(rename = "encryptLen")]
+    #[serde(rename = "encryptLen", skip_serializing_if = "Option::is_none")]
     pub encrypt_len: Option<u32>,
 }
 
@@ -309,32 +329,39 @@ pub struct SystemGeneral {
     pub version: String,
 
     /// Time zone is negative seconds offset from UTC. So +7:00 is -25200
-    #[serde(rename = "timeZone")]
+    #[serde(rename = "timeZone", skip_serializing_if = "Option::is_none")]
     pub time_zone: Option<i32>,
     /// Current year
+    #[serde(rename = "year", skip_serializing_if = "Option::is_none")]
     pub year: Option<i32>,
     /// Current month
+    #[serde(rename = "month", skip_serializing_if = "Option::is_none")]
     pub month: Option<u8>,
     /// Current day
+    #[serde(rename = "day", skip_serializing_if = "Option::is_none")]
     pub day: Option<u8>,
     /// Current hour
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hour: Option<u8>,
     /// Current minute
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub minute: Option<u8>,
     /// Current second
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub second: Option<u8>,
 
     /// Format to use for On Screen Display usually `"DMY"`
-    #[serde(rename = "osdFormat")]
+    #[serde(rename = "osdFormat", skip_serializing_if = "Option::is_none")]
     pub osd_format: Option<String>,
     /// Unknown usually `0`
-    #[serde(rename = "timeFormat")]
+    #[serde(rename = "timeFormat", skip_serializing_if = "Option::is_none")]
     pub time_format: Option<u8>,
 
     /// Language e.g. `English` will set the language on the reolink app
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
     /// Name assigned to the camera
-    #[serde(rename = "deviceName")]
+    #[serde(rename = "deviceName", skip_serializing_if = "Option::is_none")]
     pub device_name: Option<String>,
 }
 
@@ -358,7 +385,7 @@ pub struct LedState {
     #[serde(rename = "channelId")]
     pub channel_id: u8,
     /// LED Version, observed value is "2". Should be None when setting the LedState
-    #[serde(rename = "ledVersion")]
+    #[serde(rename = "ledVersion", skip_serializing_if = "Option::is_none")]
     pub led_version: Option<u32>,
     /// State of the IR LEDs values are "auto", "open", "close"
     pub state: String,
@@ -495,6 +522,7 @@ pub struct TalkConfig {
 #[serde(rename = "audioConfig")]
 pub struct AudioConfig {
     /// Unknown only sent during TalkAbility request from the camera
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<u32>,
     /// Audio type known values are `"adpcm"`
     ///
@@ -580,7 +608,7 @@ pub struct AlarmEvent {
     /// Motion status. Known values are `"MD"` or `"none"`
     pub status: String,
     /// AI status. Known values are `"people"` or `"none"`
-    #[serde(rename = "AItype")]
+    #[serde(rename = "AItype", skip_serializing_if = "Option::is_none")]
     pub ai_type: Option<String>,
     /// The recording status. Known values `0` or `1`
     pub recording: i32,
@@ -632,6 +660,7 @@ pub struct Preset {
     /// The ID of the preset
     pub id: u8,
     /// The preset name
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// Command: Known values: `"toPos"` and `"setPos"`
     pub command: String,
@@ -685,26 +714,34 @@ pub struct AbilityInfo {
     #[serde(rename = "userName")]
     pub username: String,
     /// System permissions
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub system: Option<AbilityInfoToken>,
     /// Network permissions
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub network: Option<AbilityInfoToken>,
     /// Alarm permissions
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub alarm: Option<AbilityInfoToken>,
     /// Image permissions
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<AbilityInfoToken>,
     /// Video permissions
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub video: Option<AbilityInfoToken>,
     /// Secutiry permissions
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub security: Option<AbilityInfoToken>,
     /// Replay permissions
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub replay: Option<AbilityInfoToken>,
     /// PTZ permissions
-    #[serde(rename = "PTZ")]
+    #[serde(rename = "PTZ", skip_serializing_if = "Option::is_none")]
     pub ptz: Option<AbilityInfoToken>,
     /// IO permissions
-    #[serde(rename = "IO")]
+    #[serde(rename = "IO", skip_serializing_if = "Option::is_none")]
     pub io: Option<AbilityInfoToken>,
     /// Streaming permissions
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub streaming: Option<AbilityInfoToken>,
 }
 
@@ -721,7 +758,7 @@ pub struct AbilityInfoToken {
 #[serde(rename = "subModule")]
 pub struct AbilityInfoSubModule {
     /// The channel the for the camera usually 0
-    #[serde(rename = "channelId")]
+    #[serde(rename = "channelId", skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<u8>,
     /// The comma seperated list of permissions like this: `general_rw, norm_rw, version_ro`
     #[serde(rename = "abilityValue")]
@@ -760,25 +797,25 @@ pub struct Snap {
     pub channel_id: u8,
     /// Unknown, observed values: 0
     /// value is only set on request
-    #[serde(rename = "logicChannel")]
+    #[serde(rename = "logicChannel", skip_serializing_if = "Option::is_none")]
     pub logic_channel: Option<u8>,
     /// Time of snapshot, zero when requesting
     pub time: u32,
     /// Request a full frame, observed values: 0
     /// value is only set on request
-    #[serde(rename = "fullFrame")]
+    #[serde(rename = "fullFrame", skip_serializing_if = "Option::is_none")]
     pub full_frame: Option<u32>,
     /// Stream name, observed values: `main`, `sub`
     /// value is only set on request
-    #[serde(rename = "streamType")]
+    #[serde(rename = "streamType", skip_serializing_if = "Option::is_none")]
     pub stream_type: Option<String>,
     /// File name, usually of the form `01_20230518140240.jpg`
     /// value is only set on recieve
-    #[serde(rename = "fileName")]
+    #[serde(rename = "fileName", skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
     /// Size in bytes of the picture
     /// value is only set on recieve
-    #[serde(rename = "pictureSize")]
+    #[serde(rename = "pictureSize", skip_serializing_if = "Option::is_none")]
     pub picture_size: Option<u32>,
 }
 
@@ -817,10 +854,10 @@ pub struct EncodeTable {
     pub default_bitrate: u32,
     /// Table of valid framerates
     #[serde(rename = "framerateTable")]
-    pub framerate_table: Vec<u32>,
+    pub framerate_table: String,
     /// Table of valid bitrates
     #[serde(rename = "bitrateTable")]
-    pub bitrate_table: Vec<u32>,
+    pub bitrate_table: String,
 }
 
 /// The resolution of the stream
@@ -865,8 +902,10 @@ pub struct FloodlightTask {
     /// Current brightness of floodlight (in %)
     pub brightness_cur: u32,
     /// Max brightness (in %)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub brightness_max: Option<u32>,
     /// Min brightness (in %)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub brightness_min: Option<u32>,
     /// Schedule fot auto floodlight
     pub schedule: Schedule,
@@ -891,13 +930,13 @@ pub struct Schedule {
     #[serde(rename = "startHour")]
     pub start_hour: u32,
     /// startMin: Observed values 0
-    #[serde(rename = "startMin")]
+    #[serde(rename = "startMin", skip_serializing_if = "Option::is_none")]
     pub start_min: Option<u32>,
     /// endHour
     #[serde(rename = "endHour")]
     pub end_hour: u32,
     /// endMin: Observed values 0
-    #[serde(rename = "endMin")]
+    #[serde(rename = "endMin", skip_serializing_if = "Option::is_none")]
     pub end_min: Option<u32>,
 }
 
@@ -905,8 +944,10 @@ pub struct Schedule {
 #[derive(PartialEq, Eq, Default, Debug, Deserialize, Serialize)]
 pub struct LightSensThreshold {
     /// Min: Observed values 1000
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub min: Option<u32>,
     /// Max: OBserved values 2300
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max: Option<u32>,
     /// Light Current Value: Observed Value 1000
     #[serde(rename = "lightCur")]
@@ -915,10 +956,10 @@ pub struct LightSensThreshold {
     #[serde(rename = "darkCur")]
     pub dark_cur: u32,
     /// Light Default: Observed Value 1000
-    #[serde(rename = "lightDef")]
+    #[serde(rename = "lightDef", skip_serializing_if = "Option::is_none")]
     pub light_def: Option<u32>,
     /// Dark Default: Observed Value 1900
-    #[serde(rename = "darkDef")]
+    #[serde(rename = "darkDef", skip_serializing_if = "Option::is_none")]
     pub dark_def: Option<u32>,
 }
 
@@ -947,12 +988,15 @@ pub struct NightLongViewMultiBrightness {
 #[derive(PartialEq, Eq, Default, Debug, Deserialize, Serialize)]
 pub struct AlarmBrightness {
     /// Min: Observed values 1
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub min: Option<u32>,
     /// Max: Observed values 100
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max: Option<u32>,
     /// Current: Observed values 100
     pub cur: u32,
     /// Default: Observed values 100
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub def: Option<u32>,
 }
 
@@ -960,12 +1004,15 @@ pub struct AlarmBrightness {
 #[derive(PartialEq, Eq, Default, Debug, Deserialize, Serialize)]
 pub struct AlarmDelay {
     /// Min: Observed values 5
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub min: Option<u32>,
     /// Max: Observed values 600
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max: Option<u32>,
     /// Current: Observed values 10
     pub cur: u32,
     /// Default: Observed values 10
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub def: Option<u32>,
 }
 
@@ -1021,156 +1068,167 @@ pub struct Support {
     #[serde(rename = "@version")]
     pub version: String,
     /// IO port number (input)
-    #[serde(rename = "IOInputPortNum")]
+    #[serde(rename = "IOInputPortNum", skip_serializing_if = "Option::is_none")]
     pub io_input_port_num: Option<u32>,
     /// IO port number (output)
-    #[serde(rename = "IOOutputPortNum")]
+    #[serde(rename = "IOOutputPortNum", skip_serializing_if = "Option::is_none")]
     pub io_output_port_num: Option<u32>,
     #[serde(rename = "diskNum")]
     /// Number of disks
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub disk_num: Option<u32>,
     /// Number of video channels
-    #[serde(rename = "channelNum")]
+    #[serde(rename = "channelNum", skip_serializing_if = "Option::is_none")]
     pub channel_num: Option<u32>,
     /// Number of audio channels
-    #[serde(rename = "audioNum")]
+    #[serde(rename = "audioNum", skip_serializing_if = "Option::is_none")]
     pub audio_num: Option<u32>,
     /// The supported PTZ Mode: pt
-    #[serde(rename = "ptzMode")]
+    #[serde(rename = "ptzMode", skip_serializing_if = "Option::is_none")]
     pub ptz_mode: Option<String>,
     /// PTZ cfg: 0
-    #[serde(rename = "ptzCfg")]
+    #[serde(rename = "ptzCfg", skip_serializing_if = "Option::is_none")]
     pub ptz_cfg: Option<u32>,
     /// Use b485 ptz
-    #[serde(rename = "")]
+    #[serde(rename = "b485", skip_serializing_if = "Option::is_none")]
     pub B485: Option<u32>,
     /// Support autoupdate
-    #[serde(rename = "autoUpdate")]
+    #[serde(rename = "autoUpdate", skip_serializing_if = "Option::is_none")]
     pub auto_update: Option<u32>,
     /// Support push notificaion alarms
-    #[serde(rename = "pushAlarm")]
+    #[serde(rename = "pushAlarm", skip_serializing_if = "Option::is_none")]
     pub push_alarm: Option<u32>,
     /// Support ftp
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ftp: Option<u32>,
     /// Support test for ftp
-    #[serde(rename = "ftpTest")]
+    #[serde(rename = "ftpTest", skip_serializing_if = "Option::is_none")]
     pub ftp_test: Option<u32>,
     /// Support email notification
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<u32>,
     /// Support wifi connections
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub wifi: Option<u32>,
     /// Support recording
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub record: Option<u32>,
     /// Support test for wifi
-    #[serde(rename = "wifiTest")]
+    #[serde(rename = "wifiTest", skip_serializing_if = "Option::is_none")]
     pub wifi_test: Option<u32>,
     /// Support rtsp
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rtsp: Option<u32>,
     /// Support onvif
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub onvif: Option<u32>,
     /// Support audio talk
-    #[serde(rename = "audioTalk")]
+    #[serde(rename = "audioTalk", skip_serializing_if = "Option::is_none")]
     pub audio_talk: Option<u32>,
     /// RF version
-    #[serde(rename = "rfVersion")]
+    #[serde(rename = "rfVersion", skip_serializing_if = "Option::is_none")]
     pub rf_version: Option<u32>,
     /// Support rtmp
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rtmp: Option<u32>,
     /// Has external stream
-    #[serde(rename = "noExternStream")]
+    #[serde(rename = "noExternStream", skip_serializing_if = "Option::is_none")]
     pub no_extern_stream: Option<u32>,
     /// Time format
-    #[serde(rename = "timeFormat")]
+    #[serde(rename = "timeFormat", skip_serializing_if = "Option::is_none")]
     pub time_format: Option<u32>,
     /// DDNS version
-    #[serde(rename = "ddnsVersion")]
+    #[serde(rename = "ddnsVersion", skip_serializing_if = "Option::is_none")]
     pub ddns_version: Option<u32>,
     /// Email version
-    #[serde(rename = "emailVersion")]
+    #[serde(rename = "emailVersion", skip_serializing_if = "Option::is_none")]
     pub email_version: Option<u32>,
     /// Push notification version
-    #[serde(rename = "pushVersion")]
+    #[serde(rename = "pushVersion", skip_serializing_if = "Option::is_none")]
     pub push_version: Option<u32>,
     /// Push notification type: 1
-    #[serde(rename = "pushType")]
+    #[serde(rename = "pushType", skip_serializing_if = "Option::is_none")]
     pub push_type: Option<u32>,
     /// Support audio alarm
-    #[serde(rename = "audioAlarm")]
+    #[serde(rename = "audioAlarm", skip_serializing_if = "Option::is_none")]
     pub audio_alarm: Option<u32>,
     /// Support AP
-    #[serde(rename = "apMode")]
+    #[serde(rename = "apMode", skip_serializing_if = "Option::is_none")]
     pub ap_mode: Option<u32>,
     /// Could version
-    #[serde(rename = "cloudVersion")]
+    #[serde(rename = "cloudVersion", skip_serializing_if = "Option::is_none")]
     pub cloud_version: Option<u32>,
     /// Replay version
-    #[serde(rename = "replayVersion")]
+    #[serde(rename = "replayVersion", skip_serializing_if = "Option::is_none")]
     pub replay_version: Option<u32>,
     /// mobComVersion
-    #[serde(rename = "mobComVersion")]
+    #[serde(rename = "mobComVersion", skip_serializing_if = "Option::is_none")]
     pub mob_com_version: Option<u32>,
     /// Export images
-    #[serde(rename = "ExportImport")]
+    #[serde(rename = "ExportImport", skip_serializing_if = "Option::is_none")]
     pub export_import: Option<u32>,
     /// Language version
-    #[serde(rename = "languageVer")]
+    #[serde(rename = "languageVer", skip_serializing_if = "Option::is_none")]
     pub language_ver: Option<u32>,
     /// Video standard
-    #[serde(rename = "videoStandard")]
+    #[serde(rename = "videoStandard", skip_serializing_if = "Option::is_none")]
     pub video_standard: Option<u32>,
     /// Support sync time
-    #[serde(rename = "syncTime")]
+    #[serde(rename = "syncTime", skip_serializing_if = "Option::is_none")]
     pub sync_time: Option<u32>,
     /// Support net port
-    #[serde(rename = "netPort")]
+    #[serde(rename = "netPort", skip_serializing_if = "Option::is_none")]
     pub net_port: Option<u32>,
     /// NAS version
-    #[serde(rename = "nasVersion")]
+    #[serde(rename = "nasVersion", skip_serializing_if = "Option::is_none")]
     pub nas_version: Option<u32>,
     /// Reboot required
-    #[serde(rename = "needReboot")]
+    #[serde(rename = "needReboot", skip_serializing_if = "Option::is_none")]
     pub need_reboot: Option<u32>,
     /// Support reboot
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reboot: Option<u32>,
     /// Support Audio config
-    #[serde(rename = "audioCfg")]
+    #[serde(rename = "audioCfg", skip_serializing_if = "Option::is_none")]
     pub audio_cfg: Option<u32>,
     /// Support network diagnosis
-    #[serde(rename = "networkDiagnosis")]
+    #[serde(rename = "networkDiagnosis", skip_serializing_if = "Option::is_none")]
     pub network_diagnosis: Option<u32>,
     /// Support height adjustment
-    #[serde(rename = "heightDiffAdjust")]
+    #[serde(rename = "heightDiffAdjust", skip_serializing_if = "Option::is_none")]
     pub height_diff_adjust: Option<u32>,
     /// Support upgrade
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub upgrade: Option<u32>,
     /// Support GPS
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gps: Option<u32>,
     /// Support power save config
-    #[serde(rename = "powerSavingCfg")]
+    #[serde(rename = "powerSavingCfg", skip_serializing_if = "Option::is_none")]
     pub power_saving_cfg: Option<u32>,
     /// Login Locked
-    #[serde(rename = "loginLocked")]
+    #[serde(rename = "loginLocked", skip_serializing_if = "Option::is_none")]
     pub login_locked: Option<u32>,
     /// View plan
-    #[serde(rename = "viewPlan")]
+    #[serde(rename = "viewPlan", skip_serializing_if = "Option::is_none")]
     pub view_plan: Option<u32>,
     /// Preview replay limit
-    #[serde(rename = "previewReplayLimit")]
+    #[serde(rename = "previewReplayLimit", skip_serializing_if = "Option::is_none")]
     pub preview_replay_limit: Option<u32>,
     /// IOT link
-    #[serde(rename = "IOTLink")]
+    #[serde(rename = "IOTLink", skip_serializing_if = "Option::is_none")]
     pub iot_link: Option<u32>,
     /// IOT link maximum actions
-    #[serde(rename = "IOTLinkActionMax")]
+    #[serde(rename = "IOTLinkActionMax", skip_serializing_if = "Option::is_none")]
     pub iot_link_action_max: Option<u32>,
     /// Support record config
-    #[serde(rename = "recordCfg")]
+    #[serde(rename = "recordCfg", skip_serializing_if = "Option::is_none")]
     pub record_cfg: Option<u32>,
     /// Has large battery
-    #[serde(rename = "largeBattery")]
+    #[serde(rename = "largeBattery", skip_serializing_if = "Option::is_none")]
     pub large_battery: Option<u32>,
     /// Smart home config
-    #[serde(rename = "smartHome")]
+    #[serde(rename = "smartHome", skip_serializing_if = "Option::is_none")]
     pub smart_home: Option<SmartHome>,
     /// Support config for specific channels
     #[serde(rename = "item")]
@@ -1203,89 +1261,94 @@ pub struct SupportItem {
     #[serde(rename = "chnID")]
     pub chn_id: u32,
     /// PTZ type of the channel
-    #[serde(rename = "ptzType")]
+    #[serde(rename = "ptzType", skip_serializing_if = "Option::is_none")]
     pub ptz_type: Option<u32>,
     /// RF config
-    #[serde(rename = "rfCfg")]
+    #[serde(rename = "rfCfg", skip_serializing_if = "Option::is_none")]
     pub rf_cfg: Option<u32>,
     /// Support audio
-    #[serde(rename = "noAudio")]
+    #[serde(rename = "noAudio", skip_serializing_if = "Option::is_none")]
     pub no_audio: Option<u32>,
     /// Support auto focus
-    #[serde(rename = "autoFocus")]
+    #[serde(rename = "autoFocus", skip_serializing_if = "Option::is_none")]
     pub auto_focus: Option<u32>,
     /// Support video clip
-    #[serde(rename = "videoClip")]
+    #[serde(rename = "videoClip", skip_serializing_if = "Option::is_none")]
     pub video_clip: Option<u32>,
     /// Has battery
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub battery: Option<u32>,
     /// ISP config
-    #[serde(rename = "ispCfg")]
+    #[serde(rename = "ispCfg", skip_serializing_if = "Option::is_none")]
     pub isp_cfg: Option<u32>,
     /// OSD config
-    #[serde(rename = "osdCfg")]
+    #[serde(rename = "osdCfg", skip_serializing_if = "Option::is_none")]
     pub osd_cfg: Option<u32>,
     /// Support battery analysis
-    #[serde(rename = "batAnalysis")]
+    #[serde(rename = "batAnalysis", skip_serializing_if = "Option::is_none")]
     pub bat_analysis: Option<u32>,
     /// Supports dynamic resolution
-    #[serde(rename = "dynamicReso")]
+    #[serde(rename = "dynamicReso", skip_serializing_if = "Option::is_none")]
     pub dynamic_reso: Option<u32>,
     /// Audio version
-    #[serde(rename = "audioVersion")]
+    #[serde(rename = "audioVersion", skip_serializing_if = "Option::is_none")]
     pub audio_version: Option<u32>,
     /// Supports LED control
-    #[serde(rename = "ledCtrl")]
+    #[serde(rename = "ledCtrl", skip_serializing_if = "Option::is_none")]
     pub led_ctrl: Option<u32>,
     /// Supports PTZ Control
-    #[serde(rename = "ptzControl")]
+    #[serde(rename = "ptzControl", skip_serializing_if = "Option::is_none")]
     pub ptz_control: Option<u32>,
     /// Supports new ISP config
-    #[serde(rename = "newIspCfg")]
+    #[serde(rename = "newIspCfg", skip_serializing_if = "Option::is_none")]
     pub new_isp_cfg: Option<u32>,
     /// Supports PTZ presets
-    #[serde(rename = "ptzPreset")]
+    #[serde(rename = "ptzPreset", skip_serializing_if = "Option::is_none")]
     pub ptz_preset: Option<u32>,
     /// Supports PTZ patrol
-    #[serde(rename = "ptzPatrol")]
+    #[serde(rename = "ptzPatrol", skip_serializing_if = "Option::is_none")]
     pub ptz_patrol: Option<u32>,
     /// Supports PTZ Tattern
-    #[serde(rename = "ptzTattern")]
+    #[serde(rename = "ptzTattern", skip_serializing_if = "Option::is_none")]
     pub ptz_tattern: Option<u32>,
     /// Supports Auto PT
-    #[serde(rename = "autoPt")]
+    #[serde(rename = "autoPt", skip_serializing_if = "Option::is_none")]
     pub auto_pt: Option<u32>,
     /// H264 Profile: 7
-    #[serde(rename = "h264Profile")]
+    #[serde(rename = "h264Profile", skip_serializing_if = "Option::is_none")]
     pub h264_profile: Option<u32>,
     /// Supports motion alarm
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub motion: Option<u32>,
     /// AI Type
-    #[serde(rename = "aitype")]
+    #[serde(rename = "aitype", skip_serializing_if = "Option::is_none")]
     pub ai_type: Option<u32>,
     /// Animal AI Type
-    #[serde(rename = "aiAnimalType")]
+    #[serde(rename = "aiAnimalType", skip_serializing_if = "Option::is_none")]
     pub ai_animal_type: Option<u32>,
     /// Supports time lapse
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub timelapse: Option<u32>,
     /// Supports snap
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub snap: Option<u32>,
     /// Supports encoding control
-    #[serde(rename = "encCtrl")]
+    #[serde(rename = "encCtrl", skip_serializing_if = "Option::is_none")]
     pub enc_ctrl: Option<u32>,
     /// Has Zoom focus backlash
-    #[serde(rename = "zfBacklash")]
+    #[serde(rename = "zfBacklash", skip_serializing_if = "Option::is_none")]
     pub zf_backlash: Option<u32>,
     /// Supports IOT Link Ability
-    #[serde(rename = "IOTLinkAbility")]
+    #[serde(rename = "IOTLinkAbility", skip_serializing_if = "Option::is_none")]
     pub iot_link_ability: Option<u32>,
     /// Supports IPC audio talk
-    #[serde(rename = "ipcAudioTalk")]
+    #[serde(rename = "ipcAudioTalk", skip_serializing_if = "Option::is_none")]
     pub ipc_audio_talk: Option<u32>,
     /// Supports Bino Config
-    #[serde(rename = "binoCfg")]
+    #[serde(rename = "binoCfg", skip_serializing_if = "Option::is_none")]
     pub bino_cfg: Option<u32>,
     /// Supports thumbnail
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub thumbnail: Option<u32>,
 }
 
@@ -1405,7 +1468,7 @@ fn test_login_ser() {
     };
 
     let b2 = BcXml::try_parse(sample.as_bytes()).unwrap();
-    let b3 = BcXml::try_parse(b.serialize(bytes::BytesMut::new()).unwrap().as_ref()).unwrap();
+    let b3 = BcXml::try_parse(b.serialize(vec![]).unwrap().as_ref()).unwrap();
     assert_eq!(b, b2);
     assert_eq!(b, b3);
     assert_eq!(b2, b3);
@@ -1418,6 +1481,13 @@ fn test_deviceinfo_partial_deser() {
         <?xml version="1.0" encoding="UTF-8" ?>
         <body>
         <DeviceInfo version="1.1">
+        <firmVersion>00000000000000</firmVersion>
+        <IOInputPortNum>0</IOInputPortNum>
+        <IOOutputPortNum>0</IOOutputPortNum>
+        <diskNum>0</diskNum>
+        <type>ipc</type>
+        <channelNum>1</channelNum>
+        <audioNum>1</audioNum>
         <ipChannel>0</ipChannel>
         <analogChnNum>1</analogChnNum>
         <resolution>
@@ -1430,11 +1500,97 @@ fn test_deviceinfo_partial_deser() {
         <ptzMode>none</ptzMode>
         <typeInfo>IPC</typeInfo>
         <softVer>33554880</softVer>
+        <hardVer>0</hardVer>
+        <panelVer>0</panelVer>
+        <hdChannel1>0</hdChannel1>
+        <hdChannel2>0</hdChannel2>
+        <hdChannel3>0</hdChannel3>
+        <hdChannel4>0</hdChannel4>
+        <norm>NTSC</norm>
+        <osdFormat>YMD</osdFormat>
         <B485>0</B485>
         <supportAutoUpdate>0</supportAutoUpdate>
         <userVer>1</userVer>
         </DeviceInfo>
-        </body>"#
+        <StreamInfoList version="1.1">
+        <StreamInfo>
+        <channelBits>1</channelBits>
+        <encodeTable>
+        <type>mainStream</type>
+        <resolution>
+        <width>3840</width>
+        <height>2160</height>
+        </resolution>
+        <defaultFramerate>20</defaultFramerate>
+        <defaultBitrate>6144</defaultBitrate>
+        <framerateTable>20,18,16,15,12,10,8,6,4,2</framerateTable>
+        <bitrateTable>4096,5120,6144,7168,8192</bitrateTable>
+        </encodeTable>
+        <encodeTable>
+        <type>subStream</type>
+        <resolution>
+        <width>640</width>
+        <height>360</height>
+        </resolution>
+        <defaultFramerate>7</defaultFramerate>
+        <defaultBitrate>160</defaultBitrate>
+        <framerateTable>15,10,7,4</framerateTable>
+        <bitrateTable>64,128,160,192,256,384,512</bitrateTable>
+        </encodeTable>
+        </StreamInfo>
+        <StreamInfo>
+        <channelBits>1</channelBits>
+        <encodeTable>
+        <type>mainStream</type>
+        <resolution>
+        <width>2560</width>
+        <height>1440</height>
+        </resolution>
+        <defaultFramerate>25</defaultFramerate>
+        <defaultBitrate>0</defaultBitrate>
+        <framerateTable>25,22,20,18,16,15,12,10,8,6,4,2</framerateTable>
+        <bitrateTable>1024,1536,2048,3072,4096,5120,6144,7168,8192</bitrateTable>
+        </encodeTable>
+        <encodeTable>
+        <type>subStream</type>
+        <resolution>
+        <width>640</width>
+        <height>360</height>
+        </resolution>
+        <defaultFramerate>7</defaultFramerate>
+        <defaultBitrate>160</defaultBitrate>
+        <framerateTable>15,10,7,4</framerateTable>
+        <bitrateTable>64,128,160,192,256,384,512</bitrateTable>
+        </encodeTable>
+        </StreamInfo>
+        <StreamInfo>
+        <channelBits>1</channelBits>
+        <encodeTable>
+        <type>mainStream</type>
+        <resolution>
+        <width>2304</width>
+        <height>1296</height>
+        </resolution>
+        <defaultFramerate>25</defaultFramerate>
+        <defaultBitrate>0</defaultBitrate>
+        <framerateTable>25,22,20,18,16,15,12,10,8,6,4,2</framerateTable>
+        <bitrateTable>1024,1536,2048,3072,4096,5120,6144,7168,8192</bitrateTable>
+        </encodeTable>
+        <encodeTable>
+        <type>subStream</type>
+        <resolution>
+        <width>640</width>
+        <height>360</height>
+        </resolution>
+        <defaultFramerate>7</defaultFramerate>
+        <defaultBitrate>160</defaultBitrate>
+        <framerateTable>15,10,7,4</framerateTable>
+        <bitrateTable>64,128,160,192,256,384,512</bitrateTable>
+        </encodeTable>
+        </StreamInfo>
+        </StreamInfoList>
+        </body>
+"#
     );
 
     // Needs to ignore all the other crap that we don't care about

@@ -78,7 +78,7 @@ fn bc_ext<W: Write>(
     xml: &Extension,
     encryption_protocol: &EncryptionProtocol,
 ) -> impl SerializeFn<W> {
-    let xml_bytes = xml.serialize(bytes::BytesMut::new()).unwrap();
+    let xml_bytes = xml.serialize(vec![]).unwrap();
     let enc_bytes = xml_crypto::encrypt(enc_offset, &xml_bytes, encryption_protocol);
     slice(enc_bytes)
 }
@@ -90,7 +90,11 @@ fn bc_payload<W: Write>(
 ) -> impl SerializeFn<W> {
     let payload_bytes = match payload {
         BcPayloads::BcXml(x) => {
-            let xml_bytes = x.serialize(bytes::BytesMut::new()).unwrap();
+            let xml_bytes = x.serialize(vec![]).unwrap();
+            // log::debug!(
+            //     "Seialised as: {:?}",
+            //     std::str::from_utf8(xml_bytes.as_ref())
+            // );
             xml_crypto::encrypt(enc_offset, &xml_bytes, encryption_protocol)
         }
         BcPayloads::Binary(x) => x.to_owned(),

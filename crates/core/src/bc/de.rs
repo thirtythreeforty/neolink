@@ -198,13 +198,14 @@ fn bc_modern_msg<'a>(
                         .unwrap_or("Not Text".to_string())
                 );
             }
-            let xml = BcXml::try_parse(processed_payload_buf.as_slice()).map_err(|_| {
+            let xml = BcXml::try_parse(processed_payload_buf.as_slice()).map_err(|e| {
                 error!("header.msg_id: {}", header.msg_id);
                 error!(
                     "processed_payload_buf: {:X?}::{:?}",
                     processed_payload_buf,
                     std::str::from_utf8(&processed_payload_buf)
                 );
+                log::error!("e: {:?}", e);
                 Err::Error(make_error(
                     buf,
                     "Unable to parse Payload XML",
@@ -258,9 +259,18 @@ mod tests {
     use super::*;
     use crate::bc::xml::*;
     use assert_matches::assert_matches;
+    use env_logger::Env;
+
+    fn init() {
+        let _ = env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+            .is_test(true)
+            .try_init();
+    }
 
     #[test]
     fn test_bc_modern_login() {
+        init();
+
         let sample = include_bytes!("samples/model_sample_modern_login.bin");
 
         let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
@@ -289,45 +299,39 @@ mod tests {
 
     #[test]
     // This is an 0xdd03 encryption from an Argus 2
-    //
-    // It is currently unsupported
     fn test_03_enc_login() {
+        init();
+
         let sample = include_bytes!("samples/battery_enc.bin");
 
         let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
 
         let (buf, header) = bc_header(&sample[..]).unwrap();
-        assert!(bc_body(&context, &header, buf).is_err());
-        // It should error because we don't support it
-        //
-        // The following would be its contents if we
-        // did support it (maybe one day :) left it here
-        // for then)
-        //
-        //
-        // let (_, body) = bc_body(&mut context, &header, buf).unwrap();
-        // assert_eq!(header.msg_id, 1);
-        // assert_eq!(header.body_len, 175);
-        // assert_eq!(header.channel_id, 0);
-        // assert_eq!(header.stream_type, 0);
-        // assert_eq!(header.payload_offset, None);
-        // assert_eq!(header.response_code, 0xdd03);
-        // assert_eq!(header.class, 0x6614);
-        // match body {
-        //     BcBody::ModernMsg(ModernMsg {
-        //         payload:
-        //             Some(BcPayloads::BcXml(BcXml {
-        //                 encryption: Some(encryption),
-        //                 ..
-        //             })),
-        //         ..
-        //     }) => assert_eq!(encryption.nonce, "0-AhnEZyUg6eKrJFIWgXPF"),
-        //     _ => panic!(),
-        // }
+        let (_, body) = bc_body(&context, &header, buf).unwrap();
+        assert_eq!(header.msg_id, 1);
+        assert_eq!(header.body_len, 175);
+        assert_eq!(header.channel_id, 0);
+        assert_eq!(header.stream_type, 0);
+        assert_eq!(header.payload_offset, None);
+        assert_eq!(header.response_code, 0xdd03);
+        assert_eq!(header.class, 0x6614);
+        match body {
+            BcBody::ModernMsg(ModernMsg {
+                payload:
+                    Some(BcPayloads::BcXml(BcXml {
+                        encryption: Some(encryption),
+                        ..
+                    })),
+                ..
+            }) => assert_eq!(encryption.nonce, "0-AhnEZyUg6eKrJFIWgXPF"),
+            _ => panic!(),
+        }
     }
 
     #[test]
     fn test_bc_legacy_login() {
+        init();
+
         let sample = include_bytes!("samples/model_sample_legacy_login.bin");
 
         let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
@@ -352,6 +356,8 @@ mod tests {
 
     #[test]
     fn test_bc_modern_login_failed() {
+        init();
+
         let sample = include_bytes!("samples/modern_login_failed.bin");
 
         let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
@@ -376,6 +382,8 @@ mod tests {
 
     #[test]
     fn test_bc_modern_login_success() {
+        init();
+
         let sample = include_bytes!("samples/modern_login_success.bin");
 
         let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
@@ -403,6 +411,8 @@ mod tests {
 
     #[test]
     fn test_bc_binary_mode() {
+        init();
+
         let sample1 = include_bytes!("samples/modern_video_start1.bin");
         let sample2 = include_bytes!("samples/modern_video_start2.bin");
 
@@ -442,6 +452,8 @@ mod tests {
     //
     // They also have extra streams
     fn test_bc_b800_externstream() {
+        init();
+
         let sample = include_bytes!("samples/xml_externstream_b800.bin");
 
         let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
@@ -484,6 +496,8 @@ mod tests {
     //
     // They also have extra streams
     fn test_bc_b800_substream() {
+        init();
+
         let sample = include_bytes!("samples/xml_substream_b800.bin");
 
         let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);
@@ -526,6 +540,8 @@ mod tests {
     //
     // They also have extra streams
     fn test_bc_b800_mainstream() {
+        init();
+
         let sample = include_bytes!("samples/xml_mainstream_b800.bin");
 
         let context = BcContext::new_with_encryption(EncryptionProtocol::BCEncrypt);

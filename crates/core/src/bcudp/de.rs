@@ -74,7 +74,12 @@ fn udp_disc(buf: &[u8]) -> IResult<&[u8], UdpDiscovery> {
     assert_eq!(checksum, actual_checksum);
 
     let decrypted_payload = decrypt(tid, enc_data_slice);
-    let payload = UdpXml::try_parse(decrypted_payload.as_slice()).map_err(|_| {
+    log::error!(
+        "decrypted_payload: {:?}",
+        std::str::from_utf8(&decrypted_payload)
+    );
+    let payload = UdpXml::try_parse(decrypted_payload.as_slice()).map_err(|e| {
+        log::error!("e: {:?}", e);
         Err::Error(make_error(
             buf,
             "DISC: Unable to decode UDPXml",
@@ -295,15 +300,16 @@ mod tests {
         ]
         .concat();
 
+        let mut buf = BytesMut::from(&sample[..]);
         // Should derealise all of this
         loop {
-            let e = BcUdp::deserialize(&mut BytesMut::from(&sample[..]));
+            let e = BcUdp::deserialize(&mut buf);
             match e {
                 Err(Error::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => {
                     // Reach end of files
                     break;
                 }
-                Err(Error::NomIncomplete(_)) => {
+                Err(Error::NomIncomplete(_)) if buf.is_empty() => {
                     // Reach end of files
                     break;
                 }

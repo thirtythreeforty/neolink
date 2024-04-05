@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::fmt::Write;
 use std::io::BufRead;
+use std::io::Write;
 
 /// The top level of the UDP xml is P2P
 #[derive(PartialEq, Eq, Debug, Deserialize, Serialize, Clone)]
+#[serde(rename = "P2P")]
 pub enum UdpXml {
     /// C2D_S xml Discovery of any client
     #[serde(rename = "C2D_S")]
@@ -61,12 +62,31 @@ pub enum UdpXml {
     C2rHb(C2rHb),
 }
 
+/// The top level holder for P2P we auto add/remove this at serde
+#[derive(PartialEq, Eq, Debug, Deserialize, Serialize, Clone)]
+struct P2P {
+    #[serde(rename = "$value")]
+    xml: UdpXml,
+}
+
 impl UdpXml {
     pub(crate) fn try_parse(s: impl BufRead) -> Result<Self, quick_xml::de::DeError> {
-        quick_xml::de::from_reader(s)
+        let p2p: Result<P2P, _> = quick_xml::de::from_reader(s);
+        p2p.map(|i| i.xml)
     }
     pub(crate) fn serialize<W: Write>(&self, mut w: W) -> Result<W, quick_xml::de::DeError> {
-        quick_xml::se::to_writer(&mut w, self)?;
+        let mut writer = quick_xml::writer::Writer::new(&mut w);
+        // No header on a UdpXml
+        // writer.write_event(quick_xml::events::Event::Decl(
+        //     quick_xml::events::BytesDecl::new("1.0", Some("UTF-8"), None),
+        // ))?;
+        writer
+            .create_element("P2P")
+            .write_inner_content::<_, quick_xml::de::DeError>(|writer| {
+                writer.write_serializable("", &self)?;
+                Ok(())
+            })?;
+
         Ok(w)
     }
 }
@@ -270,7 +290,7 @@ pub struct C2rC {
     #[serde(rename = "p")]
     pub os: String,
     /// The revision. Known values None and 3
-    #[serde(rename = "r")]
+    #[serde(rename = "r", skip_serializing_if = "Option::is_none")]
     pub revision: Option<i32>,
 }
 
@@ -281,8 +301,10 @@ pub struct C2rC {
 #[derive(PartialEq, Eq, Default, Debug, Deserialize, Serialize, Clone)]
 pub struct R2cT {
     /// The location of the camera
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dmap: Option<IpPort>,
     /// The location of the camera
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dev: Option<IpPort>,
     /// The client id
     pub cid: i32,
@@ -298,10 +320,13 @@ pub struct R2cT {
 #[derive(PartialEq, Eq, Default, Debug, Deserialize, Serialize, Clone)]
 pub struct R2cCr {
     /// Dev camera location (actual local ip)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dev: Option<IpPort>,
     /// Dmap camera location
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dmap: Option<IpPort>,
     /// The location of the relay
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub relay: Option<IpPort>,
     /// The nat type. Known values `"NULL"`
     pub nat: String,

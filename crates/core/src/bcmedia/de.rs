@@ -331,12 +331,18 @@ mod tests {
         ]
         .concat();
 
+        let mut buf = BytesMut::from(&sample[..]);
+
         // Should derealise all of this
         loop {
-            let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
+            let e = BcMedia::deserialize(&mut buf);
             match e {
                 Err(Error::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => {
                     // Reach end of files
+                    break;
+                }
+                Err(Error::NomIncomplete(_)) if buf.is_empty() => {
+                    // EOF still (but parser looking for next magic)
                     break;
                 }
                 Err(e) => {
@@ -364,12 +370,17 @@ mod tests {
         ]
         .concat();
 
+        let mut buf = BytesMut::from(&sample[..]);
         // Should derealise all of this
         loop {
-            let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
+            let e = BcMedia::deserialize(&mut buf);
             match e {
                 Err(Error::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => {
                     // Reach end of files
+                    break;
+                }
+                Err(Error::NomIncomplete(_)) if buf.is_empty() => {
+                    // EOF still (but parser looking for next magic)
                     break;
                 }
                 Err(e) => {
@@ -410,12 +421,18 @@ mod tests {
         ]
         .concat();
 
+        let mut buf = BytesMut::from(&sample[..]);
+
         // Should derealise all of this
         loop {
-            let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
+            let e = BcMedia::deserialize(&mut buf);
             match e {
                 Err(Error::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => {
                     // Reach end of files
+                    break;
+                }
+                Err(Error::NomIncomplete(_)) if buf.is_empty() => {
+                    // EOF still (but parser looking for next magic)
                     break;
                 }
                 Err(e) => {
@@ -434,7 +451,9 @@ mod tests {
 
         let sample = include_bytes!("samples/info_v1.raw");
 
-        let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
+        let mut buf = BytesMut::from(&sample[..]);
+
+        let e = BcMedia::deserialize(&mut buf);
         assert!(matches!(
             e,
             Ok(BcMedia::InfoV1(BcMediaInfoV1 {
@@ -470,7 +489,9 @@ mod tests {
         ]
         .concat();
 
-        let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
+        let mut buf = BytesMut::from(&sample[..]);
+
+        let e = BcMedia::deserialize(&mut buf);
         if let Ok(BcMedia::Iframe(BcMediaIframe {
             video_type: VideoType::H264,
             microseconds: 3557705112,
@@ -494,7 +515,9 @@ mod tests {
         ]
         .concat();
 
-        let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
+        let mut buf = BytesMut::from(&sample[..]);
+
+        let e = BcMedia::deserialize(&mut buf);
         if let Ok(BcMedia::Pframe(BcMediaPframe {
             video_type: VideoType::H264,
             microseconds: 3557767112,
@@ -512,8 +535,9 @@ mod tests {
         init();
 
         let sample = include_bytes!("samples/adpcm_0.raw");
+        let mut buf = BytesMut::from(&sample[..]);
 
-        let e = BcMedia::deserialize(&mut BytesMut::from(&sample[..]));
+        let e = BcMedia::deserialize(&mut buf);
         if let Ok(BcMedia::Adpcm(BcMediaAdpcm { data: d })) = e {
             assert_eq!(d.len(), 244);
         } else {

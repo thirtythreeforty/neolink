@@ -339,20 +339,35 @@ impl StreamData {
                     if let Some(encode) =
                         infos.iter().find(|encode| encode.name == name.to_string())
                     {
+                        let bitrate_table = encode
+                            .bitrate_table
+                            .split(',')
+                            .filter_map(|c| {
+                                let i: Result<u32, _> = c.parse();
+                                i.ok()
+                            })
+                            .collect::<Vec<u32>>();
+                        let framerate_table = encode
+                            .framerate_table
+                            .split(',')
+                            .filter_map(|c| {
+                                let i: Result<u32, _> = c.parse();
+                                i.ok()
+                            })
+                            .collect::<Vec<u32>>();
+
                         Ok((
                             [encode.resolution.width, encode.resolution.height],
-                            encode
-                                .bitrate_table
+                            bitrate_table
                                 .get(encode.default_bitrate as usize)
                                 .copied()
                                 .unwrap_or(encode.default_bitrate)
                                 * 1024,
-                            encode
-                                .framerate_table
+                            framerate_table
                                 .get(encode.default_framerate as usize)
                                 .copied()
                                 .unwrap_or(encode.default_framerate),
-                            encode.framerate_table.clone(),
+                            framerate_table.clone(),
                         ))
                     } else {
                         Ok(([0, 0], 0, 0, vec![]))

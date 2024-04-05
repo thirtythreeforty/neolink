@@ -1,6 +1,5 @@
 use super::{crc::calc_crc, model::*, xml_crypto::encrypt};
 use crate::Error;
-use bytes::BytesMut;
 use cookie_factory::bytes::*;
 use cookie_factory::sequence::tuple;
 use cookie_factory::SerializeFn;
@@ -11,10 +10,7 @@ impl BcUdp {
     pub(crate) fn serialize<W: Write>(&self, buf: W) -> Result<W, Error> {
         let (buf, _) = match &self {
             BcUdp::Discovery(payload) => {
-                let xml_payload = encrypt(
-                    payload.tid,
-                    &payload.payload.serialize(BytesMut::new()).unwrap(),
-                );
+                let xml_payload = encrypt(payload.tid, &payload.payload.serialize(vec![]).unwrap());
                 gen(bcudp_disc(payload, &xml_payload), buf)?
             }
             BcUdp::Ack(payload) => {

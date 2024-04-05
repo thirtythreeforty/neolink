@@ -15,7 +15,9 @@ use std::{
 
 pub(crate) enum AddressOrUid {
     Address(String),
+    #[allow(dead_code)]
     Uid(String, DiscoveryMethods),
+    #[allow(dead_code)]
     AddressWithUid(String, String, DiscoveryMethods),
 }
 

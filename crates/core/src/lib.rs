@@ -9,18 +9,50 @@
 //! A camera can be initialised with
 //!
 //! ```no_run
-//! use neolink_core::bc_protocol::BcCamera;
-//! let channel_id = 0; // Usually zero but can be non zero if uses a reolink NVR
-//! let mut camera = BcCamera::new_with_addr("camera_ip_address", channel_id).unwrap();
+//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
+//! use neolink_core::bc_protocol::{BcCamera, BcCameraOpt, DiscoveryMethods, ConnectionProtocol, Credentials};
+//! let options = BcCameraOpt {
+//!     name: "CamName".to_string(),
+//!     channel_id: 0,
+//!     addrs: ["192.168.1.1".parse().unwrap()].to_vec(),
+//!     port: Some(9000),
+//!     uid: Some("CAMUID".to_string()),
+//!     protocol: ConnectionProtocol::TcpUdp,
+//!     discovery: DiscoveryMethods::Relay,
+//!     credentials: Credentials {
+//!         username: "username".to_string(),
+//!         password: Some("password".to_string()),
+//!     },
+//!     debug: false,
+//!     max_discovery_retries: 10,
+//! };
+//! let mut camera = BcCamera::new(&options).await.unwrap();
+//! # })
 //! ```
 //!
 //! After that login can be conducted with
 //!
 //! ```no_run
-//! # use neolink_core::bc_protocol::BcCamera;
-//! # let channel_id = 0;
-//! # let mut camera = BcCamera::new_with_addr("camera_ip_address", channel_id).unwrap();
-//! camera.login("username", Some("password"));
+//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
+//! # use neolink_core::bc_protocol::{BcCamera, BcCameraOpt, DiscoveryMethods, ConnectionProtocol, Credentials};
+//! # let options = BcCameraOpt {
+//! #    name: "CamName".to_string(),
+//! #    channel_id: 0,
+//! #    addrs: ["192.168.1.1".parse().unwrap()].to_vec(),
+//! #    port: Some(9000),
+//! #    uid: Some("CAMUID".to_string()),
+//! #    protocol: ConnectionProtocol::TcpUdp,
+//! #    discovery: DiscoveryMethods::Relay,
+//! #    credentials: Credentials {
+//! #        username: "username".to_string(),
+//! #        password: Some("password".to_string()),
+//! #    },
+//! #    debug: false,
+//! #    max_discovery_retries: 10,
+//! # };
+//! # let mut camera = BcCamera::new(&options).await.unwrap();
+//! camera.login().await;
+//! # })
 //! ```
 //! For further commands see the [`bc_protocol::BcCamera`] struct.
 //!
