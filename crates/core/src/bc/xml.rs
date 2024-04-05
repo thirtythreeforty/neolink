@@ -126,7 +126,7 @@ impl BcXml {
             .write_event(quick_xml::events::Event::Decl(
                 quick_xml::events::BytesDecl::new("1.0", Some("UTF-8"), None),
             ))
-            .expect("Should be aboe to serialise a basic xml declation");
+            .expect("Should be able to serialise a basic xml declaration");
         writer.write_serializable("body", &self)?;
         Ok(w)
     }
@@ -136,14 +136,14 @@ impl Extension {
     pub(crate) fn try_parse(s: impl BufRead) -> Result<Self, quick_xml::de::DeError> {
         quick_xml::de::from_reader(s)
     }
-    pub(crate) fn serialize<W: Write>(&self, mut w: W) -> Result<W, quick_xml::Error> {
+    pub(crate) fn serialize<W: Write>(&self, mut w: W) -> Result<W, quick_xml::de::DeError> {
         let mut writer = quick_xml::writer::Writer::new(&mut w);
-        writer.write_event(quick_xml::events::Event::Decl(
-            quick_xml::events::BytesDecl::new("1.0", Some("UTF-8"), None),
-        ))?;
         writer
-            .write_serializable("body", &self)
-            .expect("Should be serialisable");
+            .write_event(quick_xml::events::Event::Decl(
+                quick_xml::events::BytesDecl::new("1.0", Some("UTF-8"), None),
+            ))
+            .expect("Should be able to serialise a basic xml declaration");
+        writer.write_serializable("Extension", &self)?;
         Ok(w)
     }
 }
@@ -271,6 +271,7 @@ pub struct Preview {
 ///
 /// This is used to describe the subsequent payload passed the `payload_offset`
 #[derive(PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[serde(rename = "Extension")]
 pub struct Extension {
     /// XML Version
     #[serde(rename = "@version")]
