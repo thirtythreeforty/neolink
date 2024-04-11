@@ -7,48 +7,49 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
-    - name: apt install gstreamer
-      run: |
-        sudo apt update
-        sudo apt install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev
-    - uses: actions-rs/toolchain@v1
-      with:
+      - uses: actions/checkout@v1
+      - name: apt install gstreamer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aptitude
+          sudo aptitude install -y libgstrtspserver-1.0-dev libgstreamer1.0-dev libgtk2.0-dev
+      - uses: actions-rs/toolchain@v1
+        with:
           toolchain: nightly
           components: clippy
           override: true
-    - name: Run clippy action to produce annotations
-      uses: actions-rs/clippy-check@v1
-      if: steps.check_permissions.outputs.has-permission
-      with:
-        toolchain: nightly
-        token: ${{ secrets.GITHUB_TOKEN }}
-        args: --workspace --all-targets --all-features
-    - name: Run clippy manually without annotations
-      if: ${{ !steps.check_permissions.outputs.has-permission }}
-      run: cargo +nightly clippy --workspace --all-targets --all-features
+      - name: Run clippy action to produce annotations
+        uses: actions-rs/clippy-check@v1
+        if: steps.check_permissions.outputs.has-permission
+        with:
+          toolchain: nightly
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --workspace --all-targets --all-features
+      - name: Run clippy manually without annotations
+        if: ${{ !steps.check_permissions.outputs.has-permission }}
+        run: cargo +nightly clippy --workspace --all-targets --all-features
 
   check_fmt:
     name: Rust-fmt
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
-    - uses: actions-rs/toolchain@v1
-      with:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
           toolchain: nightly
           components: rustfmt
           override: true
-    - name: rustfmt
-      run: |
-        cargo +nightly fmt --all -- --check
+      - name: rustfmt
+        run: |
+          cargo +nightly fmt --all -- --check
 
   check_lua:
     name: Luacheck
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
-    - name: Run luacheck
-      uses: nebularg/actions-luacheck@v1
-      with:
-        files: 'dissector/baichuan.lua'
-        args: --globals Dissector Proto ProtoField base ByteArray DESEGMENT_ONE_MORE_SEGMENT DissectorTable
+      - uses: actions/checkout@v1
+      - name: Run luacheck
+        uses: nebularg/actions-luacheck@v1
+        with:
+          files: "dissector/baichuan.lua"
+          args: --globals Dissector Proto ProtoField base ByteArray DESEGMENT_ONE_MORE_SEGMENT DissectorTable
