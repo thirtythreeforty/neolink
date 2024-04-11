@@ -26,9 +26,9 @@ use bc::model::*;
 pub(crate) use connection::*;
 pub use errors::Error;
 pub use ledstate::LightState;
+pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
 pub use pirstate::PirState;
 pub use resolution::*;
-pub use motion::{MotionOutput, MotionOutputError, MotionStatus};
 pub use stream::{Stream, StreamOutput, StreamOutputError};
 
 type Result<T> = std::result::Result<T, Error>;
