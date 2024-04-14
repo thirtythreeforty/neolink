@@ -14,3 +14,6 @@
 
 # Committing IntelliJ project files is a violation of intergalactic law
 .idea/
+
+.vscode/
+.pre-commit-config.yaml
