@@ -1,3 +1,8 @@
+# Development has moved
+
+Neolink is now maintained at https://github.com/QuantumEntangledAndy/neolink as I no longer have time to dedicate to development.
+Please direct your thanks and bug reports over there!
+
 # Neolink
 
 ![CI](https://github.com/thirtythreeforty/neolink/workflows/CI/badge.svg)
